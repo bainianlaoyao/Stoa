@@ -1,0 +1,38 @@
+{
+  "name": "ultra-simple-panel",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.33.0",
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "verify:packaging": "node scripts/verify-packaging-baseline.mjs",
+    "typecheck": "vue-tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.node.json",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
+    "express": "^5.1.0",
+    "node-pty": "^1.1.0",
+    "pinia": "^3.0.3",
+    "vue": "^3.5.22"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.3",
+    "@types/node": "^24.6.0",
+    "@vitejs/plugin-vue": "^6.0.1",
+    "@vue/test-utils": "^2.4.6",
+    "electron": "^37.4.0",
+    "electron-vite": "^4.0.0",
+    "happy-dom": "^18.0.1",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.7",
+    "vitest": "^3.2.4",
+    "vue-tsc": "^3.1.1"
+  }
+}

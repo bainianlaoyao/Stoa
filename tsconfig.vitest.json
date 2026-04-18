@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "types": ["vitest/globals", "node", "happy-dom"]
+  },
+  "include": [
+    "src/**/*.test.ts",
+    "src/**/*.spec.ts",
+    "src/**/*.d.ts",
+    "src/shared/**/*.ts",
+    "src/renderer/**/*.ts",
+    "src/renderer/**/*.vue"
+  ]
+}
