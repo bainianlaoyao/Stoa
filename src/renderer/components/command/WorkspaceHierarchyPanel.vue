@@ -1,39 +1,42 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import HierarchyNode from './HierarchyNode.vue'
-import type { WorkspaceHierarchyGroup } from '@renderer/stores/workspaces'
+import type { SessionType } from '@shared/project-session'
+import type { ProjectHierarchyNode } from '@renderer/stores/workspaces'
+import NewProjectModal from './NewProjectModal.vue'
+import NewSessionModal from './NewSessionModal.vue'
 
 const props = defineProps<{
-  hierarchy: WorkspaceHierarchyGroup[]
+  hierarchy: ProjectHierarchyNode[]
+  activeProjectId: string | null
+  activeSessionId: string | null
 }>()
 
 const emit = defineEmits<{
-  select: [workspaceId: string]
-  createProject: []
+  selectProject: [projectId: string]
+  selectSession: [sessionId: string]
+  createProject: [payload: { name: string; path: string }]
+  createSession: [payload: { projectId: string; type: SessionType; title: string }]
 }>()
 
-const collapsedGroups = ref<Set<string>>(new Set())
+const showNewProject = ref(false)
+const showNewSession = ref(false)
+const targetProjectId = ref('')
 
-function toggleGroup(groupId: string): void {
-  const next = new Set(collapsedGroups.value)
-  if (next.has(groupId)) {
-    next.delete(groupId)
-  } else {
-    next.add(groupId)
-  }
-  collapsedGroups.value = next
+function openSessionModal(projectId: string) {
+  targetProjectId.value = projectId
+  showNewSession.value = true
 }
 
-function isCollapsed(groupId: string): boolean {
-  return collapsedGroups.value.has(groupId)
+function handleSessionCreate(payload: { title: string; type: SessionType }) {
+  emit('createSession', { ...payload, projectId: targetProjectId.value })
 }
 </script>
 
 <template>
-  <aside class="workspace-hierarchy-panel route-column" aria-label="Internal session and workspace routing">
+  <aside class="workspace-hierarchy-panel">
     <div class="route-body">
       <div class="route-actions">
-        <button class="route-action" type="button" @click="emit('createProject')">
+        <button class="route-action" type="button" @click="showNewProject = true">
           <span class="route-action-label">New Project</span>
           <span class="route-action-icon">+</span>
         </button>
@@ -42,40 +45,54 @@ function isCollapsed(groupId: string): boolean {
       <div class="route-group">
         <div class="group-label">Projects</div>
 
-        <section v-for="group in hierarchy" :key="group.id" class="workspace-group" :data-parent-group="group.id">
-          <article class="route-project">
-            <div class="route-project-row">
-              <button
-                class="route-item route-item--parent"
-                type="button"
-                :class="{ active: group.children.some((child) => child.active), 'route-item--active': group.children.some((child) => child.active) }"
-                :data-collapse-toggle="group.id"
-                :aria-expanded="!isCollapsed(group.id)"
-                @click="toggleGroup(group.id)"
-              >
-                <span class="route-dot route-dot--idle idle" />
-                <span class="route-item__main">
-                  <span class="route-copy">
-                    <span class="route-name">{{ group.title }}</span>
-                  </span>
-                </span>
-                <span class="route-time">{{ group.children[0]?.metaLabel ?? '—' }}</span>
-              </button>
-              <span class="route-project-actions">
-                <button class="route-add-session" type="button" :data-session-affordance="group.id">+</button>
-              </span>
+        <div v-for="project in hierarchy" :key="project.id" class="route-project">
+          <div
+            class="route-item route-item--parent"
+            :class="{ 'route-item--active': project.id === activeProjectId }"
+            @click="emit('selectProject', project.id)"
+          >
+            <div class="route-dot idle" />
+            <div class="route-copy">
+              <div class="route-name">{{ project.name }}</div>
+              <div class="route-path">{{ project.path }}</div>
             </div>
+            <div class="route-project-actions">
+              <button
+                class="route-add-session"
+                type="button"
+                title="Add session"
+                @click.stop="openSessionModal(project.id)"
+              >
+                +
+              </button>
+            </div>
+          </div>
 
-            <HierarchyNode
-              v-for="child in isCollapsed(group.id) ? [] : group.children"
-              :key="child.workspaceId"
-              :parent="group"
-              :child="child"
-              @select="emit('select', $event)"
-            />
-          </article>
-        </section>
+          <button
+            v-for="session in project.sessions"
+            :key="session.id"
+            class="route-item child"
+            :class="{ 'route-item--active': session.id === activeSessionId }"
+            type="button"
+            @click="emit('selectSession', session.id)"
+          >
+            <div class="route-dot" :class="session.status" />
+            <div class="route-copy">
+              <div class="route-name">{{ session.title }}</div>
+              <div class="route-time">{{ session.type }}</div>
+            </div>
+          </button>
+        </div>
       </div>
     </div>
   </aside>
+
+  <NewProjectModal
+    v-model:show="showNewProject"
+    @create="emit('createProject', $event)"
+  />
+  <NewSessionModal
+    v-model:show="showNewSession"
+    @create="handleSessionCreate"
+  />
 </template>

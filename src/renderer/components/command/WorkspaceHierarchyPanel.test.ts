@@ -1,278 +1,366 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { createPinia } from 'pinia'
 import WorkspaceHierarchyPanel from './WorkspaceHierarchyPanel.vue'
+import NewProjectModal from './NewProjectModal.vue'
+import NewSessionModal from './NewSessionModal.vue'
+import type { ProjectHierarchyNode } from '@renderer/stores/workspaces'
+
+function createHierarchy(): ProjectHierarchyNode[] {
+  return [
+    {
+      id: 'project_alpha',
+      name: 'infra-control',
+      path: 'D:/infra-control',
+      createdAt: 'a',
+      updatedAt: 'a',
+      active: true,
+      sessions: [
+        {
+          id: 'session_1',
+          projectId: 'project_alpha',
+          type: 'opencode',
+          status: 'running',
+          title: 'deploy gateway',
+          summary: 'running',
+          recoveryMode: 'resume-external',
+          externalSessionId: 'sess_1',
+          createdAt: 'a',
+          updatedAt: 'a',
+          lastActivatedAt: 'a',
+          active: false
+        },
+        {
+          id: 'session_2',
+          projectId: 'project_alpha',
+          type: 'shell',
+          status: 'awaiting_input',
+          title: 'need confirmation',
+          summary: 'awaiting',
+          recoveryMode: 'resume-external',
+          externalSessionId: 'sess_2',
+          createdAt: 'b',
+          updatedAt: 'b',
+          lastActivatedAt: 'b',
+          active: true
+        }
+      ]
+    }
+  ]
+}
+
+function createTwoProjectHierarchy(): ProjectHierarchyNode[] {
+  return [
+    {
+      id: 'project_alpha',
+      name: 'infra-control',
+      path: 'D:/infra-control',
+      createdAt: 'a',
+      updatedAt: 'a',
+      active: true,
+      sessions: [
+        {
+          id: 'session_1',
+          projectId: 'project_alpha',
+          type: 'opencode',
+          status: 'running',
+          title: 'deploy gateway',
+          summary: 'running',
+          recoveryMode: 'resume-external',
+          externalSessionId: 'sess_1',
+          createdAt: 'a',
+          updatedAt: 'a',
+          lastActivatedAt: 'a',
+          active: false
+        }
+      ]
+    },
+    {
+      id: 'project_beta',
+      name: 'data-pipeline',
+      path: 'D:/data-pipeline',
+      createdAt: 'c',
+      updatedAt: 'c',
+      active: false,
+      sessions: [
+        {
+          id: 'session_3',
+          projectId: 'project_beta',
+          type: 'shell',
+          status: 'exited',
+          title: 'etl run',
+          summary: 'done',
+          recoveryMode: 'fresh-shell',
+          externalSessionId: null,
+          createdAt: 'c',
+          updatedAt: 'c',
+          lastActivatedAt: 'c',
+          active: false
+        }
+      ]
+    }
+  ]
+}
+
+function mountPanel(overrides: { hierarchy?: ProjectHierarchyNode[]; activeProjectId?: string | null; activeSessionId?: string | null } = {}) {
+  return mount(WorkspaceHierarchyPanel, {
+    global: { plugins: [createPinia()] },
+    props: {
+      hierarchy: overrides.hierarchy ?? createHierarchy(),
+      activeProjectId: overrides.activeProjectId !== undefined ? overrides.activeProjectId : 'project_alpha',
+      activeSessionId: overrides.activeSessionId !== undefined ? overrides.activeSessionId : 'session_2'
+    }
+  })
+}
 
 describe('WorkspaceHierarchyPanel', () => {
-  it('renders parent and child rows with the active child selected', () => {
-    const wrapper = mount(WorkspaceHierarchyPanel, {
-      props: {
-        hierarchy: [
-          {
-            id: 'group-1',
-            title: 'infra-control',
-            pathLabel: 'D:/infra-control',
-            children: [
-              {
-                workspaceId: 'ws_1',
-                name: 'infra-control',
-                label: 'deploy gateway',
-                status: 'running',
-                summary: 'running',
-                metaLabel: 'sess_1',
-                active: false,
-                statusLabel: 'running',
-                providerId: 'opencode',
-                path: 'D:/infra-control',
-                cliSessionId: 'sess_1',
-                isProvisional: false
-              },
-              {
-                workspaceId: 'ws_2',
-                name: 'infra-control',
-                label: 'need confirmation',
-                status: 'awaiting_input',
-                summary: 'awaiting',
-                metaLabel: 'sess_2',
-                active: true,
-                statusLabel: 'awaiting_input',
-                providerId: 'opencode',
-                path: 'D:/infra-control',
-                cliSessionId: 'sess_2',
-                isProvisional: false
-              }
-            ]
-          }
-        ]
-      }
+  describe('render', () => {
+    it('renders .workspace-hierarchy-panel aside element', () => {
+      const wrapper = mountPanel()
+      expect(wrapper.find('.workspace-hierarchy-panel').exists()).toBe(true)
+      expect(wrapper.find('.workspace-hierarchy-panel').element.tagName).toBe('ASIDE')
     })
 
-    expect(wrapper.find('[data-parent-group="group-1"]').exists()).toBe(true)
-    expect(wrapper.find('[data-workspace-id="ws_2"]').attributes('data-active')).toBe('true')
+    it('renders .route-body container', () => {
+      const wrapper = mountPanel()
+      expect(wrapper.find('.route-body').exists()).toBe(true)
+    })
+
+    it('renders "New Project" button in .route-actions', () => {
+      const wrapper = mountPanel()
+      const btn = wrapper.find('.route-actions .route-action')
+      expect(btn.exists()).toBe(true)
+      expect(btn.text()).toContain('New Project')
+    })
+
+    it('renders "Projects" .group-label text', () => {
+      const wrapper = mountPanel()
+      const label = wrapper.find('.group-label')
+      expect(label.exists()).toBe(true)
+      expect(label.text()).toBe('Projects')
+    })
+
+    it('renders one .route-project div per project', () => {
+      const wrapper = mountPanel()
+      expect(wrapper.findAll('.route-project')).toHaveLength(1)
+
+      const wrapper2 = mountPanel({ hierarchy: createTwoProjectHierarchy() })
+      expect(wrapper2.findAll('.route-project')).toHaveLength(2)
+    })
+
+    it('renders project name in .route-name inside .route-project', () => {
+      const wrapper = mountPanel()
+      const project = wrapper.find('.route-project')
+      const names = project.findAll('.route-item--parent .route-name')
+      expect(names[0].text()).toBe('infra-control')
+    })
+
+    it('renders project path in .route-path', () => {
+      const wrapper = mountPanel()
+      const path = wrapper.find('.route-project .route-item--parent .route-path')
+      expect(path.text()).toBe('D:/infra-control')
+    })
+
+    it('renders one .route-item.child button per session', () => {
+      const wrapper = mountPanel()
+      const children = wrapper.findAll('.route-item.child')
+      expect(children).toHaveLength(2)
+      expect(children.every(c => c.element.tagName === 'BUTTON')).toBe(true)
+    })
+
+    it('renders session title in child .route-name', () => {
+      const wrapper = mountPanel()
+      const children = wrapper.findAll('.route-item.child')
+      const titles = children.map(c => c.find('.route-name').text())
+      expect(titles).toContain('deploy gateway')
+      expect(titles).toContain('need confirmation')
+    })
+
+    it('renders session type in child .route-time', () => {
+      const wrapper = mountPanel()
+      const children = wrapper.findAll('.route-item.child')
+      const types = children.map(c => c.find('.route-time').text())
+      expect(types).toContain('opencode')
+      expect(types).toContain('shell')
+    })
+
+    it('renders .route-dot with session.status as CSS class', () => {
+      const wrapper = mountPanel()
+      const children = wrapper.findAll('.route-item.child')
+      const dot1 = children[0].find('.route-dot')
+      expect(dot1.classes()).toContain('running')
+      const dot2 = children[1].find('.route-dot')
+      expect(dot2.classes()).toContain('awaiting_input')
+    })
+
+    it('renders "+" .route-add-session button per project', () => {
+      const wrapper = mountPanel()
+      const btns = wrapper.findAll('.route-add-session')
+      expect(btns).toHaveLength(1)
+      expect(btns[0].text()).toBe('+')
+    })
   })
 
-  it('collapses and expands group children', async () => {
-    const wrapper = mount(WorkspaceHierarchyPanel, {
-      props: {
-        hierarchy: [
-          {
-            id: 'group-1',
-            title: 'infra-control',
-            pathLabel: 'D:/infra-control',
-            children: [
-              {
-                workspaceId: 'ws_1',
-                name: 'infra-control',
-                label: 'deploy gateway',
-                status: 'running',
-                summary: 'running',
-                metaLabel: 'sess_1',
-                active: true,
-                statusLabel: 'running',
-                providerId: 'opencode',
-                path: 'D:/infra-control',
-                cliSessionId: 'sess_1',
-                isProvisional: false
-              }
-            ]
-          }
-        ]
-      }
+  describe('empty hierarchy', () => {
+    it('renders "New Project" button even with empty hierarchy', () => {
+      const wrapper = mountPanel({ hierarchy: [], activeProjectId: null, activeSessionId: null })
+      expect(wrapper.find('.route-action').exists()).toBe(true)
+      expect(wrapper.find('.route-action').text()).toContain('New Project')
     })
 
-    await wrapper.get('[data-collapse-toggle="group-1"]').trigger('click')
-    expect(wrapper.find('[data-workspace-id="ws_1"]').exists()).toBe(false)
+    it('renders "Projects" group label', () => {
+      const wrapper = mountPanel({ hierarchy: [], activeProjectId: null, activeSessionId: null })
+      expect(wrapper.find('.group-label').text()).toBe('Projects')
+    })
 
-    await wrapper.get('[data-collapse-toggle="group-1"]').trigger('click')
-    expect(wrapper.find('[data-workspace-id="ws_1"]').exists()).toBe(true)
+    it('renders zero .route-project divs', () => {
+      const wrapper = mountPanel({ hierarchy: [], activeProjectId: null, activeSessionId: null })
+      expect(wrapper.findAll('.route-project')).toHaveLength(0)
+    })
+
+    it('does NOT crash with empty hierarchy', () => {
+      expect(() => mountPanel({ hierarchy: [], activeProjectId: null, activeSessionId: null })).not.toThrow()
+    })
   })
 
-  it('renders parent meta and a separate session affordance like the style-h route column', () => {
-    const wrapper = mount(WorkspaceHierarchyPanel, {
-      props: {
-        hierarchy: [
-          {
-            id: 'group-1',
-            title: 'infra-control',
-            pathLabel: 'D:/infra-control',
-            children: [
-              {
-                workspaceId: 'ws_1',
-                name: 'infra-control',
-                label: 'deploy gateway',
-                status: 'running',
-                summary: 'running',
-                metaLabel: '1h',
-                active: true,
-                statusLabel: 'running',
-                providerId: 'opencode',
-                path: 'D:/infra-control',
-                cliSessionId: 'sess_1',
-                isProvisional: false
-              }
-            ]
-          }
-        ]
-      }
+  describe('active states', () => {
+    it('project matching activeProjectId has .route-item--active class', () => {
+      const wrapper = mountPanel()
+      const parentItem = wrapper.find('.route-item--parent')
+      expect(parentItem.classes()).toContain('route-item--active')
     })
 
-    expect(wrapper.find('.route-item--parent .route-time').text()).toBe('1h')
-    expect(wrapper.find('[data-session-affordance="group-1"]').exists()).toBe(true)
+    it('session matching activeSessionId has .route-item--active class', () => {
+      const wrapper = mountPanel()
+      const children = wrapper.findAll('.route-item.child')
+      const activeSession = children.find(c => c.classes().includes('route-item--active'))
+      expect(activeSession).toBeDefined()
+      expect(activeSession!.text()).toContain('need confirmation')
+    })
+
+    it('only ONE .route-item--active project when multiple exist', () => {
+      const wrapper = mountPanel({
+        hierarchy: createTwoProjectHierarchy(),
+        activeProjectId: 'project_beta',
+        activeSessionId: 'session_3'
+      })
+      const parentItems = wrapper.findAll('.route-item--parent')
+      const activeParents = parentItems.filter(p => p.classes().includes('route-item--active'))
+      expect(activeParents).toHaveLength(1)
+      expect(activeParents[0].find('.route-name').text()).toBe('data-pipeline')
+    })
+
+    it('no active class when activeProjectId is null', () => {
+      const wrapper = mountPanel({ activeProjectId: null, activeSessionId: null })
+      const parentItems = wrapper.findAll('.route-item--parent')
+      const activeParents = parentItems.filter(p => p.classes().includes('route-item--active'))
+      expect(activeParents).toHaveLength(0)
+    })
+
+    it('no active class when activeSessionId is null', () => {
+      const wrapper = mountPanel({ activeProjectId: null, activeSessionId: null })
+      const children = wrapper.findAll('.route-item.child')
+      const activeChildren = children.filter(c => c.classes().includes('route-item--active'))
+      expect(activeChildren).toHaveLength(0)
+    })
   })
 
-  it('separates the parent row main copy from trailing actions', () => {
-    const wrapper = mount(WorkspaceHierarchyPanel, {
-      props: {
-        hierarchy: [
-          {
-            id: 'group-1',
-            title: 'infra-control',
-            pathLabel: 'D:/infra-control',
-            children: [
-              {
-                workspaceId: 'ws_1',
-                name: 'infra-control',
-                label: 'deploy gateway',
-                status: 'running',
-                summary: 'running',
-                metaLabel: '1h',
-                active: true,
-                statusLabel: 'running',
-                providerId: 'opencode',
-                path: 'D:/infra-control',
-                cliSessionId: 'sess_1',
-                isProvisional: false
-              }
-            ]
-          }
-        ]
-      }
+  describe('project selection', () => {
+    it('clicking project row emits selectProject with project id', async () => {
+      const wrapper = mountPanel()
+      await wrapper.find('.route-item--parent').trigger('click')
+      expect(wrapper.emitted('selectProject')).toEqual([['project_alpha']])
     })
 
-    expect(wrapper.find('.route-item--parent .route-item__main').exists()).toBe(true)
-    expect(wrapper.find('.route-project-row .route-project-actions').exists()).toBe(true)
-    expect(wrapper.find('.route-item--parent .route-project-actions').exists()).toBe(false)
+    it('clicking inactive project emits correct id', async () => {
+      const wrapper = mountPanel({
+        hierarchy: createTwoProjectHierarchy(),
+        activeProjectId: 'project_alpha',
+        activeSessionId: 'session_1'
+      })
+      const parents = wrapper.findAll('.route-item--parent')
+      await parents[1].trigger('click')
+      expect(wrapper.emitted('selectProject')).toEqual([['project_beta']])
+    })
   })
 
-  it('renders the add-session affordance as a separate action target outside the collapse toggle', () => {
-    const wrapper = mount(WorkspaceHierarchyPanel, {
-      props: {
-        hierarchy: [
-          {
-            id: 'group-1',
-            title: 'infra-control',
-            pathLabel: 'D:/infra-control',
-            children: [
-              {
-                workspaceId: 'ws_1',
-                name: 'infra-control',
-                label: 'deploy gateway',
-                status: 'running',
-                summary: 'running',
-                metaLabel: '1h',
-                active: true,
-                statusLabel: 'running',
-                providerId: 'opencode',
-                path: 'D:/infra-control',
-                cliSessionId: 'sess_1',
-                isProvisional: false
-              }
-            ]
-          }
-        ]
-      }
+  describe('session selection', () => {
+    it('clicking session row emits selectSession with session id', async () => {
+      const wrapper = mountPanel()
+      const children = wrapper.findAll('.route-item.child')
+      await children[0].trigger('click')
+      expect(wrapper.emitted('selectSession')).toEqual([['session_1']])
     })
-
-    expect(wrapper.find('[data-session-affordance="group-1"]').element.tagName).toBe('BUTTON')
-    expect(wrapper.find('.route-project-actions [data-session-affordance="group-1"]').exists()).toBe(true)
-    expect(wrapper.find('.route-item--parent [data-session-affordance="group-1"]').exists()).toBe(false)
   })
 
-  it('keeps child rows visually compact without route summary text', () => {
-    const wrapper = mount(WorkspaceHierarchyPanel, {
-      props: {
-        hierarchy: [
-          {
-            id: 'group-1',
-            title: 'infra-control',
-            pathLabel: 'D:/infra-control',
-            children: [
-              {
-                workspaceId: 'ws_1',
-                name: 'infra-control',
-                label: 'deploy gateway',
-                status: 'running',
-                summary: 'running',
-                metaLabel: '1h',
-                active: true,
-                statusLabel: 'running',
-                providerId: 'opencode',
-                path: 'D:/infra-control',
-                cliSessionId: 'sess_1',
-                isProvisional: false
-              }
-            ]
-          }
-        ]
-      }
+  describe('add session button', () => {
+    it('clicking "+" button does NOT emit selectProject (click.stop works)', async () => {
+      const wrapper = mountPanel()
+      await wrapper.find('.route-add-session').trigger('click')
+      expect(wrapper.emitted('selectProject')).toBeUndefined()
     })
 
-    expect(wrapper.find('.route-summary').exists()).toBe(false)
-    expect(wrapper.find('.hierarchy-node__pill').exists()).toBe(false)
-    expect(wrapper.find('[data-workspace-id="ws_1"] .route-time').text()).toBe('1h')
+    it('clicking "+" does NOT directly emit createSession', async () => {
+      const wrapper = mountPanel()
+      await wrapper.find('.route-add-session').trigger('click')
+      expect(wrapper.emitted('createSession')).toBeUndefined()
+    })
   })
 
-  it('renders the Projects group label only once for the whole rail', () => {
-    const wrapper = mount(WorkspaceHierarchyPanel, {
-      props: {
-        hierarchy: [
-          {
-            id: 'group-1',
-            title: 'infra-control',
-            pathLabel: 'D:/infra-control',
-            children: [
-              {
-                workspaceId: 'ws_1',
-                name: 'infra-control',
-                label: 'deploy gateway',
-                status: 'running',
-                summary: 'running',
-                metaLabel: '1h',
-                active: true,
-                statusLabel: 'running',
-                providerId: 'opencode',
-                path: 'D:/infra-control',
-                cliSessionId: 'sess_1',
-                isProvisional: false
-              }
-            ]
-          },
-          {
-            id: 'group-2',
-            title: 'apps-shell',
-            pathLabel: 'D:/apps-shell',
-            children: [
-              {
-                workspaceId: 'ws_2',
-                name: 'apps-shell',
-                label: 'fix sidebar',
-                status: 'awaiting_input',
-                summary: 'awaiting',
-                metaLabel: '2h',
-                active: false,
-                statusLabel: 'awaiting_input',
-                providerId: 'opencode',
-                path: 'D:/apps-shell',
-                cliSessionId: 'sess_2',
-                isProvisional: false
-              }
-            ]
-          }
-        ]
-      }
+  describe('new project button', () => {
+    it('clicking "New Project" button renders (component mounts without error)', async () => {
+      const wrapper = mountPanel()
+      await wrapper.find('.route-action').trigger('click')
+      expect(wrapper.find('.route-action').exists()).toBe(true)
+    })
+  })
+
+  describe('modal integration', () => {
+    it('NewProjectModal component is rendered in the wrapper', () => {
+      const wrapper = mountPanel()
+      expect(wrapper.findComponent(NewProjectModal).exists()).toBe(true)
     })
 
-    expect(wrapper.findAll('.group-label')).toHaveLength(1)
-    expect(wrapper.find('.group-label').text()).toContain('Projects')
+    it('NewSessionModal component is rendered in the wrapper', () => {
+      const wrapper = mountPanel()
+      expect(wrapper.findComponent(NewSessionModal).exists()).toBe(true)
+    })
+  })
+
+  describe('edge cases', () => {
+    it('project with zero sessions renders project row but no session buttons', () => {
+      const hierarchy: ProjectHierarchyNode[] = [
+        {
+          id: 'project_empty',
+          name: 'empty-project',
+          path: 'D:/empty',
+          createdAt: 'a',
+          updatedAt: 'a',
+          active: true,
+          sessions: []
+        }
+      ]
+      const wrapper = mountPanel({ hierarchy, activeProjectId: 'project_empty', activeSessionId: null })
+      expect(wrapper.findAll('.route-project')).toHaveLength(1)
+      expect(wrapper.find('.route-item--parent').exists()).toBe(true)
+      expect(wrapper.findAll('.route-item.child')).toHaveLength(0)
+    })
+
+    it('hierarchy with multiple projects renders all with correct data', () => {
+      const wrapper = mountPanel({
+        hierarchy: createTwoProjectHierarchy(),
+        activeProjectId: 'project_alpha',
+        activeSessionId: 'session_1'
+      })
+      const projects = wrapper.findAll('.route-project')
+      expect(projects).toHaveLength(2)
+
+      const names = projects.map(p => p.find('.route-item--parent .route-name').text())
+      expect(names).toEqual(['infra-control', 'data-pipeline'])
+
+      const paths = projects.map(p => p.find('.route-item--parent .route-path').text())
+      expect(paths).toEqual(['D:/infra-control', 'D:/data-pipeline'])
+    })
   })
 })

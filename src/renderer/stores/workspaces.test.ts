@@ -106,44 +106,56 @@ describe('project/session renderer store', () => {
     expect(store.activeSession?.title).toBe('Deploy')
   })
 
-  test('derives hierarchical groups from canonical workspaces without mutating truth state', () => {
+  test('derives project hierarchy from canonical project/session state without mutating truth state', () => {
     const store = useWorkspaceStore()
 
     store.hydrate({
-      activeWorkspaceId: 'ws_2',
+      activeProjectId: 'project_alpha',
+      activeSessionId: 'session_op_2',
       terminalWebhookPort: 42017,
-      workspaces: [
+      projects: [
         {
-          workspaceId: 'ws_1',
+          id: 'project_alpha',
           name: 'infra-control',
           path: 'D:/infra-control',
-          providerId: 'opencode',
+          createdAt: 'a',
+          updatedAt: 'a'
+        }
+      ],
+      sessions: [
+        {
+          id: 'session_op_1',
+          projectId: 'project_alpha',
+          type: 'opencode',
           status: 'running',
+          title: 'deploy gateway',
           summary: 'deploy gateway',
-          cliSessionId: 'sess_a1',
-          isProvisional: false,
-          workspaceSecret: null,
-          providerPort: 42017
+          recoveryMode: 'resume-external',
+          externalSessionId: 'sess_a1',
+          createdAt: 'a',
+          updatedAt: 'a',
+          lastActivatedAt: 'a'
         },
         {
-          workspaceId: 'ws_2',
-          name: 'infra-control',
-          path: 'D:/infra-control',
-          providerId: 'opencode',
+          id: 'session_op_2',
+          projectId: 'project_alpha',
+          type: 'opencode',
           status: 'awaiting_input',
+          title: 'need confirmation',
           summary: 'need confirmation',
-          cliSessionId: 'sess_a2',
-          isProvisional: false,
-          workspaceSecret: null,
-          providerPort: 42017
+          recoveryMode: 'resume-external',
+          externalSessionId: 'sess_a2',
+          createdAt: 'b',
+          updatedAt: 'b',
+          lastActivatedAt: 'b'
         }
       ]
     })
 
-    expect(store.workspaceHierarchy).toHaveLength(1)
-    expect(store.workspaceHierarchy[0]?.children).toHaveLength(2)
-    expect(store.activeWorkspace?.workspaceId).toBe('ws_2')
-    expect(store.workspaces).toHaveLength(2)
-    expect(store.workspaceHierarchy[0]?.children[0]?.metaLabel).toBe('sess_a1')
+    expect(store.projectHierarchy).toHaveLength(1)
+    expect(store.projectHierarchy[0]?.sessions).toHaveLength(2)
+    expect(store.activeSession?.id).toBe('session_op_2')
+    expect(store.sessions).toHaveLength(2)
+    expect(store.projectHierarchy[0]?.sessions[0]?.externalSessionId).toBe('sess_a1')
   })
 })

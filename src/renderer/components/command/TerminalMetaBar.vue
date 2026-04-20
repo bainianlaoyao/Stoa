@@ -1,20 +1,21 @@
 <script setup lang="ts">
-import type { WorkspaceSummary } from '@shared/workspace'
+import type { ProjectSummary, SessionSummary } from '@shared/project-session'
 
 defineProps<{
-  workspace: WorkspaceSummary | null
+  project: ProjectSummary | null
+  session: SessionSummary | null
 }>()
 </script>
 
 <template>
-  <div v-if="workspace" class="terminal-meta">
+  <div v-if="project && session" class="terminal-meta">
     <div class="terminal-meta__group terminal-meta__group--primary">
-      <span>{{ workspace.workspaceId }}</span>
-      <span>{{ workspace.cliSessionId ?? 'pending-session' }}</span>
+      <span>{{ project.id }}</span>
+      <span>{{ session.id }}</span>
     </div>
     <div class="terminal-meta__group terminal-meta__group--secondary">
-      <span>{{ workspace.providerId }}</span>
-      <span>{{ workspace.status }}</span>
+      <span>{{ session.type }}</span>
+      <span>{{ session.status }}</span>
     </div>
   </div>
 </template>

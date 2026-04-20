@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { WorkspaceSummary } from '@shared/workspace'
 import { listPanels } from '@extensions/panels'
+import type { ProjectSummary, SessionSummary } from '@shared/project-session'
 
 const props = defineProps<{
-  activeWorkspace: WorkspaceSummary | null
-  workspaceCount: number
+  activeProject: ProjectSummary | null
+  activeSession: SessionSummary | null
+  sessionCount: number
 }>()
 
 const panelSummaries = computed(() => {
@@ -13,8 +14,8 @@ const panelSummaries = computed(() => {
     panelId: panel.panelId,
     title: panel.title,
     summary: panel.renderSummary({
-      activeWorkspaceId: props.activeWorkspace?.workspaceId ?? null,
-      workspaceCount: props.workspaceCount
+      activeWorkspaceId: props.activeSession?.id ?? null,
+      workspaceCount: props.sessionCount
     })
   }))
 })

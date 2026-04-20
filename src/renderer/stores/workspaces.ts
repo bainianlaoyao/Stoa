@@ -13,6 +13,7 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
   const activeProjectId = ref<string | null>(null)
   const activeSessionId = ref<string | null>(null)
   const terminalWebhookPort = ref<number | null>(null)
+  const lastError = ref<string | null>(null)
 
   const activeProject = computed(() => {
     return projects.value.find((project) => project.id === activeProjectId.value) ?? null
@@ -68,12 +69,17 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
     sessions.value.push(session)
   }
 
+  function clearError(): void {
+    lastError.value = null
+  }
+
   return {
     projects,
     sessions,
     activeProjectId,
     activeSessionId,
     terminalWebhookPort,
+    lastError,
     activeProject,
     activeSession,
     projectHierarchy,
@@ -81,6 +87,7 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
     addProject,
     addSession,
     setActiveProject,
-    setActiveSession
+    setActiveSession,
+    clearError
   }
 })

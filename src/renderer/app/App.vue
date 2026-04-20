@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted } from 'vue'
 import { storeToRefs } from 'pinia'
 import type { SessionType } from '@shared/project-session'
-import WorkspaceList from '@renderer/components/WorkspaceList.vue'
-import TerminalViewport from '@renderer/components/TerminalViewport.vue'
+import AppShell from '@renderer/components/AppShell.vue'
 import { useWorkspaceStore } from '@renderer/stores/workspaces'
 
 const workspaceStore = useWorkspaceStore()
@@ -15,11 +14,6 @@ const {
   activeSession
 } = storeToRefs(workspaceStore)
 
-const draftProjectName = ref('')
-const draftProjectPath = ref('')
-const draftSessionTitle = ref('')
-const draftSessionType = ref<SessionType>('shell')
-
 function handleProjectSelect(projectId: string): void {
   workspaceStore.setActiveProject(projectId)
   void window.vibecoding.setActiveProject(projectId)
@@ -30,34 +24,38 @@ function handleSessionSelect(sessionId: string): void {
   void window.vibecoding.setActiveSession(sessionId)
 }
 
-async function handleProjectCreate(): Promise<void> {
-  const name = draftProjectName.value.trim()
-  const path = draftProjectPath.value.trim()
-  if (!name || !path) {
-    return
+async function handleProjectCreate(payload: { name: string; path: string }): Promise<void> {
+  workspaceStore.clearError()
+  try {
+    const created = await window.vibecoding.createProject({ name: payload.name, path: payload.path })
+    if (!created) {
+      workspaceStore.lastError = 'Failed to create project: no response from main process'
+      return
+    }
+    workspaceStore.addProject(created)
+    workspaceStore.setActiveProject(created.id)
+  } catch (err) {
+    workspaceStore.lastError = err instanceof Error ? err.message : String(err)
   }
-
-  const created = await window.vibecoding.createProject({ name, path })
-  workspaceStore.addProject(created)
-  workspaceStore.setActiveProject(created.id)
-  draftProjectName.value = ''
-  draftProjectPath.value = ''
 }
 
-async function handleSessionCreate(projectId: string): Promise<void> {
-  const title = draftSessionTitle.value.trim()
-  if (!title) {
-    return
+async function handleSessionCreate(payload: { projectId: string; type: string; title: string }): Promise<void> {
+  workspaceStore.clearError()
+  try {
+    const created = await window.vibecoding.createSession({
+      projectId: payload.projectId,
+      type: payload.type as SessionType,
+      title: payload.title
+    })
+    if (!created) {
+      workspaceStore.lastError = 'Failed to create session: no response from main process'
+      return
+    }
+    workspaceStore.addSession(created)
+    workspaceStore.setActiveSession(created.id)
+  } catch (err) {
+    workspaceStore.lastError = err instanceof Error ? err.message : String(err)
   }
-
-  const created = await window.vibecoding.createSession({
-    projectId,
-    type: draftSessionType.value,
-    title
-  })
-  workspaceStore.addSession(created)
-  workspaceStore.setActiveSession(created.id)
-  draftSessionTitle.value = ''
 }
 
 onMounted(async () => {
@@ -67,20 +65,15 @@ onMounted(async () => {
 </script>
 
 <template>
-  <main class="app-shell">
-    <WorkspaceList
-      :hierarchy="projectHierarchy"
-      :active-project-id="activeProjectId"
-      :active-session-id="activeSessionId"
-      v-model:project-name="draftProjectName"
-      v-model:project-path="draftProjectPath"
-      v-model:session-title="draftSessionTitle"
-      v-model:session-type="draftSessionType"
-      @select-project="handleProjectSelect"
-      @select-session="handleSessionSelect"
-      @create-project="handleProjectCreate"
-      @create-session="handleSessionCreate"
-    />
-    <TerminalViewport :project="activeProject" :session="activeSession" />
-  </main>
+  <AppShell
+    :hierarchy="projectHierarchy"
+    :active-project-id="activeProjectId"
+    :active-session-id="activeSessionId"
+    :active-project="activeProject"
+    :active-session="activeSession"
+    @select-project="handleProjectSelect"
+    @select-session="handleSessionSelect"
+    @create-project="handleProjectCreate"
+    @create-session="handleSessionCreate"
+  />
 </template>

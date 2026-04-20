@@ -1,90 +1,92 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { createPinia } from 'pinia'
 import CommandSurface from './CommandSurface.vue'
+import type { ProjectHierarchyNode } from '@renderer/stores/workspaces'
+import type { ProjectSummary, SessionSummary } from '@shared/project-session'
+
+const hierarchy: ProjectHierarchyNode[] = [
+  {
+    id: 'project_alpha',
+    name: 'infra-control',
+    path: 'D:/infra-control',
+    createdAt: 'a',
+    updatedAt: 'a',
+    active: true,
+    sessions: [
+      {
+        id: 'session_1',
+        projectId: 'project_alpha',
+        type: 'opencode',
+        status: 'running',
+        title: 'deploy gateway',
+        summary: 'running',
+        recoveryMode: 'resume-external',
+        externalSessionId: 'sess_1',
+        createdAt: 'a',
+        updatedAt: 'a',
+        lastActivatedAt: 'a',
+        active: true
+      }
+    ]
+  }
+]
+
+const activeProject: ProjectSummary = {
+  id: 'project_alpha',
+  name: 'infra-control',
+  path: 'D:/infra-control',
+  createdAt: 'a',
+  updatedAt: 'a'
+}
+
+const activeSession: SessionSummary = {
+  id: 'session_1',
+  projectId: 'project_alpha',
+  type: 'opencode',
+  status: 'running',
+  title: 'deploy gateway',
+  summary: 'running',
+  recoveryMode: 'resume-external',
+  externalSessionId: 'sess_1',
+  createdAt: 'a',
+  updatedAt: 'a',
+  lastActivatedAt: 'a'
+}
 
 describe('CommandSurface', () => {
-  it('uses the style-h command panel wrapper structure', () => {
+  it('uses the command panel wrapper structure', () => {
     const wrapper = mount(CommandSurface, {
+      global: { plugins: [createPinia()] },
       props: {
-        hierarchy: [
-          {
-            id: 'group-1',
-            title: 'infra-control',
-            pathLabel: 'D:/infra-control',
-            children: [
-              {
-                workspaceId: 'ws_1',
-                name: 'infra-control',
-                label: 'deploy gateway',
-                status: 'running',
-                summary: 'running',
-                metaLabel: '1h',
-                active: true,
-                statusLabel: 'running',
-                providerId: 'opencode',
-                path: 'D:/infra-control',
-                cliSessionId: 'sess_1',
-                isProvisional: false
-              }
-            ]
-          }
-        ],
-        activeWorkspaceId: 'ws_1',
-        activeWorkspace: {
-          workspaceId: 'ws_1',
-          name: 'infra-control',
-          path: 'D:/infra-control',
-          providerId: 'opencode',
-          status: 'running',
-          summary: 'running',
-          cliSessionId: 'sess_1',
-          isProvisional: false,
-          workspaceSecret: 'secret',
-          providerPort: 43128
-        }
-      },
-      global: {
-        stubs: {
-          TerminalViewport: {
-            template: '<div class="terminal-viewport-stub" />'
-          }
-        }
+        hierarchy,
+        activeProject,
+        activeSession,
+        activeProjectId: 'project_alpha',
+        activeSessionId: 'session_1',
+
       }
     })
 
     expect(wrapper.find('.command-panel').exists()).toBe(true)
     expect(wrapper.find('.command-body').exists()).toBe(true)
     expect(wrapper.find('.command-layout').exists()).toBe(true)
-    expect(wrapper.find('.route-column').exists()).toBe(true)
+    expect(wrapper.find('.workspace-hierarchy-panel').exists()).toBe(true)
     expect(wrapper.find('.terminal-screen').exists()).toBe(true)
     expect(wrapper.find('.terminal-meta').exists()).toBe(true)
   })
 
-  it('groups terminal meta into left and right clusters for richer screen chrome', () => {
+  it('groups terminal meta into left and right clusters', () => {
     const wrapper = mount(CommandSurface, {
+      global: { plugins: [createPinia()] },
       props: {
-        hierarchy: [],
-        activeWorkspaceId: 'ws_1',
-        activeWorkspace: {
-          workspaceId: 'ws_1',
-          name: 'infra-control',
-          path: 'D:/infra-control',
-          providerId: 'opencode',
-          status: 'running',
-          summary: 'running',
-          cliSessionId: 'sess_1',
-          isProvisional: false,
-          workspaceSecret: 'secret',
-          providerPort: 43128
-        }
-      },
-      global: {
-        stubs: {
-          TerminalViewport: {
-            template: '<div class="terminal-viewport-stub" />'
-          }
-        }
+        hierarchy,
+        activeProject,
+        activeSession,
+        activeProjectId: 'project_alpha',
+        activeSessionId: 'session_1',
+
       }
     })
 

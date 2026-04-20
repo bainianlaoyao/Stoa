@@ -3,6 +3,10 @@ import { join } from 'node:path'
 import type { CanonicalSessionEvent, ProviderCommand, ProviderCommandContext } from '@shared/project-session'
 import type { ProviderDefinition, ProviderRuntimeTarget } from './index'
 
+function opencodeCommand(): string {
+  return process.platform === 'win32' ? 'opencode.cmd' : 'opencode'
+}
+
 function createProviderEnv(target: ProviderRuntimeTarget, context: ProviderCommandContext): Record<string, string> {
   return {
     ...process.env as Record<string, string>,
@@ -16,7 +20,7 @@ function createProviderEnv(target: ProviderRuntimeTarget, context: ProviderComma
 
 function createCommand(target: ProviderRuntimeTarget, context: ProviderCommandContext, args: string[]): ProviderCommand {
   return {
-    command: 'opencode',
+    command: opencodeCommand(),
     args,
     cwd: target.path,
     env: createProviderEnv(target, context)
