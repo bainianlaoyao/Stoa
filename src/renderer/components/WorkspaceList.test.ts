@@ -1,0 +1,51 @@
+import { mount } from '@vue/test-utils'
+import { describe, expect, test } from 'vitest'
+import WorkspaceList from './WorkspaceList.vue'
+
+describe('WorkspaceList', () => {
+  test('renders project to session hierarchy and emits session creation target', async () => {
+    const wrapper = mount(WorkspaceList, {
+      props: {
+        hierarchy: [
+          {
+            id: 'project_alpha',
+            name: 'alpha',
+            path: 'D:/alpha',
+            createdAt: 'a',
+            updatedAt: 'a',
+            active: true,
+            sessions: [
+              {
+                id: 'session_op_1',
+                projectId: 'project_alpha',
+                type: 'opencode',
+                status: 'running',
+                title: 'Deploy',
+                summary: 'ready',
+                recoveryMode: 'resume-external',
+                externalSessionId: 'ext-1',
+                createdAt: 'a',
+                updatedAt: 'a',
+                lastActivatedAt: 'a',
+                active: true
+              }
+            ]
+          }
+        ],
+        activeProjectId: 'project_alpha',
+        activeSessionId: 'session_op_1',
+        projectName: 'alpha',
+        projectPath: 'D:/alpha',
+        sessionTitle: 'Deploy',
+        sessionType: 'opencode'
+      }
+    })
+
+    expect(wrapper.text()).toContain('alpha')
+    expect(wrapper.text()).toContain('Deploy')
+
+    await wrapper.get('[data-project-create-session="project_alpha"]').trigger('click')
+
+    expect(wrapper.emitted('createSession')).toEqual([['project_alpha']])
+  })
+})
