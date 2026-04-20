@@ -1,25 +1,62 @@
 import { afterEach, describe, expect, test } from 'vitest'
+import { request } from 'node:http'
 import { createLocalWebhookServer } from './webhook-server'
-import type { CanonicalWorkspaceEvent } from '@shared/workspace'
+import type { CanonicalSessionEvent } from '@shared/project-session'
 
 const servers: Array<ReturnType<typeof createLocalWebhookServer>> = []
 
-function createEvent(): CanonicalWorkspaceEvent {
+function createEvent(): CanonicalSessionEvent {
   return {
     event_version: 1,
     event_id: 'evt_webhook_1',
     event_type: 'session.started',
     timestamp: '2026-04-18T10:00:00.000Z',
-    workspace_id: 'ws_demo_001',
-    provider_id: 'opencode',
-    session_id: 'chat-123',
+    session_id: 'session_demo_001',
+    project_id: 'project_demo',
     source: 'hook-sidecar',
     payload: {
       status: 'running',
       summary: 'event accepted',
-      is_provisional: false
+      isProvisional: false
     }
   }
+}
+
+async function postEvent(
+  port: number,
+  event: CanonicalSessionEvent,
+  secret?: string
+): Promise<{ statusCode: number; body: string }> {
+  return await new Promise((resolve, reject) => {
+    const payload = JSON.stringify(event)
+    const req = request(
+      {
+        host: '127.0.0.1',
+        port,
+        path: '/events',
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'content-length': Buffer.byteLength(payload),
+          ...(secret ? { 'x-vibecoding-secret': secret } : {})
+        }
+      },
+      (response) => {
+        let body = ''
+        response.setEncoding('utf8')
+        response.on('data', (chunk) => {
+          body += chunk
+        })
+        response.on('end', () => {
+          resolve({ statusCode: response.statusCode ?? 0, body })
+        })
+      }
+    )
+
+    req.on('error', reject)
+    req.write(payload)
+    req.end()
+  })
 }
 
 describe('local webhook server', () => {
@@ -27,11 +64,11 @@ describe('local webhook server', () => {
     await Promise.allSettled(servers.splice(0).map((server) => server.stop()))
   })
 
-  test('rejects event posts without a matching workspace secret', async () => {
-    const accepted: CanonicalWorkspaceEvent[] = []
+  test('rejects event posts without a matching session secret', async () => {
+    const accepted: CanonicalSessionEvent[] = []
     const server = createLocalWebhookServer({
-      getWorkspaceSecret(workspaceId) {
-        return workspaceId === 'ws_demo_001' ? 'secret-1' : null
+      getSessionSecret(sessionId) {
+        return sessionId === 'session_demo_001' ? 'secret-1' : null
       },
       onEvent(event) {
         accepted.push(event)
@@ -40,23 +77,17 @@ describe('local webhook server', () => {
     servers.push(server)
     const port = await server.start()
 
-    const response = await fetch(`http://127.0.0.1:${port}/events`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json'
-      },
-      body: JSON.stringify(createEvent())
-    })
+    const response = await postEvent(port, createEvent())
 
-    expect(response.status).toBe(401)
+    expect(response.statusCode).toBe(401)
     expect(accepted).toHaveLength(0)
   })
 
-  test('accepts canonical events when workspace secret matches', async () => {
-    const accepted: CanonicalWorkspaceEvent[] = []
+  test('accepts canonical events when session secret matches', async () => {
+    const accepted: CanonicalSessionEvent[] = []
     const server = createLocalWebhookServer({
-      getWorkspaceSecret(workspaceId) {
-        return workspaceId === 'ws_demo_001' ? 'secret-1' : null
+      getSessionSecret(sessionId) {
+        return sessionId === 'session_demo_001' ? 'secret-1' : null
       },
       onEvent(event) {
         accepted.push(event)
@@ -65,16 +96,9 @@ describe('local webhook server', () => {
     servers.push(server)
     const port = await server.start()
 
-    const response = await fetch(`http://127.0.0.1:${port}/events`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-vibecoding-secret': 'secret-1'
-      },
-      body: JSON.stringify(createEvent())
-    })
+    const response = await postEvent(port, createEvent(), 'secret-1')
 
-    expect(response.status).toBe(202)
+    expect(response.statusCode).toBe(202)
     expect(accepted).toHaveLength(1)
     expect(accepted[0]?.event_id).toBe('evt_webhook_1')
   })

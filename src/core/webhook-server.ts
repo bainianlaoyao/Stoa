@@ -1,10 +1,10 @@
 import express, { type Express } from 'express'
 import type { AddressInfo } from 'node:net'
-import type { CanonicalWorkspaceEvent } from '@shared/workspace'
+import type { CanonicalSessionEvent } from '@shared/project-session'
 
 export interface LocalWebhookServerOptions {
-  onEvent?: (event: CanonicalWorkspaceEvent) => Promise<void> | void
-  getWorkspaceSecret?: (workspaceId: string) => string | null
+  onEvent?: (event: CanonicalSessionEvent) => Promise<void> | void
+  getSessionSecret?: (sessionId: string) => string | null
   port?: number
 }
 
@@ -15,7 +15,7 @@ export interface LocalWebhookServer {
   stop: () => Promise<void>
 }
 
-function isCanonicalWorkspaceEvent(value: unknown): value is CanonicalWorkspaceEvent {
+function isCanonicalSessionEvent(value: unknown): value is CanonicalSessionEvent {
   if (!value || typeof value !== 'object') {
     return false
   }
@@ -25,9 +25,8 @@ function isCanonicalWorkspaceEvent(value: unknown): value is CanonicalWorkspaceE
     && typeof event.event_id === 'string'
     && typeof event.event_type === 'string'
     && typeof event.timestamp === 'string'
-    && typeof event.workspace_id === 'string'
-    && typeof event.provider_id === 'string'
-    && 'session_id' in event
+    && typeof event.session_id === 'string'
+    && typeof event.project_id === 'string'
     && typeof event.source === 'string'
     && !!event.payload
     && typeof event.payload === 'object'
@@ -45,12 +44,12 @@ export function createLocalWebhookServer(options: LocalWebhookServerOptions = {}
   })
 
   app.post('/events', async (request, response) => {
-    if (!isCanonicalWorkspaceEvent(request.body)) {
+    if (!isCanonicalSessionEvent(request.body)) {
       response.status(400).json({ accepted: false, reason: 'invalid_event' })
       return
     }
 
-    const expectedSecret = options.getWorkspaceSecret?.(request.body.workspace_id) ?? null
+    const expectedSecret = options.getSessionSecret?.(request.body.session_id) ?? null
     if (!expectedSecret || request.header('x-vibecoding-secret') !== expectedSecret) {
       response.status(401).json({ accepted: false, reason: 'invalid_secret' })
       return

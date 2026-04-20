@@ -6,16 +6,14 @@ describe('opencode provider', () => {
     const provider = createOpenCodeProvider()
 
     const command = await provider.buildStartCommand({
-      workspace_id: 'ws_demo_001',
+      session_id: 'session_demo_001',
+      project_id: 'project_demo',
       path: 'D:/demo',
-      name: 'demo',
-      provider_id: 'opencode',
-      last_cli_session_id: null,
-      last_known_status: 'bootstrapping',
-      updated_at: '2026-04-18T10:00:00.000Z'
+      title: 'demo',
+      type: 'opencode'
     }, {
       webhookPort: 43127,
-      workspaceSecret: 'secret-1',
+      sessionSecret: 'secret-1',
       providerPort: 43128
     })
 
@@ -23,29 +21,27 @@ describe('opencode provider', () => {
     expect(command.args).toContain('--port')
     expect(command.args).toContain('43128')
     expect(command.cwd).toBe('D:/demo')
-    expect(command.env.VIBECODING_WORKSPACE_ID).toBe('ws_demo_001')
-    expect(command.env.VIBECODING_WORKSPACE_SECRET).toBe('secret-1')
+    expect(command.env.VIBECODING_SESSION_ID).toBe('session_demo_001')
+    expect(command.env.VIBECODING_SESSION_SECRET).toBe('secret-1')
   })
 
-  test('builds a resume command that targets the saved cli session id', async () => {
+  test('builds a resume command from canonical external session id', async () => {
     const provider = createOpenCodeProvider()
 
     const command = await provider.buildResumeCommand({
-      workspace_id: 'ws_demo_001',
-      path: 'D:/demo',
-      name: 'demo',
-      provider_id: 'opencode',
-      last_cli_session_id: 'chat-xyz',
-      last_known_status: 'running',
-      updated_at: '2026-04-18T10:00:00.000Z'
-    }, 'chat-xyz', {
-      webhookPort: 43127,
-      workspaceSecret: 'secret-1',
-      providerPort: 43128
+      session_id: 'session_op_1',
+      project_id: 'project_alpha',
+      path: 'D:/alpha',
+      title: 'Deploy',
+      type: 'opencode'
+    }, 'external-123', {
+      webhookPort: 4100,
+      sessionSecret: 'secret',
+      providerPort: 4101
     })
 
     expect(command.command).toBe(process.platform === 'win32' ? 'opencode.cmd' : 'opencode')
     expect(command.args).toContain('--session')
-    expect(command.args).toContain('chat-xyz')
+    expect(command.args).toContain('external-123')
   })
 })

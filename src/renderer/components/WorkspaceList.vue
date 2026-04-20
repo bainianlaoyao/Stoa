@@ -1,73 +1,140 @@
 <script setup lang="ts">
-import type { WorkspaceSummary } from '@shared/workspace'
+import type { SessionType } from '@shared/project-session'
+import type { ProjectHierarchyNode } from '@renderer/stores/workspaces'
 
 const props = defineProps<{
-  workspaces: WorkspaceSummary[]
-  activeWorkspaceId: string | null
-  name: string
-  path: string
-  providerId: 'local-shell' | 'opencode'
-  errorMessage: string
+  hierarchy: ProjectHierarchyNode[]
+  activeProjectId: string | null
+  activeSessionId: string | null
+  projectName: string
+  projectPath: string
+  sessionTitle: string
+  sessionType: SessionType
 }>()
 
 const emit = defineEmits<{
-  select: [workspaceId: string]
-  create: []
-  'update:name': [value: string]
-  'update:path': [value: string]
-  'update:providerId': [value: 'local-shell' | 'opencode']
+  selectProject: [projectId: string]
+  selectSession: [sessionId: string]
+  createProject: []
+  createSession: [projectId: string]
+  'update:projectName': [value: string]
+  'update:projectPath': [value: string]
+  'update:sessionTitle': [value: string]
+  'update:sessionType': [value: SessionType]
 }>()
 
-function statusLabel(summary: WorkspaceSummary): string {
-  return summary.isProvisional ? `${summary.status} · provisional` : summary.status
+function statusLabel(status: string): string {
+  return status.replace(/_/g, ' ')
+}
+
+function updateProjectName(event: Event): void {
+  emit('update:projectName', (event.target as HTMLInputElement).value)
+}
+
+function updateProjectPath(event: Event): void {
+  emit('update:projectPath', (event.target as HTMLInputElement).value)
+}
+
+function updateSessionTitle(event: Event): void {
+  emit('update:sessionTitle', (event.target as HTMLInputElement).value)
+}
+
+function updateSessionType(event: Event): void {
+  emit('update:sessionType', (event.target as HTMLSelectElement).value as SessionType)
 }
 </script>
 
 <template>
   <aside class="workspace-list">
     <header class="workspace-list__header">
-      <p class="workspace-list__eyebrow">Workspaces</p>
+      <p class="workspace-list__eyebrow">Projects</p>
       <h1 class="workspace-list__title">Vibecoding Panel</h1>
-      <p class="workspace-list__description">Codex 风格左侧控制台，后端状态驱动前端映射。</p>
+      <p class="workspace-list__description">Project → Session hierarchy with canonical state from the main process.</p>
     </header>
 
     <section class="workspace-create-panel">
       <label class="workspace-create-panel__field">
-        <span>名称</span>
-        <input :value="props.name" type="text" @input="emit('update:name', ($event.target as HTMLInputElement).value)" />
+        <span>项目名称</span>
+        <input
+          :value="props.projectName"
+          type="text"
+          @input="updateProjectName"
+        />
       </label>
       <label class="workspace-create-panel__field">
-        <span>路径</span>
-        <input :value="props.path" type="text" @input="emit('update:path', ($event.target as HTMLInputElement).value)" />
+        <span>项目路径</span>
+        <input
+          :value="props.projectPath"
+          type="text"
+          @input="updateProjectPath"
+        />
+      </label>
+      <button class="workspace-create-panel__submit" type="button" @click="emit('createProject')">新建项目</button>
+    </section>
+
+    <section class="workspace-create-panel workspace-create-panel--session">
+      <label class="workspace-create-panel__field">
+        <span>会话标题</span>
+        <input
+          :value="props.sessionTitle"
+          type="text"
+          @input="updateSessionTitle"
+        />
       </label>
       <label class="workspace-create-panel__field">
-        <span>Provider</span>
-        <select :value="props.providerId" @change="emit('update:providerId', ($event.target as HTMLSelectElement).value as 'local-shell' | 'opencode')">
-          <option value="local-shell">local-shell</option>
+        <span>会话类型</span>
+        <select
+          :value="props.sessionType"
+          @change="updateSessionType"
+        >
+          <option value="shell">shell</option>
           <option value="opencode">opencode</option>
         </select>
       </label>
-      <button class="workspace-create-panel__submit" type="button" @click="emit('create')">添加工作区</button>
-      <p v-if="props.errorMessage" class="workspace-create-panel__error">{{ props.errorMessage }}</p>
     </section>
 
-    <button
-      v-for="workspace in workspaces"
-      :key="workspace.workspaceId"
-      class="workspace-card"
-      :class="{ 'workspace-card--active': workspace.workspaceId === activeWorkspaceId }"
-      type="button"
-      @click="emit('select', workspace.workspaceId)"
+    <section
+      v-for="project in hierarchy"
+      :key="project.id"
+      class="project-card"
+      :class="{ 'project-card--active': project.id === activeProjectId }"
+      :data-parent-group="project.id"
     >
-      <span class="workspace-card__status" :data-status="workspace.status" />
-      <div class="workspace-card__content">
-        <div class="workspace-card__heading">
-          <strong>{{ workspace.name }}</strong>
-          <small>{{ statusLabel(workspace) }}</small>
-        </div>
-        <p>{{ workspace.summary }}</p>
-        <code>{{ workspace.path }}</code>
+      <div class="project-card__header">
+        <button class="project-card__trigger" type="button" @click="emit('selectProject', project.id)">
+          <div>
+            <strong>{{ project.name }}</strong>
+            <code>{{ project.path }}</code>
+          </div>
+        </button>
+        <button
+          class="project-card__add-session"
+          type="button"
+          :data-project-create-session="project.id"
+          @click="emit('createSession', project.id)"
+        >
+          +
+        </button>
       </div>
-    </button>
+
+      <button
+        v-for="session in project.sessions"
+        :key="session.id"
+        class="workspace-card workspace-card--session"
+        :class="{ 'workspace-card--active': session.id === activeSessionId }"
+        type="button"
+        @click="emit('selectSession', session.id)"
+      >
+        <span class="workspace-card__status" :data-status="session.status" />
+        <div class="workspace-card__content">
+          <div class="workspace-card__heading">
+            <strong>{{ session.title }}</strong>
+            <small>{{ statusLabel(session.status) }}</small>
+          </div>
+          <p>{{ session.summary }}</p>
+          <code>{{ session.type }}</code>
+        </div>
+      </button>
+    </section>
   </aside>
 </template>

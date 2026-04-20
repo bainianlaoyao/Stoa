@@ -1,75 +1,86 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
-import AppShell from '@renderer/components/AppShell.vue'
+import type { SessionType } from '@shared/project-session'
+import WorkspaceList from '@renderer/components/WorkspaceList.vue'
+import TerminalViewport from '@renderer/components/TerminalViewport.vue'
 import { useWorkspaceStore } from '@renderer/stores/workspaces'
 
 const workspaceStore = useWorkspaceStore()
-const { workspaces, workspaceHierarchy, activeWorkspaceId, activeWorkspace } = storeToRefs(workspaceStore)
-const draftName = ref('')
-const draftPath = ref('')
-const draftProviderId = ref<'local-shell' | 'opencode'>('local-shell')
-const createWorkspaceError = ref('')
+const {
+  projectHierarchy,
+  activeProjectId,
+  activeSessionId,
+  activeProject,
+  activeSession
+} = storeToRefs(workspaceStore)
 
-let teardown: (() => void) | undefined
+const draftProjectName = ref('')
+const draftProjectPath = ref('')
+const draftSessionTitle = ref('')
+const draftSessionType = ref<SessionType>('shell')
 
-function handleWorkspaceSelect(workspaceId: string): void {
-  workspaceStore.setActiveWorkspace(workspaceId)
-  void window.vibecoding.setActiveWorkspace(workspaceId)
+function handleProjectSelect(projectId: string): void {
+  workspaceStore.setActiveProject(projectId)
+  void window.vibecoding.setActiveProject(projectId)
 }
 
-async function handleWorkspaceCreate(): Promise<void> {
-  const name = draftName.value.trim()
-  const path = draftPath.value.trim()
+function handleSessionSelect(sessionId: string): void {
+  workspaceStore.setActiveSession(sessionId)
+  void window.vibecoding.setActiveSession(sessionId)
+}
+
+async function handleProjectCreate(): Promise<void> {
+  const name = draftProjectName.value.trim()
+  const path = draftProjectPath.value.trim()
   if (!name || !path) {
-    createWorkspaceError.value = '请先填写工作区名称和路径'
     return
   }
 
-  try {
-    createWorkspaceError.value = ''
-    const created = await window.vibecoding.createWorkspace({
-      name,
-      path,
-      providerId: draftProviderId.value
-    })
+  const created = await window.vibecoding.createProject({ name, path })
+  workspaceStore.addProject(created)
+  workspaceStore.setActiveProject(created.id)
+  draftProjectName.value = ''
+  draftProjectPath.value = ''
+}
 
-    if (created) {
-      workspaceStore.addWorkspace(created)
-    }
-
-    draftName.value = ''
-    draftPath.value = ''
-  } catch (error) {
-    createWorkspaceError.value = error instanceof Error ? error.message : '添加工作区失败'
+async function handleSessionCreate(projectId: string): Promise<void> {
+  const title = draftSessionTitle.value.trim()
+  if (!title) {
+    return
   }
+
+  const created = await window.vibecoding.createSession({
+    projectId,
+    type: draftSessionType.value,
+    title
+  })
+  workspaceStore.addSession(created)
+  workspaceStore.setActiveSession(created.id)
+  draftSessionTitle.value = ''
 }
 
 onMounted(async () => {
   const bootstrapState = await window.vibecoding.getBootstrapState()
   workspaceStore.hydrate(bootstrapState)
-
-  teardown = window.vibecoding.onWorkspaceEvent((event) => {
-    workspaceStore.applyEvent(event)
-  })
-})
-
-onUnmounted(() => {
-  teardown?.()
 })
 </script>
 
 <template>
-  <AppShell
-      :workspaces="workspaces"
-      :hierarchy="workspaceHierarchy"
-      :active-workspace-id="activeWorkspaceId"
-      :active-workspace="activeWorkspace"
-      v-model:name="draftName"
-      v-model:path="draftPath"
-      v-model:provider-id="draftProviderId"
-      :error-message="createWorkspaceError"
-      @select="handleWorkspaceSelect"
-      @create="handleWorkspaceCreate"
+  <main class="app-shell">
+    <WorkspaceList
+      :hierarchy="projectHierarchy"
+      :active-project-id="activeProjectId"
+      :active-session-id="activeSessionId"
+      v-model:project-name="draftProjectName"
+      v-model:project-path="draftProjectPath"
+      v-model:session-title="draftSessionTitle"
+      v-model:session-type="draftSessionType"
+      @select-project="handleProjectSelect"
+      @select-session="handleSessionSelect"
+      @create-project="handleProjectCreate"
+      @create-session="handleSessionCreate"
     />
+    <TerminalViewport :project="activeProject" :session="activeSession" />
+  </main>
 </template>

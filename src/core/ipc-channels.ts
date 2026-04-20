@@ -1,9 +1,11 @@
 export const IPC_CHANNELS = {
-  workspaceEvent: 'workspace:event',
+  projectBootstrap: 'project:bootstrap',
+  projectCreate: 'project:create',
+  projectSetActive: 'project:set-active',
+  sessionCreate: 'session:create',
+  sessionSetActive: 'session:set-active',
+  sessionInput: 'session:input',
+  sessionResize: 'session:resize',
+  sessionEvent: 'session:event',
   terminalData: 'terminal:data',
-  terminalInput: 'terminal:input',
-  terminalResize: 'terminal:resize',
-  workspaceBootstrap: 'workspace:bootstrap',
-  workspaceCreate: 'workspace:create',
-  workspaceSetActive: 'workspace:set-active'
 } as const

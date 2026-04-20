@@ -1,8 +1,9 @@
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { mkdtemp, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { afterEach, describe, expect, test } from 'vitest'
-import { readPersistedState } from './state-store'
+import { DEFAULT_STATE, readPersistedState, writePersistedState } from './state-store'
+import type { PersistedAppStateV2 } from '@shared/project-session'
 
 const tempDirs: string[] = []
 
@@ -12,44 +13,58 @@ async function createTempStatePath(): Promise<string> {
   return join(dir, 'state.json')
 }
 
-describe('state store', () => {
+describe('state-store', () => {
   afterEach(async () => {
     await Promise.allSettled(tempDirs.splice(0).map(async (dir) => import('node:fs/promises').then(({ rm }) => rm(dir, { recursive: true, force: true }))))
   })
 
-  test('migrates legacy state files that predate the version field', async () => {
+  test('returns the v2 default project/session state when no file exists', async () => {
     const stateFilePath = await createTempStatePath()
-    await writeFile(stateFilePath, JSON.stringify({
-      active_workspace_id: 'ws_legacy',
-      workspaces: [
-        {
-          workspace_id: 'ws_legacy',
-          path: 'D:/legacy',
-          name: 'legacy',
-          provider_id: 'local-shell',
-          last_cli_session_id: null,
-          last_known_status: 'bootstrapping',
-          updated_at: '2026-04-18T10:00:00.000Z'
-        }
-      ]
-    }, null, 2), 'utf-8')
 
-    const migrated = await readPersistedState(stateFilePath)
-
-    expect(migrated.version).toBe(1)
-    expect(migrated.active_workspace_id).toBe('ws_legacy')
-    expect(migrated.workspaces).toHaveLength(1)
+    await expect(readPersistedState(stateFilePath)).resolves.toEqual(DEFAULT_STATE)
+    expect(DEFAULT_STATE.version).toBe(2)
+    expect(DEFAULT_STATE.projects).toEqual([])
+    expect(DEFAULT_STATE.sessions).toEqual([])
   })
 
-  test('preserves invalid raw state as a broken snapshot when json parsing fails', async () => {
+  test('writes and re-reads persisted v2 project/session state', async () => {
     const stateFilePath = await createTempStatePath()
-    await writeFile(stateFilePath, '{ invalid json', 'utf-8')
+    const state: PersistedAppStateV2 = {
+      version: 2,
+      active_project_id: 'project_alpha',
+      active_session_id: 'session_shell_1',
+      projects: [
+        {
+          project_id: 'project_alpha',
+          name: 'alpha',
+          path: 'D:/alpha',
+          default_session_type: 'shell',
+          created_at: '2026-04-19T00:00:00.000Z',
+          updated_at: '2026-04-19T00:00:00.000Z'
+        }
+      ],
+      sessions: [
+        {
+          session_id: 'session_shell_1',
+          project_id: 'project_alpha',
+          type: 'shell',
+          title: 'Local shell',
+          last_known_status: 'running',
+          last_summary: 'attached',
+          external_session_id: null,
+          created_at: '2026-04-19T00:00:00.000Z',
+          updated_at: '2026-04-19T00:00:00.000Z',
+          last_activated_at: '2026-04-19T00:00:00.000Z',
+          recovery_mode: 'fresh-shell'
+        }
+      ]
+    }
 
-    const state = await readPersistedState(stateFilePath)
-    expect(state.workspaces).toHaveLength(0)
+    await writePersistedState(state, stateFilePath)
 
-    const brokenSnapshotPath = `${stateFilePath}.broken`
-    const brokenSnapshot = await readFile(brokenSnapshotPath, 'utf-8')
-    expect(brokenSnapshot).toContain('{ invalid json')
+    await expect(readPersistedState(stateFilePath)).resolves.toEqual(state)
+    const raw = JSON.parse(await readFile(stateFilePath, 'utf-8')) as PersistedAppStateV2
+    expect(raw.active_project_id).toBe('project_alpha')
+    expect(raw.sessions[0]?.session_id).toBe('session_shell_1')
   })
 })

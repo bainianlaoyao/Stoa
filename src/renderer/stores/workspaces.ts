@@ -1,96 +1,86 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
-import type { AppBootstrapState, WorkspaceEvent, WorkspaceSummary } from '@shared/workspace'
+import type { BootstrapState, ProjectSummary, SessionSummary } from '@shared/project-session'
 
-export interface WorkspaceHierarchyChild extends WorkspaceSummary {
-  label: string
-  metaLabel: string
+export interface ProjectHierarchyNode extends ProjectSummary {
   active: boolean
-  statusLabel: string
-}
-
-export interface WorkspaceHierarchyGroup {
-  id: string
-  title: string
-  pathLabel: string
-  children: WorkspaceHierarchyChild[]
+  sessions: Array<SessionSummary & { active: boolean }>
 }
 
 export const useWorkspaceStore = defineStore('workspaces', () => {
-  const workspaces = ref<WorkspaceSummary[]>([])
-  const activeWorkspaceId = ref<string | null>(null)
+  const projects = ref<ProjectSummary[]>([])
+  const sessions = ref<SessionSummary[]>([])
+  const activeProjectId = ref<string | null>(null)
+  const activeSessionId = ref<string | null>(null)
   const terminalWebhookPort = ref<number | null>(null)
 
-  const activeWorkspace = computed(() => {
-    return workspaces.value.find((workspace) => workspace.workspaceId === activeWorkspaceId.value) ?? null
+  const activeProject = computed(() => {
+    return projects.value.find((project) => project.id === activeProjectId.value) ?? null
   })
 
-  const workspaceHierarchy = computed<WorkspaceHierarchyGroup[]>(() => {
-    const groups = new Map<string, WorkspaceHierarchyGroup>()
-
-    for (const workspace of workspaces.value) {
-      const key = `${workspace.name}::${workspace.path}`
-      const existing = groups.get(key)
-      const child: WorkspaceHierarchyChild = {
-        ...workspace,
-        label: workspace.summary || workspace.cliSessionId || workspace.name,
-        metaLabel: workspace.cliSessionId ?? workspace.providerId,
-        active: workspace.workspaceId === activeWorkspaceId.value,
-        statusLabel: workspace.isProvisional ? `${workspace.status} · provisional` : workspace.status
-      }
-
-      if (existing) {
-        existing.children.push(child)
-        continue
-      }
-
-      groups.set(key, {
-        id: key,
-        title: workspace.name,
-        pathLabel: workspace.path,
-        children: [child]
-      })
-    }
-
-    return [...groups.values()]
+  const activeSession = computed(() => {
+    return sessions.value.find((session) => session.id === activeSessionId.value) ?? null
   })
 
-  function hydrate(state: AppBootstrapState): void {
-    workspaces.value = state.workspaces
-    activeWorkspaceId.value = state.activeWorkspaceId
+  const projectHierarchy = computed<ProjectHierarchyNode[]>(() => {
+    return projects.value.map((project) => ({
+      ...project,
+      active: project.id === activeProjectId.value,
+      sessions: sessions.value
+        .filter((session) => session.projectId === project.id)
+        .map((session) => ({
+          ...session,
+          active: session.id === activeSessionId.value
+        }))
+    }))
+  })
+
+  function hydrate(state: BootstrapState): void {
+    projects.value = state.projects
+    sessions.value = state.sessions
+    activeProjectId.value = state.activeProjectId
+    activeSessionId.value = state.activeSessionId
     terminalWebhookPort.value = state.terminalWebhookPort
   }
 
-  function setActiveWorkspace(workspaceId: string): void {
-    activeWorkspaceId.value = workspaceId
+  function setActiveProject(projectId: string): void {
+    activeProjectId.value = projectId
+    if (!sessions.value.some((session) => session.id === activeSessionId.value && session.projectId === projectId)) {
+      activeSessionId.value = sessions.value.find((session) => session.projectId === projectId)?.id ?? null
+    }
   }
 
-  function addWorkspace(workspace: WorkspaceSummary): void {
-    workspaces.value.push(workspace)
-  }
-
-  function applyEvent(event: WorkspaceEvent): void {
-    const target = workspaces.value.find((workspace) => workspace.workspaceId === event.workspace_id)
-    if (!target) {
+  function setActiveSession(sessionId: string): void {
+    const session = sessions.value.find((candidate) => candidate.id === sessionId)
+    if (!session) {
       return
     }
 
-    target.status = event.payload.status ?? target.status
-    target.summary = event.payload.summary ?? target.summary
-    target.isProvisional = event.payload.is_provisional ?? target.isProvisional
-    target.cliSessionId = event.session_id ?? target.cliSessionId
-    target.providerId = event.provider_id
+    activeSessionId.value = session.id
+    activeProjectId.value = session.projectId
+  }
+
+  function addProject(project: ProjectSummary): void {
+    projects.value.push(project)
+  }
+
+  function addSession(session: SessionSummary): void {
+    sessions.value.push(session)
   }
 
   return {
-    workspaces,
-    activeWorkspaceId,
+    projects,
+    sessions,
+    activeProjectId,
+    activeSessionId,
     terminalWebhookPort,
-    activeWorkspace,
-    workspaceHierarchy,
+    activeProject,
+    activeSession,
+    projectHierarchy,
     hydrate,
-    addWorkspace,
-    setActiveWorkspace,
-    applyEvent
+    addProject,
+    addSession,
+    setActiveProject,
+    setActiveSession
   }
 })
