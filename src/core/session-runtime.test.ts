@@ -1,26 +1,26 @@
 import { describe, expect, test, vi } from 'vitest'
-import type { ProviderDefinition } from '@shared/workspace'
-import { startWorkspaceRuntime } from './workspace-runtime'
+import type { ProviderDefinition } from '@extensions/providers'
+import { startSessionRuntime } from './session-runtime'
 
 function createProvider(overrides: Partial<ProviderDefinition> = {}): ProviderDefinition {
   return {
     providerId: 'opencode',
     supportsResume: () => true,
     supportsStructuredEvents: () => true,
-    async buildStartCommand(workspace, context) {
+    async buildStartCommand(session, context) {
       return {
         command: 'opencode',
         args: ['--port', String(context.providerPort)],
-        cwd: workspace.path,
-        env: { VIBECODING_WORKSPACE_ID: workspace.workspace_id }
+        cwd: session.path,
+        env: { VIBECODING_SESSION_ID: session.session_id }
       }
     },
-    async buildResumeCommand(workspace, sessionId, context) {
+    async buildResumeCommand(session, externalSessionId, context) {
       return {
         command: 'opencode',
-        args: ['--session', sessionId, '--port', String(context.providerPort)],
-        cwd: workspace.path,
-        env: { VIBECODING_WORKSPACE_ID: workspace.workspace_id }
+        args: ['--session', externalSessionId, '--port', String(context.providerPort)],
+        cwd: session.path,
+        env: { VIBECODING_SESSION_ID: session.session_id }
       }
     },
     resolveSessionId(event) {
@@ -31,40 +31,39 @@ function createProvider(overrides: Partial<ProviderDefinition> = {}): ProviderDe
   }
 }
 
-describe('workspace runtime', () => {
-  test('uses provider-built resume command when recoverable session metadata exists', async () => {
+describe('session runtime', () => {
+  test('uses provider-built resume command when recoverable external session metadata exists', async () => {
     const buildResumeCommand = vi.fn(async () => ({
       command: 'opencode',
-      args: ['--session', 'chat-123'],
+      args: ['--session', 'ext-123'],
       cwd: 'D:/demo',
       env: { TEST_ENV: '1' }
     }))
     const provider = createProvider({ buildResumeCommand })
     const installSidecar = vi.spyOn(provider, 'installSidecar')
-    const markWorkspaceStarting = vi.fn(async () => {})
-    const markWorkspaceRunning = vi.fn(async () => {})
-    const start = vi.fn(() => ({ workspaceId: 'ws_demo', sessionId: 'pty-1' }))
+    const markSessionStarting = vi.fn(async () => {})
+    const markSessionRunning = vi.fn(async () => {})
+    const start = vi.fn(() => ({ runtimeId: 'session_op_1', sessionId: 'pty-1' }))
 
-    await startWorkspaceRuntime({
-      workspace: {
-        workspaceId: 'ws_demo',
-        name: 'demo',
+    await startSessionRuntime({
+      session: {
+        id: 'session_op_1',
+        projectId: 'project_alpha',
         path: 'D:/demo',
-        providerId: 'opencode',
+        title: 'Deploy',
+        type: 'opencode',
         status: 'running',
-        summary: 'ready',
-        cliSessionId: 'chat-123',
-        isProvisional: true,
-        workspaceSecret: 'secret-1',
+        externalSessionId: 'ext-123',
+        sessionSecret: 'secret-1',
         providerPort: 43128
       },
       webhookPort: 43127,
       provider,
       ptyHost: { start } as never,
-      sessionManager: {
-        markWorkspaceStarting,
-        markWorkspaceRunning,
-        markWorkspaceExited: vi.fn(async () => {}),
+      manager: {
+        markSessionStarting,
+        markSessionRunning,
+        markSessionExited: vi.fn(async () => {}),
         appendTerminalData: vi.fn(async () => {})
       } as never
     })
@@ -72,19 +71,19 @@ describe('workspace runtime', () => {
     expect(installSidecar).toHaveBeenCalledOnce()
     expect(buildResumeCommand).toHaveBeenCalledOnce()
     expect(start).toHaveBeenCalledWith(
-      'ws_demo',
+      'session_op_1',
       expect.objectContaining({
         command: 'opencode',
-        args: ['--session', 'chat-123'],
+        args: ['--session', 'ext-123'],
         cwd: 'D:/demo'
       }),
       expect.any(Function),
       expect.any(Function)
     )
-    expect(markWorkspaceRunning).toHaveBeenCalledWith('ws_demo', 'pty-1')
+    expect(markSessionRunning).toHaveBeenCalledWith('session_op_1', 'ext-123')
   })
 
-  test('falls back to provider start command when no resumable session is available', async () => {
+  test('falls back to provider start command when no resumable external session is available', async () => {
     const buildStartCommand = vi.fn(async () => ({
       command: 'opencode',
       args: ['--port', '43128'],
@@ -92,35 +91,34 @@ describe('workspace runtime', () => {
       env: { TEST_ENV: '1' }
     }))
     const provider = createProvider({ buildStartCommand })
-    const start = vi.fn(() => ({ workspaceId: 'ws_demo', sessionId: 'pty-2' }))
+    const start = vi.fn(() => ({ runtimeId: 'session_op_1', sessionId: 'pty-2' }))
 
-    await startWorkspaceRuntime({
-      workspace: {
-        workspaceId: 'ws_demo',
-        name: 'demo',
+    await startSessionRuntime({
+      session: {
+        id: 'session_op_1',
+        projectId: 'project_alpha',
         path: 'D:/demo',
-        providerId: 'opencode',
+        title: 'Deploy',
+        type: 'opencode',
         status: 'needs_confirmation',
-        summary: 'confirm first',
-        cliSessionId: null,
-        isProvisional: true,
-        workspaceSecret: 'secret-1',
+        externalSessionId: null,
+        sessionSecret: 'secret-1',
         providerPort: 43128
       },
       webhookPort: 43127,
       provider,
       ptyHost: { start } as never,
-      sessionManager: {
-        markWorkspaceStarting: vi.fn(async () => {}),
-        markWorkspaceRunning: vi.fn(async () => {}),
-        markWorkspaceExited: vi.fn(async () => {}),
+      manager: {
+        markSessionStarting: vi.fn(async () => {}),
+        markSessionRunning: vi.fn(async () => {}),
+        markSessionExited: vi.fn(async () => {}),
         appendTerminalData: vi.fn(async () => {})
       } as never
     })
 
     expect(buildStartCommand).toHaveBeenCalledOnce()
     expect(start).toHaveBeenCalledWith(
-      'ws_demo',
+      'session_op_1',
       expect.objectContaining({
         command: 'opencode',
         args: ['--port', '43128'],
