@@ -283,6 +283,13 @@ h2 {
   gap: 4px;
 }
 
+.route-project-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
 .route-item {
   display: grid;
   grid-template-columns: 8px minmax(0, 1fr) auto;
@@ -400,11 +407,19 @@ h2 {
 }
 
 .route-add-session {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 0;
+  padding: 0;
+  background: transparent;
   color: var(--muted);
   font-size: 14px;
   line-height: 1;
   font-weight: 400;
   flex: none;
+  cursor: pointer;
 }
 
 .hierarchy-node__copy,
@@ -458,6 +473,10 @@ h2 {
 
 .terminal-stream__viewport {
   min-height: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.01);
+  padding: 8px 10px;
 }
 
 .terminal-surface__mount {

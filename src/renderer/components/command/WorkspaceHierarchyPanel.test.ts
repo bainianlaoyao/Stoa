@@ -150,7 +150,42 @@ describe('WorkspaceHierarchyPanel', () => {
     })
 
     expect(wrapper.find('.route-item--parent .route-item__main').exists()).toBe(true)
-    expect(wrapper.find('.route-item--parent .route-project-actions').exists()).toBe(true)
+    expect(wrapper.find('.route-project-row .route-project-actions').exists()).toBe(true)
+    expect(wrapper.find('.route-item--parent .route-project-actions').exists()).toBe(false)
+  })
+
+  it('renders the add-session affordance as a separate action target outside the collapse toggle', () => {
+    const wrapper = mount(WorkspaceHierarchyPanel, {
+      props: {
+        hierarchy: [
+          {
+            id: 'group-1',
+            title: 'infra-control',
+            pathLabel: 'D:/infra-control',
+            children: [
+              {
+                workspaceId: 'ws_1',
+                name: 'infra-control',
+                label: 'deploy gateway',
+                status: 'running',
+                summary: 'running',
+                metaLabel: '1h',
+                active: true,
+                statusLabel: 'running',
+                providerId: 'opencode',
+                path: 'D:/infra-control',
+                cliSessionId: 'sess_1',
+                isProvisional: false
+              }
+            ]
+          }
+        ]
+      }
+    })
+
+    expect(wrapper.find('[data-session-affordance="group-1"]').element.tagName).toBe('BUTTON')
+    expect(wrapper.find('.route-project-actions [data-session-affordance="group-1"]').exists()).toBe(true)
+    expect(wrapper.find('.route-item--parent [data-session-affordance="group-1"]').exists()).toBe(false)
   })
 
   it('keeps child rows visually compact without route summary text', () => {

@@ -139,7 +139,7 @@ onUnmounted(() => {
   <section class="terminal-viewport" :data-workspace-id="workspace?.workspaceId ?? 'none'">
     <template v-if="workspace">
       <div class="terminal-stream">
-        <div class="terminal-stream__viewport">
+        <div class="terminal-stream__viewport" data-terminal-frame="true">
           <div class="terminal-surface__mount-stack">
             <div
               v-for="renderedWorkspaceId in renderedWorkspaceIds"

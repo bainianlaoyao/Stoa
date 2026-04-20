@@ -44,25 +44,27 @@ function isCollapsed(groupId: string): boolean {
 
         <section v-for="group in hierarchy" :key="group.id" class="workspace-group" :data-parent-group="group.id">
           <article class="route-project">
-            <button
-              class="route-item route-item--parent"
-              type="button"
-              :class="{ active: group.children.some((child) => child.active), 'route-item--active': group.children.some((child) => child.active) }"
-              :data-collapse-toggle="group.id"
-              :aria-expanded="!isCollapsed(group.id)"
-              @click="toggleGroup(group.id)"
-            >
-              <span class="route-dot route-dot--idle idle" />
-              <span class="route-item__main">
-                <span class="route-copy">
-                  <span class="route-name">{{ group.title }}</span>
+            <div class="route-project-row">
+              <button
+                class="route-item route-item--parent"
+                type="button"
+                :class="{ active: group.children.some((child) => child.active), 'route-item--active': group.children.some((child) => child.active) }"
+                :data-collapse-toggle="group.id"
+                :aria-expanded="!isCollapsed(group.id)"
+                @click="toggleGroup(group.id)"
+              >
+                <span class="route-dot route-dot--idle idle" />
+                <span class="route-item__main">
+                  <span class="route-copy">
+                    <span class="route-name">{{ group.title }}</span>
+                  </span>
                 </span>
-              </span>
-              <span class="route-project-actions">
-                <span class="route-add-session" :data-session-affordance="group.id">+</span>
                 <span class="route-time">{{ group.children[0]?.metaLabel ?? '—' }}</span>
+              </button>
+              <span class="route-project-actions">
+                <button class="route-add-session" type="button" :data-session-affordance="group.id">+</button>
               </span>
-            </button>
+            </div>
 
             <HierarchyNode
               v-for="child in isCollapsed(group.id) ? [] : group.children"

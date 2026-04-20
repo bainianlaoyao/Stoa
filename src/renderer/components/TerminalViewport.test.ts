@@ -130,6 +130,7 @@ test('renders the style-h terminal stream region for an active workspace', () =>
 
   expect(wrapper.find('.terminal-stream').exists()).toBe(true)
   expect(wrapper.find('.terminal-stream__viewport').exists()).toBe(true)
+  expect(wrapper.find('.terminal-stream__viewport').attributes('data-terminal-frame')).toBe('true')
   expect(wrapper.find('.terminal-surface__mount-stack').exists()).toBe(true)
   expect(wrapper.find('.terminal-surface__footer').exists()).toBe(false)
 })
