@@ -30,6 +30,14 @@ interface CreateWorkspaceInput {
   providerId: string
 }
 
+async function assertWorkspacePathExists(path: string): Promise<void> {
+  try {
+    await access(path)
+  } catch {
+    throw new Error('Workspace path does not exist')
+  }
+}
+
 const LEGAL_TRANSITIONS: Record<WorkspaceStatus, WorkspaceStatus[]> = {
   bootstrapping: ['starting', 'needs_confirmation'],
   starting: ['running', 'error', 'needs_confirmation'],
@@ -215,6 +223,8 @@ export class SessionManager {
   }
 
   async addWorkspace(input: CreateWorkspaceInput): Promise<WorkspaceSummary> {
+    await assertWorkspacePathExists(input.path)
+
     const created: WorkspaceSummary = {
       workspaceId: `ws_${randomUUID()}`,
       name: input.name,

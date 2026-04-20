@@ -118,4 +118,45 @@ describe('workspace store', () => {
     expect(store.activeWorkspaceId).toBe('ws_demo_001')
     expect(store.workspaces[1]?.workspaceId).toBe('ws_demo_002')
   })
+
+  test('derives hierarchical groups from canonical workspaces without mutating truth state', () => {
+    const store = useWorkspaceStore()
+
+    store.hydrate({
+      activeWorkspaceId: 'ws_2',
+      terminalWebhookPort: 42017,
+      workspaces: [
+        {
+          workspaceId: 'ws_1',
+          name: 'infra-control',
+          path: 'D:/infra-control',
+          providerId: 'opencode',
+          status: 'running',
+          summary: 'deploy gateway',
+          cliSessionId: 'sess_a1',
+          isProvisional: false,
+          workspaceSecret: null,
+          providerPort: 42017
+        },
+        {
+          workspaceId: 'ws_2',
+          name: 'infra-control',
+          path: 'D:/infra-control',
+          providerId: 'opencode',
+          status: 'awaiting_input',
+          summary: 'need confirmation',
+          cliSessionId: 'sess_a2',
+          isProvisional: false,
+          workspaceSecret: null,
+          providerPort: 42017
+        }
+      ]
+    })
+
+    expect(store.workspaceHierarchy).toHaveLength(1)
+    expect(store.workspaceHierarchy[0]?.children).toHaveLength(2)
+    expect(store.activeWorkspace?.workspaceId).toBe('ws_2')
+    expect(store.workspaces).toHaveLength(2)
+    expect(store.workspaceHierarchy[0]?.children[0]?.metaLabel).toBe('sess_a1')
+  })
 })

@@ -1,0 +1,14 @@
+appId: com.ohmyopencode.ultra-simple-panel
+productName: Ultra Simple Panel
+directories:
+  output: release
+files:
+  - out/**
+  - package.json
+asarUnpack:
+  - node_modules/node-pty/**
+win:
+  target:
+    - portable
+npmRebuild: false
+electronVersion: 37.4.0

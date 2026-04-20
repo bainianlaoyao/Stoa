@@ -19,7 +19,7 @@ describe('opencode provider', () => {
       providerPort: 43128
     })
 
-    expect(command.command).toBe('opencode')
+    expect(command.command).toBe(process.platform === 'win32' ? 'opencode.cmd' : 'opencode')
     expect(command.args).toContain('--port')
     expect(command.args).toContain('43128')
     expect(command.cwd).toBe('D:/demo')
@@ -44,7 +44,7 @@ describe('opencode provider', () => {
       providerPort: 43128
     })
 
-    expect(command.command).toBe('opencode')
+    expect(command.command).toBe(process.platform === 'win32' ? 'opencode.cmd' : 'opencode')
     expect(command.args).toContain('--session')
     expect(command.args).toContain('chat-xyz')
   })

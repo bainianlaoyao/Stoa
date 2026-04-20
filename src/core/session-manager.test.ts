@@ -288,4 +288,20 @@ describe('SessionManager', () => {
     expect(persisted.workspaces).toHaveLength(2)
     expect(persisted.workspaces[1]?.provider_id).toBe('opencode')
   })
+
+  test('rejects creating a workspace for a missing path', async () => {
+    const stateFilePath = await createTempStatePath()
+
+    const manager = await SessionManager.create({
+      projectPath: 'D:/Data/DEV/ultra_simple_panel',
+      webhookPort: 43127,
+      stateFilePath
+    })
+
+    await expect(manager.addWorkspace({
+      path: 'D:/definitely/missing/workspace',
+      name: 'missing',
+      providerId: 'local-shell'
+    })).rejects.toThrow('Workspace path does not exist')
+  })
 })

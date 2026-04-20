@@ -2,6 +2,10 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { CanonicalWorkspaceEvent, PersistedWorkspaceState, ProviderCommand, ProviderCommandContext, ProviderDefinition } from '@shared/workspace'
 
+function opencodeCommand(): string {
+  return process.platform === 'win32' ? 'opencode.cmd' : 'opencode'
+}
+
 function createProviderEnv(workspace: PersistedWorkspaceState, context: ProviderCommandContext): Record<string, string> {
   return {
     ...process.env as Record<string, string>,
@@ -14,7 +18,7 @@ function createProviderEnv(workspace: PersistedWorkspaceState, context: Provider
 
 function createCommand(workspace: PersistedWorkspaceState, context: ProviderCommandContext, args: string[]): ProviderCommand {
   return {
-    command: 'opencode',
+    command: opencodeCommand(),
     args,
     cwd: workspace.path,
     env: createProviderEnv(workspace, context)

@@ -2,6 +2,20 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import type { AppBootstrapState, WorkspaceEvent, WorkspaceSummary } from '@shared/workspace'
 
+export interface WorkspaceHierarchyChild extends WorkspaceSummary {
+  label: string
+  metaLabel: string
+  active: boolean
+  statusLabel: string
+}
+
+export interface WorkspaceHierarchyGroup {
+  id: string
+  title: string
+  pathLabel: string
+  children: WorkspaceHierarchyChild[]
+}
+
 export const useWorkspaceStore = defineStore('workspaces', () => {
   const workspaces = ref<WorkspaceSummary[]>([])
   const activeWorkspaceId = ref<string | null>(null)
@@ -9,6 +23,36 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
 
   const activeWorkspace = computed(() => {
     return workspaces.value.find((workspace) => workspace.workspaceId === activeWorkspaceId.value) ?? null
+  })
+
+  const workspaceHierarchy = computed<WorkspaceHierarchyGroup[]>(() => {
+    const groups = new Map<string, WorkspaceHierarchyGroup>()
+
+    for (const workspace of workspaces.value) {
+      const key = `${workspace.name}::${workspace.path}`
+      const existing = groups.get(key)
+      const child: WorkspaceHierarchyChild = {
+        ...workspace,
+        label: workspace.summary || workspace.cliSessionId || workspace.name,
+        metaLabel: workspace.cliSessionId ?? workspace.providerId,
+        active: workspace.workspaceId === activeWorkspaceId.value,
+        statusLabel: workspace.isProvisional ? `${workspace.status} · provisional` : workspace.status
+      }
+
+      if (existing) {
+        existing.children.push(child)
+        continue
+      }
+
+      groups.set(key, {
+        id: key,
+        title: workspace.name,
+        pathLabel: workspace.path,
+        children: [child]
+      })
+    }
+
+    return [...groups.values()]
   })
 
   function hydrate(state: AppBootstrapState): void {
@@ -43,6 +87,7 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
     activeWorkspaceId,
     terminalWebhookPort,
     activeWorkspace,
+    workspaceHierarchy,
     hydrate,
     addWorkspace,
     setActiveWorkspace,

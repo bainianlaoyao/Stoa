@@ -2,19 +2,20 @@
 import { FitAddon } from '@xterm/addon-fit'
 import { Terminal } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { WorkspaceSummary } from '@shared/workspace'
 
 const props = defineProps<{
   workspace: WorkspaceSummary | null
 }>()
 
-const mountElement = ref<HTMLDivElement | null>(null)
+const mountElements = new Map<string, HTMLDivElement>()
+const renderedWorkspaceIds = ref<string[]>([])
 
 const terminals = new Map<string, Terminal>()
 const fitAddons = new Map<string, FitAddon>()
+const resizeObservers = new Map<string, ResizeObserver>()
 let disposeTerminalData: (() => void) | undefined
-let resizeObserver: ResizeObserver | null = null
 
 const workspaceId = computed(() => props.workspace?.workspaceId ?? null)
 
@@ -23,44 +24,71 @@ function getActiveTerminal(): Terminal | null {
   return id ? terminals.get(id) ?? null : null
 }
 
+function ensureRenderedWorkspace(workspaceKey: string): void {
+  if (!renderedWorkspaceIds.value.includes(workspaceKey)) {
+    renderedWorkspaceIds.value = [...renderedWorkspaceIds.value, workspaceKey]
+  }
+}
+
+function resolveTerminalTheme(): { background: string; foreground: string } {
+  const rootStyles = getComputedStyle(document.documentElement)
+  return {
+    background: rootStyles.getPropertyValue('--terminal-bg').trim() || '#0a0b0d',
+    foreground: rootStyles.getPropertyValue('--terminal-text').trim() || '#e2e8f0'
+  }
+}
+
+function setMountElement(workspaceKey: string, element: Element | { $el?: Element } | null): void {
+  const resolvedElement = element instanceof Element ? element : element?.$el ?? null
+
+  if (!(resolvedElement instanceof HTMLDivElement)) {
+    mountElements.delete(workspaceKey)
+    return
+  }
+
+  mountElements.set(workspaceKey, resolvedElement)
+  if (terminals.has(workspaceKey)) {
+    return
+  }
+
+  attachTerminal(workspaceKey)
+}
+
 function attachTerminal(workspaceKey: string): void {
-  if (!mountElement.value || terminals.has(workspaceKey)) {
+  const mountElement = mountElements.get(workspaceKey)
+
+  if (!mountElement || terminals.has(workspaceKey)) {
     return
   }
 
   const terminal = new Terminal({
     cursorBlink: true,
     fontSize: 13,
-    theme: {
-      background: '#0a1226',
-      foreground: '#e8edf8'
-    }
+    theme: resolveTerminalTheme()
   })
   const fitAddon = new FitAddon()
   terminals.set(workspaceKey, terminal)
   fitAddons.set(workspaceKey, fitAddon)
   terminal.loadAddon(fitAddon)
-  terminal.open(mountElement.value)
+  terminal.open(mountElement)
   fitAddon.fit()
 
   terminal.onData((data) => {
-    const id = workspaceId.value
-    if (!id) {
-      return
-    }
-
-    void window.vibecoding.writeTerminalInput(id, data)
+    void window.vibecoding.writeTerminalInput(workspaceKey, data)
   })
 
   terminal.onResize(({ cols, rows }) => {
-    const id = workspaceId.value
-    if (!id) {
-      return
-    }
-
-    void window.vibecoding.resizeTerminal(id, cols, rows)
+    void window.vibecoding.resizeTerminal(workspaceKey, cols, rows)
   })
 
+  const resizeObserver = new ResizeObserver(() => {
+    fitAddons.get(workspaceKey)?.fit()
+  })
+  resizeObserver.observe(mountElement)
+  resizeObservers.set(workspaceKey, resizeObserver)
+}
+
+onMounted(() => {
   disposeTerminalData = window.vibecoding.onTerminalData((chunk) => {
     const targetTerminal = terminals.get(chunk.workspaceId)
     if (!targetTerminal) {
@@ -70,24 +98,21 @@ function attachTerminal(workspaceKey: string): void {
     targetTerminal.write(chunk.data)
   })
 
-  resizeObserver = new ResizeObserver(() => {
-    fitAddons.get(workspaceKey)?.fit()
-  })
-  resizeObserver.observe(mountElement.value)
-}
-
-onMounted(() => {
   if (workspaceId.value) {
-    attachTerminal(workspaceId.value)
+    ensureRenderedWorkspace(workspaceId.value)
   }
 })
 
 watch(
   () => props.workspace?.workspaceId,
-  (nextWorkspaceId) => {
+  async (nextWorkspaceId) => {
     if (!nextWorkspaceId) {
       return
     }
+
+    ensureRenderedWorkspace(nextWorkspaceId)
+
+    await nextTick()
 
     if (!terminals.has(nextWorkspaceId)) {
       attachTerminal(nextWorkspaceId)
@@ -95,37 +120,36 @@ watch(
     }
 
     fitAddons.get(nextWorkspaceId)?.fit()
-  }
+  },
+  { immediate: true }
 )
 
 onUnmounted(() => {
-  resizeObserver?.disconnect()
+  resizeObservers.forEach((observer) => observer.disconnect())
   disposeTerminalData?.()
   terminals.forEach((terminal) => terminal.dispose())
   terminals.clear()
   fitAddons.clear()
+  resizeObservers.clear()
+  mountElements.clear()
 })
 </script>
 
 <template>
-  <section class="terminal-viewport">
+  <section class="terminal-viewport" :data-workspace-id="workspace?.workspaceId ?? 'none'">
     <template v-if="workspace">
-      <header class="terminal-viewport__header">
-        <div>
-          <p class="terminal-viewport__eyebrow">Main terminal view</p>
-          <h2>{{ workspace.name }}</h2>
-        </div>
-        <div class="terminal-viewport__meta">
-          <span>{{ workspace.providerId }}</span>
-          <span>{{ workspace.status }}</span>
-        </div>
-      </header>
-
-      <div class="terminal-surface">
-        <div ref="mountElement" class="terminal-surface__mount" />
-        <div class="terminal-surface__footer">
-          <p>provider port: {{ workspace.providerPort ?? 'runtime-bound' }}</p>
-          <code>{{ workspace.path }}</code>
+      <div class="terminal-stream">
+        <div class="terminal-stream__viewport">
+          <div class="terminal-surface__mount-stack">
+            <div
+              v-for="renderedWorkspaceId in renderedWorkspaceIds"
+              :key="renderedWorkspaceId"
+              :ref="(element) => setMountElement(renderedWorkspaceId, element)"
+              class="terminal-surface__mount"
+              :class="{ 'terminal-surface__mount--active': renderedWorkspaceId === workspace.workspaceId }"
+              :data-terminal-owner="renderedWorkspaceId"
+            />
+          </div>
         </div>
       </div>
     </template>

@@ -7,6 +7,7 @@ const props = defineProps<{
   name: string
   path: string
   providerId: 'local-shell' | 'opencode'
+  errorMessage: string
 }>()
 
 const emit = defineEmits<{
@@ -47,6 +48,7 @@ function statusLabel(summary: WorkspaceSummary): string {
         </select>
       </label>
       <button class="workspace-create-panel__submit" type="button" @click="emit('create')">添加工作区</button>
+      <p v-if="props.errorMessage" class="workspace-create-panel__error">{{ props.errorMessage }}</p>
     </section>
 
     <button

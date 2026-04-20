@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vibecoding Panel — Style B Mono Minimal</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #000000;
+        --surface: #0a0a0a;
+        --surface-2: #111111;
+        --surface-active: #181818;
+        --line: #1f1f1f;
+        --line-soft: #161616;
+        --text: #d4d4d4;
+        --text-strong: #e8e8e8;
+        --muted: #6e6e6e;
+        --subtle: #4a4a4a;
+        --white: #ffffff;
+        --running: #3ec96a;
+        --warning: #d4a22e;
+        --error: #e0525a;
+        --font-ui: "Segoe UI", "SF Pro Text", "Helvetica Neue", sans-serif;
+        --font-mono: "Cascadia Code", "Consolas", monospace;
+      }
+
+      * { box-sizing: border-box; margin: 0; }
+
+      body {
+        min-height: 100vh;
+        background: var(--bg);
+        color: var(--text);
+        font-family: var(--font-ui);
+        font-size: 13px;
+        line-height: 1.55;
+      }
+
+      .shell {
+        display: grid;
+        grid-template-columns: 260px 1fr;
+        min-height: 100vh;
+      }
+
+      /* ── Sidebar ── */
+
+      .sidebar {
+        border-right: 1px solid var(--line);
+        padding: 40px 20px 32px;
+        display: grid;
+        grid-template-rows: auto auto 1fr;
+        gap: 32px;
+        align-content: start;
+      }
+
+      .eyebrow {
+        font-size: 9px;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin-bottom: 12px;
+      }
+
+      .title {
+        font-size: 15px;
+        font-weight: 500;
+        letter-spacing: 0.02em;
+        color: var(--white);
+        margin-bottom: 10px;
+      }
+
+      .description {
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.6;
+      }
+
+      /* Composer */
+
+      .composer {
+        display: grid;
+        gap: 12px;
+        padding-bottom: 28px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .field-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 8px;
+      }
+
+      .field-label {
+        font-size: 11px;
+        color: var(--subtle);
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        flex-shrink: 0;
+      }
+
+      .field-value {
+        font-size: 12px;
+        color: var(--text);
+        font-family: var(--font-mono);
+        text-align: right;
+      }
+
+      .submit {
+        margin-top: 4px;
+        padding: 8px 0;
+        border: none;
+        border-top: 1px solid var(--line);
+        background: none;
+        color: var(--muted);
+        font-size: 12px;
+        text-align: center;
+        cursor: pointer;
+        transition: color 0.12s;
+      }
+
+      .submit:hover { color: var(--text-strong); }
+
+      /* Workspace list */
+
+      .workspace-list {
+        display: grid;
+        gap: 0;
+      }
+
+      .workspace-card {
+        display: grid;
+        grid-template-columns: 6px 1fr;
+        gap: 14px;
+        padding: 14px 0;
+        border-bottom: 1px solid var(--line-soft);
+        cursor: pointer;
+      }
+
+      .workspace-card:last-child { border-bottom: none; }
+
+      .workspace-card.active {
+        background: var(--surface-2);
+        margin: 0 -20px;
+        padding: 14px 20px;
+        border-bottom-color: var(--line);
+      }
+
+      .status {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        margin-top: 6px;
+        background: var(--subtle);
+      }
+
+      .status.running { background: var(--running); }
+      .status.awaiting { background: var(--warning); }
+      .status.error { background: var(--error); }
+
+      .workspace-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        margin-bottom: 4px;
+      }
+
+      .workspace-name {
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--text-strong);
+      }
+
+      .workspace-status-text {
+        font-size: 10px;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+
+      .workspace-summary {
+        color: var(--muted);
+        font-size: 11px;
+        line-height: 1.55;
+        margin-bottom: 3px;
+      }
+
+      .workspace-path {
+        font-family: var(--font-mono);
+        font-size: 10px;
+        color: var(--subtle);
+      }
+
+      /* ── Main ── */
+
+      .main {
+        display: grid;
+        grid-template-rows: 1fr auto;
+        min-height: 0;
+      }
+
+      /* Terminal */
+
+      .terminal {
+        padding: 40px 36px;
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        gap: 24px;
+        min-height: 0;
+      }
+
+      .terminal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        padding-bottom: 20px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .terminal-title {
+        font-size: 16px;
+        font-weight: 500;
+        color: var(--white);
+        letter-spacing: 0.01em;
+      }
+
+      .terminal-meta {
+        display: flex;
+        gap: 20px;
+      }
+
+      .meta-item {
+        font-size: 11px;
+        color: var(--muted);
+      }
+
+      .meta-item span {
+        color: var(--text);
+      }
+
+      /* Screen */
+
+      .screen {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        padding: 24px;
+        min-height: 320px;
+        overflow: hidden;
+      }
+
+      .screen pre {
+        font-family: var(--font-mono);
+        font-size: 12px;
+        line-height: 1.75;
+        color: #999999;
+        white-space: pre-wrap;
+      }
+
+      .screen .dim { color: #3a3a3a; }
+      .screen .success { color: #666666; }
+      .screen .success-bright { color: var(--running); }
+      .screen .warn { color: #666666; }
+      .screen .warn-bright { color: var(--warning); }
+      .screen .err { color: var(--error); }
+
+      .screen .tag {
+        color: #555555;
+      }
+
+      .screen .cmd {
+        color: var(--text);
+      }
+
+      /* Metrics row — inline, text-only */
+
+      .metrics-row {
+        display: flex;
+        gap: 32px;
+        padding-top: 16px;
+        border-top: 1px solid var(--line);
+      }
+
+      .metric {
+        display: flex;
+        gap: 8px;
+        align-items: baseline;
+      }
+
+      .metric-label {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--subtle);
+      }
+
+      .metric-value {
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--text-strong);
+      }
+
+      /* ── Panels ── */
+
+      .panels {
+        border-top: 1px solid var(--line);
+        padding: 28px 36px;
+      }
+
+      .panels-header {
+        margin-bottom: 20px;
+      }
+
+      .panel-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0;
+      }
+
+      .panel-card {
+        padding: 0 20px 0 0;
+        border-right: 1px solid var(--line);
+      }
+
+      .panel-card:first-child { padding-left: 0; }
+      .panel-card:last-child { border-right: none; padding-right: 0; }
+
+      .panel-eyebrow {
+        font-size: 9px;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--subtle);
+        margin-bottom: 8px;
+      }
+
+      .panel-title {
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--text-strong);
+        margin-bottom: 6px;
+      }
+
+      .panel-body {
+        color: var(--muted);
+        font-size: 11px;
+        line-height: 1.6;
+      }
+
+      @media (max-width: 1100px) {
+        .shell { grid-template-columns: 1fr; }
+        .panel-grid { grid-template-columns: 1fr; }
+        .panel-card { border-right: none; padding: 12px 0; border-bottom: 1px solid var(--line); }
+        .panel-card:last-child { border-bottom: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="shell">
+      <aside class="sidebar">
+        <header>
+          <p class="eyebrow">Workspaces</p>
+          <h1 class="title">Vibecoding Panel</h1>
+          <p class="description">Near-monochrome system. The interface is almost entirely black and white; only the status dots carry functional color to signal state at a glance.</p>
+        </header>
+
+        <section class="composer" aria-label="Create workspace preview">
+          <div class="field-row">
+            <span class="field-label">名称</span>
+            <span class="field-value">deploy-gateway</span>
+          </div>
+          <div class="field-row">
+            <span class="field-label">路径</span>
+            <span class="field-value">D:\Data\DEV\gateway</span>
+          </div>
+          <div class="field-row">
+            <span class="field-label">Provider</span>
+            <span class="field-value">local-shell</span>
+          </div>
+          <button class="submit" type="button">添加工作区</button>
+        </section>
+
+        <section class="workspace-list" aria-label="Workspace switcher">
+          <article class="workspace-card active">
+            <span class="status running"></span>
+            <div>
+              <div class="workspace-top">
+                <h2 class="workspace-name">infra-control</h2>
+                <span class="workspace-status-text">running</span>
+              </div>
+              <p class="workspace-summary">Session healthy. Provider attached. 3 background tasks reporting.</p>
+              <span class="workspace-path">D:\Data\DEV\infra-control</span>
+            </div>
+          </article>
+
+          <article class="workspace-card">
+            <span class="status awaiting"></span>
+            <div>
+              <div class="workspace-top">
+                <h2 class="workspace-name">workspace-console-ux</h2>
+                <span class="workspace-status-text">awaiting</span>
+              </div>
+              <p class="workspace-summary">Spec generation paused, waiting for panel confirmation.</p>
+              <span class="workspace-path">D:\Data\DEV\ultra_simple_panel</span>
+            </div>
+          </article>
+
+          <article class="workspace-card">
+            <span class="status error"></span>
+            <div>
+              <div class="workspace-top">
+                <h2 class="workspace-name">release-ops</h2>
+                <span class="workspace-status-text">error</span>
+              </div>
+              <p class="workspace-summary">Deploy exited after checksum verification failure.</p>
+              <span class="workspace-path">D:\Data\OPS\release-ops</span>
+            </div>
+          </article>
+        </section>
+      </aside>
+
+      <section class="main">
+        <section class="terminal">
+          <header class="terminal-header">
+            <div>
+              <p class="eyebrow">Terminal</p>
+              <h2 class="terminal-title">infra-control</h2>
+            </div>
+            <div class="terminal-meta">
+              <span class="meta-item">provider <span>opencode</span></span>
+              <span class="meta-item">status <span>running</span></span>
+              <span class="meta-item">port <span>42017</span></span>
+            </div>
+          </header>
+
+          <section class="screen" aria-label="Terminal output">
+            <pre><span class="cmd">$</span> pnpm workspace:watch --filter infra-control
+<span class="tag">[provider]</span> attached to opencode runtime on port 42017
+<span class="tag">[workspace]</span> activeWorkspaceId updated to ws_infra_01
+<span class="dim">[event-stream]</span> bootstrapState hydrated: 3 workspaces
+<span class="tag">[panel]</span> summary refreshed for active workspace
+
+<span class="cmd">$</span> tail -f logs/runtime.log
+12:17:05  state=running        provider=opencode      latency=24ms
+12:17:09  state=awaiting_input summary="Need confirmation"
+12:17:16  <span class="success-bright">state recovered</span> active terminal kept alive
+12:17:19  extension=task-overview count=3 updated
+12:17:24  extension=health-signals warnings=0 errors=0
+
+<span class="cmd">$</span> _</pre>
+          </section>
+
+          <div class="metrics-row">
+            <div class="metric">
+              <span class="metric-label">Workspaces</span>
+              <strong class="metric-value">03</strong>
+            </div>
+            <div class="metric">
+              <span class="metric-label">Buffered</span>
+              <strong class="metric-value">4,281</strong>
+            </div>
+            <div class="metric">
+              <span class="metric-label">Pending</span>
+              <strong class="metric-value">01</strong>
+            </div>
+            <div class="metric">
+              <span class="metric-label">Errors</span>
+              <strong class="metric-value" style="color:var(--error)">01</strong>
+            </div>
+          </div>
+        </section>
+
+        <section class="panels">
+          <div class="panels-header">
+            <p class="eyebrow">Panels</p>
+          </div>
+
+          <div class="panel-grid">
+            <article class="panel-card">
+              <p class="panel-eyebrow">01</p>
+              <h3 class="panel-title">Workspace Summary</h3>
+              <p class="panel-body">infra-control active. 3 workspaces registered. Last backend event 1.8s ago. Provider session healthy.</p>
+            </article>
+            <article class="panel-card">
+              <p class="panel-eyebrow">02</p>
+              <h3 class="panel-title">Needs Attention</h3>
+              <p class="panel-body">workspace-console-ux awaiting confirmation. release-ops in error after checksum failure.</p>
+            </article>
+            <article class="panel-card">
+              <p class="panel-eyebrow">03</p>
+              <h3 class="panel-title">Extension Contract</h3>
+              <p class="panel-body">Summary-only surfaces. No IDE docking. No command palette dependency. Content mirrors PanelExtensions.</p>
+            </article>
+          </div>
+        </section>
+      </section>
+    </main>
+  </body>
+</html>

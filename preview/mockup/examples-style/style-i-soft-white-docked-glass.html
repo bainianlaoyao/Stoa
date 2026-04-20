@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vibecoding Panel — Style I Soft White Docked Glass (Panelized)</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --canvas: #fafafa;
+        --glass: rgba(255, 255, 255, 0.50);
+        --glass-mid: rgba(255, 255, 255, 0.62);
+        --glass-solid: rgba(245, 246, 250, 0.92);
+        --surface-terminal: #12141c;
+        --line: rgba(0, 0, 0, 0.04);
+        --line-mid: rgba(0, 0, 0, 0.06);
+        --line-glass: rgba(0, 0, 0, 0.05);
+        --line-focus: rgba(90, 130, 220, 0.22);
+        --text: #1e2130;
+        --text-strong: #0e1018;
+        --muted: #6b7194;
+        --subtle: #a0a6be;
+        --accent: #6882d0;
+        --running: #3cb371;
+        --warning: #c49a1a;
+        --error: #c45058;
+        --shadow-panel: 0 2px 16px rgba(0, 0, 0, 0.035);
+        --shadow-dock: 0 4px 32px rgba(0, 0, 0, 0.045), 0 1px 4px rgba(0, 0, 0, 0.02);
+        --shadow-focus: 0 4px 24px rgba(0, 0, 0, 0.055);
+        --radius-panel: 16px;
+        --radius-lg: 14px;
+        --radius-md: 10px;
+        --radius-sm: 7px;
+        --font-ui: "Segoe UI", "SF Pro Text", "Helvetica Neue", sans-serif;
+        --font-mono: "Cascadia Code", "Consolas", monospace;
+        --activitybar-w: 50px;
+      }
+
+      * { box-sizing: border-box; margin: 0; }
+
+      body {
+        min-height: 100vh;
+        background: var(--canvas);
+        color: var(--text);
+        font-family: var(--font-ui);
+        font-size: 14px;
+        line-height: 1.5;
+        overflow: hidden;
+      }
+
+      .shell {
+        display: grid;
+        grid-template-columns: var(--activitybar-w) 1fr;
+        height: 100vh;
+      }
+
+      /* ── Activity Bar: quiet, soft ── */
+
+      .activitybar {
+        background: #ffffff;
+        border-right: 1px solid var(--line-mid);
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        align-items: center;
+        padding: 14px 0;
+        gap: 2px;
+        z-index: 2;
+      }
+
+      .ab-logo {
+        width: 26px;
+        height: 26px;
+        margin: 0 auto 14px;
+        border-radius: 7px;
+        background: var(--text-strong);
+        display: grid;
+        place-items: center;
+        color: #fff;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+
+      .ab-icons {
+        display: grid;
+        gap: 2px;
+        justify-items: center;
+      }
+
+      .ab-icon {
+        width: 34px;
+        height: 34px;
+        border-radius: 9px;
+        display: grid;
+        place-items: center;
+        cursor: pointer;
+        transition: background 0.18s, color 0.18s;
+        color: var(--subtle);
+        position: relative;
+      }
+
+      .ab-icon:hover {
+        background: rgba(0, 0, 0, 0.03);
+        color: var(--muted);
+      }
+
+      .ab-icon.active {
+        background: rgba(104, 130, 208, 0.06);
+        color: var(--accent);
+        box-shadow: inset 2px 0 0 var(--accent);
+      }
+
+      .ab-icon .badge {
+        position: absolute;
+        top: 5px;
+        right: 5px;
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--error);
+      }
+
+      .ab-bottom {
+        display: grid;
+        gap: 2px;
+        justify-items: center;
+      }
+
+      /* ── Tiling Arena ── */
+
+      .arena {
+        padding: 16px;
+        display: grid;
+        grid-template-columns: 1fr 300px;
+        grid-template-rows: 1fr 240px;
+        gap: 12px;
+        min-height: 0;
+        overflow: hidden;
+      }
+
+      /* ── Panel Base: solid primary, glass secondary ── */
+
+      .panel {
+        display: grid;
+        grid-template-rows: auto 1fr;
+        min-height: 0;
+        overflow: hidden;
+        transition: box-shadow 0.2s;
+      }
+
+      .panel-header {
+        padding: 14px 20px 10px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 1px solid var(--line-mid);
+      }
+
+      .panel-header-left {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .panel-icon {
+        width: 26px;
+        height: 26px;
+        border-radius: 7px;
+        display: grid;
+        place-items: center;
+        font-size: 12px;
+      }
+
+      .panel-icon.terminal-icon {
+        background: rgba(104, 130, 208, 0.06);
+        color: var(--accent);
+      }
+
+      .panel-icon.inbox-icon {
+        background: rgba(196, 154, 26, 0.06);
+        color: var(--warning);
+      }
+
+      .panel-icon.tree-icon {
+        background: rgba(60, 179, 113, 0.06);
+        color: var(--running);
+      }
+
+      .panel-label {
+        font-size: 9.5px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--subtle);
+        font-weight: 500;
+      }
+
+      .panel-title {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text-strong);
+        letter-spacing: -0.01em;
+      }
+
+      .panel-meta {
+        display: flex;
+        gap: 5px;
+      }
+
+      .panel-pill {
+        font-size: 10px;
+        color: var(--muted);
+        padding: 3px 9px;
+        background: rgba(255, 255, 255, 0.6);
+        border: 1px solid var(--line-mid);
+        border-radius: 999px;
+      }
+
+      .panel-pill.accent {
+        color: var(--accent);
+        border-color: rgba(104, 130, 208, 0.14);
+        background: rgba(104, 130, 208, 0.04);
+      }
+
+      .panel-body {
+        padding: 14px 20px;
+        overflow: hidden;
+        min-height: 0;
+      }
+
+      /* ── Panel: Command & Terminal — solid white, calm ── */
+
+      .panel-terminal {
+        grid-column: 1;
+        grid-row: 1;
+        background: #ffffff;
+        border: 1px solid var(--line-mid);
+        border-radius: var(--radius-panel);
+        box-shadow: var(--shadow-panel);
+      }
+
+      .panel-terminal.focused {
+        box-shadow: var(--shadow-focus);
+        border-color: rgba(104, 130, 208, 0.16);
+      }
+
+      .panel-terminal.focused .panel-header {
+        border-bottom-color: rgba(104, 130, 208, 0.18);
+      }
+
+      .terminal-metrics {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 10px;
+        margin-bottom: 14px;
+      }
+
+      .metric-card {
+        padding: 12px 14px;
+        background: var(--canvas);
+        border: 1px solid var(--line-mid);
+        border-radius: var(--radius-md);
+      }
+
+      .metric-label {
+        font-size: 9px;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        color: var(--subtle);
+        display: block;
+        margin-bottom: 4px;
+        font-weight: 500;
+      }
+
+      .metric-value {
+        font-size: 16px;
+        font-weight: 700;
+        color: var(--text-strong);
+      }
+
+      .screen {
+        background: var(--surface-terminal);
+        border: 1px solid rgba(255, 255, 255, 0.03);
+        border-radius: var(--radius-lg);
+        padding: 18px;
+        flex: 1;
+        overflow: hidden;
+      }
+
+      .screen pre {
+        font-family: var(--font-mono);
+        font-size: 12px;
+        line-height: 1.75;
+        color: #a4aac0;
+        white-space: pre-wrap;
+      }
+
+      .screen .dim { color: #4e5268; }
+      .screen .success { color: #4cb880; }
+      .screen .warn { color: #c8a84e; }
+      .screen .err { color: #cc6670; }
+
+      /* ── Panel: Inbox / Task Queue — docked glass ── */
+
+      .panel-inbox {
+        grid-column: 2;
+        grid-row: 1;
+        background: var(--glass);
+        border: 1px solid var(--line-glass);
+        border-radius: var(--radius-panel);
+        backdrop-filter: blur(28px) saturate(1.3);
+        -webkit-backdrop-filter: blur(28px) saturate(1.3);
+        box-shadow: var(--shadow-dock);
+      }
+
+      .task-list {
+        display: grid;
+        gap: 7px;
+        align-content: start;
+      }
+
+      .task-item {
+        padding: 12px 14px;
+        background: var(--glass-mid);
+        border: 1px solid var(--line-glass);
+        border-radius: var(--radius-md);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        cursor: pointer;
+        transition: background 0.18s, border-color 0.18s;
+      }
+
+      .task-item:hover {
+        background: var(--glass-solid);
+        border-color: var(--line-mid);
+      }
+
+      .task-item.needs-action {
+        border-left: 3px solid var(--warning);
+      }
+
+      .task-item.has-error {
+        border-left: 3px solid var(--error);
+      }
+
+      .task-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 5px;
+      }
+
+      .task-title {
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--text-strong);
+      }
+
+      .task-status {
+        font-size: 9px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        font-weight: 600;
+        padding: 2px 7px;
+        border-radius: 5px;
+      }
+
+      .task-status.awaiting {
+        color: var(--warning);
+        background: rgba(196, 154, 26, 0.07);
+      }
+
+      .task-status.running {
+        color: var(--running);
+        background: rgba(60, 179, 113, 0.07);
+      }
+
+      .task-status.error {
+        color: var(--error);
+        background: rgba(196, 80, 88, 0.07);
+      }
+
+      .task-status.idle {
+        color: var(--subtle);
+        background: rgba(160, 166, 190, 0.07);
+      }
+
+      .task-desc {
+        font-size: 11.5px;
+        color: var(--muted);
+        line-height: 1.5;
+        margin-bottom: 6px;
+      }
+
+      .task-meta {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .task-workspace {
+        font-family: var(--font-mono);
+        font-size: 10px;
+        color: var(--subtle);
+      }
+
+      .task-time {
+        font-size: 10px;
+        color: var(--subtle);
+      }
+
+      /* ── Panel: Context / File Tree — docked glass ── */
+
+      .panel-context {
+        grid-column: 1 / -1;
+        grid-row: 2;
+        background: var(--glass);
+        border: 1px solid var(--line-glass);
+        border-radius: var(--radius-panel);
+        backdrop-filter: blur(28px) saturate(1.3);
+        -webkit-backdrop-filter: blur(28px) saturate(1.3);
+        box-shadow: var(--shadow-dock);
+      }
+
+      .context-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 12px;
+        height: 100%;
+      }
+
+      .context-col {
+        background: var(--glass-mid);
+        border: 1px solid var(--line-glass);
+        border-radius: var(--radius-md);
+        padding: 12px 16px;
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        overflow: hidden;
+      }
+
+      .context-col-header {
+        font-size: 9px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--subtle);
+        margin-bottom: 9px;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .context-col-header .dot {
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+      }
+
+      .context-col-header .dot.green { background: var(--running); }
+      .context-col-header .dot.yellow { background: var(--warning); }
+      .context-col-header .dot.dot-accent { background: var(--accent); }
+
+      .file-entry {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 0;
+        font-size: 11.5px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .file-entry:last-child { border-bottom: none; }
+
+      .file-icon {
+        font-size: 9px;
+        font-weight: 600;
+        color: var(--subtle);
+        width: 20px;
+        text-align: center;
+      }
+
+      .file-name {
+        color: var(--text);
+        font-family: var(--font-mono);
+        font-size: 11px;
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .file-status {
+        font-size: 9px;
+        padding: 1px 6px;
+        border-radius: 4px;
+        font-weight: 500;
+      }
+
+      .file-status.modified {
+        background: rgba(104, 130, 208, 0.06);
+        color: var(--accent);
+      }
+
+      .file-status.untracked {
+        background: rgba(196, 154, 26, 0.06);
+        color: var(--warning);
+      }
+
+      .file-status.clean {
+        background: rgba(60, 179, 113, 0.06);
+        color: var(--running);
+      }
+
+      .event-entry {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 8px;
+        padding: 4px 0;
+        font-size: 11px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .event-entry:last-child { border-bottom: none; }
+
+      .event-time {
+        font-family: var(--font-mono);
+        font-size: 10px;
+        color: var(--subtle);
+        white-space: nowrap;
+      }
+
+      .event-text {
+        color: var(--muted);
+        line-height: 1.4;
+      }
+
+      .workspace-mini {
+        display: grid;
+        grid-template-columns: 7px 1fr auto;
+        gap: 8px;
+        align-items: center;
+        padding: 5px 0;
+        border-bottom: 1px solid var(--line);
+        font-size: 11.5px;
+      }
+
+      .workspace-mini:last-child { border-bottom: none; }
+
+      .workspace-mini .status-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--subtle);
+      }
+
+      .workspace-mini .status-dot.running { background: var(--running); }
+      .workspace-mini .status-dot.awaiting { background: var(--warning); }
+      .workspace-mini .status-dot.error { background: var(--error); }
+
+      .workspace-mini .ws-name {
+        color: var(--text);
+        font-weight: 500;
+        font-size: 11.5px;
+      }
+
+      .workspace-mini .ws-status {
+        font-size: 9px;
+        color: var(--subtle);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+
+      @media (max-width: 1100px) {
+        .arena {
+          grid-template-columns: 1fr;
+          grid-template-rows: 1fr auto auto;
+        }
+        .panel-inbox { grid-column: 1; grid-row: 2; }
+        .panel-context { grid-column: 1; grid-row: 3; }
+        .context-grid { grid-template-columns: 1fr; }
+        .terminal-metrics { grid-template-columns: repeat(2, 1fr); }
+      }
+
+      @media (max-width: 700px) {
+        .arena { padding: 10px; gap: 10px; }
+        .terminal-metrics { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <!-- Activity Bar -->
+      <nav class="activitybar" aria-label="Mode navigation">
+        <div class="ab-logo">V</div>
+        <div class="ab-icons">
+          <div class="ab-icon active" title="Workspace">
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><rect x="1" y="2" width="14" height="12" rx="2" stroke="currentColor" stroke-width="1.4"/><path d="M4 7l2 2-2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 11h3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+          </div>
+          <div class="ab-icon" title="Inbox">
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M2 4h12v8a2 2 0 01-2 2H4a2 2 0 01-2-2V4z" stroke="currentColor" stroke-width="1.4"/><path d="M2 4l2-2h8l2 2" stroke="currentColor" stroke-width="1.4"/><path d="M6 7h4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+            <span class="badge"></span>
+          </div>
+          <div class="ab-icon" title="Context">
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M2 3h5l2 2h5v8a1 1 0 01-1 1H3a1 1 0 01-1-1V3z" stroke="currentColor" stroke-width="1.4"/></svg>
+          </div>
+        </div>
+        <div class="ab-bottom">
+          <div class="ab-icon" title="Settings">
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="2.5" stroke="currentColor" stroke-width="1.4"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+          </div>
+        </div>
+      </nav>
+
+      <!-- Tiling Arena -->
+      <main class="arena">
+        <!-- Panel: Command & Terminal — solid white -->
+        <section class="panel panel-terminal focused" aria-label="Command and Terminal panel">
+          <div class="panel-header">
+            <div class="panel-header-left">
+              <div class="panel-icon terminal-icon">
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M3 5l4 3-4 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M9 11h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              </div>
+              <div>
+                <span class="panel-label">Command &amp; Terminal</span>
+                <div class="panel-title">infra-control</div>
+              </div>
+            </div>
+            <div class="panel-meta">
+              <span class="panel-pill accent">opencode</span>
+              <span class="panel-pill">running</span>
+              <span class="panel-pill">:42017</span>
+            </div>
+          </div>
+          <div class="panel-body" style="display:grid; grid-template-rows: auto 1fr; gap: 14px;">
+            <div class="terminal-metrics">
+              <div class="metric-card">
+                <span class="metric-label">Workspaces</span>
+                <strong class="metric-value">03</strong>
+              </div>
+              <div class="metric-card">
+                <span class="metric-label">Buffered</span>
+                <strong class="metric-value">4,281</strong>
+              </div>
+              <div class="metric-card">
+                <span class="metric-label">Pending</span>
+                <strong class="metric-value">01</strong>
+              </div>
+              <div class="metric-card">
+                <span class="metric-label">Errors</span>
+                <strong class="metric-value" style="color:var(--error)">01</strong>
+              </div>
+            </div>
+            <section class="screen" aria-label="Terminal output">
+              <pre><span class="dim">$</span> pnpm workspace:watch --filter infra-control
+<span class="success">[provider]</span> attached to opencode runtime on port 42017
+<span class="success">[workspace]</span> activeWorkspaceId updated to ws_infra_01
+<span class="dim">[event-stream]</span> bootstrapState hydrated: 3 workspaces
+<span class="warn">[panel]</span> summary refreshed for active workspace
+
+<span class="dim">$</span> tail -f logs/runtime.log
+12:17:05  state=running        provider=opencode      latency=24ms
+12:17:09  state=awaiting_input summary="Need confirmation on migration step"
+12:17:16  <span class="success">state recovered</span> active terminal kept alive during switch
+12:17:19  extension=task-overview count=3 updated
+12:17:24  extension=health-signals warnings=0 errors=0
+
+<span class="dim">$</span> _</pre>
+            </section>
+          </div>
+        </section>
+
+        <!-- Panel: Inbox / Task Queue — docked glass -->
+        <section class="panel panel-inbox" aria-label="Inbox and Task Queue panel">
+          <div class="panel-header">
+            <div class="panel-header-left">
+              <div class="panel-icon inbox-icon">
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M2 4h12v8a2 2 0 01-2 2H4a2 2 0 01-2-2V4z" stroke="currentColor" stroke-width="1.5"/><path d="M6 7h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+              </div>
+              <div>
+                <span class="panel-label">Inbox / Task Queue</span>
+                <div class="panel-title">Review Queue</div>
+              </div>
+            </div>
+            <span class="panel-pill accent">2 pending</span>
+          </div>
+          <div class="panel-body" style="overflow-y: auto;">
+            <div class="task-list">
+              <article class="task-item needs-action">
+                <div class="task-top">
+                  <span class="task-title">Confirm migration wording</span>
+                  <span class="task-status awaiting">awaiting</span>
+                </div>
+                <p class="task-desc">workspace-console-ux: spec generation paused for panel summary wording confirmation.</p>
+                <div class="task-meta">
+                  <span class="task-workspace">ws_console_02</span>
+                  <span class="task-time">2 min ago</span>
+                </div>
+              </article>
+
+              <article class="task-item has-error">
+                <div class="task-top">
+                  <span class="task-title">Deploy checksum failed</span>
+                  <span class="task-status error">error</span>
+                </div>
+                <p class="task-desc">release-ops: deploy script exited after checksum verification failed.</p>
+                <div class="task-meta">
+                  <span class="task-workspace">ws_release_03</span>
+                  <span class="task-time">8 min ago</span>
+                </div>
+              </article>
+
+              <article class="task-item">
+                <div class="task-top">
+                  <span class="task-title">Build artifacts ready</span>
+                  <span class="task-status running">running</span>
+                </div>
+                <p class="task-desc">infra-control: TS compilation complete, 3 workspaces hydrated.</p>
+                <div class="task-meta">
+                  <span class="task-workspace">ws_infra_01</span>
+                  <span class="task-time">just now</span>
+                </div>
+              </article>
+
+              <article class="task-item">
+                <div class="task-top">
+                  <span class="task-title">Gateway bootstrap</span>
+                  <span class="task-status idle">idle</span>
+                </div>
+                <p class="task-desc">deploy-gateway: workspace registered, awaiting provider attachment.</p>
+                <div class="task-meta">
+                  <span class="task-workspace">ws_gw_04</span>
+                  <span class="task-time">not started</span>
+                </div>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <!-- Panel: Context / File Tree — docked glass -->
+        <section class="panel panel-context" aria-label="Context and File Tree panel">
+          <div class="panel-header">
+            <div class="panel-header-left">
+              <div class="panel-icon tree-icon">
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M2 3h5l2 2h5v8a1 1 0 01-1 1H3a1 1 0 01-1-1V3z" stroke="currentColor" stroke-width="1.5"/></svg>
+              </div>
+              <div>
+                <span class="panel-label">Context / File Tree</span>
+                <div class="panel-title">infra-control blast radius</div>
+              </div>
+            </div>
+            <div class="panel-meta">
+              <span class="panel-pill">12 files</span>
+              <span class="panel-pill">3 modified</span>
+            </div>
+          </div>
+          <div class="panel-body" style="padding: 12px;">
+            <div class="context-grid">
+              <!-- Changed files -->
+              <div class="context-col">
+                <div class="context-col-header">
+                  <span class="dot green"></span>
+                  Changed Files
+                </div>
+                <div class="file-entry">
+                  <span class="file-icon">TS</span>
+                  <span class="file-name">src/core/session-manager.ts</span>
+                  <span class="file-status modified">M</span>
+                </div>
+                <div class="file-entry">
+                  <span class="file-icon">TS</span>
+                  <span class="file-name">src/core/state-store.ts</span>
+                  <span class="file-status modified">M</span>
+                </div>
+                <div class="file-entry">
+                  <span class="file-icon">VUE</span>
+                  <span class="file-name">src/renderer/app/App.vue</span>
+                  <span class="file-status modified">M</span>
+                </div>
+                <div class="file-entry">
+                  <span class="file-icon">TS</span>
+                  <span class="file-name">src/extensions/providers/opencode-provider.ts</span>
+                  <span class="file-status untracked">?</span>
+                </div>
+                <div class="file-entry">
+                  <span class="file-icon">TS</span>
+                  <span class="file-name">src/main/index.ts</span>
+                  <span class="file-status clean">OK</span>
+                </div>
+              </div>
+
+              <!-- Recent events -->
+              <div class="context-col">
+                <div class="context-col-header">
+                  <span class="dot dot-accent"></span>
+                  Recent Events
+                </div>
+                <div class="event-entry">
+                  <span class="event-time">12:17:24</span>
+                  <span class="event-text"><strong style="color:var(--text-strong)">health-signals</strong> warnings=0 errors=0</span>
+                </div>
+                <div class="event-entry">
+                  <span class="event-time">12:17:19</span>
+                  <span class="event-text"><strong style="color:var(--text-strong)">task-overview</strong> count=3 updated</span>
+                </div>
+                <div class="event-entry">
+                  <span class="event-time">12:17:16</span>
+                  <span class="event-text"><strong style="color:var(--running)">state recovered</strong> terminal kept alive</span>
+                </div>
+                <div class="event-entry">
+                  <span class="event-time">12:17:09</span>
+                  <span class="event-text"><strong style="color:var(--text-strong)">awaiting_input</strong> "Need confirmation"</span>
+                </div>
+                <div class="event-entry">
+                  <span class="event-time">12:17:05</span>
+                  <span class="event-text"><strong style="color:var(--text-strong)">running</strong> provider=opencode</span>
+                </div>
+              </div>
+
+              <!-- Workspace registry -->
+              <div class="context-col">
+                <div class="context-col-header">
+                  <span class="dot yellow"></span>
+                  Workspace Registry
+                </div>
+                <div class="workspace-mini">
+                  <span class="status-dot running"></span>
+                  <span class="ws-name">infra-control</span>
+                  <span class="ws-status">running</span>
+                </div>
+                <div class="workspace-mini">
+                  <span class="status-dot awaiting"></span>
+                  <span class="ws-name">workspace-console-ux</span>
+                  <span class="ws-status">awaiting</span>
+                </div>
+                <div class="workspace-mini">
+                  <span class="status-dot error"></span>
+                  <span class="ws-name">release-ops</span>
+                  <span class="ws-status">error</span>
+                </div>
+                <div class="workspace-mini">
+                  <span class="status-dot"></span>
+                  <span class="ws-name">deploy-gateway</span>
+                  <span class="ws-status">bootstrapping</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

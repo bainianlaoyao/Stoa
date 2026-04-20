@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { cwd } from 'node:process'
 import { IPC_CHANNELS } from '@core/ipc-channels'
 import { PtyHost } from '@core/pty-host'
+import { createSecureWebPreferences } from './preload-path'
 import { SessionManager } from '@core/session-manager'
 import { startWorkspaceRuntime } from '@core/workspace-runtime'
 import { createLocalWebhookServer } from '@core/webhook-server'
@@ -101,11 +102,7 @@ function createMainWindow(): BrowserWindow {
     minWidth: 1100,
     minHeight: 720,
     backgroundColor: '#0b1020',
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      contextIsolation: true,
-      nodeIntegration: false
-    }
+    webPreferences: createSecureWebPreferences(__dirname)
   })
 
   window.webContents.once('did-finish-load', () => {

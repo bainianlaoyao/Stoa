@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vibecoding Panel - Style 2 Flat Premium Minimal</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #101316;
+        --surface: #15191d;
+        --surface-2: #191f24;
+        --surface-3: #20262c;
+        --surface-active: #232b33;
+        --line: #2a333c;
+        --line-strong: #3b4652;
+        --text: #f3f4f6;
+        --muted: #a5afb9;
+        --subtle: #7d8792;
+        --accent: #d7dee5;
+        --running: #69d18d;
+        --warning: #e4bb6a;
+        --error: #ef8895;
+        --radius-xl: 26px;
+        --radius-lg: 20px;
+        --radius-md: 14px;
+        --radius-sm: 10px;
+        --space-1: 4px;
+        --space-2: 8px;
+        --space-3: 12px;
+        --space-4: 16px;
+        --space-5: 20px;
+        --space-6: 24px;
+        --space-7: 32px;
+        --space-8: 40px;
+        --font-ui: "Aptos", "Segoe UI", "Helvetica Neue", sans-serif;
+        --font-mono: "Cascadia Code", "Consolas", monospace;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: linear-gradient(180deg, #111518 0%, #0d1013 100%);
+        color: var(--text);
+        font-family: var(--font-ui);
+      }
+
+      .page {
+        min-height: 100vh;
+        padding: var(--space-8);
+        background-image:
+          linear-gradient(to right, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+          linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+        background-size: 36px 36px;
+      }
+
+      .shell {
+        display: grid;
+        grid-template-columns: 318px minmax(0, 1fr);
+        gap: 18px;
+        min-height: calc(100vh - 80px);
+      }
+
+      .sidebar,
+      .main,
+      .workspace-card,
+      .terminal,
+      .panel-card,
+      .input-chip,
+      .info-chip,
+      .summary-strip {
+        border: 1px solid var(--line);
+      }
+
+      .sidebar {
+        background: var(--surface);
+        border-radius: var(--radius-xl);
+        padding: 28px 24px;
+        display: grid;
+        grid-template-rows: auto auto 1fr;
+        gap: 22px;
+      }
+
+      .main {
+        background: var(--surface);
+        border-radius: 34px;
+        padding: 28px;
+        display: grid;
+        grid-template-rows: minmax(0, 1fr) auto;
+        gap: 18px;
+      }
+
+      .eyebrow {
+        margin: 0 0 10px;
+        color: var(--subtle);
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        font-size: 10px;
+        font-weight: 600;
+      }
+
+      .hero-title,
+      .section-title,
+      .workspace-name {
+        margin: 0;
+        letter-spacing: -0.03em;
+      }
+
+      .hero-title {
+        font-size: 30px;
+        font-weight: 700;
+      }
+
+      .section-title {
+        font-size: 22px;
+        font-weight: 650;
+      }
+
+      .workspace-name {
+        font-size: 15px;
+        font-weight: 650;
+      }
+
+      .body,
+      .meta,
+      .tiny {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.5;
+      }
+
+      .tiny {
+        font-size: 12px;
+      }
+
+      .composer {
+        display: grid;
+        gap: 10px;
+        padding: 16px;
+        background: var(--surface-2);
+        border-radius: var(--radius-lg);
+        border: 1px solid var(--line);
+      }
+
+      .field-label {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        color: var(--subtle);
+      }
+
+      .input-chip {
+        background: var(--surface-3);
+        border-radius: var(--radius-sm);
+        padding: 11px 12px;
+        color: var(--text);
+        font-size: 13px;
+      }
+
+      .add-button {
+        padding: 12px 14px;
+        border-radius: 12px;
+        border: 1px solid var(--line-strong);
+        background: #e8ecf0;
+        color: #111417;
+        font-weight: 700;
+      }
+
+      .workspace-list {
+        display: grid;
+        gap: 10px;
+        align-content: start;
+      }
+
+      .workspace-card {
+        background: var(--surface-2);
+        border-radius: 18px;
+        padding: 15px 16px;
+        display: grid;
+        grid-template-columns: 12px 1fr;
+        gap: 14px;
+      }
+
+      .workspace-card.active {
+        background: var(--surface-active);
+        border-color: var(--line-strong);
+      }
+
+      .status {
+        width: 12px;
+        height: 12px;
+        border-radius: 999px;
+        margin-top: 4px;
+        background: #65707c;
+      }
+
+      .status.running { background: var(--running); }
+      .status.awaiting { background: var(--warning); }
+      .status.error { background: var(--error); }
+
+      .row,
+      .header-row,
+      .terminal-top,
+      .terminal-footer,
+      .panels-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 12px;
+      }
+
+      .workspace-summary {
+        margin: 6px 0 10px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      code,
+      pre {
+        font-family: var(--font-mono);
+      }
+
+      code {
+        color: #d8dde3;
+        font-size: 12px;
+      }
+
+      .terminal {
+        background: var(--surface-2);
+        border-radius: 28px;
+        padding: 22px;
+        display: grid;
+        grid-template-rows: auto auto auto 1fr auto;
+        gap: 16px;
+      }
+
+      .info-strip {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .info-chip {
+        border-radius: 999px;
+        padding: 8px 12px;
+        background: var(--surface-3);
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .summary-strip {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 0;
+        background: #14191e;
+        border-radius: 18px;
+        overflow: hidden;
+      }
+
+      .metric {
+        padding: 14px 16px;
+        border-right: 1px solid var(--line);
+      }
+
+      .metric:last-child {
+        border-right: 0;
+      }
+
+      .metric-value {
+        display: block;
+        margin-top: 2px;
+        font-size: 18px;
+        font-weight: 700;
+        color: var(--text);
+      }
+
+      .screen {
+        border-radius: 20px;
+        background: #101418;
+        border: 1px solid #232a31;
+        padding: 18px 20px;
+        min-height: 380px;
+      }
+
+      pre {
+        margin: 0;
+        white-space: pre-wrap;
+        font-size: 12.5px;
+        line-height: 1.7;
+        color: #e9edf1;
+      }
+
+      .dim { color: #7d8792; }
+      .success { color: #85d8a2; }
+      .warn { color: #e9c57b; }
+      .err { color: #f19aa6; }
+
+      .panels {
+        display: grid;
+        gap: 14px;
+      }
+
+      .panel-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .panel-card {
+        background: var(--surface-2);
+        border-radius: 20px;
+        padding: 16px;
+        min-height: 132px;
+      }
+
+      @media (max-width: 1180px) {
+        .shell {
+          grid-template-columns: 1fr;
+        }
+
+        .summary-strip,
+        .panel-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 760px) {
+        .page {
+          padding: 20px;
+        }
+
+        .sidebar,
+        .main,
+        .terminal {
+          padding: 18px;
+        }
+
+        .summary-strip,
+        .panel-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .metric {
+          border-right: 0;
+          border-bottom: 1px solid var(--line);
+        }
+
+        .metric:last-child {
+          border-bottom: 0;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <main class="shell">
+        <aside class="sidebar">
+          <header>
+            <p class="eyebrow">Workspaces</p>
+            <h1 class="hero-title">Vibecoding Panel</h1>
+            <p class="body">Flat Premium Minimal keeps the same product model as the current app, but strips almost all glow and translucency away in favor of crisp borders, tighter typography, and disciplined spacing.</p>
+          </header>
+
+          <section class="composer" aria-label="Create workspace preview">
+            <div>
+              <div class="field-label">名称</div>
+              <div class="input-chip">client-preview</div>
+            </div>
+            <div>
+              <div class="field-label">路径</div>
+              <div class="input-chip">D:\\Data\\DEV\\client-preview</div>
+            </div>
+            <div>
+              <div class="field-label">Provider</div>
+              <div class="input-chip">local-shell</div>
+            </div>
+            <button class="add-button" type="button">添加工作区</button>
+          </section>
+
+          <section class="workspace-list" aria-label="Workspace switcher">
+            <article class="workspace-card active">
+              <span class="status running"></span>
+              <div>
+                <div class="header-row">
+                  <h2 class="workspace-name">workspace-console-ux</h2>
+                  <span class="tiny">running</span>
+                </div>
+                <p class="workspace-summary">Main renderer mockup review is active; terminal session retained during workspace switches.</p>
+                <code>D:\Data\DEV\ultra_simple_panel</code>
+              </div>
+            </article>
+
+            <article class="workspace-card">
+              <span class="status awaiting"></span>
+              <div>
+                <div class="header-row">
+                  <h2 class="workspace-name">bootstrap-plan</h2>
+                  <span class="tiny">awaiting_input</span>
+                </div>
+                <p class="workspace-summary">Milestone wording needs confirmation before continuing the implementation sequence.</p>
+                <code>D:\Data\DEV\ultra_simple_panel\docs\plans</code>
+              </div>
+            </article>
+
+            <article class="workspace-card">
+              <span class="status error"></span>
+              <div>
+                <div class="header-row">
+                  <h2 class="workspace-name">release-check</h2>
+                  <span class="tiny">error</span>
+                </div>
+                <p class="workspace-summary">CI smoke run failed after terminal resize event handling diverged from expected state ordering.</p>
+                <code>D:\Data\OPS\release-check</code>
+              </div>
+            </article>
+          </section>
+        </aside>
+
+        <section class="main">
+          <section class="terminal">
+            <header class="terminal-top">
+              <div>
+                <p class="eyebrow">Main terminal view</p>
+                <h2 class="section-title">workspace-console-ux</h2>
+                <p class="body">A flat, desktop-grade presentation of the same right-side persistent terminal viewport used by the current app shell.</p>
+              </div>
+              <div class="info-strip">
+                <span class="info-chip">provider: local-shell</span>
+                <span class="info-chip">status: running</span>
+                <span class="info-chip">port: runtime-bound</span>
+              </div>
+            </header>
+
+            <div class="row">
+              <p class="tiny">single click in the left column remains the only primary workspace switch entry</p>
+              <p class="tiny">visual state comes from status channel</p>
+            </div>
+
+            <section class="summary-strip" aria-label="Workspace summary strip">
+              <div class="metric">
+                <span class="tiny">Workspaces</span>
+                <strong class="metric-value">03</strong>
+              </div>
+              <div class="metric">
+                <span class="tiny">Buffered lines</span>
+                <strong class="metric-value">2,914</strong>
+              </div>
+              <div class="metric">
+                <span class="tiny">Pending input</span>
+                <strong class="metric-value">01</strong>
+              </div>
+              <div class="metric">
+                <span class="tiny">Errors</span>
+                <strong class="metric-value">01</strong>
+              </div>
+            </section>
+
+            <section class="screen" aria-label="Terminal output mockup">
+              <pre><span class="dim">$</span> pnpm docs:review workspace-console-ux
+<span class="success">[renderer]</span> App shell loaded: WorkspaceList + TerminalViewport + PanelExtensions
+<span class="dim">[state]</span> activeWorkspaceId = ws_console_ux
+<span class="dim">[state]</span> workspaces.length = 3
+<span class="warn">[needs_confirmation]</span> bootstrap-plan waiting for input
+<span class="err">[error]</span> release-check mismatch after resize terminal event
+
+<span class="dim">$</span> watch status-channel
+12:41:02  running         workspace-console-ux
+12:41:07  awaiting_input  bootstrap-plan
+12:41:12  error           release-check
+12:41:18  running         workspace-console-ux
+
+<span class="dim">$</span> _</pre>
+            </section>
+
+            <footer class="terminal-footer">
+              <p class="tiny">No extra chrome, no ornamental blur, no IDE-style panel explosion.</p>
+              <code>D:\Data\DEV\ultra_simple_panel</code>
+            </footer>
+          </section>
+
+          <section class="panels">
+            <div class="panels-head">
+              <div>
+                <p class="eyebrow">Panels</p>
+                <h2 class="section-title">White-box panels</h2>
+              </div>
+              <p class="tiny">Bottom extensions remain summary surfaces, not full workflow destinations.</p>
+            </div>
+
+            <div class="panel-grid">
+              <article class="panel-card">
+                <p class="eyebrow">Panel 01</p>
+                <h3 class="workspace-name">Workspace Summary</h3>
+                <p class="body">Active workspace is `workspace-console-ux`. Total registered workspaces: 3. Current focus remains on right-side terminal continuity.</p>
+              </article>
+              <article class="panel-card">
+                <p class="eyebrow">Panel 02</p>
+                <h3 class="workspace-name">Attention Queue</h3>
+                <p class="body">One waiting state and one error state are intentionally visible here so the comparison includes differentiated feedback without adding more navigation.</p>
+              </article>
+              <article class="panel-card">
+                <p class="eyebrow">Panel 03</p>
+                <h3 class="workspace-name">Extension Contract</h3>
+                <p class="body">Panel content reflects the existing `PanelExtensions` role: concise summaries grounded in active workspace and overall workspace count.</p>
+              </article>
+            </div>
+          </section>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>
