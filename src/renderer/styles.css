@@ -701,6 +701,135 @@ h2 {
   opacity: 0;
 }
 
+/* ─── Provider Quick-Create: Floating Card ─── */
+
+.provider-floating-card {
+  position: fixed;
+  z-index: 100;
+  background: var(--surface);
+  backdrop-filter: blur(40px) saturate(120%);
+  -webkit-backdrop-filter: blur(40px) saturate(120%);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-soft);
+  padding: 6px;
+  display: flex;
+  gap: 4px;
+}
+
+.provider-icon-cell {
+  display: grid;
+  place-items: center;
+  gap: 2px;
+  width: 52px;
+  height: 52px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: var(--font-ui);
+}
+
+.provider-icon-cell:hover {
+  background: var(--black-soft);
+}
+
+.provider-icon-cell:active {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.provider-icon-cell__icon {
+  display: grid;
+  place-items: center;
+}
+
+.provider-icon-cell__icon :deep(svg) {
+  width: 22px;
+  height: 22px;
+}
+
+.provider-icon-cell__label {
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+/* ─── Provider Quick-Create: Radial Menu ─── */
+
+.radial-menu {
+  position: fixed;
+  z-index: 200;
+  pointer-events: none;
+}
+
+.radial-menu__track {
+  position: absolute;
+  border: 1.5px solid var(--line);
+  border-radius: 50%;
+}
+
+.radial-menu__item {
+  position: absolute;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  backdrop-filter: blur(40px) saturate(120%);
+  -webkit-backdrop-filter: blur(40px) saturate(120%);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-soft);
+  cursor: pointer;
+  pointer-events: auto;
+  transition: all 0.2s ease;
+  transform: translate(-50%, -50%);
+  padding: 0;
+  margin: 0;
+}
+
+.radial-menu__item:hover {
+  background: var(--surface-solid);
+  border-color: rgba(0, 0, 0, 0.04);
+  box-shadow: var(--shadow-card);
+}
+
+.radial-menu__item-icon {
+  display: grid;
+  place-items: center;
+}
+
+.radial-menu__item-icon :deep(svg) {
+  width: 20px;
+  height: 20px;
+}
+
+/* ─── + Button Improvement ─── */
+
+.route-add-session {
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1;
+  font-weight: 300;
+  flex: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.route-add-session:hover {
+  background: var(--black-soft);
+  color: var(--text-strong);
+}
+
 @media (max-width: 960px) {
   .command-layout,
   .placeholder-surface {
