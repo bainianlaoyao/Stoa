@@ -65,7 +65,6 @@ describe('CommandSurface', () => {
         activeSession,
         activeProjectId: 'project_alpha',
         activeSessionId: 'session_1',
-
       }
     })
 
@@ -73,24 +72,6 @@ describe('CommandSurface', () => {
     expect(wrapper.find('.command-body').exists()).toBe(true)
     expect(wrapper.find('.command-layout').exists()).toBe(true)
     expect(wrapper.find('.workspace-hierarchy-panel').exists()).toBe(true)
-    expect(wrapper.find('.terminal-screen').exists()).toBe(true)
-    expect(wrapper.find('.terminal-meta').exists()).toBe(true)
-  })
-
-  it('groups terminal meta into left and right clusters', () => {
-    const wrapper = mount(CommandSurface, {
-      global: { plugins: [createPinia()] },
-      props: {
-        hierarchy,
-        activeProject,
-        activeSession,
-        activeProjectId: 'project_alpha',
-        activeSessionId: 'session_1',
-
-      }
-    })
-
-    expect(wrapper.find('.terminal-meta__group--primary').exists()).toBe(true)
-    expect(wrapper.find('.terminal-meta__group--secondary').exists()).toBe(true)
+    expect(wrapper.find('.terminal-viewport').exists()).toBe(true)
   })
 })

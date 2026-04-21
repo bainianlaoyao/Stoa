@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { storeToRefs } from 'pinia'
 import BaseModal from '../primitives/BaseModal.vue'
 import GlassFormField from '../primitives/GlassFormField.vue'
 import { useWorkspaceStore } from '@renderer/stores/workspaces'
@@ -15,7 +14,6 @@ const emit = defineEmits<{
 }>()
 
 const store = useWorkspaceStore()
-const { lastError } = storeToRefs(store)
 
 const draftName = ref('')
 const draftPath = ref('')
@@ -26,21 +24,13 @@ function submit() {
   if (!name || !path) return
   store.clearError()
   emit('create', { name, path })
+  emit('update:show', false)
 }
 
-// Auto-close on success (lastError cleared and no pending error)
 watch(() => props.show, (isVisible) => {
   if (!isVisible) {
     draftName.value = ''
     draftPath.value = ''
-    store.clearError()
-  }
-})
-
-// Close modal when error is cleared after successful creation
-watch(lastError, (err, prevErr) => {
-  if (prevErr && !err && props.show) {
-    emit('update:show', false)
   }
 })
 </script>
@@ -59,7 +49,7 @@ watch(lastError, (err, prevErr) => {
       placeholder="/path/to/project"
       @update:model-value="draftPath = $event"
     />
-    <div v-if="lastError" class="modal-panel__error">{{ lastError }}</div>
+    <div v-if="store.lastError" class="modal-panel__error">{{ store.lastError }}</div>
     <div class="modal-panel__footer">
       <button class="button-ghost" @click="emit('update:show', false)">取消</button>
       <button class="button-primary" @click="submit">创建</button>

@@ -161,6 +161,49 @@ export class ProjectSessionManager {
     return { ...project }
   }
 
+  async markSessionStarting(sessionId: string, summary: string, _externalSessionId: string | null): Promise<void> {
+    const session = this.state.sessions.find(s => s.id === sessionId)
+    if (!session) return
+    session.status = 'starting'
+    session.summary = summary
+    session.updatedAt = new Date().toISOString()
+    await this.persist()
+  }
+
+  async markSessionRunning(sessionId: string, externalSessionId: string | null): Promise<void> {
+    const session = this.state.sessions.find(s => s.id === sessionId)
+    if (!session) return
+    session.status = 'running'
+    session.externalSessionId = externalSessionId
+    session.summary = '会话运行中'
+    session.updatedAt = new Date().toISOString()
+    await this.persist()
+  }
+
+  async markSessionExited(sessionId: string, summary: string): Promise<void> {
+    const session = this.state.sessions.find(s => s.id === sessionId)
+    if (!session) return
+    session.status = 'exited'
+    session.summary = summary
+    session.updatedAt = new Date().toISOString()
+    await this.persist()
+  }
+
+  async setActiveProject(projectId: string): Promise<void> {
+    const project = this.state.projects.find(p => p.id === projectId)
+    if (!project) return
+    this.state.activeProjectId = projectId
+    await this.persist()
+  }
+
+  async setActiveSession(sessionId: string): Promise<void> {
+    const session = this.state.sessions.find(s => s.id === sessionId)
+    if (!session) return
+    this.state.activeSessionId = sessionId
+    this.state.activeProjectId = session.projectId
+    await this.persist()
+  }
+
   async createSession(request: CreateSessionRequest): Promise<SessionSummary> {
     const project = this.state.projects.find((candidate) => candidate.id === request.projectId)
     if (!project) {

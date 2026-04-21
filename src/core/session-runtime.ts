@@ -1,7 +1,7 @@
 import type { ProviderCommand } from '@shared/project-session'
 import type { ProviderDefinition, ProviderRuntimeTarget } from '@extensions/providers'
 
-interface SessionRuntimeManager {
+export interface SessionRuntimeManager {
   markSessionStarting: (sessionId: string, summary: string, externalSessionId: string | null) => Promise<void>
   markSessionRunning: (sessionId: string, externalSessionId: string | null) => Promise<void>
   markSessionExited: (sessionId: string, summary: string) => Promise<void>
@@ -56,7 +56,9 @@ export async function startSessionRuntime(options: StartSessionRuntimeOptions): 
     providerPort
   }
 
+  console.log(`[session-runtime] installSidecar for ${session.id}`)
   await provider.installSidecar(target, context)
+  console.log(`[session-runtime] installSidecar done for ${session.id}`)
 
   const canResume =
     session.type === 'opencode'
@@ -68,7 +70,10 @@ export async function startSessionRuntime(options: StartSessionRuntimeOptions): 
     ? await provider.buildResumeCommand(target, session.externalSessionId!, context)
     : await provider.buildStartCommand(target, context)
 
+  console.log(`[session-runtime] markSessionStarting for ${session.id} (command: ${command.command} ${command.args.join(' ')})`)
   await manager.markSessionStarting(session.id, `正在启动 ${session.type}`, session.externalSessionId)
+  console.log(`[session-runtime] markSessionStarting done, spawning PTY for ${session.id}`)
+
   const started = ptyHost.start(
     session.id,
     command,
@@ -76,9 +81,12 @@ export async function startSessionRuntime(options: StartSessionRuntimeOptions): 
       void manager.appendTerminalData({ sessionId: session.id, data })
     },
     (exitCode) => {
+      console.log(`[session-runtime] Process exited for ${session.id} with code ${exitCode}`)
       void manager.markSessionExited(session.id, `${session.type} 已退出 (${exitCode})`)
     }
   )
 
+  console.log(`[session-runtime] markSessionRunning for ${session.id} (shellId: ${started.sessionId})`)
   await manager.markSessionRunning(session.id, canResume ? session.externalSessionId : started.sessionId)
+  console.log(`[session-runtime] markSessionRunning done for ${session.id}`)
 }

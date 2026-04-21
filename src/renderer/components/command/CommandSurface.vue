@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import WorkspaceHierarchyPanel from './WorkspaceHierarchyPanel.vue'
-import TerminalMetaBar from './TerminalMetaBar.vue'
 import TerminalViewport from '@renderer/components/TerminalViewport.vue'
 import type { ProjectSummary, SessionSummary } from '@shared/project-session'
 import type { ProjectHierarchyNode } from '@renderer/stores/workspaces'
@@ -35,10 +34,7 @@ const emit = defineEmits<{
           @create-session="emit('createSession', $event)"
         />
 
-        <div class="terminal-screen">
-          <TerminalMetaBar :project="activeProject" :session="activeSession" />
-          <TerminalViewport :project="activeProject" :session="activeSession" />
-        </div>
+        <TerminalViewport :project="activeProject" :session="activeSession" />
       </div>
     </div>
   </section>

@@ -1,6 +1,6 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
-import type { BootstrapState, ProjectSummary, SessionSummary } from '@shared/project-session'
+import type { BootstrapState, ProjectSummary, SessionStatus, SessionSummary } from '@shared/project-session'
 
 export interface ProjectHierarchyNode extends ProjectSummary {
   active: boolean
@@ -69,6 +69,14 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
     sessions.value.push(session)
   }
 
+  function updateSession(sessionId: string, patch: { status?: SessionStatus; summary?: string; externalSessionId?: string | null }): void {
+    const session = sessions.value.find((s) => s.id === sessionId)
+    if (!session) return
+    if (patch.status !== undefined) session.status = patch.status
+    if (patch.summary !== undefined) session.summary = patch.summary
+    if (patch.externalSessionId !== undefined) session.externalSessionId = patch.externalSessionId
+  }
+
   function clearError(): void {
     lastError.value = null
   }
@@ -86,6 +94,7 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
     hydrate,
     addProject,
     addSession,
+    updateSession,
     setActiveProject,
     setActiveSession,
     clearError

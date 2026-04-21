@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, onBeforeUnmount } from 'vue'
 import { storeToRefs } from 'pinia'
-import type { SessionType } from '@shared/project-session'
+import type { SessionType, SessionStatusEvent } from '@shared/project-session'
 import AppShell from '@renderer/components/AppShell.vue'
 import { useWorkspaceStore } from '@renderer/stores/workspaces'
 
@@ -42,11 +42,13 @@ async function handleProjectCreate(payload: { name: string; path: string }): Pro
 async function handleSessionCreate(payload: { projectId: string; type: string; title: string }): Promise<void> {
   workspaceStore.clearError()
   try {
+    console.log('[App.vue] handleSessionCreate:', payload)
     const created = await window.vibecoding.createSession({
       projectId: payload.projectId,
       type: payload.type as SessionType,
       title: payload.title
     })
+    console.log('[App.vue] createSession result:', created)
     if (!created) {
       workspaceStore.lastError = 'Failed to create session: no response from main process'
       return
@@ -58,9 +60,23 @@ async function handleSessionCreate(payload: { projectId: string; type: string; t
   }
 }
 
+let unsubscribeSessionEvent: (() => void) | null = null
+
 onMounted(async () => {
   const bootstrapState = await window.vibecoding.getBootstrapState()
   workspaceStore.hydrate(bootstrapState)
+
+  unsubscribeSessionEvent = window.vibecoding?.onSessionEvent?.((event: SessionStatusEvent) => {
+    console.log('[App.vue] onSessionEvent:', event)
+    workspaceStore.updateSession(event.sessionId, {
+      status: event.status,
+      summary: event.summary
+    })
+  })
+})
+
+onBeforeUnmount(() => {
+  unsubscribeSessionEvent?.()
 })
 </script>
 

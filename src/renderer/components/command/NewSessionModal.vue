@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { storeToRefs } from 'pinia'
 import BaseModal from '../primitives/BaseModal.vue'
 import GlassFormField from '../primitives/GlassFormField.vue'
 import type { SessionType } from '@shared/project-session'
@@ -16,7 +15,6 @@ const emit = defineEmits<{
 }>()
 
 const store = useWorkspaceStore()
-const { lastError } = storeToRefs(store)
 
 const draftTitle = ref('')
 const draftType = ref<SessionType>('shell')
@@ -31,19 +29,13 @@ function submit() {
   if (!title) return
   store.clearError()
   emit('create', { title, type: draftType.value })
+  emit('update:show', false)
 }
 
 watch(() => props.show, (isVisible) => {
   if (!isVisible) {
     draftTitle.value = ''
     draftType.value = 'shell'
-    store.clearError()
-  }
-})
-
-watch(lastError, (err, prevErr) => {
-  if (prevErr && !err && props.show) {
-    emit('update:show', false)
   }
 })
 </script>
@@ -63,7 +55,7 @@ watch(lastError, (err, prevErr) => {
       :options="sessionTypeOptions"
       @update:model-value="draftType = $event as SessionType"
     />
-    <div v-if="lastError" class="modal-panel__error">{{ lastError }}</div>
+    <div v-if="store.lastError" class="modal-panel__error">{{ store.lastError }}</div>
     <div class="modal-panel__footer">
       <button class="button-ghost" @click="emit('update:show', false)">取消</button>
       <button class="button-primary" @click="submit">创建</button>

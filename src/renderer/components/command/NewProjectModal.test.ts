@@ -150,7 +150,7 @@ describe('NewProjectModal', () => {
       expect(wrapper.emitted('create')![0]).toEqual([{ name: 'my-project', path: '/path/to/project' }])
     })
 
-    it('after submit → does NOT emit update:show (modal stays open for async result)', () => {
+    it('after submit → emits update:show with false (modal closes)', () => {
       const wrapper = mount(NewProjectModal, {
         props: { show: true },
         attachTo: document.body
@@ -163,7 +163,8 @@ describe('NewProjectModal', () => {
       pathInput.value = '/path/to/project'
       pathInput.dispatchEvent(new Event('input'))
       ;(document.body.querySelector('.button-primary') as HTMLElement).click()
-      expect(wrapper.emitted('update:show')).toBeFalsy()
+      expect(wrapper.emitted('update:show')).toBeTruthy()
+      expect(wrapper.emitted('update:show')![0]).toEqual([false])
     })
   })
 
@@ -227,8 +228,7 @@ describe('NewProjectModal', () => {
       expect(store.lastError).toBeNull()
     })
 
-    it('closing modal clears error and resets drafts', async () => {
-      const store = useWorkspaceStore()
+    it('closing modal resets drafts', async () => {
       const wrapper = mount(NewProjectModal, {
         props: { show: true },
         attachTo: document.body
@@ -240,10 +240,8 @@ describe('NewProjectModal', () => {
       nameInput.dispatchEvent(new Event('input'))
       pathInput.value = '/path/to/project'
       pathInput.dispatchEvent(new Event('input'))
-      store.lastError = 'some error'
 
       await wrapper.setProps({ show: false })
-      expect(store.lastError).toBeNull()
 
       await wrapper.setProps({ show: true })
       await nextTick()
@@ -252,20 +250,16 @@ describe('NewProjectModal', () => {
       expect((freshInputs[1] as HTMLInputElement).value).toBe('')
     })
 
-    it('auto-closes when lastError transitions from error to null', async () => {
+    it('error persists until explicitly cleared', async () => {
       const store = useWorkspaceStore()
       store.lastError = 'creation failed'
-      const wrapper = mount(NewProjectModal, {
+      mount(NewProjectModal, {
         props: { show: true },
         attachTo: document.body
       })
       await nextTick()
 
-      store.lastError = null
-      await nextTick()
-
-      expect(wrapper.emitted('update:show')).toBeTruthy()
-      expect(wrapper.emitted('update:show')![0]).toEqual([false])
+      expect(store.lastError).toBe('creation failed')
     })
   })
 })

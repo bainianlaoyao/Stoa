@@ -2,6 +2,7 @@ import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, test } from 'vitest'
+import { readPersistedState } from './state-store'
 import { ProjectSessionManager } from './project-session-manager'
 
 const tempDirs: string[] = []
@@ -159,5 +160,115 @@ describe('ProjectSessionManager', () => {
       { sessionId: shell.id, action: 'fresh-shell' },
       { sessionId: opencode.id, action: 'resume-external', externalSessionId: 'ext-123' }
     ])
+  })
+
+  describe('session lifecycle methods', () => {
+    test('markSessionStarting updates status and summary', async () => {
+      const stateFilePath = await createTempStatePath()
+      const manager = await ProjectSessionManager.create({ webhookPort: null, stateFilePath })
+      const project = await manager.createProject({ path: 'D:/lifecycle', name: 'test' })
+      const session = await manager.createSession({ projectId: project.id, type: 'shell', title: 'S1' })
+
+      await manager.markSessionStarting(session.id, '正在启动 shell', null)
+
+      const updated = manager.snapshot().sessions.find(s => s.id === session.id)!
+      expect(updated.status).toBe('starting')
+      expect(updated.summary).toBe('正在启动 shell')
+    })
+
+    test('markSessionRunning updates status and externalSessionId', async () => {
+      const stateFilePath = await createTempStatePath()
+      const manager = await ProjectSessionManager.create({ webhookPort: null, stateFilePath })
+      const project = await manager.createProject({ path: 'D:/lifecycle', name: 'test' })
+      const session = await manager.createSession({ projectId: project.id, type: 'shell', title: 'S1' })
+
+      await manager.markSessionRunning(session.id, 'shell-abc-123')
+
+      const updated = manager.snapshot().sessions.find(s => s.id === session.id)!
+      expect(updated.status).toBe('running')
+      expect(updated.externalSessionId).toBe('shell-abc-123')
+      expect(updated.summary).toBe('会话运行中')
+    })
+
+    test('markSessionExited updates status and summary', async () => {
+      const stateFilePath = await createTempStatePath()
+      const manager = await ProjectSessionManager.create({ webhookPort: null, stateFilePath })
+      const project = await manager.createProject({ path: 'D:/lifecycle', name: 'test' })
+      const session = await manager.createSession({ projectId: project.id, type: 'shell', title: 'S1' })
+
+      await manager.markSessionExited(session.id, 'shell 已退出 (0)')
+
+      const updated = manager.snapshot().sessions.find(s => s.id === session.id)!
+      expect(updated.status).toBe('exited')
+      expect(updated.summary).toBe('shell 已退出 (0)')
+    })
+
+    test('lifecycle methods are no-ops for unknown session IDs', async () => {
+      const stateFilePath = await createTempStatePath()
+      const manager = await ProjectSessionManager.create({ webhookPort: null, stateFilePath })
+      await expect(manager.markSessionStarting('nonexistent', 'x', null)).resolves.toBeUndefined()
+      await expect(manager.markSessionRunning('nonexistent', null)).resolves.toBeUndefined()
+      await expect(manager.markSessionExited('nonexistent', 'x')).resolves.toBeUndefined()
+    })
+
+    test('markSessionStarting persists to disk', async () => {
+      const stateFilePath = await createTempStatePath()
+      const manager = await ProjectSessionManager.create({ webhookPort: null, stateFilePath })
+      const project = await manager.createProject({ path: 'D:/lifecycle-disk', name: 'test' })
+      const session = await manager.createSession({ projectId: project.id, type: 'shell', title: 'S1' })
+
+      await manager.markSessionStarting(session.id, 'starting...', null)
+
+      const diskState = await readPersistedState(stateFilePath)
+      expect(diskState.sessions[0]!.last_known_status).toBe('starting')
+      expect(diskState.sessions[0]!.last_summary).toBe('starting...')
+    })
+  })
+
+  describe('active setter methods', () => {
+    test('setActiveProject updates activeProjectId', async () => {
+      const stateFilePath = await createTempStatePath()
+      const manager = await ProjectSessionManager.create({ webhookPort: null, stateFilePath })
+      const p1 = await manager.createProject({ path: 'D:/active1', name: 'P1' })
+      const p2 = await manager.createProject({ path: 'D:/active2', name: 'P2' })
+
+      expect(manager.snapshot().activeProjectId).toBe(p1.id)
+      await manager.setActiveProject(p2.id)
+      expect(manager.snapshot().activeProjectId).toBe(p2.id)
+    })
+
+    test('setActiveSession updates both activeSessionId and activeProjectId', async () => {
+      const stateFilePath = await createTempStatePath()
+      const manager = await ProjectSessionManager.create({ webhookPort: null, stateFilePath })
+      const p1 = await manager.createProject({ path: 'D:/active3', name: 'P1' })
+      const p2 = await manager.createProject({ path: 'D:/active4', name: 'P2' })
+      const s1 = await manager.createSession({ projectId: p1.id, type: 'shell', title: 'S1' })
+      const s2 = await manager.createSession({ projectId: p2.id, type: 'shell', title: 'S2' })
+
+      await manager.setActiveSession(s1.id)
+      expect(manager.snapshot().activeSessionId).toBe(s1.id)
+      expect(manager.snapshot().activeProjectId).toBe(p1.id)
+
+      await manager.setActiveSession(s2.id)
+      expect(manager.snapshot().activeSessionId).toBe(s2.id)
+      expect(manager.snapshot().activeProjectId).toBe(p2.id)
+    })
+
+    test('setActiveProject is no-op for unknown project ID', async () => {
+      const stateFilePath = await createTempStatePath()
+      const manager = await ProjectSessionManager.create({ webhookPort: null, stateFilePath })
+      await manager.createProject({ path: 'D:/active-noop', name: 'P1' })
+      const before = manager.snapshot().activeProjectId
+      await manager.setActiveProject('nonexistent')
+      expect(manager.snapshot().activeProjectId).toBe(before)
+    })
+
+    test('setActiveSession is no-op for unknown session ID', async () => {
+      const stateFilePath = await createTempStatePath()
+      const manager = await ProjectSessionManager.create({ webhookPort: null, stateFilePath })
+      const before = manager.snapshot().activeSessionId
+      await manager.setActiveSession('nonexistent')
+      expect(manager.snapshot().activeSessionId).toBe(before)
+    })
   })
 })

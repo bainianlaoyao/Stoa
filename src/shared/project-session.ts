@@ -85,12 +85,27 @@ export interface CreateSessionRequest {
   externalSessionId?: string | null
 }
 
+export interface TerminalDataChunk {
+  sessionId: string
+  data: string
+}
+
+export interface SessionStatusEvent {
+  sessionId: string
+  status: SessionStatus
+  summary: string
+}
+
 export interface RendererApi {
   getBootstrapState: () => Promise<BootstrapState>
   createProject: (request: CreateProjectRequest) => Promise<ProjectSummary>
   createSession: (request: CreateSessionRequest) => Promise<SessionSummary>
   setActiveProject: (projectId: string) => Promise<void>
   setActiveSession: (sessionId: string) => Promise<void>
+  sendSessionInput: (sessionId: string, data: string) => Promise<void>
+  sendSessionResize: (sessionId: string, cols: number, rows: number) => Promise<void>
+  onTerminalData: (callback: (chunk: TerminalDataChunk) => void) => () => void
+  onSessionEvent: (callback: (event: SessionStatusEvent) => void) => () => void
 }
 
 export interface SessionEventPayload {

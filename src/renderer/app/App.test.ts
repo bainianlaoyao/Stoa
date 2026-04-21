@@ -48,6 +48,10 @@ function setupVibecoding(overrides?: Partial<typeof window.vibecoding>) {
     createSession: vi.fn().mockResolvedValue({ ...mockCreatedSession }),
     setActiveProject: vi.fn().mockResolvedValue(undefined),
     setActiveSession: vi.fn().mockResolvedValue(undefined),
+    sendSessionInput: vi.fn().mockResolvedValue(undefined),
+    sendSessionResize: vi.fn().mockResolvedValue(undefined),
+    onTerminalData: vi.fn().mockReturnValue(() => {}),
+    onSessionEvent: vi.fn().mockReturnValue(() => {}),
     ...overrides
   }
 }
