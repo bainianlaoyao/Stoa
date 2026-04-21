@@ -1,0 +1,129 @@
+<script setup lang="ts">
+import { computed } from 'vue'
+import type { SessionType } from '@shared/project-session'
+import { PROVIDER_ICONS } from '@renderer/composables/provider-icons'
+
+const RING_RADIUS = 52
+const ITEM_SIZE = 40
+const TRACK_SIZE = RING_RADIUS * 2
+
+const props = defineProps<{
+  visible: boolean
+  projectId: string
+  center: { x: number; y: number }
+}>()
+
+const emit = defineEmits<{
+  create: [payload: { type: SessionType }]
+  close: []
+}>()
+
+const providerNames: Record<SessionType, string> = {
+  opencode: 'OpenCode',
+  shell: 'Shell'
+}
+
+const positionedProviders = computed(() => {
+  const count = PROVIDER_ICONS.length
+
+  return PROVIDER_ICONS.map((provider, index) => {
+    const angle = (index * 360 / count) - 90
+    const radians = angle * Math.PI / 180
+    const x = Math.cos(radians) * RING_RADIUS
+    const y = Math.sin(radians) * RING_RADIUS
+
+    return {
+      ...provider,
+      angle,
+      style: {
+        left: `${props.center.x + x}px`,
+        top: `${props.center.y + y}px`,
+        transform: 'translate(-50%, -50%)'
+      }
+    }
+  })
+})
+
+const menuStyle = computed(() => ({
+  left: `${props.center.x}px`,
+  top: `${props.center.y}px`
+}))
+
+const trackStyle = {
+  width: `${TRACK_SIZE}px`,
+  height: `${TRACK_SIZE}px`,
+  marginLeft: `${-TRACK_SIZE / 2}px`,
+  marginTop: `${-TRACK_SIZE / 2}px`
+}
+
+const iconStyle = {
+  width: `${ITEM_SIZE}px`,
+  height: `${ITEM_SIZE}px`
+}
+
+function createSession(type: SessionType) {
+  emit('create', { type })
+  emit('close')
+}
+</script>
+
+<template>
+  <Teleport v-if="visible" to="body">
+    <div
+      class="radial-menu"
+      role="group"
+      aria-label="Session providers (radial)"
+      :style="menuStyle"
+    >
+      <div
+        class="radial-menu__track"
+        aria-hidden="true"
+        :style="trackStyle"
+      />
+      <button
+        v-for="provider in positionedProviders"
+        :key="provider.type"
+        type="button"
+        class="radial-menu__item"
+        :aria-label="`Create ${providerNames[provider.type]} session`"
+        :style="provider.style"
+        @click="createSession(provider.type)"
+      >
+        <svg
+          class="radial-menu__item-icon"
+          :viewBox="provider.viewBox"
+          aria-hidden="true"
+          focusable="false"
+          :style="iconStyle"
+          v-html="provider.svg"
+        />
+      </button>
+    </div>
+  </Teleport>
+</template>
+
+<style scoped>
+.radial-menu {
+  position: fixed;
+  display: block;
+}
+
+.radial-menu__track {
+  position: absolute;
+  left: 0;
+  top: 0;
+  border-radius: 999px;
+  transform: translate(-50%, -50%);
+}
+
+.radial-menu__item {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.radial-menu__item-icon {
+  display: block;
+}
+</style>
