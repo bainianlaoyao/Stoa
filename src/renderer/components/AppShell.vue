@@ -1,9 +1,7 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { ref } from 'vue'
 import GlobalActivityBar from './GlobalActivityBar.vue'
 import CommandSurface from './command/CommandSurface.vue'
-import InboxQueueSurface from './inbox/InboxQueueSurface.vue'
-import ContextTreeSurface from './tree/ContextTreeSurface.vue'
 import type { ProjectSummary, SessionSummary } from '@shared/project-session'
 import type { ProjectHierarchyNode } from '@renderer/stores/workspaces'
 import type { AppSurface } from './GlobalActivityBar.vue'
@@ -24,19 +22,16 @@ const emit = defineEmits<{
 }>()
 
 const activeSurface = ref<AppSurface>('command')
-
-const pendingCount = computed(() => {
-  return props.hierarchy.flatMap((project) => project.sessions).filter((session) => ['awaiting_input', 'error', 'needs_confirmation'].includes(session.status)).length
-})
 </script>
 
 <template>
   <main class="app-shell">
-    <GlobalActivityBar :active-surface="activeSurface" :pending-count="pendingCount" @select="activeSurface = $event" />
+    <GlobalActivityBar :active-surface="activeSurface" @select="activeSurface = $event" />
 
-    <section class="app-shell__viewport">
+    <section class="app-shell__viewport" aria-label="Application viewport">
       <CommandSurface
         v-if="activeSurface === 'command'"
+        aria-label="Command surface"
         :hierarchy="hierarchy"
         :active-project="activeProject"
         :active-session="activeSession"
@@ -47,9 +42,7 @@ const pendingCount = computed(() => {
         @create-project="emit('createProject', $event)"
         @create-session="emit('createSession', $event)"
       />
-      <InboxQueueSurface v-else-if="activeSurface === 'queue'" />
-      <ContextTreeSurface v-else-if="activeSurface === 'tree'" />
-      <section v-else class="placeholder-surface" data-surface="settings">
+      <section v-else class="placeholder-surface" data-surface="settings" aria-label="Settings surface">
         <section class="placeholder-surface__lane placeholder-surface__lane--full">
           <p class="eyebrow">Settings</p>
           <h2>Settings placeholder</h2>
