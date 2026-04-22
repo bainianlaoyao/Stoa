@@ -33,6 +33,7 @@ const emit = defineEmits<{
           @select-session="emit('selectSession', $event)"
           @create-project="emit('createProject', $event)"
           @create-session="emit('createSession', $event)"
+          @archive-session="emit('archiveSession', $event)"
         />
 
         <TerminalViewport :project="activeProject" :session="activeSession" />

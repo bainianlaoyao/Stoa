@@ -293,6 +293,15 @@ describe('WorkspaceHierarchyPanel', () => {
       await children[0].trigger('click')
       expect(wrapper.emitted('selectSession')).toEqual([['session_1']])
     })
+
+    it('clicking archive button emits archiveSession with session id', async () => {
+      const wrapper = mountPanel()
+
+      await wrapper.find('[data-archive-session="session_1"]').trigger('click')
+
+      expect(wrapper.emitted('archiveSession')).toEqual([['session_1']])
+      expect(wrapper.emitted('selectSession')).toBeUndefined()
+    })
   })
 
   describe('add session button', () => {

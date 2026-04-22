@@ -18,6 +18,7 @@ const emit = defineEmits<{
   selectSession: [sessionId: string]
   createProject: [payload: { name: string; path: string }]
   createSession: [payload: { projectId: string; type: SessionType; title: string }]
+  archiveSession: [sessionId: string]
 }>()
 
 const showNewProject = ref(false)
@@ -169,21 +170,34 @@ watch(
             </div>
           </div>
 
-          <button
+          <div
             v-for="session in project.sessions"
             :key="session.id"
-            class="route-item child"
-            :class="{ 'route-item--active': session.id === activeSessionId }"
-            :aria-current="session.id === activeSessionId ? 'true' : undefined"
-            type="button"
-            @click="emit('selectSession', session.id)"
+            class="route-session-row"
           >
-            <div class="route-dot" :class="session.status" />
-            <div class="route-copy">
-              <div class="route-name">{{ session.title }}</div>
-              <div class="route-time">{{ session.type }}</div>
-            </div>
-          </button>
+            <button
+              class="route-item child"
+              :class="{ 'route-item--active': session.id === activeSessionId }"
+              :aria-current="session.id === activeSessionId ? 'true' : undefined"
+              type="button"
+              @click="emit('selectSession', session.id)"
+            >
+              <div class="route-dot" :class="session.status" />
+              <div class="route-copy">
+                <div class="route-name">{{ session.title }}</div>
+                <div class="route-time">{{ session.type }}</div>
+              </div>
+            </button>
+            <button
+              class="route-archive-session"
+              type="button"
+              :aria-label="`Archive ${session.title}`"
+              :data-archive-session="session.id"
+              @click.stop="emit('archiveSession', session.id)"
+            >
+              ×
+            </button>
+          </div>
         </div>
       </div>
     </div>

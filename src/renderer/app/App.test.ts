@@ -33,7 +33,8 @@ const mockCreatedSession: SessionSummary = {
   externalSessionId: null,
   createdAt: 'x',
   updatedAt: 'x',
-  lastActivatedAt: 'x'
+  lastActivatedAt: 'x',
+  archived: false
 }
 
 async function flush(): Promise<void> {
@@ -48,6 +49,9 @@ function setupVibecoding(overrides?: Partial<typeof window.vibecoding>) {
     createSession: vi.fn().mockResolvedValue({ ...mockCreatedSession }),
     setActiveProject: vi.fn().mockResolvedValue(undefined),
     setActiveSession: vi.fn().mockResolvedValue(undefined),
+    archiveSession: vi.fn().mockResolvedValue(undefined),
+    restoreSession: vi.fn().mockResolvedValue(undefined),
+    listArchivedSessions: vi.fn().mockResolvedValue([]),
     sendSessionInput: vi.fn().mockResolvedValue(undefined),
     sendSessionResize: vi.fn().mockResolvedValue(undefined),
     onTerminalData: vi.fn().mockReturnValue(() => {}),
@@ -95,7 +99,7 @@ describe('App (root)', () => {
         activeSessionId: 's1',
         terminalWebhookPort: 42,
         projects: [{ id: 'p1', name: 'Proj', path: '/p', createdAt: 't', updatedAt: 't' }],
-        sessions: [{ id: 's1', projectId: 'p1', type: 'shell', status: 'running', title: 'Sess', summary: '', recoveryMode: 'fresh-shell', externalSessionId: null, createdAt: 't', updatedAt: 't', lastActivatedAt: 't' }]
+        sessions: [{ id: 's1', projectId: 'p1', type: 'shell', status: 'running', title: 'Sess', summary: '', recoveryMode: 'fresh-shell', externalSessionId: null, createdAt: 't', updatedAt: 't', lastActivatedAt: 't', archived: false }]
       }
       setupVibecoding({ getBootstrapState: vi.fn().mockResolvedValue(hydratedState) })
 
@@ -106,6 +110,30 @@ describe('App (root)', () => {
       expect(store.projects).toHaveLength(1)
       expect(store.activeProjectId).toBe('p1')
       expect(store.activeSessionId).toBe('s1')
+    })
+
+    it('on mount loads archived sessions into the store', async () => {
+      const archivedSession: SessionSummary = {
+        id: 'archived_1',
+        projectId: 'p1',
+        type: 'shell',
+        status: 'exited',
+        title: 'Archived session',
+        summary: 'done',
+        recoveryMode: 'fresh-shell',
+        externalSessionId: null,
+        createdAt: 't',
+        updatedAt: 't',
+        lastActivatedAt: 't',
+        archived: true
+      }
+      setupVibecoding({ listArchivedSessions: vi.fn().mockResolvedValue([archivedSession]) })
+
+      wrapper = await mountApp(pinia)
+      await flush()
+
+      expect(window.vibecoding.listArchivedSessions).toHaveBeenCalledOnce()
+      expect(useWorkspaceStore(pinia).archivedSessions).toEqual([archivedSession])
     })
   })
 
@@ -133,7 +161,7 @@ describe('App (root)', () => {
         activeSessionId: null,
         terminalWebhookPort: 0,
         projects: [{ id: 'p1', name: 'P', path: '/p', createdAt: 't', updatedAt: 't' }],
-        sessions: [{ id: 's1', projectId: 'p1', type: 'shell', status: 'running', title: 'S', summary: '', recoveryMode: 'fresh-shell', externalSessionId: null, createdAt: 't', updatedAt: 't', lastActivatedAt: 't' }]
+        sessions: [{ id: 's1', projectId: 'p1', type: 'shell', status: 'running', title: 'S', summary: '', recoveryMode: 'fresh-shell', externalSessionId: null, createdAt: 't', updatedAt: 't', lastActivatedAt: 't', archived: false }]
       }
       setupVibecoding({ getBootstrapState: vi.fn().mockResolvedValue(hydratedState) })
 
@@ -151,7 +179,7 @@ describe('App (root)', () => {
         activeSessionId: null,
         terminalWebhookPort: 0,
         projects: [{ id: 'p1', name: 'P', path: '/p', createdAt: 't', updatedAt: 't' }],
-        sessions: [{ id: 's1', projectId: 'p1', type: 'shell', status: 'running', title: 'S', summary: '', recoveryMode: 'fresh-shell', externalSessionId: null, createdAt: 't', updatedAt: 't', lastActivatedAt: 't' }]
+        sessions: [{ id: 's1', projectId: 'p1', type: 'shell', status: 'running', title: 'S', summary: '', recoveryMode: 'fresh-shell', externalSessionId: null, createdAt: 't', updatedAt: 't', lastActivatedAt: 't', archived: false }]
       }
       setupVibecoding({ getBootstrapState: vi.fn().mockResolvedValue(hydratedState) })
 
@@ -220,6 +248,103 @@ describe('App (root)', () => {
       await flush()
       expect(useWorkspaceStore(pinia).sessions).toHaveLength(1)
       expect(useWorkspaceStore(pinia).sessions[0].id).toBe('new_session')
+    })
+  })
+
+  describe('session archiving', () => {
+    it('archiveSession event updates store and calls window.vibecoding.archiveSession', async () => {
+      const hydratedState: BootstrapState = {
+        activeProjectId: 'p1',
+        activeSessionId: 's1',
+        terminalWebhookPort: 0,
+        projects: [{ id: 'p1', name: 'P', path: '/p', createdAt: 't', updatedAt: 't' }],
+        sessions: [{ id: 's1', projectId: 'p1', type: 'shell', status: 'running', title: 'S', summary: '', recoveryMode: 'fresh-shell', externalSessionId: null, createdAt: 't', updatedAt: 't', lastActivatedAt: 't', archived: false }]
+      }
+      setupVibecoding({ getBootstrapState: vi.fn().mockResolvedValue(hydratedState) })
+
+      wrapper = await mountApp(pinia)
+      await flush()
+
+      const appShell = wrapper.findComponent({ name: 'AppShell' })
+      await appShell.vm.$emit('archiveSession', 's1')
+      await flush()
+
+      const store = useWorkspaceStore(pinia)
+      expect(window.vibecoding.archiveSession).toHaveBeenCalledWith('s1')
+      expect(store.sessions[0].archived).toBe(true)
+      expect(store.activeSessionId).toBeNull()
+    })
+
+    it('archiveSession failure restores session and records error', async () => {
+      const hydratedState: BootstrapState = {
+        activeProjectId: 'p1',
+        activeSessionId: 's1',
+        terminalWebhookPort: 0,
+        projects: [{ id: 'p1', name: 'P', path: '/p', createdAt: 't', updatedAt: 't' }],
+        sessions: [{ id: 's1', projectId: 'p1', type: 'shell', status: 'running', title: 'S', summary: '', recoveryMode: 'fresh-shell', externalSessionId: null, createdAt: 't', updatedAt: 't', lastActivatedAt: 't', archived: false }]
+      }
+      setupVibecoding({
+        getBootstrapState: vi.fn().mockResolvedValue(hydratedState),
+        archiveSession: vi.fn().mockRejectedValue(new Error('archive failed'))
+      })
+
+      wrapper = await mountApp(pinia)
+      await flush()
+
+      const appShell = wrapper.findComponent({ name: 'AppShell' })
+      await appShell.vm.$emit('archiveSession', 's1')
+      await flush()
+
+      const store = useWorkspaceStore(pinia)
+      expect(store.sessions[0].archived).toBe(false)
+      expect(store.lastError).toBe('archive failed')
+    })
+
+    it('restoreSession event updates store and calls window.vibecoding.restoreSession', async () => {
+      const hydratedState: BootstrapState = {
+        activeProjectId: 'p1',
+        activeSessionId: null,
+        terminalWebhookPort: 0,
+        projects: [{ id: 'p1', name: 'P', path: '/p', createdAt: 't', updatedAt: 't' }],
+        sessions: [{ id: 's1', projectId: 'p1', type: 'shell', status: 'running', title: 'S', summary: '', recoveryMode: 'fresh-shell', externalSessionId: null, createdAt: 't', updatedAt: 't', lastActivatedAt: 't', archived: true }]
+      }
+      setupVibecoding({ getBootstrapState: vi.fn().mockResolvedValue(hydratedState) })
+
+      wrapper = await mountApp(pinia)
+      await flush()
+
+      const appShell = wrapper.findComponent({ name: 'AppShell' })
+      await appShell.vm.$emit('restoreSession', 's1')
+      await flush()
+
+      const store = useWorkspaceStore(pinia)
+      expect(window.vibecoding.restoreSession).toHaveBeenCalledWith('s1')
+      expect(store.sessions[0].archived).toBe(false)
+    })
+
+    it('restoreSession failure re-archives session and records error', async () => {
+      const hydratedState: BootstrapState = {
+        activeProjectId: 'p1',
+        activeSessionId: null,
+        terminalWebhookPort: 0,
+        projects: [{ id: 'p1', name: 'P', path: '/p', createdAt: 't', updatedAt: 't' }],
+        sessions: [{ id: 's1', projectId: 'p1', type: 'shell', status: 'running', title: 'S', summary: '', recoveryMode: 'fresh-shell', externalSessionId: null, createdAt: 't', updatedAt: 't', lastActivatedAt: 't', archived: true }]
+      }
+      setupVibecoding({
+        getBootstrapState: vi.fn().mockResolvedValue(hydratedState),
+        restoreSession: vi.fn().mockRejectedValue(new Error('restore failed'))
+      })
+
+      wrapper = await mountApp(pinia)
+      await flush()
+
+      const appShell = wrapper.findComponent({ name: 'AppShell' })
+      await appShell.vm.$emit('restoreSession', 's1')
+      await flush()
+
+      const store = useWorkspaceStore(pinia)
+      expect(store.sessions[0].archived).toBe(true)
+      expect(store.lastError).toBe('restore failed')
     })
   })
 
