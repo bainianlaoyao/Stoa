@@ -288,4 +288,86 @@ describe('ProjectSessionManager', () => {
       expect(manager.snapshot().activeSessionId).toBe(before)
     })
   })
+
+  describe('archive and restore', () => {
+    test('archiveSession sets archived=true and clears activeSessionId', async () => {
+      const globalStatePath = await createTempGlobalStatePath()
+      const projectDir = await createTempProjectDir()
+      const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
+      const project = await manager.createProject({ path: projectDir, name: 'test' })
+      const session = await manager.createSession({ projectId: project.id, type: 'shell', title: 'S1' })
+
+      await manager.archiveSession(session.id)
+
+      const updated = manager.snapshot().sessions.find(s => s.id === session.id)!
+      expect(updated.archived).toBe(true)
+      expect(manager.snapshot().activeSessionId).toBeNull()
+    })
+
+    test('restoreSession sets archived=false', async () => {
+      const globalStatePath = await createTempGlobalStatePath()
+      const projectDir = await createTempProjectDir()
+      const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
+      const project = await manager.createProject({ path: projectDir, name: 'test' })
+      const session = await manager.createSession({ projectId: project.id, type: 'shell', title: 'S1' })
+
+      await manager.archiveSession(session.id)
+      await manager.restoreSession(session.id)
+
+      const updated = manager.snapshot().sessions.find(s => s.id === session.id)!
+      expect(updated.archived).toBe(false)
+    })
+
+    test('getArchivedSessions returns only archived sessions', async () => {
+      const manager = ProjectSessionManager.createForTest()
+      const project = await manager.createProject({ name: 'alpha', path: 'D:/alpha' })
+      const s1 = await manager.createSession({ projectId: project.id, type: 'shell', title: 'S1' })
+      await manager.createSession({ projectId: project.id, type: 'shell', title: 'S2' })
+
+      await manager.archiveSession(s1.id)
+
+      const archived = manager.getArchivedSessions()
+      expect(archived).toHaveLength(1)
+      expect(archived[0]!.id).toBe(s1.id)
+    })
+
+    test('archiveSession is no-op for unknown session ID', async () => {
+      const globalStatePath = await createTempGlobalStatePath()
+      const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
+      await expect(manager.archiveSession('nonexistent')).resolves.toBeUndefined()
+    })
+
+    test('restoreSession is no-op for unknown session ID', async () => {
+      const globalStatePath = await createTempGlobalStatePath()
+      const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
+      await expect(manager.restoreSession('nonexistent')).resolves.toBeUndefined()
+    })
+
+    test('buildBootstrapRecoveryPlan skips archived sessions', async () => {
+      const manager = ProjectSessionManager.createForTest()
+      const project = await manager.createProject({ name: 'alpha', path: 'D:/alpha' })
+      const s1 = await manager.createSession({ projectId: project.id, type: 'shell', title: 'S1' })
+      await manager.createSession({ projectId: project.id, type: 'shell', title: 'S2' })
+
+      await manager.archiveSession(s1.id)
+
+      const plan = manager.buildBootstrapRecoveryPlan()
+      expect(plan).toHaveLength(1)
+      expect(plan[0]!.sessionId).not.toBe(s1.id)
+    })
+
+    test('archived state persists across manager restart', async () => {
+      const globalStatePath = await createTempGlobalStatePath()
+      const projectDir = await createTempProjectDir()
+
+      const manager1 = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
+      const project = await manager1.createProject({ path: projectDir, name: 'test' })
+      const session = await manager1.createSession({ projectId: project.id, type: 'shell', title: 'S1' })
+      await manager1.archiveSession(session.id)
+
+      const manager2 = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
+      const restored = manager2.snapshot().sessions.find(s => s.id === session.id)!
+      expect(restored.archived).toBe(true)
+    })
+  })
 })
