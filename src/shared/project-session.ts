@@ -56,11 +56,37 @@ export interface PersistedSession {
   recovery_mode: SessionRecoveryMode
 }
 
+export interface AppSettings {
+  shellPath: string
+  terminalFontSize: number
+  providers: Record<string, string>
+}
+
+export const DEFAULT_SETTINGS: AppSettings = {
+  shellPath: '',
+  terminalFontSize: 14,
+  providers: {}
+}
+
 export interface PersistedAppStateV2 {
   version: 2
   active_project_id: string | null
   active_session_id: string | null
   projects: PersistedProject[]
+  sessions: PersistedSession[]
+  settings?: AppSettings
+}
+
+export interface PersistedGlobalStateV3 {
+  version: 3
+  active_project_id: string | null
+  active_session_id: string | null
+  projects: PersistedProject[]
+  settings?: AppSettings
+}
+
+export interface PersistedProjectSessions {
+  project_id: string
   sessions: PersistedSession[]
 }
 
@@ -106,6 +132,12 @@ export interface RendererApi {
   sendSessionResize: (sessionId: string, cols: number, rows: number) => Promise<void>
   onTerminalData: (callback: (chunk: TerminalDataChunk) => void) => () => void
   onSessionEvent: (callback: (event: SessionStatusEvent) => void) => () => void
+  getSettings: () => Promise<AppSettings>
+  setSetting: (key: string, value: unknown) => Promise<void>
+  pickFolder: (options?: { title?: string }) => Promise<string | null>
+  pickFile: (options?: { title?: string; filters?: Array<{ name: string; extensions: string[] }> }) => Promise<string | null>
+  detectShell: () => Promise<string | null>
+  detectProvider: (providerId: string) => Promise<string | null>
 }
 
 export interface SessionEventPayload {

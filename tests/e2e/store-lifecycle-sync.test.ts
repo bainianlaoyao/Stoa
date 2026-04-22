@@ -1,17 +1,3 @@
-/**
- * E2E: Store Lifecycle Synchronization
- *
- * Tests the full cross-process data flow:
- *   startSessionRuntime()
- *     → ProjectSessionManager state persistence
- *     → SessionRuntimeController-style event push (simulated)
- *     → Pinia store.updateSession()
- *     → computed reactivity (activeSession, projectHierarchy)
- *
- * This bridges the gap between:
- *   - session-runtime-lifecycle.test.ts (backend only, no store)
- *   - frontend-store-projection.test.ts (static snapshot only, no live transitions)
- */
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { PtyHost } from '@core/pty-host'
@@ -22,7 +8,8 @@ import type { SessionStatus, SessionStatusEvent } from '@shared/project-session'
 import type { ProviderCommand } from '@shared/project-session'
 import type { ProviderDefinition } from '@extensions/providers'
 import { useWorkspaceStore } from '@renderer/stores/workspaces'
-import { createTestWorkspace, createTestStatePath, readStateFile } from './helpers'
+import { createTestWorkspace, createTestGlobalStatePath, readGlobalStateFile } from './helpers'
+import { readProjectSessions } from '@core/state-store'
 
 function createEchoProvider(): ProviderDefinition {
   const isWin = process.platform === 'win32'
@@ -116,9 +103,9 @@ describe('E2E: Store Lifecycle Synchronization', () => {
   describe('Single session: full lifecycle through store', () => {
     test('store tracks session through bootstrapping → starting → running → exited', async () => {
       const workspaceDir = await createTestWorkspace('vibecoding-sync-lifecycle-')
-      const stateFilePath = await createTestStatePath()
+      const globalStatePath = await createTestGlobalStatePath()
 
-      const manager = await ProjectSessionManager.create({ webhookPort: null, stateFilePath })
+      const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
       const project = await manager.createProject({ path: workspaceDir, name: 'sync-test' })
       const session = await manager.createSession({ projectId: project.id, type: 'shell', title: 'Sync Shell' })
 
@@ -160,9 +147,9 @@ describe('E2E: Store Lifecycle Synchronization', () => {
 
     test('projectHierarchy reflects status changes through lifecycle', async () => {
       const workspaceDir = await createTestWorkspace('vibecoding-sync-hierarchy-')
-      const stateFilePath = await createTestStatePath()
+      const globalStatePath = await createTestGlobalStatePath()
 
-      const manager = await ProjectSessionManager.create({ webhookPort: null, stateFilePath })
+      const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
       const project = await manager.createProject({ path: workspaceDir, name: 'hierarchy-sync' })
       const session = await manager.createSession({ projectId: project.id, type: 'shell', title: 'Hierarchy Shell' })
 
@@ -196,9 +183,9 @@ describe('E2E: Store Lifecycle Synchronization', () => {
 
     test('state on disk matches store state at each lifecycle stage', async () => {
       const workspaceDir = await createTestWorkspace('vibecoding-sync-disk-')
-      const stateFilePath = await createTestStatePath()
+      const globalStatePath = await createTestGlobalStatePath()
 
-      const manager = await ProjectSessionManager.create({ webhookPort: null, stateFilePath })
+      const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
       const project = await manager.createProject({ path: workspaceDir, name: 'disk-sync' })
       const session = await manager.createSession({ projectId: project.id, type: 'shell', title: 'Disk Shell' })
 
@@ -220,7 +207,7 @@ describe('E2E: Store Lifecycle Synchronization', () => {
 
       replayEventsToStore(store, capturing.events)
 
-      const diskRunning = await readStateFile(stateFilePath)
+      const diskRunning = await readProjectSessions(workspaceDir)
       expect(diskRunning.sessions[0]!.last_known_status).toBe('running')
       expect(store.sessions[0]!.status).toBe('running')
       expect(diskRunning.sessions[0]!.last_known_status).toBe(store.sessions[0]!.status)
@@ -228,16 +215,16 @@ describe('E2E: Store Lifecycle Synchronization', () => {
       await waitForExit(capturing.exitSignal)
       replayEventsToStore(store, capturing.events)
 
-      const diskExited = await readStateFile(stateFilePath)
+      const diskExited = await readProjectSessions(workspaceDir)
       expect(diskExited.sessions[0]!.last_known_status).toBe('exited')
       expect(store.sessions[0]!.status).toBe('exited')
     })
 
     test('externalSessionId propagates to store after running', async () => {
       const workspaceDir = await createTestWorkspace('vibecoding-sync-extid-')
-      const stateFilePath = await createTestStatePath()
+      const globalStatePath = await createTestGlobalStatePath()
 
-      const manager = await ProjectSessionManager.create({ webhookPort: null, stateFilePath })
+      const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
       const project = await manager.createProject({ path: workspaceDir, name: 'extid-sync' })
       const session = await manager.createSession({ projectId: project.id, type: 'shell', title: 'ExtID Shell' })
 
@@ -271,9 +258,9 @@ describe('E2E: Store Lifecycle Synchronization', () => {
   describe('Event sequence validation', () => {
     test('events arrive in correct order: starting → running → exited', async () => {
       const workspaceDir = await createTestWorkspace('vibecoding-sync-order-')
-      const stateFilePath = await createTestStatePath()
+      const globalStatePath = await createTestGlobalStatePath()
 
-      const manager = await ProjectSessionManager.create({ webhookPort: null, stateFilePath })
+      const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
       const project = await manager.createProject({ path: workspaceDir, name: 'order-test' })
       const session = await manager.createSession({ projectId: project.id, type: 'shell', title: 'Order Shell' })
 
@@ -300,9 +287,9 @@ describe('E2E: Store Lifecycle Synchronization', () => {
 
     test('replaying events to store produces same state as backend snapshot', async () => {
       const workspaceDir = await createTestWorkspace('vibecoding-sync-replay-')
-      const stateFilePath = await createTestStatePath()
+      const globalStatePath = await createTestGlobalStatePath()
 
-      const manager = await ProjectSessionManager.create({ webhookPort: null, stateFilePath })
+      const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
       const project = await manager.createProject({ path: workspaceDir, name: 'replay-test' })
       const session = await manager.createSession({ projectId: project.id, type: 'shell', title: 'Replay Shell' })
 
@@ -332,9 +319,9 @@ describe('E2E: Store Lifecycle Synchronization', () => {
 
     test('terminal data captured alongside lifecycle events', async () => {
       const workspaceDir = await createTestWorkspace('vibecoding-sync-termdata-')
-      const stateFilePath = await createTestStatePath()
+      const globalStatePath = await createTestGlobalStatePath()
 
-      const manager = await ProjectSessionManager.create({ webhookPort: null, stateFilePath })
+      const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
       const project = await manager.createProject({ path: workspaceDir, name: 'termdata-test' })
       const session = await manager.createSession({ projectId: project.id, type: 'shell', title: 'TermData Shell' })
 
@@ -364,9 +351,9 @@ describe('E2E: Store Lifecycle Synchronization', () => {
   describe('Multi-session store sync', () => {
     test('two sessions: store tracks both through concurrent lifecycle', async () => {
       const workspaceDir = await createTestWorkspace('vibecoding-sync-multi-')
-      const stateFilePath = await createTestStatePath()
+      const globalStatePath = await createTestGlobalStatePath()
 
-      const manager = await ProjectSessionManager.create({ webhookPort: null, stateFilePath })
+      const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
       const project = await manager.createProject({ path: workspaceDir, name: 'multi-sync' })
       const session1 = await manager.createSession({ projectId: project.id, type: 'shell', title: 'Multi 1' })
       const session2 = await manager.createSession({ projectId: project.id, type: 'shell', title: 'Multi 2' })
@@ -423,9 +410,9 @@ describe('E2E: Store Lifecycle Synchronization', () => {
 
     test('active session switches correctly during concurrent lifecycles', async () => {
       const workspaceDir = await createTestWorkspace('vibecoding-sync-active-')
-      const stateFilePath = await createTestStatePath()
+      const globalStatePath = await createTestGlobalStatePath()
 
-      const manager = await ProjectSessionManager.create({ webhookPort: null, stateFilePath })
+      const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
       const project = await manager.createProject({ path: workspaceDir, name: 'active-sync' })
       const session1 = await manager.createSession({ projectId: project.id, type: 'shell', title: 'Active 1' })
       const session2 = await manager.createSession({ projectId: project.id, type: 'shell', title: 'Active 2' })
@@ -491,9 +478,9 @@ describe('E2E: Store Lifecycle Synchronization', () => {
   describe('Store-backend consistency after restart', () => {
     test('hydrating a fresh store from restarted manager matches original store state', async () => {
       const workspaceDir = await createTestWorkspace('vibecoding-sync-restart-')
-      const stateFilePath = await createTestStatePath()
+      const globalStatePath = await createTestGlobalStatePath()
 
-      const manager = await ProjectSessionManager.create({ webhookPort: null, stateFilePath })
+      const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
       const project = await manager.createProject({ path: workspaceDir, name: 'restart-sync' })
       const session = await manager.createSession({ projectId: project.id, type: 'shell', title: 'Restart Shell' })
 
@@ -519,7 +506,7 @@ describe('E2E: Store Lifecycle Synchronization', () => {
       const finalSnapshot = manager.snapshot()
       store1.hydrate(finalSnapshot)
 
-      const restarted = await ProjectSessionManager.create({ webhookPort: null, stateFilePath })
+      const restarted = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
       const restartedSnapshot = restarted.snapshot()
 
       setActivePinia(createPinia())

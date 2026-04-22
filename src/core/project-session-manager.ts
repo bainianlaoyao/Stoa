@@ -1,18 +1,29 @@
 import { randomUUID } from 'node:crypto'
 import type {
+  AppSettings,
   BootstrapState,
   CreateProjectRequest,
   CreateSessionRequest,
-  PersistedAppStateV2,
+  PersistedGlobalStateV3,
+  PersistedProject,
+  PersistedProjectSessions,
+  PersistedSession,
   ProjectSummary,
   SessionSummary,
   SessionType
 } from '@shared/project-session'
-import { DEFAULT_STATE, readPersistedState, writePersistedState } from '@core/state-store'
+import { DEFAULT_SETTINGS } from '@shared/project-session'
+import {
+  DEFAULT_GLOBAL_STATE,
+  readGlobalState,
+  readAllProjectSessions,
+  writeGlobalState,
+  writeProjectSessions
+} from '@core/state-store'
 
 interface ProjectSessionManagerOptions {
   webhookPort: number | null
-  stateFilePath?: string
+  globalStatePath?: string
 }
 
 function normalizePath(path: string): string {
@@ -29,61 +40,57 @@ function structuredCloneState(state: BootstrapState): BootstrapState {
   }
 }
 
-function toBootstrapState(state: PersistedAppStateV2, webhookPort: number | null): BootstrapState {
+function toPersistedProject(project: ProjectSummary): PersistedProject {
   return {
-    activeProjectId: state.active_project_id,
-    activeSessionId: state.active_session_id,
-    terminalWebhookPort: webhookPort,
-    projects: state.projects.map((project) => ({
-      id: project.project_id,
-      name: project.name,
-      path: project.path,
-      defaultSessionType: project.default_session_type,
-      createdAt: project.created_at,
-      updatedAt: project.updated_at
-    })),
-    sessions: state.sessions.map((session) => ({
-      id: session.session_id,
-      projectId: session.project_id,
-      type: session.type,
-      status: session.last_known_status,
-      title: session.title,
-      summary: session.last_summary,
-      recoveryMode: session.recovery_mode,
-      externalSessionId: session.external_session_id,
-      createdAt: session.created_at,
-      updatedAt: session.updated_at,
-      lastActivatedAt: session.last_activated_at
-    }))
+    project_id: project.id,
+    name: project.name,
+    path: project.path,
+    default_session_type: project.defaultSessionType,
+    created_at: project.createdAt,
+    updated_at: project.updatedAt
   }
 }
 
-function toPersistedState(state: BootstrapState): PersistedAppStateV2 {
+function toPersistedSession(session: SessionSummary): PersistedSession {
   return {
-    version: 2,
-    active_project_id: state.activeProjectId,
-    active_session_id: state.activeSessionId,
-    projects: state.projects.map((project) => ({
-      project_id: project.id,
-      name: project.name,
-      path: project.path,
-      default_session_type: project.defaultSessionType,
-      created_at: project.createdAt,
-      updated_at: project.updatedAt
-    })),
-    sessions: state.sessions.map((session) => ({
-      session_id: session.id,
-      project_id: session.projectId,
-      type: session.type,
-      title: session.title,
-      last_known_status: session.status,
-      last_summary: session.summary,
-      external_session_id: session.externalSessionId,
-      created_at: session.createdAt,
-      updated_at: session.updatedAt,
-      last_activated_at: session.lastActivatedAt,
-      recovery_mode: session.recoveryMode
-    }))
+    session_id: session.id,
+    project_id: session.projectId,
+    type: session.type,
+    title: session.title,
+    last_known_status: session.status,
+    last_summary: session.summary,
+    external_session_id: session.externalSessionId,
+    created_at: session.createdAt,
+    updated_at: session.updatedAt,
+    last_activated_at: session.lastActivatedAt,
+    recovery_mode: session.recoveryMode
+  }
+}
+
+function toSessionSummary(session: PersistedSession): SessionSummary {
+  return {
+    id: session.session_id,
+    projectId: session.project_id,
+    type: session.type,
+    status: session.last_known_status,
+    title: session.title,
+    summary: session.last_summary,
+    recoveryMode: session.recovery_mode,
+    externalSessionId: session.external_session_id,
+    createdAt: session.created_at,
+    updatedAt: session.updated_at,
+    lastActivatedAt: session.last_activated_at
+  }
+}
+
+function toProjectSummary(project: PersistedProject): ProjectSummary {
+  return {
+    id: project.project_id,
+    name: project.name,
+    path: project.path,
+    defaultSessionType: project.default_session_type,
+    createdAt: project.created_at,
+    updatedAt: project.updated_at
   }
 }
 
@@ -93,17 +100,30 @@ function createSessionRecoveryMode(type: SessionType) {
 
 export class ProjectSessionManager {
   private state: BootstrapState
-  private readonly stateFilePath?: string
+  private readonly globalStatePath?: string
+  private settings: AppSettings
 
-  private constructor(initialState: BootstrapState, stateFilePath?: string) {
+  private constructor(initialState: BootstrapState, globalStatePath?: string, persistedSettings?: AppSettings) {
     this.state = structuredCloneState(initialState)
-    this.stateFilePath = stateFilePath
+    this.globalStatePath = globalStatePath
+    this.settings = persistedSettings ? { ...persistedSettings } : { ...DEFAULT_SETTINGS }
   }
 
   static async create(options: ProjectSessionManagerOptions): Promise<ProjectSessionManager> {
-    const persisted = await readPersistedState(options.stateFilePath)
-    const initialState = toBootstrapState(persisted, options.webhookPort)
-    const manager = new ProjectSessionManager(initialState, options.stateFilePath)
+    const persistedGlobal = await readGlobalState(options.globalStatePath)
+    const projects = persistedGlobal.projects.map(toProjectSummary)
+    const allSessions = await readAllProjectSessions(persistedGlobal.projects)
+    const sessions = allSessions.map(toSessionSummary)
+
+    const initialState: BootstrapState = {
+      activeProjectId: persistedGlobal.active_project_id,
+      activeSessionId: persistedGlobal.active_session_id,
+      terminalWebhookPort: options.webhookPort,
+      projects,
+      sessions
+    }
+
+    const manager = new ProjectSessionManager(initialState, options.globalStatePath, persistedGlobal.settings)
     await manager.persist()
     return manager
   }
@@ -115,7 +135,7 @@ export class ProjectSessionManager {
       terminalWebhookPort: null,
       projects: [],
       sessions: []
-    })
+    }, undefined, { ...DEFAULT_SETTINGS })
   }
 
   snapshot(): BootstrapState {
@@ -233,11 +253,51 @@ export class ProjectSessionManager {
     return { ...session }
   }
 
-  private async persist(): Promise<void> {
-    const nextState = this.state.projects.length === 0 && this.state.sessions.length === 0
-      ? DEFAULT_STATE
-      : toPersistedState(this.state)
+  getSettings(): AppSettings {
+    return { ...this.settings }
+  }
 
-    await writePersistedState(nextState, this.stateFilePath)
+  async setSetting(key: string, value: unknown): Promise<void> {
+    if (key === 'shellPath' && typeof value === 'string') {
+      this.settings.shellPath = value
+    } else if (key === 'terminalFontSize' && typeof value === 'number') {
+      this.settings.terminalFontSize = Math.max(12, Math.min(24, value))
+    } else if (key === 'providers' && typeof value === 'object' && value !== null) {
+      this.settings.providers = value as Record<string, string>
+    }
+    await this.persist()
+  }
+
+  private async persist(): Promise<void> {
+    const globalState: PersistedGlobalStateV3 =
+      this.state.projects.length === 0
+        ? { ...structuredClone(DEFAULT_GLOBAL_STATE), settings: this.settings }
+        : {
+            version: 3,
+            active_project_id: this.state.activeProjectId,
+            active_session_id: this.state.activeSessionId,
+            projects: this.state.projects.map(toPersistedProject),
+            settings: this.settings
+          }
+    await writeGlobalState(globalState, this.globalStatePath)
+
+    const persistedProjects = this.state.projects.map(toPersistedProject)
+    const persistedSessions = this.state.sessions.map(toPersistedSession)
+
+    const byProject = new Map<string, PersistedSession[]>()
+    for (const session of persistedSessions) {
+      const list = byProject.get(session.project_id) ?? []
+      list.push(session)
+      byProject.set(session.project_id, list)
+    }
+
+    for (const project of persistedProjects) {
+      const projectSessions = byProject.get(project.project_id) ?? []
+      const data: PersistedProjectSessions = {
+        project_id: project.project_id,
+        sessions: projectSessions
+      }
+      await writeProjectSessions(project.path, data)
+    }
   }
 }

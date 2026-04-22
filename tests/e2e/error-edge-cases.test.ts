@@ -1,10 +1,10 @@
-import { mkdtemp, readFile, rm, unlink, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, test } from 'vitest'
 import { ProjectSessionManager } from '@core/project-session-manager'
-import { readPersistedState } from '@core/state-store'
-import type { PersistedAppStateV2 } from '@shared/project-session'
+import { readGlobalState, readProjectSessions } from '@core/state-store'
+import type { PersistedGlobalStateV3 } from '@shared/project-session'
 
 const tempDirs: string[] = []
 
@@ -20,13 +20,13 @@ async function createTempDir(prefix: string): Promise<string> {
   return dir
 }
 
-async function createStateFilePath(): Promise<string> {
+async function createGlobalStatePath(): Promise<string> {
   const dir = await createTempDir('vibecoding-e2e-error-')
-  return join(dir, 'state.json')
+  return join(dir, 'global.json')
 }
 
-async function readStateFile(path: string): Promise<PersistedAppStateV2> {
-  return await readPersistedState(path)
+async function readGlobalFile(path: string): Promise<PersistedGlobalStateV3> {
+  return await readGlobalState(path)
 }
 
 async function writeRawStateFile(path: string, content: string): Promise<void> {
@@ -37,11 +37,11 @@ describe('E2E: Error and Edge Cases', () => {
   describe('Duplicate project path prevention', () => {
     test('rejects second project with same path (different name)', async () => {
       const workspaceDir = await createTempDir('vibecoding-e2e-dup-')
-      const stateFilePath = await createStateFilePath()
+      const globalStatePath = await createGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
       await manager.createProject({ path: workspaceDir, name: 'Alpha' })
@@ -54,16 +54,16 @@ describe('E2E: Error and Edge Cases', () => {
       expect(snapshot.projects).toHaveLength(1)
       expect(snapshot.projects[0]!.name).toBe('Alpha')
 
-      const diskState = await readStateFile(stateFilePath)
+      const diskState = await readGlobalFile(globalStatePath)
       expect(diskState.projects).toHaveLength(1)
     })
 
     test('rejects case-insensitive path match (D:/ALPHA vs d:/alpha)', async () => {
-      const stateFilePath = await createStateFilePath()
+      const globalStatePath = await createGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
       await manager.createProject({ path: 'D:/ALPHA', name: 'Upper' })
@@ -76,11 +76,11 @@ describe('E2E: Error and Edge Cases', () => {
     })
 
     test('rejects trailing slash variant (D:/alpha vs D:/alpha/)', async () => {
-      const stateFilePath = await createStateFilePath()
+      const globalStatePath = await createGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
       await manager.createProject({ path: 'D:/alpha', name: 'NoSlash' })
@@ -95,11 +95,11 @@ describe('E2E: Error and Edge Cases', () => {
 
   describe('Orphan session prevention', () => {
     test('rejects session with non-existent projectId', async () => {
-      const stateFilePath = await createStateFilePath()
+      const globalStatePath = await createGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
       await expect(
@@ -112,20 +112,17 @@ describe('E2E: Error and Edge Cases', () => {
 
       const snapshot = manager.snapshot()
       expect(snapshot.sessions).toHaveLength(0)
-
-      const diskState = await readStateFile(stateFilePath)
-      expect(diskState.sessions).toHaveLength(0)
     })
   })
 
   describe('State file corruption recovery', () => {
     test('recovers from corrupted JSON', async () => {
-      const stateFilePath = await createStateFilePath()
-      await writeRawStateFile(stateFilePath, '{not valid json!!!')
+      const globalStatePath = await createGlobalStatePath()
+      await writeRawStateFile(globalStatePath, '{not valid json!!!')
 
       const manager = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
       const snapshot = manager.snapshot()
@@ -137,12 +134,12 @@ describe('E2E: Error and Edge Cases', () => {
 
     test('can create projects and sessions normally after corruption recovery', async () => {
       const workspaceDir = await createTempDir('vibecoding-e2e-corrupt-')
-      const stateFilePath = await createStateFilePath()
-      await writeRawStateFile(stateFilePath, 'corrupt!!!')
+      const globalStatePath = await createGlobalStatePath()
+      await writeRawStateFile(globalStatePath, 'corrupt!!!')
 
       const manager = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
       const project = await manager.createProject({
@@ -163,18 +160,17 @@ describe('E2E: Error and Edge Cases', () => {
     })
 
     test('falls back to default for wrong version number', async () => {
-      const stateFilePath = await createStateFilePath()
-      await writeRawStateFile(stateFilePath, JSON.stringify({
+      const globalStatePath = await createGlobalStatePath()
+      await writeRawStateFile(globalStatePath, JSON.stringify({
         version: 99,
         active_project_id: null,
         active_session_id: null,
-        projects: [{ project_id: 'p1', name: 'X', path: 'D:/x', created_at: '', updated_at: '' }],
-        sessions: []
+        projects: [{ project_id: 'p1', name: 'X', path: 'D:/x', created_at: '', updated_at: '' }]
       }))
 
       const manager = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
       const snapshot = manager.snapshot()
@@ -183,16 +179,16 @@ describe('E2E: Error and Edge Cases', () => {
     })
 
     test('falls back to default when version=2 but missing projects key', async () => {
-      const stateFilePath = await createStateFilePath()
-      await writeRawStateFile(stateFilePath, JSON.stringify({
-        version: 2,
+      const globalStatePath = await createGlobalStatePath()
+      await writeRawStateFile(globalStatePath, JSON.stringify({
+        version: 3,
         active_project_id: null,
         active_session_id: null
       }))
 
       const manager = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
       const snapshot = manager.snapshot()
@@ -200,9 +196,9 @@ describe('E2E: Error and Edge Cases', () => {
     })
 
     test('falls back to default when version=2 but missing sessions key', async () => {
-      const stateFilePath = await createStateFilePath()
-      await writeRawStateFile(stateFilePath, JSON.stringify({
-        version: 2,
+      const globalStatePath = await createGlobalStatePath()
+      await writeRawStateFile(globalStatePath, JSON.stringify({
+        version: 3,
         active_project_id: null,
         active_session_id: null,
         projects: []
@@ -210,7 +206,7 @@ describe('E2E: Error and Edge Cases', () => {
 
       const manager = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
       const snapshot = manager.snapshot()
@@ -222,16 +218,16 @@ describe('E2E: Error and Edge Cases', () => {
     test('managers have in-memory isolation', async () => {
       const workspace1 = await createTempDir('vibecoding-e2e-conc-a-')
       const workspace2 = await createTempDir('vibecoding-e2e-conc-b-')
-      const stateFilePath = await createStateFilePath()
+      const globalStatePath = await createGlobalStatePath()
 
       const managerA = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
       const managerB = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
       await managerA.createProject({ path: workspace1, name: 'Project A' })
@@ -250,11 +246,11 @@ describe('E2E: Error and Edge Cases', () => {
 
   describe('Empty and null states', () => {
     test('fresh manager returns empty snapshot with null active IDs', async () => {
-      const stateFilePath = await createStateFilePath()
+      const globalStatePath = await createGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
       const snapshot = manager.snapshot()
@@ -265,38 +261,37 @@ describe('E2E: Error and Edge Cases', () => {
     })
 
     test('state.json on disk matches DEFAULT_STATE for empty manager', async () => {
-      const stateFilePath = await createStateFilePath()
+      const globalStatePath = await createGlobalStatePath()
 
       await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
-      const diskState = await readStateFile(stateFilePath)
-      expect(diskState.version).toBe(2)
+      const diskState = await readGlobalFile(globalStatePath)
+      expect(diskState.version).toBe(3)
       expect(diskState.projects).toEqual([])
-      expect(diskState.sessions).toEqual([])
       expect(diskState.active_project_id).toBeNull()
       expect(diskState.active_session_id).toBeNull()
     })
 
     test('recovers from external state file deletion', async () => {
       const workspaceDir = await createTempDir('vibecoding-e2e-del-')
-      const stateFilePath = await createStateFilePath()
+      const globalStatePath = await createGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
       await manager.createProject({ path: workspaceDir, name: 'Soon Gone' })
       expect(manager.snapshot().projects).toHaveLength(1)
 
-      await unlink(stateFilePath)
+      await unlink(globalStatePath)
 
       const freshManager = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
       const snapshot = freshManager.snapshot()
@@ -308,11 +303,11 @@ describe('E2E: Error and Edge Cases', () => {
   describe('Session status edge cases', () => {
     test('shell sessions always get recoveryMode fresh-shell', async () => {
       const workspaceDir = await createTempDir('vibecoding-e2e-shell-')
-      const stateFilePath = await createStateFilePath()
+      const globalStatePath = await createGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
       const project = await manager.createProject({ path: workspaceDir, name: 'P' })
@@ -325,11 +320,11 @@ describe('E2E: Error and Edge Cases', () => {
 
     test('opencode sessions always get recoveryMode resume-external', async () => {
       const workspaceDir = await createTempDir('vibecoding-e2e-oc-')
-      const stateFilePath = await createStateFilePath()
+      const globalStatePath = await createGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
       const project = await manager.createProject({ path: workspaceDir, name: 'P' })
@@ -342,11 +337,11 @@ describe('E2E: Error and Edge Cases', () => {
 
     test('opencode session WITH externalSessionId stores it correctly', async () => {
       const workspaceDir = await createTempDir('vibecoding-e2e-extid-')
-      const stateFilePath = await createStateFilePath()
+      const globalStatePath = await createGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
       const project = await manager.createProject({ path: workspaceDir, name: 'P' })
@@ -360,17 +355,17 @@ describe('E2E: Error and Edge Cases', () => {
       expect(session.externalSessionId).toBe('ext-abc-123')
       expect(session.recoveryMode).toBe('resume-external')
 
-      const diskState = await readStateFile(stateFilePath)
-      expect(diskState.sessions[0]!.external_session_id).toBe('ext-abc-123')
+      const diskSessions = await readProjectSessions(workspaceDir)
+      expect(diskSessions.sessions[0]!.external_session_id).toBe('ext-abc-123')
     })
 
     test('opencode session WITHOUT externalSessionId stores null', async () => {
       const workspaceDir = await createTempDir('vibecoding-e2e-noext-')
-      const stateFilePath = await createStateFilePath()
+      const globalStatePath = await createGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
       const project = await manager.createProject({ path: workspaceDir, name: 'P' })
@@ -387,11 +382,11 @@ describe('E2E: Error and Edge Cases', () => {
 
   describe('Path normalization', () => {
     test('rejects different case path as duplicate', async () => {
-      const stateFilePath = await createStateFilePath()
+      const globalStatePath = await createGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
       await manager.createProject({ path: 'D:/Alpha', name: 'Original' })
@@ -404,11 +399,11 @@ describe('E2E: Error and Edge Cases', () => {
     })
 
     test('rejects trailing slash variant as duplicate', async () => {
-      const stateFilePath = await createStateFilePath()
+      const globalStatePath = await createGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
       await manager.createProject({ path: 'D:/Alpha', name: 'Original' })
@@ -419,11 +414,11 @@ describe('E2E: Error and Edge Cases', () => {
     })
 
     test('rejects double trailing slash variant as duplicate', async () => {
-      const stateFilePath = await createStateFilePath()
+      const globalStatePath = await createGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
       await manager.createProject({ path: 'D:/Alpha', name: 'Original' })
@@ -434,11 +429,11 @@ describe('E2E: Error and Edge Cases', () => {
     })
 
     test('rejects Windows backslash variant as duplicate', async () => {
-      const stateFilePath = await createStateFilePath()
+      const globalStatePath = await createGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
       await manager.createProject({ path: 'D:/Alpha', name: 'Forward Slash' })
@@ -453,11 +448,11 @@ describe('E2E: Error and Edge Cases', () => {
 
   describe('Rapid sequential operations', () => {
     test('creates 5 projects rapidly with unique IDs', async () => {
-      const stateFilePath = await createStateFilePath()
+      const globalStatePath = await createGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
       const projects = []
@@ -474,17 +469,17 @@ describe('E2E: Error and Edge Cases', () => {
       const uniqueIds = new Set(ids)
       expect(uniqueIds.size).toBe(5)
 
-      const diskState = await readStateFile(stateFilePath)
+      const diskState = await readGlobalFile(globalStatePath)
       expect(diskState.projects).toHaveLength(5)
     })
 
     test('creates 5 sessions under same project rapidly', async () => {
       const workspaceDir = await createTempDir('vibecoding-e2e-rapid-s-')
-      const stateFilePath = await createStateFilePath()
+      const globalStatePath = await createGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
       const project = await manager.createProject({ path: workspaceDir, name: 'Rapid' })
@@ -512,11 +507,11 @@ describe('E2E: Error and Edge Cases', () => {
 
   describe('Bootstrap recovery plan edge cases', () => {
     test('empty sessions returns empty recovery plan', async () => {
-      const stateFilePath = await createStateFilePath()
+      const globalStatePath = await createGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
       const plan = manager.buildBootstrapRecoveryPlan()
@@ -525,11 +520,11 @@ describe('E2E: Error and Edge Cases', () => {
 
     test('mixed session types produce correct recovery actions', async () => {
       const workspaceDir = await createTempDir('vibecoding-e2e-recovery-')
-      const stateFilePath = await createStateFilePath()
+      const globalStatePath = await createGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
       const project = await manager.createProject({ path: workspaceDir, name: 'Recovery' })
@@ -557,11 +552,11 @@ describe('E2E: Error and Edge Cases', () => {
 
     test('opencode session without externalSessionId still gets resume-external action', async () => {
       const workspaceDir = await createTempDir('vibecoding-e2e-noext-recovery-')
-      const stateFilePath = await createStateFilePath()
+      const globalStatePath = await createGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
       const project = await manager.createProject({ path: workspaceDir, name: 'NoExt' })

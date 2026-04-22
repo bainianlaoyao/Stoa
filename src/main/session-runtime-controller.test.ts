@@ -2,7 +2,7 @@ import { describe, test, expect, beforeEach } from 'vitest'
 import { SessionRuntimeController } from './session-runtime-controller'
 import { IPC_CHANNELS } from '@core/ipc-channels'
 import { ProjectSessionManager } from '@core/project-session-manager'
-import { createTestStatePath, createTestWorkspace } from '../../tests/e2e/helpers'
+import { createTestGlobalStatePath, createTestWorkspace } from '../../tests/e2e/helpers'
 
 function createMockWindow() {
   const sent: Array<{ channel: string; data: unknown }> = []
@@ -24,8 +24,8 @@ describe('SessionRuntimeController', () => {
   let manager: ProjectSessionManager
 
   beforeEach(async () => {
-    const stateFilePath = await createTestStatePath()
-    manager = await ProjectSessionManager.create({ webhookPort: null, stateFilePath })
+    const globalStatePath = await createTestGlobalStatePath()
+    manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
   })
 
   test('markSessionStarting updates manager and pushes session event', async () => {

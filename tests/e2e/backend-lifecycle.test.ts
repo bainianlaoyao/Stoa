@@ -1,11 +1,10 @@
 import { randomUUID } from 'node:crypto'
 import { request } from 'node:http'
-import { mkdtemp, readFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import { ProjectSessionManager } from '@core/project-session-manager'
-import { readPersistedState } from '@core/state-store'
+import { readGlobalState, readProjectSessions } from '@core/state-store'
 import { createLocalWebhookServer } from '@core/webhook-server'
 import type { LocalWebhookServer } from '@core/webhook-server'
 import { startSessionRuntime } from '@core/session-runtime'
@@ -13,8 +12,8 @@ import { getProvider } from '@extensions/providers'
 import type { ProviderCommand, CanonicalSessionEvent } from '@shared/project-session'
 import {
   createTestWorkspace,
-  createTestStatePath,
-  readStateFile,
+  createTestGlobalStatePath,
+  readGlobalStateFile,
   tempDirs
 } from './helpers'
 
@@ -129,10 +128,10 @@ describe('E2E: Backend Full User Lifecycle', () => {
 
   describe('Phase 1: Fresh start → first project', () => {
     test('starts with empty state when no state file exists', async () => {
-      const stateFilePath = await createTestStatePath()
+      const globalStatePath = await createTestGlobalStatePath()
       const manager = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
       const snapshot = manager.snapshot()
@@ -144,11 +143,11 @@ describe('E2E: Backend Full User Lifecycle', () => {
 
     test('creates first project in test_workspace with real directory', async () => {
       const workspaceDir = await createTestWorkspace('vibecoding-e2e-test_workspace-')
-      const stateFilePath = await createTestStatePath()
+      const globalStatePath = await createTestGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
       const project = await manager.createProject({
@@ -166,11 +165,11 @@ describe('E2E: Backend Full User Lifecycle', () => {
 
     test('auto-activates the first created project', async () => {
       const workspaceDir = await createTestWorkspace('vibecoding-e2e-test_workspace-')
-      const stateFilePath = await createTestStatePath()
+      const globalStatePath = await createTestGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
       const project = await manager.createProject({
@@ -184,11 +183,11 @@ describe('E2E: Backend Full User Lifecycle', () => {
 
     test('persists project to state.json on disk', async () => {
       const workspaceDir = await createTestWorkspace('vibecoding-e2e-test_workspace-')
-      const stateFilePath = await createTestStatePath()
+      const globalStatePath = await createTestGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
       await manager.createProject({
@@ -196,7 +195,7 @@ describe('E2E: Backend Full User Lifecycle', () => {
         name: 'test_workspace'
       })
 
-      const diskState = await readStateFile(stateFilePath)
+      const diskState = await readGlobalStateFile(globalStatePath)
       expect(diskState.projects).toHaveLength(1)
       expect(diskState.projects[0]!.name).toBe('test_workspace')
       expect(diskState.projects[0]!.path).toBe(workspaceDir)
@@ -204,11 +203,11 @@ describe('E2E: Backend Full User Lifecycle', () => {
 
     test('re-reading state.json yields identical project data', async () => {
       const workspaceDir = await createTestWorkspace('vibecoding-e2e-test_workspace-')
-      const stateFilePath = await createTestStatePath()
+      const globalStatePath = await createTestGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
       const project = await manager.createProject({
@@ -216,7 +215,7 @@ describe('E2E: Backend Full User Lifecycle', () => {
         name: 'test_workspace'
       })
 
-      const diskState = await readStateFile(stateFilePath)
+      const diskState = await readGlobalStateFile(globalStatePath)
       expect(diskState.projects[0]!.project_id).toBe(project.id)
       expect(diskState.projects[0]!.name).toBe(project.name)
       expect(diskState.projects[0]!.path).toBe(project.path)
@@ -230,11 +229,11 @@ describe('E2E: Backend Full User Lifecycle', () => {
     test('creates second project in test_workspace2', async () => {
       const workspace1 = await createTestWorkspace('vibecoding-e2e-test_workspace-')
       const workspace2 = await createTestWorkspace('vibecoding-e2e-test_workspace2-')
-      const stateFilePath = await createTestStatePath()
+      const globalStatePath = await createTestGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
       await manager.createProject({ path: workspace1, name: 'test_workspace' })
@@ -248,11 +247,11 @@ describe('E2E: Backend Full User Lifecycle', () => {
 
     test('creates shell session under project 1', async () => {
       const workspaceDir = await createTestWorkspace('vibecoding-e2e-test_workspace-')
-      const stateFilePath = await createTestStatePath()
+      const globalStatePath = await createTestGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
       const project = await manager.createProject({ path: workspaceDir, name: 'test_workspace' })
@@ -270,11 +269,11 @@ describe('E2E: Backend Full User Lifecycle', () => {
     test('creates opencode session under project 2', async () => {
       const workspace1 = await createTestWorkspace('vibecoding-e2e-test_workspace-')
       const workspace2 = await createTestWorkspace('vibecoding-e2e-test_workspace2-')
-      const stateFilePath = await createTestStatePath()
+      const globalStatePath = await createTestGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
       await manager.createProject({ path: workspace1, name: 'test_workspace' })
@@ -292,11 +291,11 @@ describe('E2E: Backend Full User Lifecycle', () => {
 
     test('shell session gets fresh-shell recovery mode', async () => {
       const workspaceDir = await createTestWorkspace('vibecoding-e2e-test_workspace-')
-      const stateFilePath = await createTestStatePath()
+      const globalStatePath = await createTestGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
       const project = await manager.createProject({ path: workspaceDir, name: 'test_workspace' })
@@ -311,11 +310,11 @@ describe('E2E: Backend Full User Lifecycle', () => {
 
     test('opencode session gets resume-external recovery mode', async () => {
       const workspaceDir = await createTestWorkspace('vibecoding-e2e-test_workspace-')
-      const stateFilePath = await createTestStatePath()
+      const globalStatePath = await createTestGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
       const project = await manager.createProject({ path: workspaceDir, name: 'test_workspace' })
@@ -331,11 +330,11 @@ describe('E2E: Backend Full User Lifecycle', () => {
     test('new session becomes active and switches active project', async () => {
       const workspace1 = await createTestWorkspace('vibecoding-e2e-test_workspace-')
       const workspace2 = await createTestWorkspace('vibecoding-e2e-test_workspace2-')
-      const stateFilePath = await createTestStatePath()
+      const globalStatePath = await createTestGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
       const project1 = await manager.createProject({ path: workspace1, name: 'test_workspace' })
@@ -357,11 +356,11 @@ describe('E2E: Backend Full User Lifecycle', () => {
     test('all data persisted correctly to state.json', async () => {
       const workspace1 = await createTestWorkspace('vibecoding-e2e-test_workspace-')
       const workspace2 = await createTestWorkspace('vibecoding-e2e-test_workspace2-')
-      const stateFilePath = await createTestStatePath()
+      const globalStatePath = await createTestGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
       const project1 = await manager.createProject({ path: workspace1, name: 'test_workspace' })
@@ -370,14 +369,17 @@ describe('E2E: Backend Full User Lifecycle', () => {
       await manager.createSession({ projectId: project2.id, type: 'opencode', title: 'OpenCode 1' })
 
       const snapshot = manager.snapshot()
-      const diskState = await readStateFile(stateFilePath)
+      const diskGlobal = await readGlobalStateFile(globalStatePath)
+      const diskSessions1 = await readProjectSessions(workspace1)
+      const diskSessions2 = await readProjectSessions(workspace2)
 
       expect(snapshot.projects).toHaveLength(2)
-      expect(diskState.projects).toHaveLength(2)
+      expect(diskGlobal.projects).toHaveLength(2)
       expect(snapshot.sessions).toHaveLength(2)
-      expect(diskState.sessions).toHaveLength(2)
-      expect(diskState.projects[0]!.name).toBe('test_workspace')
-      expect(diskState.projects[1]!.name).toBe('test_workspace2')
+      expect(diskSessions1.sessions).toHaveLength(1)
+      expect(diskSessions2.sessions).toHaveLength(1)
+      expect(diskGlobal.projects[0]!.name).toBe('test_workspace')
+      expect(diskGlobal.projects[1]!.name).toBe('test_workspace2')
     })
   })
 
@@ -386,11 +388,11 @@ describe('E2E: Backend Full User Lifecycle', () => {
   describe('Phase 3: State persistence and recovery', () => {
     test('snapshot returns immutable copies (mutation-safe)', async () => {
       const workspaceDir = await createTestWorkspace('vibecoding-e2e-test_workspace-')
-      const stateFilePath = await createTestStatePath()
+      const globalStatePath = await createTestGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
       const project = await manager.createProject({ path: workspaceDir, name: 'test_workspace' })
@@ -408,11 +410,11 @@ describe('E2E: Backend Full User Lifecycle', () => {
     test('destroying and recreating manager restores all projects', async () => {
       const workspace1 = await createTestWorkspace('vibecoding-e2e-test_workspace-')
       const workspace2 = await createTestWorkspace('vibecoding-e2e-test_workspace2-')
-      const stateFilePath = await createTestStatePath()
+      const globalStatePath = await createTestGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
       await manager.createProject({ path: workspace1, name: 'test_workspace' })
@@ -420,7 +422,7 @@ describe('E2E: Backend Full User Lifecycle', () => {
 
       const restored = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
       const snapshot = restored.snapshot()
@@ -431,11 +433,11 @@ describe('E2E: Backend Full User Lifecycle', () => {
 
     test('destroying and recreating manager restores all sessions', async () => {
       const workspaceDir = await createTestWorkspace('vibecoding-e2e-test_workspace-')
-      const stateFilePath = await createTestStatePath()
+      const globalStatePath = await createTestGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
       const project = await manager.createProject({ path: workspaceDir, name: 'test_workspace' })
@@ -444,7 +446,7 @@ describe('E2E: Backend Full User Lifecycle', () => {
 
       const restored = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
       const snapshot = restored.snapshot()
@@ -457,11 +459,11 @@ describe('E2E: Backend Full User Lifecycle', () => {
     test('active IDs are preserved across restart', async () => {
       const workspace1 = await createTestWorkspace('vibecoding-e2e-test_workspace-')
       const workspace2 = await createTestWorkspace('vibecoding-e2e-test_workspace2-')
-      const stateFilePath = await createTestStatePath()
+      const globalStatePath = await createTestGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
       const project1 = await manager.createProject({ path: workspace1, name: 'test_workspace' })
@@ -470,10 +472,10 @@ describe('E2E: Backend Full User Lifecycle', () => {
 
       const restored = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
-      const diskState = await readStateFile(stateFilePath)
+      const diskState = await readGlobalStateFile(globalStatePath)
       const snapshot = restored.snapshot()
 
       expect(snapshot.activeProjectId).toBe(project2.id)
@@ -484,11 +486,11 @@ describe('E2E: Backend Full User Lifecycle', () => {
 
     test('buildBootstrapRecoveryPlan returns correct actions', async () => {
       const workspaceDir = await createTestWorkspace('vibecoding-e2e-test_workspace-')
-      const stateFilePath = await createTestStatePath()
+      const globalStatePath = await createTestGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
       const project = await manager.createProject({ path: workspaceDir, name: 'test_workspace' })
@@ -506,11 +508,11 @@ describe('E2E: Backend Full User Lifecycle', () => {
 
     test('recovery plan: shell → fresh-shell, opencode → resume-external', async () => {
       const workspaceDir = await createTestWorkspace('vibecoding-e2e-test_workspace-')
-      const stateFilePath = await createTestStatePath()
+      const globalStatePath = await createTestGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
       const project = await manager.createProject({ path: workspaceDir, name: 'test_workspace' })
@@ -525,11 +527,11 @@ describe('E2E: Backend Full User Lifecycle', () => {
 
     test('recovery plan includes correct externalSessionId for opencode sessions', async () => {
       const workspaceDir = await createTestWorkspace('vibecoding-e2e-test_workspace-')
-      const stateFilePath = await createTestStatePath()
+      const globalStatePath = await createTestGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
       const project = await manager.createProject({ path: workspaceDir, name: 'test_workspace' })
@@ -550,11 +552,11 @@ describe('E2E: Backend Full User Lifecycle', () => {
   describe('Phase 4: Active project/session management', () => {
     test('creating session auto-sets both activeProjectId and activeSessionId', async () => {
       const workspaceDir = await createTestWorkspace('vibecoding-e2e-test_workspace-')
-      const stateFilePath = await createTestStatePath()
+      const globalStatePath = await createTestGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
       const project = await manager.createProject({ path: workspaceDir, name: 'test_workspace' })
@@ -575,11 +577,11 @@ describe('E2E: Backend Full User Lifecycle', () => {
     test('switching between sessions in different projects updates both active IDs', async () => {
       const workspace1 = await createTestWorkspace('vibecoding-e2e-test_workspace-')
       const workspace2 = await createTestWorkspace('vibecoding-e2e-test_workspace2-')
-      const stateFilePath = await createTestStatePath()
+      const globalStatePath = await createTestGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
       const project1 = await manager.createProject({ path: workspace1, name: 'test_workspace' })
@@ -596,11 +598,11 @@ describe('E2E: Backend Full User Lifecycle', () => {
 
     test('first project auto-activates when no active project exists', async () => {
       const workspaceDir = await createTestWorkspace('vibecoding-e2e-test_workspace-')
-      const stateFilePath = await createTestStatePath()
+      const globalStatePath = await createTestGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
         webhookPort: null,
-        stateFilePath
+        globalStatePath
       })
 
       expect(manager.snapshot().activeProjectId).toBeNull()
@@ -911,7 +913,7 @@ describe('E2E: Backend Full User Lifecycle', () => {
       expect(content).toContain('test-secret')
     })
 
-    test('getProvider falls back to local-shell for unknown provider', () => {
+    test('getProvider fall back to local-shell for unknown provider', () => {
       const provider = getProvider('nonexistent-provider')
       expect(provider.providerId).toBe('local-shell')
     })

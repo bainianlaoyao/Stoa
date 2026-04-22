@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeEach } from 'vitest'
 import { IPC_CHANNELS } from '@core/ipc-channels'
 import { ProjectSessionManager } from '@core/project-session-manager'
-import { createTestWorkspace, createTestStatePath, tempDirs } from './helpers'
+import { createTestWorkspace, createTestGlobalStatePath, tempDirs } from './helpers'
 import type {
   BootstrapState,
   CreateProjectRequest,
@@ -59,11 +59,11 @@ function createPreloadApi(bus: FakeIpcBus): RendererApi {
 
 async function registerMainHandlers(
   bus: FakeIpcBus,
-  stateFilePath: string
+  globalStatePath: string
 ): Promise<ProjectSessionManager> {
   const manager = await ProjectSessionManager.create({
     webhookPort: null,
-    stateFilePath
+    globalStatePath
   })
 
   bus.handle(IPC_CHANNELS.projectBootstrap, async () => {
@@ -102,8 +102,8 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
   describe('IPC channel registration completeness', () => {
     test('all invoke RendererApi channels are registered in ipcMain', async () => {
       const bus = new FakeIpcBus()
-      const stateFilePath = await createTestStatePath()
-      await registerMainHandlers(bus, stateFilePath)
+      const globalStatePath = await createTestGlobalStatePath()
+      await registerMainHandlers(bus, globalStatePath)
 
       for (const channel of RENDERER_API_INVOKE_CHANNELS) {
         expect(bus.hasHandler(channel)).toBe(true)
@@ -112,8 +112,8 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
 
     test('no extra channels beyond invoke RendererApi are exposed to preload', async () => {
       const bus = new FakeIpcBus()
-      const stateFilePath = await createTestStatePath()
-      await registerMainHandlers(bus, stateFilePath)
+      const globalStatePath = await createTestGlobalStatePath()
+      await registerMainHandlers(bus, globalStatePath)
 
       const registered = bus.getRegisteredChannels()
       expect(registered).toHaveLength(RENDERER_API_INVOKE_CHANNELS.length)
@@ -142,8 +142,8 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
 
     beforeEach(async () => {
       bus = new FakeIpcBus()
-      const stateFilePath = await createTestStatePath()
-      manager = await registerMainHandlers(bus, stateFilePath)
+      const globalStatePath = await createTestGlobalStatePath()
+      manager = await registerMainHandlers(bus, globalStatePath)
       api = createPreloadApi(bus)
     })
 
@@ -276,8 +276,8 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
   describe('IPC handler correctly passes payload to manager', () => {
     test('createProject receives exact request payload', async () => {
       const bus = new FakeIpcBus()
-      const stateFilePath = await createTestStatePath()
-      const manager = await registerMainHandlers(bus, stateFilePath)
+      const globalStatePath = await createTestGlobalStatePath()
+      const manager = await registerMainHandlers(bus, globalStatePath)
 
       const captured: CreateProjectRequest[] = []
       const originalCreate = manager.createProject.bind(manager)
@@ -302,8 +302,8 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
 
     test('createSession receives exact request payload', async () => {
       const bus = new FakeIpcBus()
-      const stateFilePath = await createTestStatePath()
-      const manager = await registerMainHandlers(bus, stateFilePath)
+      const globalStatePath = await createTestGlobalStatePath()
+      const manager = await registerMainHandlers(bus, globalStatePath)
 
       const workspaceDir = await createTestWorkspace('ipc-session-payload-')
       const project = await manager.createProject({
@@ -372,8 +372,8 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
   describe('setActive handlers are wired', () => {
     test('setActiveProject does not throw', async () => {
       const bus = new FakeIpcBus()
-      const stateFilePath = await createTestStatePath()
-      await registerMainHandlers(bus, stateFilePath)
+      const globalStatePath = await createTestGlobalStatePath()
+      await registerMainHandlers(bus, globalStatePath)
       const api = createPreloadApi(bus)
 
       await expect(api.setActiveProject('some-id')).resolves.toBeUndefined()
@@ -381,8 +381,8 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
 
     test('setActiveSession does not throw', async () => {
       const bus = new FakeIpcBus()
-      const stateFilePath = await createTestStatePath()
-      await registerMainHandlers(bus, stateFilePath)
+      const globalStatePath = await createTestGlobalStatePath()
+      await registerMainHandlers(bus, globalStatePath)
       const api = createPreloadApi(bus)
 
       await expect(api.setActiveSession('some-id')).resolves.toBeUndefined()
@@ -390,8 +390,8 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
 
     test('sendSessionInput does not throw', async () => {
       const bus = new FakeIpcBus()
-      const stateFilePath = await createTestStatePath()
-      await registerMainHandlers(bus, stateFilePath)
+      const globalStatePath = await createTestGlobalStatePath()
+      await registerMainHandlers(bus, globalStatePath)
       const api = createPreloadApi(bus)
 
       await expect(api.sendSessionInput('session-1', 'ls\n')).resolves.toBeUndefined()
@@ -399,8 +399,8 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
 
     test('sendSessionResize does not throw', async () => {
       const bus = new FakeIpcBus()
-      const stateFilePath = await createTestStatePath()
-      await registerMainHandlers(bus, stateFilePath)
+      const globalStatePath = await createTestGlobalStatePath()
+      await registerMainHandlers(bus, globalStatePath)
       const api = createPreloadApi(bus)
 
       await expect(api.sendSessionResize('session-1', 120, 30)).resolves.toBeUndefined()
