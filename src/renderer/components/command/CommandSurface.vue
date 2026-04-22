@@ -17,6 +17,7 @@ const emit = defineEmits<{
   selectSession: [sessionId: string]
   createProject: [payload: { name: string; path: string }]
   createSession: [payload: { projectId: string; type: string; title: string }]
+  archiveSession: [sessionId: string]
 }>()
 </script>
 

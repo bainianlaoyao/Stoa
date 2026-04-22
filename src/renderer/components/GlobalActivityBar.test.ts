@@ -23,12 +23,12 @@ describe('GlobalActivityBar', () => {
     expect(wrapper.find('.activity-bar__brand').text()).toBe('V')
   })
 
-  it('renders 2 activity items with correct data-activity-item values', () => {
+  it('renders 3 activity items with correct data-activity-item values', () => {
     const wrapper = mountBar()
     const items = wrapper.findAll('[data-activity-item]')
-    expect(items).toHaveLength(2)
+    expect(items).toHaveLength(3)
     const ids = items.map((el) => el.attributes('data-activity-item'))
-    expect(ids).toEqual(['command', 'settings'])
+    expect(ids).toEqual(['command', 'archive', 'settings'])
   })
 
   it('active item has .activity-bar__item--active class', () => {
@@ -59,11 +59,12 @@ describe('GlobalActivityBar', () => {
     expect(wrapper.emitted('select')![0]).toEqual(['command'])
   })
 
-  it('renders command in top cluster and settings in bottom cluster', () => {
+  it('renders command in top cluster and archive+settings in bottom cluster', () => {
     const wrapper = mountBar()
     const topCluster = wrapper.find('.activity-bar__cluster--top')
     const bottomCluster = wrapper.find('.activity-bar__cluster--bottom')
     expect(topCluster.find('[data-activity-item="command"]').exists()).toBe(true)
+    expect(bottomCluster.find('[data-activity-item="archive"]').exists()).toBe(true)
     expect(bottomCluster.find('[data-activity-item="settings"]').exists()).toBe(true)
   })
 })

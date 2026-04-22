@@ -1,5 +1,5 @@
 <script setup lang="ts">
-export type AppSurface = 'command' | 'settings'
+export type AppSurface = 'command' | 'archive' | 'settings'
 
 defineProps<{
   activeSurface: AppSurface
@@ -14,6 +14,7 @@ const topItems: Array<{ id: AppSurface; label: string; title: string }> = [
 ]
 
 const bottomItems: Array<{ id: AppSurface; label: string; title: string }> = [
+  { id: 'archive', label: '⊞', title: 'Archive' },
   { id: 'settings', label: '⚙', title: 'Settings' }
 ]
 </script>

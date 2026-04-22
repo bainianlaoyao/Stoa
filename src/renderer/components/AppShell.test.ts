@@ -24,7 +24,8 @@ const baseSession: SessionSummary = {
   externalSessionId: null,
   createdAt: '2026-04-21T00:00:00.000Z',
   updatedAt: '2026-04-21T00:00:00.000Z',
-  lastActivatedAt: '2026-04-21T00:00:00.000Z'
+  lastActivatedAt: '2026-04-21T00:00:00.000Z',
+  archived: false
 }
 
 describe('AppShell', () => {
@@ -39,6 +40,9 @@ describe('AppShell', () => {
       }),
       createProject: vi.fn().mockResolvedValue(baseProject),
       createSession: vi.fn().mockResolvedValue(baseSession),
+      archiveSession: vi.fn().mockResolvedValue(undefined),
+      restoreSession: vi.fn().mockResolvedValue(undefined),
+      listArchivedSessions: vi.fn().mockResolvedValue([]),
       setActiveProject: vi.fn().mockResolvedValue(undefined),
       setActiveSession: vi.fn().mockResolvedValue(undefined),
       sendSessionInput: vi.fn().mockResolvedValue(undefined),
@@ -59,7 +63,7 @@ describe('AppShell', () => {
         activeSessionId: null,
         activeProject: null,
         activeSession: null,
-
+        archivedSessions: []
       }
     })
 
@@ -68,7 +72,7 @@ describe('AppShell', () => {
     const commandButton = wrapper.get('button[aria-label="Command panel"]')
     const settingsButton = wrapper.get('button[aria-label="Settings"]')
 
-    expect(labels).toEqual(['command', 'settings'])
+    expect(labels).toEqual(['command', 'archive', 'settings'])
     expect(navigation).toBeTruthy()
     expect(commandButton.attributes('aria-current')).toBe('true')
     expect(settingsButton.attributes('aria-current')).toBeUndefined()
@@ -93,6 +97,7 @@ describe('AppShell', () => {
         activeSessionId: baseSession.id,
         activeProject: baseProject,
         activeSession: baseSession,
+        archivedSessions: []
       }
     })
 
@@ -111,7 +116,7 @@ describe('AppShell', () => {
         activeSessionId: null,
         activeProject: null,
         activeSession: null,
-
+        archivedSessions: []
       }
     })
 
@@ -120,5 +125,24 @@ describe('AppShell', () => {
     expect(wrapper.get('[data-surface="settings"][aria-label="Settings surface"]')).toBeTruthy()
     expect(wrapper.get('button[aria-label="Settings"]').attributes('aria-current')).toBe('true')
     expect(wrapper.find('[data-surface="command"][aria-label="Command surface"]').exists()).toBe(false)
+  })
+
+  it('switches to archive surface when archive activity is selected', async () => {
+    const wrapper = mount(AppShell, {
+      global: { plugins: [createPinia()] },
+      props: {
+        hierarchy: [],
+        activeProjectId: null,
+        activeSessionId: null,
+        activeProject: null,
+        activeSession: null,
+        archivedSessions: []
+      }
+    })
+
+    await wrapper.get('button[aria-label="Archive"]').trigger('click')
+
+    expect(wrapper.find('[data-surface="archive"][aria-label="Archive surface"]').exists()).toBe(true)
+    expect(wrapper.find('[data-surface="command"]').exists()).toBe(false)
   })
 })
