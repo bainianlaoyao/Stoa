@@ -211,7 +211,7 @@ describe('E2E: Main Process Config Guard', () => {
   })
 
   describe('Preload type contract completeness', () => {
-    it('preload api object implements all 7 invoke RendererApi methods', () => {
+    it('preload api object implements all 10 invoke RendererApi methods', () => {
       const knownInvokeMethods = [
         'getBootstrapState',
         'createProject',
@@ -219,7 +219,10 @@ describe('E2E: Main Process Config Guard', () => {
         'setActiveProject',
         'setActiveSession',
         'sendSessionInput',
-        'sendSessionResize'
+        'sendSessionResize',
+        'archiveSession',
+        'restoreSession',
+        'listArchivedSessions'
       ]
 
       for (const method of knownInvokeMethods) {
@@ -230,7 +233,7 @@ describe('E2E: Main Process Config Guard', () => {
       }
 
       const methodCount = preloadSource.match(/async\s+\w+\s*\(/g)
-      expect(methodCount, 'Expected exactly 7 invoke methods in preload api').toHaveLength(7)
+      expect(methodCount, 'Expected exactly 10 invoke methods in preload api').toHaveLength(10)
     })
 
     it('preload uses correct channel name for each method', () => {
@@ -244,6 +247,9 @@ describe('E2E: Main Process Config Guard', () => {
       expect(invMap.get('setActiveSession')).toBe('session:set-active')
       expect(invMap.get('sendSessionInput')).toBe('session:input')
       expect(invMap.get('sendSessionResize')).toBe('session:resize')
+      expect(invMap.get('archiveSession')).toBe('session:archive')
+      expect(invMap.get('restoreSession')).toBe('session:restore')
+      expect(invMap.get('listArchivedSessions')).toBe('session:list-archived')
     })
 
     it('window.vibecoding type declaration exists in shared/index.d.ts', () => {
