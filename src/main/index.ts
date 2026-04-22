@@ -1,8 +1,9 @@
-import { BrowserWindow, app, ipcMain } from 'electron'
+import { BrowserWindow, dialog, app, ipcMain } from 'electron'
 import { join } from 'node:path'
 import { IPC_CHANNELS } from '@core/ipc-channels'
 import { ProjectSessionManager } from '@core/project-session-manager'
 import { PtyHost } from '@core/pty-host'
+import { detectShell, detectProvider } from '@core/settings-detector'
 import { startSessionRuntime } from '@core/session-runtime'
 import { getProvider } from '@extensions/providers'
 import { SessionRuntimeController } from './session-runtime-controller'
@@ -119,6 +120,41 @@ app.whenReady().then(async () => {
 
   ipcMain.handle(IPC_CHANNELS.sessionResize, async (_event, sessionId: string, cols: number, rows: number) => {
     ptyHost?.resize(sessionId, cols, rows)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.settingsGet, async () => {
+    return projectSessionManager?.getSettings() ?? null
+  })
+
+  ipcMain.handle(IPC_CHANNELS.settingsSet, async (_event, key: string, value: unknown) => {
+    await projectSessionManager?.setSetting(key, value)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.dialogPickFolder, async (_event, options?: { title?: string }) => {
+    if (!mainWindow) return null
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openDirectory'],
+      title: options?.title ?? 'Select Folder'
+    })
+    return result.canceled ? null : result.filePaths[0] ?? null
+  })
+
+  ipcMain.handle(IPC_CHANNELS.dialogPickFile, async (_event, options?: { title?: string; filters?: Array<{ name: string; extensions: string[] }> }) => {
+    if (!mainWindow) return null
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openFile'],
+      title: options?.title ?? 'Select File',
+      filters: options?.filters
+    })
+    return result.canceled ? null : result.filePaths[0] ?? null
+  })
+
+  ipcMain.handle(IPC_CHANNELS.settingsDetectShell, async () => {
+    return detectShell()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.settingsDetectProvider, async (_event, providerId: string) => {
+    return detectProvider(providerId)
   })
 
   mainWindow = createMainWindow()
