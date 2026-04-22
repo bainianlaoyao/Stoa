@@ -29,6 +29,15 @@ const api: RendererApi = {
   async sendSessionResize(sessionId, cols, rows) {
     return ipcRenderer.invoke('session:resize', sessionId, cols, rows)
   },
+  async archiveSession(sessionId) {
+    return ipcRenderer.invoke('session:archive', sessionId)
+  },
+  async restoreSession(sessionId) {
+    return ipcRenderer.invoke('session:restore', sessionId)
+  },
+  async listArchivedSessions() {
+    return ipcRenderer.invoke('session:list-archived')
+  },
   onTerminalData(callback: (chunk: TerminalDataChunk) => void) {
     const handler = (_event: Electron.IpcRendererEvent, chunk: TerminalDataChunk) => callback(chunk)
     ipcRenderer.on('terminal:data', handler)
