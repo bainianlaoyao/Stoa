@@ -42,6 +42,14 @@ export class PtyHost {
     this.sessions.get(workspaceId)?.resize(cols, rows)
   }
 
+  kill(runtimeId: string): void {
+    const terminal = this.sessions.get(runtimeId)
+    if (terminal) {
+      terminal.kill()
+      this.sessions.delete(runtimeId)
+    }
+  }
+
   dispose(): void {
     this.sessions.forEach((terminal) => terminal.kill())
     this.sessions.clear()

@@ -238,6 +238,37 @@ describe('PtyHost', () => {
     })
   })
 
+  describe('kill()', () => {
+    test('kills a specific terminal by runtimeId', () => {
+      host.start('rt-1', defaultCommand, vi.fn(), vi.fn())
+      host.start('rt-2', defaultCommand, vi.fn(), vi.fn())
+      const term1 = mockTerminals[mockTerminals.length - 2]
+      const term2 = mockTerminals[mockTerminals.length - 1]
+
+      host.kill('rt-1')
+
+      expect(term1.kill).toHaveBeenCalled()
+      expect(term2.kill).not.toHaveBeenCalled()
+    })
+
+    test('removes killed session from map', () => {
+      host.start('rt-1', defaultCommand, vi.fn(), vi.fn())
+      const mockTerm = lastTerminal()
+
+      host.kill('rt-1')
+
+      host.write('rt-1', 'data')
+      expect(mockTerm.write).not.toHaveBeenCalled()
+    })
+
+    test('does nothing for unknown runtimeId', () => {
+      host.start('rt-1', defaultCommand, vi.fn(), vi.fn())
+
+      expect(() => host.kill('unknown')).not.toThrow()
+      expect(lastTerminal().kill).not.toHaveBeenCalled()
+    })
+  })
+
   describe('dispose()', () => {
     test('kills all active terminals', () => {
       host.start('rt-1', defaultCommand, vi.fn(), vi.fn())
