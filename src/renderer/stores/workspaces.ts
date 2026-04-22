@@ -14,6 +14,7 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
   const activeSessionId = ref<string | null>(null)
   const terminalWebhookPort = ref<number | null>(null)
   const lastError = ref<string | null>(null)
+  const archivedSessions = ref<SessionSummary[]>([])
 
   const activeProject = computed(() => {
     return projects.value.find((project) => project.id === activeProjectId.value) ?? null
@@ -28,7 +29,7 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
       ...project,
       active: project.id === activeProjectId.value,
       sessions: sessions.value
-        .filter((session) => session.projectId === project.id)
+        .filter((session) => session.projectId === project.id && !session.archived)
         .map((session) => ({
           ...session,
           active: session.id === activeSessionId.value
@@ -81,6 +82,25 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
     lastError.value = null
   }
 
+  function archiveSession(sessionId: string): void {
+    const session = sessions.value.find(s => s.id === sessionId)
+    if (!session) return
+    session.archived = true
+    if (activeSessionId.value === sessionId) {
+      activeSessionId.value = null
+    }
+  }
+
+  function restoreSession(sessionId: string): void {
+    const session = sessions.value.find(s => s.id === sessionId)
+    if (!session) return
+    session.archived = false
+  }
+
+  function setArchivedSessions(sessions: SessionSummary[]): void {
+    archivedSessions.value = sessions
+  }
+
   return {
     projects,
     sessions,
@@ -97,6 +117,10 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
     updateSession,
     setActiveProject,
     setActiveSession,
-    clearError
+    clearError,
+    archivedSessions,
+    archiveSession,
+    restoreSession,
+    setArchivedSessions
   }
 })
