@@ -150,7 +150,13 @@ describe('E2E: Main Process Config Guard', () => {
         ['setActiveProject', 'projectSetActive'],
         ['setActiveSession', 'sessionSetActive'],
         ['sendSessionInput', 'sessionInput'],
-        ['sendSessionResize', 'sessionResize']
+        ['sendSessionResize', 'sessionResize'],
+        ['getSettings', 'settingsGet'],
+        ['setSetting', 'settingsSet'],
+        ['pickFolder', 'dialogPickFolder'],
+        ['pickFile', 'dialogPickFile'],
+        ['detectShell', 'settingsDetectShell'],
+        ['detectProvider', 'settingsDetectProvider']
       ])
 
       for (const method of rendererApiMethods) {
@@ -185,7 +191,7 @@ describe('E2E: Main Process Config Guard', () => {
       const matches = mainSource.match(handlePattern)
 
       expect(matches, 'Expected ipcMain.handle calls to reference IPC_CHANNELS.xxx').not.toBeNull()
-      expect(matches!.length).toBeGreaterThanOrEqual(7)
+      expect(matches!.length).toBeGreaterThanOrEqual(13)
     })
 
     it('IPC handler for project:create calls createProject', () => {
@@ -211,7 +217,7 @@ describe('E2E: Main Process Config Guard', () => {
   })
 
   describe('Preload type contract completeness', () => {
-    it('preload api object implements all 7 invoke RendererApi methods', () => {
+    it('preload api object implements all invoke RendererApi methods', () => {
       const knownInvokeMethods = [
         'getBootstrapState',
         'createProject',
@@ -219,7 +225,13 @@ describe('E2E: Main Process Config Guard', () => {
         'setActiveProject',
         'setActiveSession',
         'sendSessionInput',
-        'sendSessionResize'
+        'sendSessionResize',
+        'getSettings',
+        'setSetting',
+        'pickFolder',
+        'pickFile',
+        'detectShell',
+        'detectProvider'
       ]
 
       for (const method of knownInvokeMethods) {
@@ -230,7 +242,7 @@ describe('E2E: Main Process Config Guard', () => {
       }
 
       const methodCount = preloadSource.match(/async\s+\w+\s*\(/g)
-      expect(methodCount, 'Expected exactly 7 invoke methods in preload api').toHaveLength(7)
+      expect(methodCount, 'Expected exactly 13 invoke methods in preload api').toHaveLength(13)
     })
 
     it('preload uses correct channel name for each method', () => {
@@ -244,10 +256,16 @@ describe('E2E: Main Process Config Guard', () => {
       expect(invMap.get('setActiveSession')).toBe('session:set-active')
       expect(invMap.get('sendSessionInput')).toBe('session:input')
       expect(invMap.get('sendSessionResize')).toBe('session:resize')
+      expect(invMap.get('getSettings')).toBe('settings:get')
+      expect(invMap.get('setSetting')).toBe('settings:set')
+      expect(invMap.get('pickFolder')).toBe('dialog:pick-folder')
+      expect(invMap.get('pickFile')).toBe('dialog:pick-file')
+      expect(invMap.get('detectShell')).toBe('settings:detect-shell')
+      expect(invMap.get('detectProvider')).toBe('settings:detect-provider')
     })
 
-    it('window.vibecoding type declaration exists in shared/index.d.ts', () => {
-      expect(sharedTypesSource).toMatch(/vibecoding/)
+    it('window.stoa type declaration exists in shared/index.d.ts', () => {
+      expect(sharedTypesSource).toMatch(/stoa/)
       expect(sharedTypesSource).toMatch(/RendererApi/)
       expect(sharedTypesSource).toMatch(/declare\s+global/)
     })

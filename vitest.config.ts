@@ -13,6 +13,7 @@ export default defineConfig({
     }
   },
   test: {
-    environment: 'happy-dom'
+    environment: 'happy-dom',
+    exclude: ['**/node_modules/**', '**/.git/**', '**/.worktrees/**', '**/dist/**', '**/e2e-playwright/**']
   }
 })
