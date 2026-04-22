@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import type { SessionType } from '@shared/project-session'
 import type { ProjectHierarchyNode } from '@renderer/stores/workspaces'
+import { useWorkspaceStore } from '@renderer/stores/workspaces'
 import NewProjectModal from './NewProjectModal.vue'
-import NewSessionModal from './NewSessionModal.vue'
+import ProviderFloatingCard from './ProviderFloatingCard.vue'
+import ProviderRadialMenu from './ProviderRadialMenu.vue'
 
 const props = defineProps<{
   hierarchy: ProjectHierarchyNode[]
@@ -19,21 +21,110 @@ const emit = defineEmits<{
 }>()
 
 const showNewProject = ref(false)
-const showNewSession = ref(false)
-const targetProjectId = ref('')
+const workspaceStore = useWorkspaceStore()
 
-function openSessionModal(projectId: string) {
-  targetProjectId.value = projectId
-  showNewSession.value = true
+const floatingCardVisible = ref(false)
+const floatingCardProjectId = ref('')
+const floatingCardPosition = ref({ x: 0, y: 0, width: 0, height: 0 })
+
+const radialMenuVisible = ref(false)
+const radialMenuProjectId = ref('')
+const radialMenuCenter = ref({ x: 0, y: 0 })
+
+let longPressTimer: ReturnType<typeof setTimeout> | null = null
+
+function generateTitle(projectId: string, type: SessionType): string {
+  const project = props.hierarchy.find(p => p.id === projectId)
+  if (type === 'opencode') {
+    const projectName = project?.name ?? 'session'
+    return `opencode-${projectName}`
+  }
+  const shellCount = project?.sessions.filter(s => s.type === 'shell').length ?? 0
+  return `shell-${shellCount + 1}`
 }
 
-function handleSessionCreate(payload: { title: string; type: SessionType }) {
-  emit('createSession', { ...payload, projectId: targetProjectId.value })
+function handleFloatingCardCreate(payload: { type: SessionType }) {
+  const title = generateTitle(floatingCardProjectId.value, payload.type)
+  emit('createSession', { projectId: floatingCardProjectId.value, type: payload.type, title })
+  floatingCardVisible.value = false
 }
+
+function handleRadialMenuCreate(payload: { type: SessionType }) {
+  const title = generateTitle(radialMenuProjectId.value, payload.type)
+  emit('createSession', { projectId: radialMenuProjectId.value, type: payload.type, title })
+  radialMenuVisible.value = false
+}
+
+function closeFloatingCard() {
+  floatingCardVisible.value = false
+}
+
+function closeRadialMenu() {
+  radialMenuVisible.value = false
+}
+
+function onAddButtonMouseDown(event: MouseEvent, projectId: string) {
+  const buttonEl = event.currentTarget as HTMLElement
+  const rect = buttonEl.getBoundingClientRect()
+
+  radialMenuProjectId.value = projectId
+  floatingCardProjectId.value = projectId
+  floatingCardPosition.value = { x: rect.left, y: rect.top, width: rect.width, height: rect.height }
+  radialMenuCenter.value = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+
+  longPressTimer = setTimeout(() => {
+    longPressTimer = null
+    floatingCardVisible.value = false
+    radialMenuVisible.value = true
+  }, 200)
+}
+
+function onAddButtonMouseUp() {
+  if (longPressTimer !== null) {
+    clearTimeout(longPressTimer)
+    longPressTimer = null
+    floatingCardVisible.value = true
+    radialMenuVisible.value = false
+  }
+}
+
+function onAddButtonMouseLeave() {
+  if (longPressTimer !== null) {
+    clearTimeout(longPressTimer)
+    longPressTimer = null
+  }
+}
+
+function onProjectRowContextmenu(event: MouseEvent, projectId: string) {
+  event.preventDefault()
+  floatingCardProjectId.value = projectId
+  floatingCardPosition.value = { x: event.clientX, y: event.clientY, width: 0, height: 0 }
+  floatingCardVisible.value = true
+  radialMenuVisible.value = false
+}
+
+watch(
+  () => workspaceStore.isCreatingSession,
+  (isCreatingSession, wasCreatingSession) => {
+    if (wasCreatingSession && !isCreatingSession && workspaceStore.sessionCreateSucceeded) {
+      floatingCardVisible.value = false
+      radialMenuVisible.value = false
+    }
+  }
+)
+
+watch(
+  () => workspaceStore.isCreatingProject,
+  (isCreatingProject, wasCreatingProject) => {
+    if (wasCreatingProject && !isCreatingProject && workspaceStore.projectCreateSucceeded) {
+      showNewProject.value = false
+    }
+  }
+)
 </script>
 
 <template>
-  <aside class="workspace-hierarchy-panel">
+  <aside class="workspace-hierarchy-panel" aria-label="Workspace hierarchy">
     <div class="route-body">
       <div class="route-actions">
         <button class="route-action" type="button" @click="showNewProject = true">
@@ -43,25 +134,35 @@ function handleSessionCreate(payload: { title: string; type: SessionType }) {
       </div>
 
       <div class="route-group">
-        <div class="group-label">Projects</div>
+        <h2 class="group-label">Projects</h2>
 
         <div v-for="project in hierarchy" :key="project.id" class="route-project">
           <div
-            class="route-item route-item--parent"
-            :class="{ 'route-item--active': project.id === activeProjectId }"
-            @click="emit('selectProject', project.id)"
+            class="route-project-row"
+            @contextmenu="onProjectRowContextmenu($event, project.id)"
           >
-            <div class="route-dot idle" />
-            <div class="route-copy">
-              <div class="route-name">{{ project.name }}</div>
-              <div class="route-path">{{ project.path }}</div>
-            </div>
+            <button
+              class="route-item route-item--parent"
+              :class="{ 'route-item--active': project.id === activeProjectId }"
+              :aria-current="project.id === activeProjectId ? 'true' : undefined"
+              type="button"
+              @click="emit('selectProject', project.id)"
+            >
+              <div class="route-dot idle" />
+              <div class="route-copy">
+                <div class="route-name">{{ project.name }}</div>
+                <div class="route-path">{{ project.path }}</div>
+              </div>
+            </button>
             <div class="route-project-actions">
               <button
                 class="route-add-session"
                 type="button"
-                title="Add session"
-                @click.stop="openSessionModal(project.id)"
+                :aria-label="`Add session to ${project.name}`"
+                title="Add session · long-press for radial"
+                @mousedown="onAddButtonMouseDown($event, project.id)"
+                @mouseup="onAddButtonMouseUp"
+                @mouseleave="onAddButtonMouseLeave"
               >
                 +
               </button>
@@ -73,6 +174,7 @@ function handleSessionCreate(payload: { title: string; type: SessionType }) {
             :key="session.id"
             class="route-item child"
             :class="{ 'route-item--active': session.id === activeSessionId }"
+            :aria-current="session.id === activeSessionId ? 'true' : undefined"
             type="button"
             @click="emit('selectSession', session.id)"
           >
@@ -89,10 +191,23 @@ function handleSessionCreate(payload: { title: string; type: SessionType }) {
 
   <NewProjectModal
     v-model:show="showNewProject"
+    :pending="workspaceStore.isCreatingProject"
     @create="emit('createProject', $event)"
   />
-  <NewSessionModal
-    v-model:show="showNewSession"
-    @create="handleSessionCreate"
+
+  <ProviderFloatingCard
+    :visible="floatingCardVisible"
+    :project-id="floatingCardProjectId"
+    :position="floatingCardPosition"
+    @create="handleFloatingCardCreate"
+    @close="closeFloatingCard"
+  />
+
+  <ProviderRadialMenu
+    :visible="radialMenuVisible"
+    :project-id="radialMenuProjectId"
+    :center="radialMenuCenter"
+    @create="handleRadialMenuCreate"
+    @close="closeRadialMenu"
   />
 </template>

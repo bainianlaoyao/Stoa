@@ -4,7 +4,8 @@ import { mount } from '@vue/test-utils'
 import { createPinia } from 'pinia'
 import WorkspaceHierarchyPanel from './WorkspaceHierarchyPanel.vue'
 import NewProjectModal from './NewProjectModal.vue'
-import NewSessionModal from './NewSessionModal.vue'
+import ProviderFloatingCard from './ProviderFloatingCard.vue'
+import ProviderRadialMenu from './ProviderRadialMenu.vue'
 import type { ProjectHierarchyNode } from '@renderer/stores/workspaces'
 
 function createHierarchy(): ProjectHierarchyNode[] {
@@ -316,15 +317,20 @@ describe('WorkspaceHierarchyPanel', () => {
     })
   })
 
-  describe('modal integration', () => {
+  describe('component integration', () => {
     it('NewProjectModal component is rendered in the wrapper', () => {
       const wrapper = mountPanel()
       expect(wrapper.findComponent(NewProjectModal).exists()).toBe(true)
     })
 
-    it('NewSessionModal component is rendered in the wrapper', () => {
+    it('ProviderFloatingCard component is rendered in the wrapper', () => {
       const wrapper = mountPanel()
-      expect(wrapper.findComponent(NewSessionModal).exists()).toBe(true)
+      expect(wrapper.findComponent(ProviderFloatingCard).exists()).toBe(true)
+    })
+
+    it('ProviderRadialMenu component is rendered in the wrapper', () => {
+      const wrapper = mountPanel()
+      expect(wrapper.findComponent(ProviderRadialMenu).exists()).toBe(true)
     })
   })
 
