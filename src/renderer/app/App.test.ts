@@ -41,8 +41,8 @@ async function flush(): Promise<void> {
   await new Promise((r) => setTimeout(r, 0))
 }
 
-function setupVibecoding(overrides?: Partial<typeof window.vibecoding>) {
-  window.vibecoding = {
+function setupStoa(overrides?: Partial<typeof window.stoa>) {
+  window.stoa = {
     getBootstrapState: vi.fn().mockResolvedValue({ ...mockBootstrapState, projects: [], sessions: [] }),
     createProject: vi.fn().mockResolvedValue({ ...mockCreatedProject }),
     createSession: vi.fn().mockResolvedValue({ ...mockCreatedSession }),
@@ -52,6 +52,12 @@ function setupVibecoding(overrides?: Partial<typeof window.vibecoding>) {
     sendSessionResize: vi.fn().mockResolvedValue(undefined),
     onTerminalData: vi.fn().mockReturnValue(() => {}),
     onSessionEvent: vi.fn().mockReturnValue(() => {}),
+    getSettings: vi.fn().mockResolvedValue({ shellPath: '', terminalFontSize: 14, providers: {} }),
+    setSetting: vi.fn().mockResolvedValue(undefined),
+    pickFolder: vi.fn().mockResolvedValue(null),
+    pickFile: vi.fn().mockResolvedValue(null),
+    detectShell: vi.fn().mockResolvedValue(null),
+    detectProvider: vi.fn().mockResolvedValue(null),
     ...overrides
   }
 }
@@ -72,7 +78,7 @@ describe('App (root)', () => {
   beforeEach(() => {
     pinia = createPinia()
     setActivePinia(pinia)
-    setupVibecoding()
+    setupStoa()
   })
 
   afterEach(async () => {
@@ -84,9 +90,9 @@ describe('App (root)', () => {
   })
 
   describe('bootstrap', () => {
-    it('on mount calls window.vibecoding.getBootstrapState', async () => {
+    it('on mount calls window.stoa.getBootstrapState', async () => {
       wrapper = await mountApp(pinia)
-      expect(window.vibecoding.getBootstrapState).toHaveBeenCalledOnce()
+      expect(window.stoa.getBootstrapState).toHaveBeenCalledOnce()
     })
 
     it('on mount hydrates store with bootstrap data', async () => {
@@ -97,7 +103,7 @@ describe('App (root)', () => {
         projects: [{ id: 'p1', name: 'Proj', path: '/p', createdAt: 't', updatedAt: 't' }],
         sessions: [{ id: 's1', projectId: 'p1', type: 'shell', status: 'running', title: 'Sess', summary: '', recoveryMode: 'fresh-shell', externalSessionId: null, createdAt: 't', updatedAt: 't', lastActivatedAt: 't' }]
       }
-      setupVibecoding({ getBootstrapState: vi.fn().mockResolvedValue(hydratedState) })
+      setupStoa({ getBootstrapState: vi.fn().mockResolvedValue(hydratedState) })
 
       wrapper = await mountApp(pinia)
       await flush()
@@ -118,11 +124,11 @@ describe('App (root)', () => {
       expect(useWorkspaceStore(pinia).activeProjectId).toBe('project_1')
     })
 
-    it('selectProject event calls window.vibecoding.setActiveProject with id', async () => {
+    it('selectProject event calls window.stoa.setActiveProject with id', async () => {
       wrapper = await mountApp(pinia)
       const appShell = wrapper.findComponent({ name: 'AppShell' })
       await appShell.vm.$emit('selectProject', 'project_1')
-      expect(window.vibecoding.setActiveProject).toHaveBeenCalledWith('project_1')
+      expect(window.stoa.setActiveProject).toHaveBeenCalledWith('project_1')
     })
   })
 
@@ -135,7 +141,7 @@ describe('App (root)', () => {
         projects: [{ id: 'p1', name: 'P', path: '/p', createdAt: 't', updatedAt: 't' }],
         sessions: [{ id: 's1', projectId: 'p1', type: 'shell', status: 'running', title: 'S', summary: '', recoveryMode: 'fresh-shell', externalSessionId: null, createdAt: 't', updatedAt: 't', lastActivatedAt: 't' }]
       }
-      setupVibecoding({ getBootstrapState: vi.fn().mockResolvedValue(hydratedState) })
+      setupStoa({ getBootstrapState: vi.fn().mockResolvedValue(hydratedState) })
 
       wrapper = await mountApp(pinia)
       await flush()
@@ -145,7 +151,7 @@ describe('App (root)', () => {
       expect(useWorkspaceStore(pinia).activeSessionId).toBe('s1')
     })
 
-    it('selectSession event calls window.vibecoding.setActiveSession with id', async () => {
+    it('selectSession event calls window.stoa.setActiveSession with id', async () => {
       const hydratedState: BootstrapState = {
         activeProjectId: 'p1',
         activeSessionId: null,
@@ -153,20 +159,20 @@ describe('App (root)', () => {
         projects: [{ id: 'p1', name: 'P', path: '/p', createdAt: 't', updatedAt: 't' }],
         sessions: [{ id: 's1', projectId: 'p1', type: 'shell', status: 'running', title: 'S', summary: '', recoveryMode: 'fresh-shell', externalSessionId: null, createdAt: 't', updatedAt: 't', lastActivatedAt: 't' }]
       }
-      setupVibecoding({ getBootstrapState: vi.fn().mockResolvedValue(hydratedState) })
+      setupStoa({ getBootstrapState: vi.fn().mockResolvedValue(hydratedState) })
 
       wrapper = await mountApp(pinia)
       await flush()
       const appShell = wrapper.findComponent({ name: 'AppShell' })
       await appShell.vm.$emit('selectSession', 's1')
-      expect(window.vibecoding.setActiveSession).toHaveBeenCalledWith('s1')
+      expect(window.stoa.setActiveSession).toHaveBeenCalledWith('s1')
     })
   })
 
   describe('project creation', () => {
     it('createProject event adds result to store via addProject', async () => {
       const createProjectMock = vi.fn().mockResolvedValue({ ...mockCreatedProject })
-      setupVibecoding({ createProject: createProjectMock })
+      setupStoa({ createProject: createProjectMock })
 
       wrapper = await mountApp(pinia)
       await flush()
@@ -178,12 +184,12 @@ describe('App (root)', () => {
       expect(useWorkspaceStore(pinia).projects[0].id).toBe('new_project')
     })
 
-    it('createProject event calls window.vibecoding.createProject with { name, path }', async () => {
+    it('createProject event calls window.stoa.createProject with { name, path }', async () => {
       wrapper = await mountApp(pinia)
       const appShell = wrapper.findComponent({ name: 'AppShell' })
       await appShell.vm.$emit('createProject', { name: 'test', path: '/test' })
       await flush()
-      expect(window.vibecoding.createProject).toHaveBeenCalledWith({ name: 'test', path: '/test' })
+      expect(window.stoa.createProject).toHaveBeenCalledWith({ name: 'test', path: '/test' })
     })
 
     it('createProject event sets created project as active', async () => {
@@ -196,11 +202,11 @@ describe('App (root)', () => {
   })
 
   describe('session creation', () => {
-    it('createSession event calls window.vibecoding.createSession with { projectId, type, title }', async () => {
+    it('createSession event calls window.stoa.createSession with { projectId, type, title }', async () => {
       wrapper = await mountApp(pinia)
       const appShell = wrapper.findComponent({ name: 'AppShell' })
       await appShell.vm.$emit('createSession', { projectId: 'new_project', type: 'shell', title: 'test' })
-      expect(window.vibecoding.createSession).toHaveBeenCalledWith({ projectId: 'new_project', type: 'shell', title: 'test' })
+      expect(window.stoa.createSession).toHaveBeenCalledWith({ projectId: 'new_project', type: 'shell', title: 'test' })
     })
 
     it('createSession event adds result to store via addSession', async () => {
@@ -211,7 +217,7 @@ describe('App (root)', () => {
         projects: [{ id: 'new_project', name: 'test', path: '/test', createdAt: 't', updatedAt: 't' }],
         sessions: []
       }
-      setupVibecoding({ getBootstrapState: vi.fn().mockResolvedValue(hydratedState) })
+      setupStoa({ getBootstrapState: vi.fn().mockResolvedValue(hydratedState) })
 
       wrapper = await mountApp(pinia)
       await flush()
@@ -225,7 +231,7 @@ describe('App (root)', () => {
 
   describe('project creation error handling', () => {
     it('when createProject rejects with Error → sets store.lastError to error message', async () => {
-      setupVibecoding({ createProject: vi.fn().mockRejectedValue(new Error('Project path already exists')) })
+      setupStoa({ createProject: vi.fn().mockRejectedValue(new Error('Project path already exists')) })
 
       wrapper = await mountApp(pinia)
       await flush()
@@ -239,7 +245,7 @@ describe('App (root)', () => {
     })
 
     it('when createProject rejects with string → sets store.lastError to string', async () => {
-      setupVibecoding({ createProject: vi.fn().mockRejectedValue('some string error') })
+      setupStoa({ createProject: vi.fn().mockRejectedValue('some string error') })
 
       wrapper = await mountApp(pinia)
       await flush()
@@ -252,7 +258,7 @@ describe('App (root)', () => {
     })
 
     it('when createProject returns null → sets store.lastError to null-response message', async () => {
-      setupVibecoding({ createProject: vi.fn().mockResolvedValue(null) })
+      setupStoa({ createProject: vi.fn().mockResolvedValue(null) })
 
       wrapper = await mountApp(pinia)
       await flush()
@@ -267,7 +273,7 @@ describe('App (root)', () => {
     })
 
     it('successful createProject clears previous error', async () => {
-      setupVibecoding()
+      setupStoa()
 
       wrapper = await mountApp(pinia)
       await flush()
@@ -293,7 +299,7 @@ describe('App (root)', () => {
         projects: [{ id: 'new_project', name: 'test', path: '/test', createdAt: 't', updatedAt: 't' }],
         sessions: []
       }
-      setupVibecoding({
+      setupStoa({
         getBootstrapState: vi.fn().mockResolvedValue(hydratedState),
         createSession: vi.fn().mockRejectedValue(new Error('Session must belong to an existing project'))
       })
@@ -317,7 +323,7 @@ describe('App (root)', () => {
         projects: [{ id: 'new_project', name: 'test', path: '/test', createdAt: 't', updatedAt: 't' }],
         sessions: []
       }
-      setupVibecoding({
+      setupStoa({
         getBootstrapState: vi.fn().mockResolvedValue(hydratedState),
         createSession: vi.fn().mockResolvedValue(null)
       })

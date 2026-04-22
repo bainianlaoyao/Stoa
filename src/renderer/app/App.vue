@@ -4,8 +4,10 @@ import { storeToRefs } from 'pinia'
 import type { SessionType, SessionStatusEvent } from '@shared/project-session'
 import AppShell from '@renderer/components/AppShell.vue'
 import { useWorkspaceStore } from '@renderer/stores/workspaces'
+import { useSettingsStore } from '@renderer/stores/settings'
 
 const workspaceStore = useWorkspaceStore()
+const settingsStore = useSettingsStore()
 const {
   projectHierarchy,
   activeProjectId,
@@ -16,18 +18,18 @@ const {
 
 function handleProjectSelect(projectId: string): void {
   workspaceStore.setActiveProject(projectId)
-  void window.vibecoding.setActiveProject(projectId)
+  void window.stoa.setActiveProject(projectId)
 }
 
 function handleSessionSelect(sessionId: string): void {
   workspaceStore.setActiveSession(sessionId)
-  void window.vibecoding.setActiveSession(sessionId)
+  void window.stoa.setActiveSession(sessionId)
 }
 
 async function handleProjectCreate(payload: { name: string; path: string }): Promise<void> {
   workspaceStore.clearError()
   try {
-    const created = await window.vibecoding.createProject({ name: payload.name, path: payload.path })
+    const created = await window.stoa.createProject({ name: payload.name, path: payload.path })
     if (!created) {
       workspaceStore.lastError = 'Failed to create project: no response from main process'
       return
@@ -43,7 +45,7 @@ async function handleSessionCreate(payload: { projectId: string; type: string; t
   workspaceStore.clearError()
   try {
     console.log('[App.vue] handleSessionCreate:', payload)
-    const created = await window.vibecoding.createSession({
+    const created = await window.stoa.createSession({
       projectId: payload.projectId,
       type: payload.type as SessionType,
       title: payload.title
@@ -63,10 +65,11 @@ async function handleSessionCreate(payload: { projectId: string; type: string; t
 let unsubscribeSessionEvent: (() => void) | null = null
 
 onMounted(async () => {
-  const bootstrapState = await window.vibecoding.getBootstrapState()
+  const bootstrapState = await window.stoa.getBootstrapState()
   workspaceStore.hydrate(bootstrapState)
+  await settingsStore.loadSettings()
 
-  unsubscribeSessionEvent = window.vibecoding?.onSessionEvent?.((event: SessionStatusEvent) => {
+  unsubscribeSessionEvent = window.stoa?.onSessionEvent?.((event: SessionStatusEvent) => {
     console.log('[App.vue] onSessionEvent:', event)
     workspaceStore.updateSession(event.sessionId, {
       status: event.status,
