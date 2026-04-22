@@ -14,13 +14,13 @@ import type { PersistedGlobalStateV3, PersistedProjectSessions } from '@shared/p
 const tempDirs: string[] = []
 
 async function createTempGlobalStatePath(): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), 'vibecoding-state-store-'))
+  const dir = await mkdtemp(join(tmpdir(), 'stoa-state-store-'))
   tempDirs.push(dir)
   return join(dir, 'global.json')
 }
 
 async function createTempProjectDir(): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), 'vibecoding-project-'))
+  const dir = await mkdtemp(join(tmpdir(), 'stoa-project-'))
   tempDirs.push(dir)
   return dir
 }

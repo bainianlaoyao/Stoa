@@ -36,30 +36,58 @@ function handleFontSizeChange(value: string): void {
 </script>
 
 <template>
-  <div role="tabpanel" id="settings-panel-general" class="settings-surface__content" aria-label="General settings">
+  <div role="tabpanel" id="settings-panel-general" class="settings-panel" aria-label="General settings">
+    <header class="settings-panel__header">
+      <div>
+        <p class="eyebrow">General</p>
+        <h3 class="settings-panel__title">Shell and terminal defaults</h3>
+      </div>
+      <p class="settings-panel__description">
+        Configure the default shell path and the monospace scale used by terminal surfaces.
+      </p>
+    </header>
+
     <div class="settings-section">
-      <div class="settings-item settings-item--bordered">
-        <p class="eyebrow">Shell Path</p>
-        <div class="settings-item__row">
-          <input
-            class="form-field__input settings-item__path-input"
-            type="text"
-            :value="store.shellPath"
-            placeholder="Auto-detected"
-            data-settings-field="shellPath"
-            @change="handleShellChange"
-          />
+      <section class="settings-card" aria-label="Shell executable">
+        <div class="settings-card__header">
+          <div>
+            <h4 class="settings-card__title">Shell executable</h4>
+            <p class="settings-card__description">Use the detected shell when available, or point Stoa at a custom binary.</p>
+          </div>
+          <span class="settings-card__badge settings-card__badge--mono">Path</span>
+        </div>
+
+        <div class="settings-field" data-settings-field="shellPath">
+          <label class="form-field settings-field__main">
+            <span class="form-field__label">Shell path</span>
+            <input
+              class="form-field__input settings-item__path-input settings-item__path-input--mono"
+              type="text"
+              :value="store.shellPath"
+              placeholder="Auto-detected"
+              @change="handleShellChange"
+            />
+          </label>
           <button class="button-ghost settings-item__browse" type="button" @click="handleBrowse">Browse</button>
         </div>
+
         <p v-if="detecting" class="settings-item__hint">Detecting...</p>
         <p v-else-if="detectedShell && !store.shellPath" class="settings-item__hint settings-item__hint--success">
-          Auto-detected: {{ detectedShell }} ✓
+          Auto-detected: {{ detectedShell }}
         </p>
         <p v-else-if="store.shellPath && store.shellPath !== detectedShell" class="settings-item__hint">Custom path</p>
-        <p v-else-if="detectedShell" class="settings-item__hint settings-item__hint--success">Auto-detected ✓</p>
-      </div>
+        <p v-else-if="detectedShell" class="settings-item__hint settings-item__hint--success">Auto-detected</p>
+      </section>
 
-      <div class="settings-item">
+      <section class="settings-card" aria-label="Terminal font size">
+        <div class="settings-card__header">
+          <div>
+            <h4 class="settings-card__title">Terminal typography</h4>
+            <p class="settings-card__description">Keep command output legible while preserving the tighter console density.</p>
+          </div>
+          <span class="settings-card__badge">Mono UI</span>
+        </div>
+
         <GlassFormField
           label="Terminal Font Size"
           type="select"
@@ -68,7 +96,7 @@ function handleFontSizeChange(value: string): void {
           data-settings-field="terminalFontSize"
           @update:model-value="handleFontSizeChange"
         />
-      </div>
+      </section>
     </div>
   </div>
 </template>

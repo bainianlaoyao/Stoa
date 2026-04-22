@@ -21,6 +21,15 @@ describe('SettingsTabBar', () => {
     expect(tabIds).toContain('about')
   })
 
+  it('renders icon svg and summary text for each tab', () => {
+    const wrapper = mountTabBar()
+    const buttons = wrapper.findAll('[data-settings-tab]')
+
+    expect(buttons[0].find('svg').exists()).toBe(true)
+    expect(buttons[0].text()).toContain('Shell defaults and terminal typography.')
+    expect(buttons[1].text()).toContain('Executable paths for local provider runtimes.')
+  })
+
   it('marks the active tab with aria-selected="true" and the CSS class settings-tab-bar__item--active', () => {
     const wrapper = mountTabBar('providers')
     const activeBtn = wrapper.find('[data-settings-tab="providers"]')

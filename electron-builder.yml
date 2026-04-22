@@ -1,5 +1,5 @@
-appId: com.ohmyopencode.ultra-simple-panel
-productName: Ultra Simple Panel
+appId: dev.stoa.app
+productName: Stoa
 directories:
   output: release
 files:

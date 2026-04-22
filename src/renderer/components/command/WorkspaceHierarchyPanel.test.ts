@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createPinia } from 'pinia'
 import WorkspaceHierarchyPanel from './WorkspaceHierarchyPanel.vue'
@@ -7,6 +7,10 @@ import NewProjectModal from './NewProjectModal.vue'
 import ProviderFloatingCard from './ProviderFloatingCard.vue'
 import ProviderRadialMenu from './ProviderRadialMenu.vue'
 import type { ProjectHierarchyNode } from '@renderer/stores/workspaces'
+
+afterEach(() => {
+  vi.useRealTimers()
+})
 
 function createHierarchy(): ProjectHierarchyNode[] {
   return [
@@ -315,6 +319,83 @@ describe('WorkspaceHierarchyPanel', () => {
       const wrapper = mountPanel()
       await wrapper.find('.route-add-session').trigger('click')
       expect(wrapper.emitted('createSession')).toBeUndefined()
+    })
+
+    it('quick click on "+" opens floating card', async () => {
+      const wrapper = mountPanel()
+      const addButton = wrapper.find('.route-add-session')
+
+      Object.defineProperty(addButton.element, 'getBoundingClientRect', {
+        value: () => ({ left: 24, top: 36, width: 24, height: 24, right: 48, bottom: 60, x: 24, y: 36, toJSON: () => ({}) })
+      })
+
+      await addButton.trigger('mousedown')
+      await addButton.trigger('mouseup')
+
+      const floatingCard = wrapper.findComponent(ProviderFloatingCard)
+      const radialMenu = wrapper.findComponent(ProviderRadialMenu)
+
+      expect(floatingCard.props('visible')).toBe(true)
+      expect(radialMenu.props('visible')).toBe(false)
+    })
+
+    it('second quick click on same "+" closes floating card', async () => {
+      const wrapper = mountPanel()
+      const addButton = wrapper.find('.route-add-session')
+
+      Object.defineProperty(addButton.element, 'getBoundingClientRect', {
+        value: () => ({ left: 24, top: 36, width: 24, height: 24, right: 48, bottom: 60, x: 24, y: 36, toJSON: () => ({}) })
+      })
+
+      await addButton.trigger('mousedown')
+      await addButton.trigger('mouseup')
+      expect(wrapper.findComponent(ProviderFloatingCard).props('visible')).toBe(true)
+
+      await addButton.trigger('mousedown')
+      await addButton.trigger('mouseup')
+
+      expect(wrapper.findComponent(ProviderFloatingCard).props('visible')).toBe(false)
+      expect(wrapper.findComponent(ProviderRadialMenu).props('visible')).toBe(false)
+    })
+
+    it('clicking outside closes floating card opened by quick click', async () => {
+      const wrapper = mountPanel()
+      const addButton = wrapper.find('.route-add-session')
+
+      Object.defineProperty(addButton.element, 'getBoundingClientRect', {
+        value: () => ({ left: 24, top: 36, width: 24, height: 24, right: 48, bottom: 60, x: 24, y: 36, toJSON: () => ({}) })
+      })
+
+      await addButton.trigger('mousedown')
+      await addButton.trigger('mouseup')
+
+      expect(wrapper.findComponent(ProviderFloatingCard).props('visible')).toBe(true)
+
+      document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.findComponent(ProviderFloatingCard).props('visible')).toBe(false)
+    })
+
+    it('long press opens radial menu and closes it on mouseup', async () => {
+      vi.useFakeTimers()
+
+      const wrapper = mountPanel()
+      const addButton = wrapper.find('.route-add-session')
+
+      Object.defineProperty(addButton.element, 'getBoundingClientRect', {
+        value: () => ({ left: 24, top: 36, width: 24, height: 24, right: 48, bottom: 60, x: 24, y: 36, toJSON: () => ({}) })
+      })
+
+      await addButton.trigger('mousedown')
+      await vi.advanceTimersByTimeAsync(220)
+
+      expect(wrapper.findComponent(ProviderRadialMenu).props('visible')).toBe(true)
+      expect(wrapper.findComponent(ProviderFloatingCard).props('visible')).toBe(false)
+
+      await addButton.trigger('mouseup')
+
+      expect(wrapper.findComponent(ProviderRadialMenu).props('visible')).toBe(false)
     })
   })
 

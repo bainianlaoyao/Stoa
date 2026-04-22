@@ -48,7 +48,7 @@ function updateSessionType(event: Event): void {
   <aside class="workspace-list">
     <header class="workspace-list__header">
       <p class="workspace-list__eyebrow">Projects</p>
-      <h1 class="workspace-list__title">Vibecoding Panel</h1>
+      <h1 class="workspace-list__title">Stoa</h1>
       <p class="workspace-list__description">Project → Session hierarchy with canonical state from the main process.</p>
     </header>
 

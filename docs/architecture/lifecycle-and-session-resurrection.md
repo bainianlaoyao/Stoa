@@ -26,7 +26,7 @@
 }
 ```
 
-推荐默认路径为：`~/.vibecoding/state.json`。
+推荐默认路径为：`~/.stoa/state.json`。
 
 ## 恢复流程
 

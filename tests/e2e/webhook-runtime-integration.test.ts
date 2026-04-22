@@ -117,7 +117,7 @@ function getSessionState(manager: ProjectSessionManager, sessionId: string) {
 }
 
 async function createWebhookHarness(): Promise<WebhookHarness> {
-  const workspaceDir = await createTestWorkspace('vibecoding-e2e-webhook-runtime-')
+  const workspaceDir = await createTestWorkspace('stoa-e2e-webhook-runtime-')
   const globalStatePath = await createTestGlobalStatePath()
 
   const manager = await ProjectSessionManager.create({
@@ -191,7 +191,7 @@ describe('E2E: webhook runtime integration', () => {
       harness.port,
       '/events',
       createCanonicalEvent(harness.session.id, harness.session.projectId, 'running', 'event accepted'),
-      { 'x-vibecoding-secret': harness.secret }
+      { 'x-stoa-secret': harness.secret }
     )
 
     expect(response.statusCode).toBe(202)
@@ -232,7 +232,7 @@ describe('E2E: webhook runtime integration', () => {
       harness.port,
       '/events',
       createCanonicalEvent(harness.session.id, harness.session.projectId, 'running', 'should be rejected'),
-      { 'x-vibecoding-secret': 'wrong-secret' }
+      { 'x-stoa-secret': 'wrong-secret' }
     )
 
     const missingSecretResponse = await httpPost(
@@ -264,7 +264,7 @@ describe('E2E: webhook runtime integration', () => {
       harness.port,
       '/events',
       createCanonicalEvent(harness.session.id, harness.session.projectId, 'running', 'webhook says running'),
-      { 'x-vibecoding-secret': harness.secret }
+      { 'x-stoa-secret': harness.secret }
     )
 
     expect(runningResponse.statusCode).toBe(202)
@@ -295,7 +295,7 @@ describe('E2E: webhook runtime integration', () => {
       harness.port,
       '/events',
       createCanonicalEvent(harness.session.id, harness.session.projectId, 'exited', exitSummary),
-      { 'x-vibecoding-secret': harness.secret }
+      { 'x-stoa-secret': harness.secret }
     )
 
     expect(exitedResponse.statusCode).toBe(202)

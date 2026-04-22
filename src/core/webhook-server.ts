@@ -50,7 +50,7 @@ export function createLocalWebhookServer(options: LocalWebhookServerOptions = {}
     }
 
     const expectedSecret = options.getSessionSecret?.(request.body.session_id) ?? null
-    if (!expectedSecret || request.header('x-vibecoding-secret') !== expectedSecret) {
+    if (!expectedSecret || request.header('x-stoa-secret') !== expectedSecret) {
       response.status(401).json({ accepted: false, reason: 'invalid_secret' })
       return
     }

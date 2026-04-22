@@ -36,9 +36,8 @@ const positionedProviders = computed(() => {
       ...provider,
       angle,
       style: {
-        left: `${props.center.x + x}px`,
-        top: `${props.center.y + y}px`,
-        transform: 'translate(-50%, -50%)'
+        left: `${x}px`,
+        top: `${y}px`
       }
     }
   })
@@ -49,12 +48,12 @@ const menuStyle = computed(() => ({
   top: `${props.center.y}px`
 }))
 
-const trackStyle = {
+const trackStyle = computed(() => ({
   width: `${TRACK_SIZE}px`,
   height: `${TRACK_SIZE}px`,
-  marginLeft: `${-TRACK_SIZE / 2}px`,
-  marginTop: `${-TRACK_SIZE / 2}px`
-}
+  left: `${-TRACK_SIZE / 2}px`,
+  top: `${-TRACK_SIZE / 2}px`
+}))
 
 const iconStyle = {
   width: `${ITEM_SIZE}px`,
@@ -110,10 +109,7 @@ function createSession(type: SessionType) {
 
 .radial-menu__track {
   position: absolute;
-  left: 0;
-  top: 0;
   border-radius: 999px;
-  transform: translate(-50%, -50%);
 }
 
 .radial-menu__item {
@@ -121,6 +117,7 @@ function createSession(type: SessionType) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  transform: translate(-50%, -50%);
 }
 
 .radial-menu__item-icon {

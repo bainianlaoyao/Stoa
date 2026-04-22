@@ -26,7 +26,7 @@
 
 ### Milestone 4：恢复机制
 
-- 写入与读取 `~/.vibecoding/state.json`。
+- 写入与读取 `~/.stoa/state.json`。
 - 保存 `last_cli_session_id`。
 - 启动时尝试恢复工作区与 CLI 会话。
 
@@ -46,7 +46,7 @@
 - 已接入 `node-pty`，由主进程 / `src/core` 托管本地 shell PTY。
 - 已实现 preload 输入、resize、terminal data、workspace event 的白名单桥接。
 - 已实现最小 Session Manager、Express 本地 webhook server 与 runtime state 分发。
-- 已实现 `~/.vibecoding/state.json` 的最小持久化与启动恢复。
+- 已实现 `~/.stoa/state.json` 的最小持久化与启动恢复。
 - 已验证 `npx pnpm test`、`npx pnpm typecheck`、`npx pnpm build`、`npx electron-vite preview`。
 
 尚未完成的部分：

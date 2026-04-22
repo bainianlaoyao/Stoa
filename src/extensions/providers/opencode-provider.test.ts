@@ -21,8 +21,8 @@ describe('opencode provider', () => {
     expect(command.args).toContain('--port')
     expect(command.args).toContain('43128')
     expect(command.cwd).toBe('D:/demo')
-    expect(command.env.VIBECODING_SESSION_ID).toBe('session_demo_001')
-    expect(command.env.VIBECODING_SESSION_SECRET).toBe('secret-1')
+    expect(command.env.STOA_SESSION_ID).toBe('session_demo_001')
+    expect(command.env.STOA_SESSION_SECRET).toBe('secret-1')
   })
 
   test('builds a resume command from canonical external session id', async () => {

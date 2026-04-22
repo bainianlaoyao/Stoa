@@ -38,7 +38,7 @@ async function postEvent(
         headers: {
           'content-type': 'application/json',
           'content-length': Buffer.byteLength(payload),
-          ...(secret ? { 'x-vibecoding-secret': secret } : {})
+          ...(secret ? { 'x-stoa-secret': secret } : {})
         }
       },
       (response) => {

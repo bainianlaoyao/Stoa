@@ -88,11 +88,11 @@ describe('TerminalViewport', () => {
 
   beforeEach(() => {
     mockApi = createMockApi()
-    ;(window as Record<string, unknown>).vibecoding = mockApi
+    ;(window as Record<string, unknown>).stoa = mockApi
   })
 
   afterEach(() => {
-    delete (window as Record<string, unknown>).vibecoding
+    delete (window as Record<string, unknown>).stoa
   })
 
   test('renders empty state when no session', async () => {

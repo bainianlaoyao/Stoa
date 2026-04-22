@@ -78,14 +78,14 @@ function setupTerminal() {
     fitAddon?.fit()
     const cols = terminal?.cols
     const rows = terminal?.rows
-    if (cols && rows && props.session && window.vibecoding?.sendSessionResize) {
-      window.vibecoding.sendSessionResize(props.session.id, cols, rows)
+    if (cols && rows && props.session && window.stoa?.sendSessionResize) {
+      window.stoa.sendSessionResize(props.session.id, cols, rows)
     }
   })
 
   dataDisposable = terminal.onData((data) => {
-    if (props.session && window.vibecoding?.sendSessionInput) {
-      window.vibecoding.sendSessionInput(props.session.id, data)
+    if (props.session && window.stoa?.sendSessionInput) {
+      window.stoa.sendSessionInput(props.session.id, data)
     }
   })
 
@@ -93,19 +93,19 @@ function setupTerminal() {
     if (!fitAddon || !terminal) return
     fitAddon.fit()
     const { cols, rows } = terminal
-    if (props.session && window.vibecoding?.sendSessionResize) {
-      window.vibecoding.sendSessionResize(props.session.id, cols, rows)
+    if (props.session && window.stoa?.sendSessionResize) {
+      window.stoa.sendSessionResize(props.session.id, cols, rows)
     }
   })
   resizeObserver.observe(terminalContainer.value)
 
-  unsubscribeData = window.vibecoding?.onTerminalData?.((chunk: TerminalDataChunk) => {
+  unsubscribeData = window.stoa?.onTerminalData?.((chunk: TerminalDataChunk) => {
     if (chunk.sessionId === props.session?.id) {
       terminal?.write(chunk.data)
     }
   }) ?? null
 
-  unsubscribeEvents = window.vibecoding?.onSessionEvent?.((event) => {
+  unsubscribeEvents = window.stoa?.onSessionEvent?.((event) => {
     if (event.sessionId === props.session?.id && event.status === 'exited') {
       terminal?.write('\r\n\x1b[90m[session exited]\x1b[0m')
     }

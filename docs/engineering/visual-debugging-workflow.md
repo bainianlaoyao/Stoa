@@ -41,7 +41,7 @@ skill_mcp(mcp_name="playwright", tool_name="browser_run_code", arguments={
     await page.addInitScript(() => {
       window.__sessionEventCbs = [];
       window.__terminalDataCbs = [];
-      window.vibecoding = {
+      window.stoa = {
         getBootstrapState: async () => ({
           activeProjectId: 'project_test',
           activeSessionId: 'session_test',

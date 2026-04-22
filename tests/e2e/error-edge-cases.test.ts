@@ -21,7 +21,7 @@ async function createTempDir(prefix: string): Promise<string> {
 }
 
 async function createGlobalStatePath(): Promise<string> {
-  const dir = await createTempDir('vibecoding-e2e-error-')
+  const dir = await createTempDir('stoa-e2e-error-')
   return join(dir, 'global.json')
 }
 
@@ -36,7 +36,7 @@ async function writeRawStateFile(path: string, content: string): Promise<void> {
 describe('E2E: Error and Edge Cases', () => {
   describe('Duplicate project path prevention', () => {
     test('rejects second project with same path (different name)', async () => {
-      const workspaceDir = await createTempDir('vibecoding-e2e-dup-')
+      const workspaceDir = await createTempDir('stoa-e2e-dup-')
       const globalStatePath = await createGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
@@ -133,7 +133,7 @@ describe('E2E: Error and Edge Cases', () => {
     })
 
     test('can create projects and sessions normally after corruption recovery', async () => {
-      const workspaceDir = await createTempDir('vibecoding-e2e-corrupt-')
+      const workspaceDir = await createTempDir('stoa-e2e-corrupt-')
       const globalStatePath = await createGlobalStatePath()
       await writeRawStateFile(globalStatePath, 'corrupt!!!')
 
@@ -216,8 +216,8 @@ describe('E2E: Error and Edge Cases', () => {
 
   describe('Concurrent manager instances (same state file)', () => {
     test('managers have in-memory isolation', async () => {
-      const workspace1 = await createTempDir('vibecoding-e2e-conc-a-')
-      const workspace2 = await createTempDir('vibecoding-e2e-conc-b-')
+      const workspace1 = await createTempDir('stoa-e2e-conc-a-')
+      const workspace2 = await createTempDir('stoa-e2e-conc-b-')
       const globalStatePath = await createGlobalStatePath()
 
       const managerA = await ProjectSessionManager.create({
@@ -276,7 +276,7 @@ describe('E2E: Error and Edge Cases', () => {
     })
 
     test('recovers from external state file deletion', async () => {
-      const workspaceDir = await createTempDir('vibecoding-e2e-del-')
+      const workspaceDir = await createTempDir('stoa-e2e-del-')
       const globalStatePath = await createGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
@@ -302,7 +302,7 @@ describe('E2E: Error and Edge Cases', () => {
 
   describe('Session status edge cases', () => {
     test('shell sessions always get recoveryMode fresh-shell', async () => {
-      const workspaceDir = await createTempDir('vibecoding-e2e-shell-')
+      const workspaceDir = await createTempDir('stoa-e2e-shell-')
       const globalStatePath = await createGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
@@ -319,7 +319,7 @@ describe('E2E: Error and Edge Cases', () => {
     })
 
     test('opencode sessions always get recoveryMode resume-external', async () => {
-      const workspaceDir = await createTempDir('vibecoding-e2e-oc-')
+      const workspaceDir = await createTempDir('stoa-e2e-oc-')
       const globalStatePath = await createGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
@@ -336,7 +336,7 @@ describe('E2E: Error and Edge Cases', () => {
     })
 
     test('opencode session WITH externalSessionId stores it correctly', async () => {
-      const workspaceDir = await createTempDir('vibecoding-e2e-extid-')
+      const workspaceDir = await createTempDir('stoa-e2e-extid-')
       const globalStatePath = await createGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
@@ -360,7 +360,7 @@ describe('E2E: Error and Edge Cases', () => {
     })
 
     test('opencode session WITHOUT externalSessionId stores null', async () => {
-      const workspaceDir = await createTempDir('vibecoding-e2e-noext-')
+      const workspaceDir = await createTempDir('stoa-e2e-noext-')
       const globalStatePath = await createGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
@@ -457,7 +457,7 @@ describe('E2E: Error and Edge Cases', () => {
 
       const projects = []
       for (let i = 0; i < 5; i++) {
-        const dir = await createTempDir(`vibecoding-e2e-rapid-p${i}-`)
+        const dir = await createTempDir(`stoa-e2e-rapid-p${i}-`)
         const p = await manager.createProject({ path: dir, name: `Project ${i}` })
         projects.push(p)
       }
@@ -474,7 +474,7 @@ describe('E2E: Error and Edge Cases', () => {
     })
 
     test('creates 5 sessions under same project rapidly', async () => {
-      const workspaceDir = await createTempDir('vibecoding-e2e-rapid-s-')
+      const workspaceDir = await createTempDir('stoa-e2e-rapid-s-')
       const globalStatePath = await createGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
@@ -519,7 +519,7 @@ describe('E2E: Error and Edge Cases', () => {
     })
 
     test('mixed session types produce correct recovery actions', async () => {
-      const workspaceDir = await createTempDir('vibecoding-e2e-recovery-')
+      const workspaceDir = await createTempDir('stoa-e2e-recovery-')
       const globalStatePath = await createGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
@@ -551,7 +551,7 @@ describe('E2E: Error and Edge Cases', () => {
     })
 
     test('opencode session without externalSessionId still gets resume-external action', async () => {
-      const workspaceDir = await createTempDir('vibecoding-e2e-noext-recovery-')
+      const workspaceDir = await createTempDir('stoa-e2e-noext-recovery-')
       const globalStatePath = await createGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({

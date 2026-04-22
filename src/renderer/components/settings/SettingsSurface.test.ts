@@ -3,9 +3,10 @@ import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import SettingsSurface from './SettingsSurface.vue'
+import type { RendererApi } from '@shared/project-session'
 
-function setupVibecodingMock(): void {
-  window.stoa = {
+function createStoaMock(): RendererApi {
+  return {
     getBootstrapState: vi.fn().mockResolvedValue({ activeProjectId: null, activeSessionId: null, terminalWebhookPort: 0, projects: [], sessions: [] }),
     createProject: vi.fn().mockResolvedValue(null),
     createSession: vi.fn().mockResolvedValue(null),
@@ -20,8 +21,14 @@ function setupVibecodingMock(): void {
     pickFolder: vi.fn().mockResolvedValue(null),
     pickFile: vi.fn().mockResolvedValue(null),
     detectShell: vi.fn().mockResolvedValue(null),
-    detectProvider: vi.fn().mockResolvedValue(null),
-  } as any // eslint-disable-line @typescript-eslint/no-explicit-any
+    detectProvider: vi.fn().mockResolvedValue(null)
+  }
+}
+
+function setupVibecodingMock(): void {
+  window.stoa = {
+    ...createStoaMock()
+  }
 }
 
 describe('SettingsSurface', () => {
@@ -42,6 +49,17 @@ describe('SettingsSurface', () => {
     const section = wrapper.find('[data-surface="settings"]')
     expect(section.exists()).toBe(true)
     expect(section.attributes('aria-label')).toBe('Settings surface')
+  })
+
+  it('renders the page hero and shell layout', () => {
+    const wrapper = mount(SettingsSurface, {
+      global: { plugins: [createPinia()] },
+      attachTo: document.body
+    })
+
+    expect(wrapper.find('.settings-surface__hero').exists()).toBe(true)
+    expect(wrapper.find('.settings-surface__title').text()).toBe('Settings')
+    expect(wrapper.find('.settings-surface__shell').exists()).toBe(true)
   })
 
   it('renders the tab bar with 3 tabs', () => {

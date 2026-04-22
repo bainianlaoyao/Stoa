@@ -8,13 +8,13 @@ import { ProjectSessionManager } from './project-session-manager'
 const tempDirs: string[] = []
 
 async function createTempGlobalStatePath(): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), 'vibecoding-psm-'))
+  const dir = await mkdtemp(join(tmpdir(), 'stoa-psm-'))
   tempDirs.push(dir)
   return join(dir, 'global.json')
 }
 
 async function createTempProjectDir(prefix = 'project'): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), `vibecoding-${prefix}-`))
+  const dir = await mkdtemp(join(tmpdir(), `stoa-${prefix}-`))
   tempDirs.push(dir)
   return dir
 }
@@ -92,7 +92,7 @@ describe('ProjectSessionManager', () => {
 
     const created = await manager.createProject({
       path: projectDir,
-      name: 'ultra_simple_panel',
+      name: 'stoa',
       defaultSessionType: 'shell'
     })
 

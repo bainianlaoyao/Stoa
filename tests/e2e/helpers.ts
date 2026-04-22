@@ -23,7 +23,7 @@ export async function createTestWorkspace(name: string): Promise<string> {
 }
 
 export async function createTestGlobalStatePath(): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), 'vibecoding-e2e-state-'))
+  const dir = await mkdtemp(join(tmpdir(), 'stoa-e2e-state-'))
   tempDirs.push(dir)
   return join(dir, 'global.json')
 }

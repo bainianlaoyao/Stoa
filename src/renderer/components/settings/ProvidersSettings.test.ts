@@ -4,9 +4,10 @@ import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { nextTick } from 'vue'
 import ProvidersSettings from './ProvidersSettings.vue'
+import type { RendererApi } from '@shared/project-session'
 
-function setupVibecodingMock(overrides: Record<string, ReturnType<typeof vi.fn>> = {}): void {
-  window.stoa = {
+function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
+  return {
     getBootstrapState: vi.fn().mockResolvedValue({ activeProjectId: null, activeSessionId: null, terminalWebhookPort: 0, projects: [], sessions: [] }),
     createProject: vi.fn().mockResolvedValue(null),
     createSession: vi.fn().mockResolvedValue(null),
@@ -22,8 +23,14 @@ function setupVibecodingMock(overrides: Record<string, ReturnType<typeof vi.fn>>
     pickFile: vi.fn().mockResolvedValue(null),
     detectShell: vi.fn().mockResolvedValue(null),
     detectProvider: vi.fn().mockResolvedValue(null),
-    ...overrides,
-  } as any // eslint-disable-line @typescript-eslint/no-explicit-any
+    ...overrides
+  }
+}
+
+function setupVibecodingMock(overrides: Partial<RendererApi> = {}): void {
+  window.stoa = {
+    ...createStoaMock(overrides)
+  }
 }
 
 describe('ProvidersSettings', () => {
@@ -43,6 +50,16 @@ describe('ProvidersSettings', () => {
     })
     const providerInput = wrapper.find('[data-settings-field="provider-opencode"]')
     expect(providerInput.exists()).toBe(true)
+  })
+
+  it('renders provider section heading and status badge', () => {
+    const wrapper = mount(ProvidersSettings, {
+      global: { plugins: [createPinia()] },
+      attachTo: document.body
+    })
+
+    expect(wrapper.find('.settings-panel__title').text()).toBe('Provider runtime paths')
+    expect(wrapper.find('.settings-card__badge').exists()).toBe(true)
   })
 
   it('renders Browse button for each provider', () => {

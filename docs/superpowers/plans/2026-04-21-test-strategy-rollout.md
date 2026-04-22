@@ -153,7 +153,7 @@ describe('E2E: Composition Seam (main/index.ts wiring)', () => {
   })
 
   test('startSessionRuntime through SessionRuntimeController pushes IPC events to window', async () => {
-    const workspaceDir = await createTestWorkspace('vibecoding-composition-')
+    const workspaceDir = await createTestWorkspace('stoa-composition-')
     const stateFilePath = await createTestStatePath()
 
     const manager = await ProjectSessionManager.create({ webhookPort: null, stateFilePath })
@@ -214,7 +214,7 @@ describe('E2E: Composition Seam (main/index.ts wiring)', () => {
   })
 
   test('terminal data flows through controller to window', async () => {
-    const workspaceDir = await createTestWorkspace('vibecoding-composition-data-')
+    const workspaceDir = await createTestWorkspace('stoa-composition-data-')
     const stateFilePath = await createTestStatePath()
 
     const manager = await ProjectSessionManager.create({ webhookPort: null, stateFilePath })
@@ -261,7 +261,7 @@ describe('E2E: Composition Seam (main/index.ts wiring)', () => {
   })
 
   test('disk state matches controller-pushed status at each stage', async () => {
-    const workspaceDir = await createTestWorkspace('vibecoding-composition-disk-')
+    const workspaceDir = await createTestWorkspace('stoa-composition-disk-')
     const stateFilePath = await createTestStatePath()
 
     const manager = await ProjectSessionManager.create({ webhookPort: null, stateFilePath })
@@ -363,7 +363,7 @@ Test structure:
    - Create webhook server with `getSessionSecret` returning the test secret, and `onEvent` that calls a handler.
    - Create `SessionRuntimeController` wrapping the manager and mock window.
    - Start the webhook server on ephemeral port.
-   - POST a `CanonicalSessionEvent` with `event_type: 'session.started'`, `status: 'running'` to `/events` with the correct `x-vibecoding-secret` header.
+   - POST a `CanonicalSessionEvent` with `event_type: 'session.started'`, `status: 'running'` to `/events` with the correct `x-stoa-secret` header.
    - Assert: HTTP 202 response.
    - Assert: controller's mock window `sent` array contains a `session:event` push with status `'running'`.
    - Assert: manager snapshot shows the session in `'running'` status.
@@ -624,7 +624,7 @@ test('rejects event when getSessionSecret returns null for session', async () =>
   const port = await server.start()
 
   const event = createCanonicalEvent('unknown_session', 'project_demo')
-  const response = await httpPost(port, '/events', event, { 'x-vibecoding-secret': 'any-secret' })
+  const response = await httpPost(port, '/events', event, { 'x-stoa-secret': 'any-secret' })
 
   expect(response.statusCode).toBe(401)
   expect(accepted).toHaveLength(0)
@@ -783,8 +783,8 @@ describe('onSessionEvent subscription', () => {
     await flush()
 
     // Get the callback registered with onSessionEvent
-    expect(window.vibecoding.onSessionEvent).toHaveBeenCalled()
-    const eventCallback = (window.vibecoding.onSessionEvent as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (event: { sessionId: string; status: string; summary: string }) => void
+    expect(window.stoa.onSessionEvent).toHaveBeenCalled()
+    const eventCallback = (window.stoa.onSessionEvent as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (event: { sessionId: string; status: string; summary: string }) => void
 
     // Simulate push event
     eventCallback({ sessionId: 's1', status: 'exited', summary: 'process exited (0)' })
@@ -808,7 +808,7 @@ describe('onSessionEvent subscription', () => {
     wrapper = await mountApp(pinia)
     await flush()
 
-    const eventCallback = (window.vibecoding.onSessionEvent as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (event: { sessionId: string; status: string; summary: string }) => void
+    const eventCallback = (window.stoa.onSessionEvent as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (event: { sessionId: string; status: string; summary: string }) => void
 
     eventCallback({ sessionId: 'unknown-session', status: 'running', summary: 'nope' })
     await flush()
@@ -984,7 +984,7 @@ export interface LaunchedElectronApp {
   relaunch: () => Promise<LaunchedElectronApp>
 }
 
-export async function createStateDir(prefix = 'vibecoding-playwright-'): Promise<string> {
+export async function createStateDir(prefix = 'stoa-playwright-'): Promise<string> {
   return await mkdtemp(join(tmpdir(), prefix))
 }
 
@@ -1262,7 +1262,7 @@ Refine this task into two concrete specs:
 
 **Spec B — webhook-driven UI update**
 1. create an `opencode` session;
-2. send a valid `CanonicalSessionEvent` HTTP request to `/events` with the correct `x-vibecoding-secret`;
+2. send a valid `CanonicalSessionEvent` HTTP request to `/events` with the correct `x-stoa-secret`;
 3. await a visible UI update instead of polling private store state;
 4. assert the hierarchy row, status chip/text, and details summary reflect the pushed event.
 

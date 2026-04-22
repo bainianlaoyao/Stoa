@@ -1,6 +1,6 @@
 # Global Design Language
 
-This document defines the project-wide visual design language for `ultra_simple_panel`.
+This document defines the project-wide visual design language for `stoa`.
 
 All future UI work, preview work, and frontend implementation work must follow this document unless the user explicitly overrides it.
 

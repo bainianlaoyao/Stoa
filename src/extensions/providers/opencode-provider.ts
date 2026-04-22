@@ -10,11 +10,11 @@ function opencodeCommand(): string {
 function createProviderEnv(target: ProviderRuntimeTarget, context: ProviderCommandContext): Record<string, string> {
   return {
     ...process.env as Record<string, string>,
-    VIBECODING_SESSION_ID: target.session_id,
-    VIBECODING_PROJECT_ID: target.project_id,
-    VIBECODING_SESSION_SECRET: context.sessionSecret,
-    VIBECODING_WEBHOOK_PORT: String(context.webhookPort),
-    VIBECODING_PROVIDER_PORT: String(context.providerPort)
+    STOA_SESSION_ID: target.session_id,
+    STOA_PROJECT_ID: target.project_id,
+    STOA_SESSION_SECRET: context.sessionSecret,
+    STOA_WEBHOOK_PORT: String(context.webhookPort),
+    STOA_PROVIDER_PORT: String(context.providerPort)
   }
 }
 
@@ -29,12 +29,12 @@ function createCommand(target: ProviderRuntimeTarget, context: ProviderCommandCo
 
 async function writeSidecarPlugin(target: ProviderRuntimeTarget, context: ProviderCommandContext): Promise<void> {
   const pluginDir = join(target.path, '.opencode', 'plugins')
-  const pluginPath = join(pluginDir, 'vibecoding-status.ts')
+  const pluginPath = join(pluginDir, 'stoa-status.ts')
 
   await mkdir(pluginDir, { recursive: true })
   await writeFile(
     pluginPath,
-    `export const VibecodingStatusPlugin = async () => ({\n  event: async ({ event }) => {\n    await fetch('http://127.0.0.1:${context.webhookPort}/events', {\n      method: 'POST',\n      headers: {\n        'content-type': 'application/json',\n        'x-vibecoding-secret': '${context.sessionSecret}'\n      },\n      body: JSON.stringify({\n        event_version: 1,\n        event_id: event.id ?? crypto.randomUUID(),\n        event_type: event.type ?? 'session.status_changed',\n        timestamp: new Date().toISOString(),\n        session_id: event.properties?.sessionID ?? '${target.session_id}',\n        project_id: '${target.project_id}',\n        correlation_id: event.properties?.messageID ?? undefined,\n        source: 'hook-sidecar',\n        payload: {\n          status: event.type === 'session.idle' ? 'awaiting_input' : 'running',\n          summary: event.type,\n          isProvisional: false\n        }\n      })\n    })\n  }\n})\n`,
+    `export const StoaStatusPlugin = async () => ({\n  event: async ({ event }) => {\n    await fetch('http://127.0.0.1:${context.webhookPort}/events', {\n      method: 'POST',\n      headers: {\n        'content-type': 'application/json',\n        'x-stoa-secret': '${context.sessionSecret}'\n      },\n      body: JSON.stringify({\n        event_version: 1,\n        event_id: event.id ?? crypto.randomUUID(),\n        event_type: event.type ?? 'session.status_changed',\n        timestamp: new Date().toISOString(),\n        session_id: event.properties?.sessionID ?? '${target.session_id}',\n        project_id: '${target.project_id}',\n        correlation_id: event.properties?.messageID ?? undefined,\n        source: 'hook-sidecar',\n        payload: {\n          status: event.type === 'session.idle' ? 'awaiting_input' : 'running',\n          summary: event.type,\n          isProvisional: false\n        }\n      })\n    })\n  }\n})\n`,
     'utf-8'
   )
 }

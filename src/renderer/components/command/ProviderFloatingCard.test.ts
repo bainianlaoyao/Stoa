@@ -69,18 +69,17 @@ describe('ProviderFloatingCard', () => {
     expect(wrapper.emitted('create')).toEqual([[{ type: 'opencode' }]])
   })
 
-  it('pressing Escape emits close', async () => {
-    const wrapper = mountCard()
-
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
-
-    expect(wrapper.emitted('close')).toEqual([[]])
-  })
-
   it('does not render when visible=false', () => {
     mountCard(false)
 
     const group = document.body.querySelector('[role="group"][aria-label="Session providers"]')
     expect(group).toBeFalsy()
+  })
+
+  it('does not render any dedicated close button', () => {
+    mountCard()
+
+    const closeButton = document.body.querySelector('button[aria-label*="close" i], button[title*="close" i]')
+    expect(closeButton).toBeFalsy()
   })
 })

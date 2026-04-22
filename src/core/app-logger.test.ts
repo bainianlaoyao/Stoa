@@ -7,7 +7,7 @@ import { writeAppLog } from './app-logger'
 const tempDirs: string[] = []
 
 async function createTempLogPath(): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), 'vibecoding-app-logger-'))
+  const dir = await mkdtemp(join(tmpdir(), 'stoa-app-logger-'))
   tempDirs.push(dir)
   return join(dir, 'app.log')
 }

@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path'
 import { homedir } from 'node:os'
 
 export function getLogFilePath(): string {
-  return join(homedir(), '.vibecoding', 'logs', 'app.log')
+  return join(homedir(), '.stoa', 'logs', 'app.log')
 }
 
 export async function writeAppLog(message: string, filePath = getLogFilePath()): Promise<void> {

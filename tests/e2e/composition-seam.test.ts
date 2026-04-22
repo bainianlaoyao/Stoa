@@ -61,7 +61,7 @@ function getTerminalChunks(sent: Array<{ channel: string; data: unknown }>): Ter
 }
 
 async function createCompositionHarness(activeHosts: PtyHost[]): Promise<CompositionHarness> {
-  const workspaceDir = await createTestWorkspace('vibecoding-e2e-composition-')
+  const workspaceDir = await createTestWorkspace('stoa-e2e-composition-')
   const globalStatePath = await createTestGlobalStatePath()
 
   const manager = await ProjectSessionManager.create({
@@ -164,7 +164,7 @@ describe('E2E: Composition seam', () => {
   })
 
   test('persists lifecycle state that matches each pushed session transition', async () => {
-    const workspaceDir = await createTestWorkspace('vibecoding-e2e-composition-')
+    const workspaceDir = await createTestWorkspace('stoa-e2e-composition-')
     const globalStatePath = await createTestGlobalStatePath()
 
     const manager = await ProjectSessionManager.create({

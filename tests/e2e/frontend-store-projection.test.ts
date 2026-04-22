@@ -14,7 +14,7 @@ describe('E2E: Frontend Store Projection', () => {
 
   describe('Phase 1: Hydration from real backend state', () => {
     test('store.projects matches snapshot.projects after hydrate', async () => {
-      const workspaceDir = await createTestWorkspace('vibecoding-store-p1-')
+      const workspaceDir = await createTestWorkspace('stoa-store-p1-')
       const globalStatePath = await createTestGlobalStatePath()
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
 
@@ -29,7 +29,7 @@ describe('E2E: Frontend Store Projection', () => {
     })
 
     test('store.sessions matches snapshot.sessions after hydrate', async () => {
-      const workspaceDir = await createTestWorkspace('vibecoding-store-p1-')
+      const workspaceDir = await createTestWorkspace('stoa-store-p1-')
       const globalStatePath = await createTestGlobalStatePath()
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
 
@@ -45,7 +45,7 @@ describe('E2E: Frontend Store Projection', () => {
     })
 
     test('store.activeProjectId matches snapshot.activeProjectId', async () => {
-      const workspaceDir = await createTestWorkspace('vibecoding-store-p1-')
+      const workspaceDir = await createTestWorkspace('stoa-store-p1-')
       const globalStatePath = await createTestGlobalStatePath()
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
 
@@ -60,7 +60,7 @@ describe('E2E: Frontend Store Projection', () => {
     })
 
     test('store.activeSessionId matches snapshot.activeSessionId', async () => {
-      const workspaceDir = await createTestWorkspace('vibecoding-store-p1-')
+      const workspaceDir = await createTestWorkspace('stoa-store-p1-')
       const globalStatePath = await createTestGlobalStatePath()
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
 
@@ -88,7 +88,7 @@ describe('E2E: Frontend Store Projection', () => {
     })
 
     test('store.activeProject computed returns correct project object', async () => {
-      const workspaceDir = await createTestWorkspace('vibecoding-store-p1-')
+      const workspaceDir = await createTestWorkspace('stoa-store-p1-')
       const globalStatePath = await createTestGlobalStatePath()
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
 
@@ -105,7 +105,7 @@ describe('E2E: Frontend Store Projection', () => {
     })
 
     test('store.activeSession computed returns correct session object', async () => {
-      const workspaceDir = await createTestWorkspace('vibecoding-store-p1-')
+      const workspaceDir = await createTestWorkspace('stoa-store-p1-')
       const globalStatePath = await createTestGlobalStatePath()
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
 
@@ -128,8 +128,8 @@ describe('E2E: Frontend Store Projection', () => {
 
   describe('Phase 2: ProjectHierarchy computed correctness', () => {
     test('hierarchy has correct number of nodes matching projects count', async () => {
-      const workspace1 = await createTestWorkspace('vibecoding-store-p2a-')
-      const workspace2 = await createTestWorkspace('vibecoding-store-p2b-')
+      const workspace1 = await createTestWorkspace('stoa-store-p2a-')
+      const workspace2 = await createTestWorkspace('stoa-store-p2b-')
       const globalStatePath = await createTestGlobalStatePath()
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
 
@@ -144,8 +144,8 @@ describe('E2E: Frontend Store Projection', () => {
     })
 
     test('hierarchy groups sessions under correct projects', async () => {
-      const workspace1 = await createTestWorkspace('vibecoding-store-p2a-')
-      const workspace2 = await createTestWorkspace('vibecoding-store-p2b-')
+      const workspace1 = await createTestWorkspace('stoa-store-p2a-')
+      const workspace2 = await createTestWorkspace('stoa-store-p2b-')
       const globalStatePath = await createTestGlobalStatePath()
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
 
@@ -173,8 +173,8 @@ describe('E2E: Frontend Store Projection', () => {
     })
 
     test('hierarchy active flags match activeProjectId', async () => {
-      const workspace1 = await createTestWorkspace('vibecoding-store-p2a-')
-      const workspace2 = await createTestWorkspace('vibecoding-store-p2b-')
+      const workspace1 = await createTestWorkspace('stoa-store-p2a-')
+      const workspace2 = await createTestWorkspace('stoa-store-p2b-')
       const globalStatePath = await createTestGlobalStatePath()
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
 
@@ -196,8 +196,8 @@ describe('E2E: Frontend Store Projection', () => {
     })
 
     test('hierarchy session active flags match activeSessionId', async () => {
-      const workspace1 = await createTestWorkspace('vibecoding-store-p2a-')
-      const workspace2 = await createTestWorkspace('vibecoding-store-p2b-')
+      const workspace1 = await createTestWorkspace('stoa-store-p2a-')
+      const workspace2 = await createTestWorkspace('stoa-store-p2b-')
       const globalStatePath = await createTestGlobalStatePath()
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
 
@@ -221,7 +221,7 @@ describe('E2E: Frontend Store Projection', () => {
     })
 
     test('hierarchy nodes contain full project data (name, path, id, timestamps)', async () => {
-      const workspaceDir = await createTestWorkspace('vibecoding-store-p2a-')
+      const workspaceDir = await createTestWorkspace('stoa-store-p2a-')
       const globalStatePath = await createTestGlobalStatePath()
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
 
@@ -241,7 +241,7 @@ describe('E2E: Frontend Store Projection', () => {
     })
 
     test('hierarchy sessions contain full data (type, status, title, summary, recoveryMode)', async () => {
-      const workspaceDir = await createTestWorkspace('vibecoding-store-p2a-')
+      const workspaceDir = await createTestWorkspace('stoa-store-p2a-')
       const globalStatePath = await createTestGlobalStatePath()
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
 
@@ -263,7 +263,7 @@ describe('E2E: Frontend Store Projection', () => {
     })
 
     test('hierarchy is stable across multiple accesses', async () => {
-      const workspaceDir = await createTestWorkspace('vibecoding-store-p2a-')
+      const workspaceDir = await createTestWorkspace('stoa-store-p2a-')
       const globalStatePath = await createTestGlobalStatePath()
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
 
@@ -296,8 +296,8 @@ describe('E2E: Frontend Store Projection', () => {
       session2b: SessionSummary
       snapshot: BootstrapState
     }> {
-      const workspace1 = await createTestWorkspace('vibecoding-store-p3a-')
-      const workspace2 = await createTestWorkspace('vibecoding-store-p3b-')
+      const workspace1 = await createTestWorkspace('stoa-store-p3a-')
+      const workspace2 = await createTestWorkspace('stoa-store-p3b-')
       const globalStatePath = await createTestGlobalStatePath()
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
 
@@ -402,7 +402,7 @@ describe('E2E: Frontend Store Projection', () => {
 
   describe('Phase 4: Add operations (simulating IPC responses)', () => {
     test('addProject adds single project to empty store', async () => {
-      const workspaceDir = await createTestWorkspace('vibecoding-store-p4-')
+      const workspaceDir = await createTestWorkspace('stoa-store-p4-')
       const globalStatePath = await createTestGlobalStatePath()
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
 
@@ -420,7 +420,7 @@ describe('E2E: Frontend Store Projection', () => {
     })
 
     test('addSession adds single session to store', async () => {
-      const workspaceDir = await createTestWorkspace('vibecoding-store-p4-')
+      const workspaceDir = await createTestWorkspace('stoa-store-p4-')
       const globalStatePath = await createTestGlobalStatePath()
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
 
@@ -441,8 +441,8 @@ describe('E2E: Frontend Store Projection', () => {
     })
 
     test('addProject and addSession for multiple projects groups correctly in hierarchy', async () => {
-      const workspace1 = await createTestWorkspace('vibecoding-store-p4a-')
-      const workspace2 = await createTestWorkspace('vibecoding-store-p4b-')
+      const workspace1 = await createTestWorkspace('stoa-store-p4a-')
+      const workspace2 = await createTestWorkspace('stoa-store-p4b-')
       const globalStatePath = await createTestGlobalStatePath()
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
 
@@ -479,8 +479,8 @@ describe('E2E: Frontend Store Projection', () => {
 
   describe('Phase 5: Store-backend consistency across full lifecycle', () => {
     test('projectHierarchy total session count equals store.sessions.length', async () => {
-      const workspace1 = await createTestWorkspace('vibecoding-store-p5a-')
-      const workspace2 = await createTestWorkspace('vibecoding-store-p5b-')
+      const workspace1 = await createTestWorkspace('stoa-store-p5a-')
+      const workspace2 = await createTestWorkspace('stoa-store-p5b-')
       const globalStatePath = await createTestGlobalStatePath()
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
 
@@ -503,8 +503,8 @@ describe('E2E: Frontend Store Projection', () => {
     })
 
     test('projectHierarchy covers all projects in store.projects', async () => {
-      const workspace1 = await createTestWorkspace('vibecoding-store-p5a-')
-      const workspace2 = await createTestWorkspace('vibecoding-store-p5b-')
+      const workspace1 = await createTestWorkspace('stoa-store-p5a-')
+      const workspace2 = await createTestWorkspace('stoa-store-p5b-')
       const globalStatePath = await createTestGlobalStatePath()
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
 
@@ -526,8 +526,8 @@ describe('E2E: Frontend Store Projection', () => {
     })
 
     test('setActiveProject keeps computed values consistent', async () => {
-      const workspace1 = await createTestWorkspace('vibecoding-store-p5a-')
-      const workspace2 = await createTestWorkspace('vibecoding-store-p5b-')
+      const workspace1 = await createTestWorkspace('stoa-store-p5a-')
+      const workspace2 = await createTestWorkspace('stoa-store-p5b-')
       const globalStatePath = await createTestGlobalStatePath()
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
 
@@ -558,8 +558,8 @@ describe('E2E: Frontend Store Projection', () => {
     })
 
     test('setActiveSession keeps computed values consistent', async () => {
-      const workspace1 = await createTestWorkspace('vibecoding-store-p5a-')
-      const workspace2 = await createTestWorkspace('vibecoding-store-p5b-')
+      const workspace1 = await createTestWorkspace('stoa-store-p5a-')
+      const workspace2 = await createTestWorkspace('stoa-store-p5b-')
       const globalStatePath = await createTestGlobalStatePath()
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
 
@@ -591,7 +591,7 @@ describe('E2E: Frontend Store Projection', () => {
     })
 
     test('lifecycle: mix of shell and opencode sessions all hydrate correctly', async () => {
-      const workspaceDir = await createTestWorkspace('vibecoding-store-p5a-')
+      const workspaceDir = await createTestWorkspace('stoa-store-p5a-')
       const globalStatePath = await createTestGlobalStatePath()
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
 
@@ -642,7 +642,7 @@ describe('E2E: Frontend Store Projection', () => {
     })
 
     test('project with zero sessions: hierarchy node has empty sessions array', async () => {
-      const workspaceDir = await createTestWorkspace('vibecoding-store-p6-')
+      const workspaceDir = await createTestWorkspace('stoa-store-p6-')
       const globalStatePath = await createTestGlobalStatePath()
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
 
@@ -658,7 +658,7 @@ describe('E2E: Frontend Store Projection', () => {
     })
 
     test('null active IDs: activeProject and activeSession return null', async () => {
-      const workspaceDir = await createTestWorkspace('vibecoding-store-p6-')
+      const workspaceDir = await createTestWorkspace('stoa-store-p6-')
       const globalStatePath = await createTestGlobalStatePath()
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
 
@@ -682,7 +682,7 @@ describe('E2E: Frontend Store Projection', () => {
     })
 
     test('null active IDs: projectHierarchy still generates correctly with no active flags', async () => {
-      const workspaceDir = await createTestWorkspace('vibecoding-store-p6-')
+      const workspaceDir = await createTestWorkspace('stoa-store-p6-')
       const globalStatePath = await createTestGlobalStatePath()
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
 
@@ -705,7 +705,7 @@ describe('E2E: Frontend Store Projection', () => {
     })
 
     test('setActiveSession with nonexistent ID is no-op', async () => {
-      const workspaceDir = await createTestWorkspace('vibecoding-store-p6-')
+      const workspaceDir = await createTestWorkspace('stoa-store-p6-')
       const globalStatePath = await createTestGlobalStatePath()
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
 
@@ -727,7 +727,7 @@ describe('E2E: Frontend Store Projection', () => {
     })
 
     test('multiple sessions with same status all render correctly in hierarchy', async () => {
-      const workspaceDir = await createTestWorkspace('vibecoding-store-p6-')
+      const workspaceDir = await createTestWorkspace('stoa-store-p6-')
       const globalStatePath = await createTestGlobalStatePath()
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
 
@@ -789,7 +789,7 @@ describe('E2E: Frontend Store Projection', () => {
     })
 
     test('error state does not affect project/session data', async () => {
-      const workspaceDir = await createTestWorkspace('vibecoding-store-p7-')
+      const workspaceDir = await createTestWorkspace('stoa-store-p7-')
       const globalStatePath = await createTestGlobalStatePath()
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
 

@@ -137,7 +137,7 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
 
   describe('Shell session: bootstrapping → starting → running → exited', () => {
     test('completes full lifecycle with real PtyHost and real state persistence', async () => {
-      const workspaceDir = await createTestWorkspace('vibecoding-e2e-rt-lifecycle-')
+      const workspaceDir = await createTestWorkspace('stoa-e2e-rt-lifecycle-')
       const globalStatePath = await createTestGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
@@ -189,7 +189,7 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
     })
 
     test('captures terminal data from real process output', async () => {
-      const workspaceDir = await createTestWorkspace('vibecoding-e2e-rt-output-')
+      const workspaceDir = await createTestWorkspace('stoa-e2e-rt-output-')
       const globalStatePath = await createTestGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
@@ -233,7 +233,7 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
     })
 
     test('state is persisted to disk at each lifecycle stage', async () => {
-      const workspaceDir = await createTestWorkspace('vibecoding-e2e-rt-persist-')
+      const workspaceDir = await createTestWorkspace('stoa-e2e-rt-persist-')
       const globalStatePath = await createTestGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
@@ -280,7 +280,7 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
 
   describe('Multiple sessions lifecycle', () => {
     test('runs two sessions sequentially through full lifecycle', async () => {
-      const workspaceDir = await createTestWorkspace('vibecoding-e2e-rt-multi-')
+      const workspaceDir = await createTestWorkspace('stoa-e2e-rt-multi-')
       const globalStatePath = await createTestGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
@@ -328,7 +328,7 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
 
   describe('PtyHost cleanup after exit', () => {
     test('process exit removes session from PTY map', async () => {
-      const workspaceDir = await createTestWorkspace('vibecoding-e2e-rt-cleanup-')
+      const workspaceDir = await createTestWorkspace('stoa-e2e-rt-cleanup-')
       const globalStatePath = await createTestGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
@@ -355,7 +355,7 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
 
   describe('Restart recovery after full lifecycle', () => {
     test('restarted manager reflects final exited state from disk', async () => {
-      const workspaceDir = await createTestWorkspace('vibecoding-e2e-rt-recovery-')
+      const workspaceDir = await createTestWorkspace('stoa-e2e-rt-recovery-')
       const globalStatePath = await createTestGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
@@ -390,7 +390,7 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
 
   describe('Concurrent sessions', () => {
     test('two sessions run concurrently and exit independently', async () => {
-      const workspaceDir = await createTestWorkspace('vibecoding-e2e-rt-concurrent-')
+      const workspaceDir = await createTestWorkspace('stoa-e2e-rt-concurrent-')
       const globalStatePath = await createTestGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
@@ -442,7 +442,7 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
 
   describe('Non-zero exit code', () => {
     test('captures exit code from failing process', async () => {
-      const workspaceDir = await createTestWorkspace('vibecoding-e2e-rt-exitcode-')
+      const workspaceDir = await createTestWorkspace('stoa-e2e-rt-exitcode-')
       const globalStatePath = await createTestGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })

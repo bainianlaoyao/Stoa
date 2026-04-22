@@ -105,13 +105,13 @@ describe('E2E: Provider Integration', () => {
 
     test('installSidecar is a no-op (no files created)', async () => {
       const provider = getProvider('local-shell')
-      const workspaceDir = await createTempDir('vibecoding-e2e-nosidecar-')
+      const workspaceDir = await createTempDir('stoa-e2e-nosidecar-')
       const target = createTarget({ path: workspaceDir, type: 'shell' })
       const context = createContext()
 
       await provider.installSidecar(target, context)
 
-      const sidecarPath = join(workspaceDir, '.opencode', 'plugins', 'vibecoding-status.ts')
+      const sidecarPath = join(workspaceDir, '.opencode', 'plugins', 'stoa-status.ts')
       await expect(stat(sidecarPath)).rejects.toThrow()
     })
 
@@ -145,7 +145,7 @@ describe('E2E: Provider Integration', () => {
       expect(command.args[portIndex + 1]).toBe('44000')
     })
 
-    test('buildStartCommand sets VIBECODING_* environment variables', async () => {
+    test('buildStartCommand sets STOA_* environment variables', async () => {
       const provider = getProvider('opencode')
       const target = createTarget({
         session_id: 'session_s1',
@@ -160,11 +160,11 @@ describe('E2E: Provider Integration', () => {
 
       const command = await provider.buildStartCommand(target, context)
 
-      expect(command.env.VIBECODING_SESSION_ID).toBe('session_s1')
-      expect(command.env.VIBECODING_PROJECT_ID).toBe('project_p1')
-      expect(command.env.VIBECODING_SESSION_SECRET).toBe('my-secret-123')
-      expect(command.env.VIBECODING_WEBHOOK_PORT).toBe('55555')
-      expect(command.env.VIBECODING_PROVIDER_PORT).toBe('55556')
+      expect(command.env.STOA_SESSION_ID).toBe('session_s1')
+      expect(command.env.STOA_PROJECT_ID).toBe('project_p1')
+      expect(command.env.STOA_SESSION_SECRET).toBe('my-secret-123')
+      expect(command.env.STOA_WEBHOOK_PORT).toBe('55555')
+      expect(command.env.STOA_PROVIDER_PORT).toBe('55556')
     })
 
     test('buildResumeCommand includes --session flag with external ID', async () => {
@@ -203,7 +203,7 @@ describe('E2E: Provider Integration', () => {
 
   describe('OpenCode sidecar installation (real file system)', () => {
     test('installSidecar creates .opencode/plugins directory', async () => {
-      const workspaceDir = await createTempDir('vibecoding-e2e-sidecar-dir-')
+      const workspaceDir = await createTempDir('stoa-e2e-sidecar-dir-')
       const provider = getProvider('opencode')
       const target = createTarget({ path: workspaceDir })
       const context = createContext()
@@ -215,48 +215,48 @@ describe('E2E: Provider Integration', () => {
       expect(dirStat.isDirectory()).toBe(true)
     })
 
-    test('installSidecar writes vibecoding-status.ts file', async () => {
-      const workspaceDir = await createTempDir('vibecoding-e2e-sidecar-file-')
+    test('installSidecar writes stoa-status.ts file', async () => {
+      const workspaceDir = await createTempDir('stoa-e2e-sidecar-file-')
       const provider = getProvider('opencode')
       const target = createTarget({ path: workspaceDir })
       const context = createContext()
 
       await provider.installSidecar(target, context)
 
-      const pluginPath = join(workspaceDir, '.opencode', 'plugins', 'vibecoding-status.ts')
+      const pluginPath = join(workspaceDir, '.opencode', 'plugins', 'stoa-status.ts')
       const fileStat = await stat(pluginPath)
       expect(fileStat.isFile()).toBe(true)
     })
 
     test('sidecar file contains webhook URL with correct port', async () => {
-      const workspaceDir = await createTempDir('vibecoding-e2e-sidecar-url-')
+      const workspaceDir = await createTempDir('stoa-e2e-sidecar-url-')
       const provider = getProvider('opencode')
       const target = createTarget({ path: workspaceDir })
       const context = createContext({ webhookPort: 43127 })
 
       await provider.installSidecar(target, context)
 
-      const pluginPath = join(workspaceDir, '.opencode', 'plugins', 'vibecoding-status.ts')
+      const pluginPath = join(workspaceDir, '.opencode', 'plugins', 'stoa-status.ts')
       const content = await readFile(pluginPath, 'utf-8')
       expect(content).toContain('http://127.0.0.1:43127/events')
     })
 
     test('sidecar file contains session secret in header', async () => {
-      const workspaceDir = await createTempDir('vibecoding-e2e-sidecar-secret-')
+      const workspaceDir = await createTempDir('stoa-e2e-sidecar-secret-')
       const provider = getProvider('opencode')
       const target = createTarget({ path: workspaceDir })
       const context = createContext({ sessionSecret: 'my-super-secret-key' })
 
       await provider.installSidecar(target, context)
 
-      const pluginPath = join(workspaceDir, '.opencode', 'plugins', 'vibecoding-status.ts')
+      const pluginPath = join(workspaceDir, '.opencode', 'plugins', 'stoa-status.ts')
       const content = await readFile(pluginPath, 'utf-8')
-      expect(content).toContain('x-vibecoding-secret')
+      expect(content).toContain('x-stoa-secret')
       expect(content).toContain('my-super-secret-key')
     })
 
     test('sidecar file references correct session_id and project_id', async () => {
-      const workspaceDir = await createTempDir('vibecoding-e2e-sidecar-ids-')
+      const workspaceDir = await createTempDir('stoa-e2e-sidecar-ids-')
       const provider = getProvider('opencode')
       const target = createTarget({
         path: workspaceDir,
@@ -267,14 +267,14 @@ describe('E2E: Provider Integration', () => {
 
       await provider.installSidecar(target, context)
 
-      const pluginPath = join(workspaceDir, '.opencode', 'plugins', 'vibecoding-status.ts')
+      const pluginPath = join(workspaceDir, '.opencode', 'plugins', 'stoa-status.ts')
       const content = await readFile(pluginPath, 'utf-8')
       expect(content).toContain('session_test_s99')
       expect(content).toContain('project_test_p99')
     })
 
     test('calling installSidecar twice overwrites the file', async () => {
-      const workspaceDir = await createTempDir('vibecoding-e2e-sidecar-overwrite-')
+      const workspaceDir = await createTempDir('stoa-e2e-sidecar-overwrite-')
       const provider = getProvider('opencode')
 
       const target1 = createTarget({
@@ -295,7 +295,7 @@ describe('E2E: Provider Integration', () => {
 
       await provider.installSidecar(target2, context2)
 
-      const pluginPath = join(workspaceDir, '.opencode', 'plugins', 'vibecoding-status.ts')
+      const pluginPath = join(workspaceDir, '.opencode', 'plugins', 'stoa-status.ts')
       const content = await readFile(pluginPath, 'utf-8')
       expect(content).toContain('session_v2')
       expect(content).toContain('project_v2')
@@ -317,18 +317,18 @@ describe('E2E: Provider Integration', () => {
       expect(command.env).toEqual(process.env as Record<string, string>)
     })
 
-    test('opencode provider extends process.env with VIBECODING_ vars', async () => {
+    test('opencode provider extends process.env with STOA_ vars', async () => {
       const provider = getProvider('opencode')
       const target = createTarget({ type: 'opencode' })
       const context = createContext()
 
       const command = await provider.buildStartCommand(target, context)
 
-      expect(command.env.VIBECODING_SESSION_ID).toBe(target.session_id)
-      expect(command.env.VIBECODING_PROJECT_ID).toBe(target.project_id)
-      expect(command.env.VIBECODING_SESSION_SECRET).toBe(context.sessionSecret)
-      expect(command.env.VIBECODING_WEBHOOK_PORT).toBe(String(context.webhookPort))
-      expect(command.env.VIBECODING_PROVIDER_PORT).toBe(String(context.providerPort))
+      expect(command.env.STOA_SESSION_ID).toBe(target.session_id)
+      expect(command.env.STOA_PROJECT_ID).toBe(target.project_id)
+      expect(command.env.STOA_SESSION_SECRET).toBe(context.sessionSecret)
+      expect(command.env.STOA_WEBHOOK_PORT).toBe(String(context.webhookPort))
+      expect(command.env.STOA_PROVIDER_PORT).toBe(String(context.providerPort))
 
       const processEnvKeys = Object.keys(process.env)
       for (const key of processEnvKeys) {
@@ -341,13 +341,13 @@ describe('E2E: Provider Integration', () => {
       const target = createTarget({ type: 'opencode' })
       const context = createContext()
 
-      const beforeSecret = process.env.VIBECODING_SESSION_SECRET
-      const beforePort = process.env.VIBECODING_WEBHOOK_PORT
+      const beforeSecret = process.env.STOA_SESSION_SECRET
+      const beforePort = process.env.STOA_WEBHOOK_PORT
 
       await provider.buildStartCommand(target, context)
 
-      expect(process.env.VIBECODING_SESSION_SECRET).toBe(beforeSecret)
-      expect(process.env.VIBECODING_WEBHOOK_PORT).toBe(beforePort)
+      expect(process.env.STOA_SESSION_SECRET).toBe(beforeSecret)
+      expect(process.env.STOA_WEBHOOK_PORT).toBe(beforePort)
     })
   })
 })

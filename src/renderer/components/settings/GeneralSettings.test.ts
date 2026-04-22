@@ -4,9 +4,10 @@ import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { nextTick } from 'vue'
 import GeneralSettings from './GeneralSettings.vue'
+import type { RendererApi } from '@shared/project-session'
 
-function setupVibecodingMock(overrides: Record<string, ReturnType<typeof vi.fn>> = {}): void {
-  window.stoa = {
+function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
+  return {
     getBootstrapState: vi.fn().mockResolvedValue({ activeProjectId: null, activeSessionId: null, terminalWebhookPort: 0, projects: [], sessions: [] }),
     createProject: vi.fn().mockResolvedValue(null),
     createSession: vi.fn().mockResolvedValue(null),
@@ -22,8 +23,14 @@ function setupVibecodingMock(overrides: Record<string, ReturnType<typeof vi.fn>>
     pickFile: vi.fn().mockResolvedValue(null),
     detectShell: vi.fn().mockResolvedValue(null),
     detectProvider: vi.fn().mockResolvedValue(null),
-    ...overrides,
-  } as any // eslint-disable-line @typescript-eslint/no-explicit-any
+    ...overrides
+  }
+}
+
+function setupVibecodingMock(overrides: Partial<RendererApi> = {}): void {
+  window.stoa = {
+    ...createStoaMock(overrides)
+  }
 }
 
 describe('GeneralSettings', () => {
@@ -43,6 +50,17 @@ describe('GeneralSettings', () => {
     })
     expect(wrapper.find('[data-settings-field="shellPath"]').exists()).toBe(true)
     expect(wrapper.find('[data-settings-field="terminalFontSize"]').exists()).toBe(true)
+  })
+
+  it('renders the general section header and card titles', () => {
+    const wrapper = mount(GeneralSettings, {
+      global: { plugins: [createPinia()] },
+      attachTo: document.body
+    })
+
+    expect(wrapper.find('.settings-panel__title').text()).toBe('Shell and terminal defaults')
+    expect(wrapper.text()).toContain('Shell executable')
+    expect(wrapper.text()).toContain('Terminal typography')
   })
 
   it('renders Browse button', () => {

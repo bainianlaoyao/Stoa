@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { SessionType } from '@shared/project-session'
 import type { ProjectHierarchyNode } from '@renderer/stores/workspaces'
 import { useWorkspaceStore } from '@renderer/stores/workspaces'
@@ -33,6 +33,7 @@ const radialMenuProjectId = ref('')
 const radialMenuCenter = ref({ x: 0, y: 0 })
 
 let longPressTimer: ReturnType<typeof setTimeout> | null = null
+let longPressActivated = false
 
 function generateTitle(projectId: string, type: SessionType): string {
   const project = props.hierarchy.find(p => p.id === projectId)
@@ -72,19 +73,29 @@ function onAddButtonMouseDown(event: MouseEvent, projectId: string) {
   floatingCardProjectId.value = projectId
   floatingCardPosition.value = { x: rect.left, y: rect.top, width: rect.width, height: rect.height }
   radialMenuCenter.value = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+  longPressActivated = false
 
   longPressTimer = setTimeout(() => {
     longPressTimer = null
+    longPressActivated = true
     floatingCardVisible.value = false
     radialMenuVisible.value = true
   }, 200)
 }
 
 function onAddButtonMouseUp() {
+  if (longPressActivated) {
+    radialMenuVisible.value = false
+    longPressActivated = false
+    return
+  }
+
   if (longPressTimer !== null) {
     clearTimeout(longPressTimer)
     longPressTimer = null
-    floatingCardVisible.value = true
+    const shouldCloseFloatingCard = floatingCardVisible.value && floatingCardProjectId.value === radialMenuProjectId.value
+
+    floatingCardVisible.value = !shouldCloseFloatingCard
     radialMenuVisible.value = false
   }
 }
@@ -94,6 +105,7 @@ function onAddButtonMouseLeave() {
     clearTimeout(longPressTimer)
     longPressTimer = null
   }
+  longPressActivated = false
 }
 
 function onProjectRowContextmenu(event: MouseEvent, projectId: string) {
@@ -103,6 +115,31 @@ function onProjectRowContextmenu(event: MouseEvent, projectId: string) {
   floatingCardVisible.value = true
   radialMenuVisible.value = false
 }
+
+function handleDocumentMouseDown(event: MouseEvent) {
+  if (!floatingCardVisible.value) {
+    return
+  }
+
+  const target = event.target
+  if (!(target instanceof HTMLElement)) {
+    return
+  }
+
+  if (target.closest('.provider-floating-card') || target.closest('.route-add-session')) {
+    return
+  }
+
+  floatingCardVisible.value = false
+}
+
+onMounted(() => {
+  document.addEventListener('mousedown', handleDocumentMouseDown)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('mousedown', handleDocumentMouseDown)
+})
 
 watch(
   () => workspaceStore.isCreatingSession,

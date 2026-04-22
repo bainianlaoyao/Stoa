@@ -142,7 +142,7 @@ describe('E2E: Backend Full User Lifecycle', () => {
     })
 
     test('creates first project in test_workspace with real directory', async () => {
-      const workspaceDir = await createTestWorkspace('vibecoding-e2e-test_workspace-')
+      const workspaceDir = await createTestWorkspace('stoa-e2e-test_workspace-')
       const globalStatePath = await createTestGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
@@ -164,7 +164,7 @@ describe('E2E: Backend Full User Lifecycle', () => {
     })
 
     test('auto-activates the first created project', async () => {
-      const workspaceDir = await createTestWorkspace('vibecoding-e2e-test_workspace-')
+      const workspaceDir = await createTestWorkspace('stoa-e2e-test_workspace-')
       const globalStatePath = await createTestGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
@@ -182,7 +182,7 @@ describe('E2E: Backend Full User Lifecycle', () => {
     })
 
     test('persists project to state.json on disk', async () => {
-      const workspaceDir = await createTestWorkspace('vibecoding-e2e-test_workspace-')
+      const workspaceDir = await createTestWorkspace('stoa-e2e-test_workspace-')
       const globalStatePath = await createTestGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
@@ -202,7 +202,7 @@ describe('E2E: Backend Full User Lifecycle', () => {
     })
 
     test('re-reading state.json yields identical project data', async () => {
-      const workspaceDir = await createTestWorkspace('vibecoding-e2e-test_workspace-')
+      const workspaceDir = await createTestWorkspace('stoa-e2e-test_workspace-')
       const globalStatePath = await createTestGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
@@ -227,8 +227,8 @@ describe('E2E: Backend Full User Lifecycle', () => {
 
   describe('Phase 2: Multi-project → session creation', () => {
     test('creates second project in test_workspace2', async () => {
-      const workspace1 = await createTestWorkspace('vibecoding-e2e-test_workspace-')
-      const workspace2 = await createTestWorkspace('vibecoding-e2e-test_workspace2-')
+      const workspace1 = await createTestWorkspace('stoa-e2e-test_workspace-')
+      const workspace2 = await createTestWorkspace('stoa-e2e-test_workspace2-')
       const globalStatePath = await createTestGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
@@ -246,7 +246,7 @@ describe('E2E: Backend Full User Lifecycle', () => {
     })
 
     test('creates shell session under project 1', async () => {
-      const workspaceDir = await createTestWorkspace('vibecoding-e2e-test_workspace-')
+      const workspaceDir = await createTestWorkspace('stoa-e2e-test_workspace-')
       const globalStatePath = await createTestGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
@@ -267,8 +267,8 @@ describe('E2E: Backend Full User Lifecycle', () => {
     })
 
     test('creates opencode session under project 2', async () => {
-      const workspace1 = await createTestWorkspace('vibecoding-e2e-test_workspace-')
-      const workspace2 = await createTestWorkspace('vibecoding-e2e-test_workspace2-')
+      const workspace1 = await createTestWorkspace('stoa-e2e-test_workspace-')
+      const workspace2 = await createTestWorkspace('stoa-e2e-test_workspace2-')
       const globalStatePath = await createTestGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
@@ -290,7 +290,7 @@ describe('E2E: Backend Full User Lifecycle', () => {
     })
 
     test('shell session gets fresh-shell recovery mode', async () => {
-      const workspaceDir = await createTestWorkspace('vibecoding-e2e-test_workspace-')
+      const workspaceDir = await createTestWorkspace('stoa-e2e-test_workspace-')
       const globalStatePath = await createTestGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
@@ -309,7 +309,7 @@ describe('E2E: Backend Full User Lifecycle', () => {
     })
 
     test('opencode session gets resume-external recovery mode', async () => {
-      const workspaceDir = await createTestWorkspace('vibecoding-e2e-test_workspace-')
+      const workspaceDir = await createTestWorkspace('stoa-e2e-test_workspace-')
       const globalStatePath = await createTestGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
@@ -328,8 +328,8 @@ describe('E2E: Backend Full User Lifecycle', () => {
     })
 
     test('new session becomes active and switches active project', async () => {
-      const workspace1 = await createTestWorkspace('vibecoding-e2e-test_workspace-')
-      const workspace2 = await createTestWorkspace('vibecoding-e2e-test_workspace2-')
+      const workspace1 = await createTestWorkspace('stoa-e2e-test_workspace-')
+      const workspace2 = await createTestWorkspace('stoa-e2e-test_workspace2-')
       const globalStatePath = await createTestGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
@@ -354,8 +354,8 @@ describe('E2E: Backend Full User Lifecycle', () => {
     })
 
     test('all data persisted correctly to state.json', async () => {
-      const workspace1 = await createTestWorkspace('vibecoding-e2e-test_workspace-')
-      const workspace2 = await createTestWorkspace('vibecoding-e2e-test_workspace2-')
+      const workspace1 = await createTestWorkspace('stoa-e2e-test_workspace-')
+      const workspace2 = await createTestWorkspace('stoa-e2e-test_workspace2-')
       const globalStatePath = await createTestGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
@@ -387,7 +387,7 @@ describe('E2E: Backend Full User Lifecycle', () => {
 
   describe('Phase 3: State persistence and recovery', () => {
     test('snapshot returns immutable copies (mutation-safe)', async () => {
-      const workspaceDir = await createTestWorkspace('vibecoding-e2e-test_workspace-')
+      const workspaceDir = await createTestWorkspace('stoa-e2e-test_workspace-')
       const globalStatePath = await createTestGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
@@ -408,8 +408,8 @@ describe('E2E: Backend Full User Lifecycle', () => {
     })
 
     test('destroying and recreating manager restores all projects', async () => {
-      const workspace1 = await createTestWorkspace('vibecoding-e2e-test_workspace-')
-      const workspace2 = await createTestWorkspace('vibecoding-e2e-test_workspace2-')
+      const workspace1 = await createTestWorkspace('stoa-e2e-test_workspace-')
+      const workspace2 = await createTestWorkspace('stoa-e2e-test_workspace2-')
       const globalStatePath = await createTestGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
@@ -432,7 +432,7 @@ describe('E2E: Backend Full User Lifecycle', () => {
     })
 
     test('destroying and recreating manager restores all sessions', async () => {
-      const workspaceDir = await createTestWorkspace('vibecoding-e2e-test_workspace-')
+      const workspaceDir = await createTestWorkspace('stoa-e2e-test_workspace-')
       const globalStatePath = await createTestGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
@@ -457,8 +457,8 @@ describe('E2E: Backend Full User Lifecycle', () => {
     })
 
     test('active IDs are preserved across restart', async () => {
-      const workspace1 = await createTestWorkspace('vibecoding-e2e-test_workspace-')
-      const workspace2 = await createTestWorkspace('vibecoding-e2e-test_workspace2-')
+      const workspace1 = await createTestWorkspace('stoa-e2e-test_workspace-')
+      const workspace2 = await createTestWorkspace('stoa-e2e-test_workspace2-')
       const globalStatePath = await createTestGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
@@ -485,7 +485,7 @@ describe('E2E: Backend Full User Lifecycle', () => {
     })
 
     test('buildBootstrapRecoveryPlan returns correct actions', async () => {
-      const workspaceDir = await createTestWorkspace('vibecoding-e2e-test_workspace-')
+      const workspaceDir = await createTestWorkspace('stoa-e2e-test_workspace-')
       const globalStatePath = await createTestGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
@@ -507,7 +507,7 @@ describe('E2E: Backend Full User Lifecycle', () => {
     })
 
     test('recovery plan: shell → fresh-shell, opencode → resume-external', async () => {
-      const workspaceDir = await createTestWorkspace('vibecoding-e2e-test_workspace-')
+      const workspaceDir = await createTestWorkspace('stoa-e2e-test_workspace-')
       const globalStatePath = await createTestGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
@@ -526,7 +526,7 @@ describe('E2E: Backend Full User Lifecycle', () => {
     })
 
     test('recovery plan includes correct externalSessionId for opencode sessions', async () => {
-      const workspaceDir = await createTestWorkspace('vibecoding-e2e-test_workspace-')
+      const workspaceDir = await createTestWorkspace('stoa-e2e-test_workspace-')
       const globalStatePath = await createTestGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
@@ -551,7 +551,7 @@ describe('E2E: Backend Full User Lifecycle', () => {
 
   describe('Phase 4: Active project/session management', () => {
     test('creating session auto-sets both activeProjectId and activeSessionId', async () => {
-      const workspaceDir = await createTestWorkspace('vibecoding-e2e-test_workspace-')
+      const workspaceDir = await createTestWorkspace('stoa-e2e-test_workspace-')
       const globalStatePath = await createTestGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
@@ -575,8 +575,8 @@ describe('E2E: Backend Full User Lifecycle', () => {
     })
 
     test('switching between sessions in different projects updates both active IDs', async () => {
-      const workspace1 = await createTestWorkspace('vibecoding-e2e-test_workspace-')
-      const workspace2 = await createTestWorkspace('vibecoding-e2e-test_workspace2-')
+      const workspace1 = await createTestWorkspace('stoa-e2e-test_workspace-')
+      const workspace2 = await createTestWorkspace('stoa-e2e-test_workspace2-')
       const globalStatePath = await createTestGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
@@ -597,7 +597,7 @@ describe('E2E: Backend Full User Lifecycle', () => {
     })
 
     test('first project auto-activates when no active project exists', async () => {
-      const workspaceDir = await createTestWorkspace('vibecoding-e2e-test_workspace-')
+      const workspaceDir = await createTestWorkspace('stoa-e2e-test_workspace-')
       const globalStatePath = await createTestGlobalStatePath()
 
       const manager = await ProjectSessionManager.create({
@@ -656,7 +656,7 @@ describe('E2E: Backend Full User Lifecycle', () => {
       const port = await server.start()
 
       const event = createCanonicalEvent('session_demo_001', 'project_demo')
-      const response = await httpPost(port, '/events', event, { 'x-vibecoding-secret': 'my-secret' })
+      const response = await httpPost(port, '/events', event, { 'x-stoa-secret': 'my-secret' })
 
       expect(response.statusCode).toBe(202)
       expect(accepted).toHaveLength(1)
@@ -885,7 +885,7 @@ describe('E2E: Backend Full User Lifecycle', () => {
     })
 
     test('opencode provider: installSidecar writes plugin file to disk', async () => {
-      const workspaceDir = await createTestWorkspace('vibecoding-e2e-sidecar-')
+      const workspaceDir = await createTestWorkspace('stoa-e2e-sidecar-')
       const provider = getProvider('opencode')
 
       await provider.installSidecar(
@@ -893,13 +893,13 @@ describe('E2E: Backend Full User Lifecycle', () => {
         { webhookPort: 43127, sessionSecret: 'test-secret', providerPort: 43128 }
       )
 
-      const pluginPath = join(workspaceDir, '.opencode', 'plugins', 'vibecoding-status.ts')
+      const pluginPath = join(workspaceDir, '.opencode', 'plugins', 'stoa-status.ts')
       const content = await readFile(pluginPath, 'utf-8')
       expect(content.length).toBeGreaterThan(0)
     })
 
     test('sidecar plugin contains webhook URL with correct port', async () => {
-      const workspaceDir = await createTestWorkspace('vibecoding-e2e-sidecar-')
+      const workspaceDir = await createTestWorkspace('stoa-e2e-sidecar-')
       const provider = getProvider('opencode')
 
       await provider.installSidecar(
@@ -907,7 +907,7 @@ describe('E2E: Backend Full User Lifecycle', () => {
         { webhookPort: 43127, sessionSecret: 'test-secret', providerPort: 43128 }
       )
 
-      const pluginPath = join(workspaceDir, '.opencode', 'plugins', 'vibecoding-status.ts')
+      const pluginPath = join(workspaceDir, '.opencode', 'plugins', 'stoa-status.ts')
       const content = await readFile(pluginPath, 'utf-8')
       expect(content).toContain('127.0.0.1:43127')
       expect(content).toContain('test-secret')

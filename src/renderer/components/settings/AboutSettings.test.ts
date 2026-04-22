@@ -4,9 +4,9 @@ import { mount } from '@vue/test-utils'
 import AboutSettings from './AboutSettings.vue'
 
 describe('AboutSettings', () => {
-  it('renders app name "Vibecoding Panel"', () => {
+  it('renders app name "Stoa"', () => {
     const wrapper = mount(AboutSettings)
-    expect(wrapper.find('.settings-about__name').text()).toBe('Vibecoding Panel')
+    expect(wrapper.find('.settings-about__name').text()).toBe('Stoa')
   })
 
   it('renders version "v0.1.0"', () => {
@@ -17,6 +17,11 @@ describe('AboutSettings', () => {
   it('renders tech stack text', () => {
     const wrapper = mount(AboutSettings)
     expect(wrapper.find('.settings-about__stack').text()).toBe('Electron · Vue 3 · node-pty')
+  })
+
+  it('renders the about hero summary', () => {
+    const wrapper = mount(AboutSettings)
+    expect(wrapper.find('.settings-about__summary').text()).toContain('Multi-session workspace console')
   })
 
   it('renders 3 links with target="_blank"', () => {

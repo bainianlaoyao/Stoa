@@ -2,7 +2,7 @@
 
 ## 文档目的
 
-本文件用于把 Vibecoding 极简多会话管理框架从“已具备最小可运行骨架”推进到“整个产品实现完成”。
+本文件用于把 Stoa 多会话管理框架从“已具备最小可运行骨架”推进到“整个产品实现完成”。
 
 这里的“完成”不是指做出一个演示样机，而是指：
 
@@ -58,7 +58,7 @@
 - preload 白名单桥接
 - 最小 SessionManager
 - Express 本地 webhook server 接线点
-- `~/.vibecoding/state.json` 最小持久化与恢复
+- `~/.stoa/state.json` 最小持久化与恢复
 - 单工作区、本地 shell provider、最小终端运行演示
 
 当前不完整之处：

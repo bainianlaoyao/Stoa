@@ -22,15 +22,15 @@ export const DEFAULT_GLOBAL_STATE: PersistedGlobalStateV3 = {
 }
 
 export function getStateFilePath(): string {
-  return join(homedir(), '.vibecoding', 'state.json')
+  return join(homedir(), '.stoa', 'state.json')
 }
 
 export function getGlobalStateFilePath(): string {
-  return join(homedir(), '.vibecoding', 'global.json')
+  return join(homedir(), '.stoa', 'global.json')
 }
 
 export function getProjectSessionsFilePath(projectPath: string): string {
-  return join(projectPath, '.vibecoding', 'sessions.json')
+  return join(projectPath, '.stoa', 'sessions.json')
 }
 
 export async function readPersistedState<TState = PersistedAppStateV2>(filePath = getStateFilePath()): Promise<TState> {

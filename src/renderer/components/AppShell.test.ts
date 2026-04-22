@@ -110,7 +110,8 @@ describe('AppShell', () => {
     expect(wrapper.find('[data-surface="command"]').exists()).toBe(true)
     expect(wrapper.find('[data-command-surface="true"]').exists()).toBe(true)
     expect(wrapper.find('.terminal-empty-state').exists()).toBe(false)
-    expect(wrapper.find('.terminal-viewport__eyebrow').exists()).toBe(true)
+    expect(wrapper.find('.terminal-viewport__overlay').exists()).toBe(true)
+    expect(wrapper.text()).toContain('Session details')
   })
 
   it('switches to a named settings surface when the settings activity is selected', async () => {
