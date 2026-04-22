@@ -29,7 +29,7 @@ const baseSession: SessionSummary = {
 
 describe('AppShell', () => {
   beforeEach(() => {
-    const vibecodingMock: RendererApi = {
+    const stoaMock: RendererApi = {
       getBootstrapState: vi.fn().mockResolvedValue({
         activeProjectId: null,
         activeSessionId: null,
@@ -44,10 +44,16 @@ describe('AppShell', () => {
       sendSessionInput: vi.fn().mockResolvedValue(undefined),
       sendSessionResize: vi.fn().mockResolvedValue(undefined),
       onTerminalData: vi.fn().mockReturnValue(() => {}),
-      onSessionEvent: vi.fn().mockReturnValue(() => {})
+      onSessionEvent: vi.fn().mockReturnValue(() => {}),
+      getSettings: vi.fn().mockResolvedValue({ shellPath: '', terminalFontSize: 14, providers: {} }),
+      setSetting: vi.fn().mockResolvedValue(undefined),
+      pickFolder: vi.fn().mockResolvedValue(null),
+      pickFile: vi.fn().mockResolvedValue(null),
+      detectShell: vi.fn().mockResolvedValue(null),
+      detectProvider: vi.fn().mockResolvedValue(null)
     }
 
-    window.vibecoding = vibecodingMock
+    window.stoa = stoaMock
   })
 
   it('shows all top-level activity items and defaults to command view', () => {

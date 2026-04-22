@@ -1,15 +1,39 @@
 // @vitest-environment happy-dom
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { nextTick } from 'vue'
 import NewProjectModal from './NewProjectModal.vue'
 import { useWorkspaceStore } from '@renderer/stores/workspaces'
 
+function mockPickFolder(path: string | null) {
+  window.stoa = {
+    ...window.stoa,
+    pickFolder: vi.fn().mockResolvedValue(path)
+  } as any
+}
+
 describe('NewProjectModal', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
     setActivePinia(createPinia())
+    window.stoa = {
+      getBootstrapState: vi.fn(),
+      createProject: vi.fn(),
+      createSession: vi.fn(),
+      setActiveProject: vi.fn(),
+      setActiveSession: vi.fn(),
+      sendSessionInput: vi.fn(),
+      sendSessionResize: vi.fn(),
+      onTerminalData: vi.fn().mockReturnValue(() => {}),
+      onSessionEvent: vi.fn().mockReturnValue(() => {}),
+      getSettings: vi.fn().mockResolvedValue({ shellPath: '', terminalFontSize: 14, providers: {} }),
+      setSetting: vi.fn(),
+      pickFolder: vi.fn().mockResolvedValue(null),
+      pickFile: vi.fn().mockResolvedValue(null),
+      detectShell: vi.fn().mockResolvedValue(null),
+      detectProvider: vi.fn().mockResolvedValue(null)
+    } as any
   })
 
   afterEach(() => {
@@ -52,12 +76,12 @@ describe('NewProjectModal', () => {
       expect(btn!.textContent).toContain('创建')
     })
 
-    it('renders 取消 button (.button-ghost)', () => {
+    it('renders 取消 button in footer', () => {
       mount(NewProjectModal, {
         props: { show: true },
         attachTo: document.body
       })
-      const btn = document.body.querySelector('.button-ghost')
+      const btn = document.body.querySelector('.modal-panel__footer .button-ghost')
       expect(btn).toBeTruthy()
       expect(btn!.textContent).toContain('取消')
     })
@@ -78,90 +102,107 @@ describe('NewProjectModal', () => {
         props: { show: true },
         attachTo: document.body
       })
-      const inputs = document.body.querySelectorAll('.form-field__input')
-      const nameInput = inputs[0] as HTMLInputElement
+      const nameInput = document.body.querySelector('.form-field__input') as HTMLInputElement
       nameInput.value = 'my-project'
       nameInput.dispatchEvent(new Event('input'))
       ;(document.body.querySelector('.button-primary') as HTMLElement).click()
       expect(wrapper.emitted('create')).toBeFalsy()
     })
 
-    it('submit with path only → does NOT emit create', () => {
+    it('submit with path only (name cleared after Browse) → does NOT emit create', async () => {
+      mockPickFolder('/some/path')
       const wrapper = mount(NewProjectModal, {
         props: { show: true },
         attachTo: document.body
       })
-      const inputs = document.body.querySelectorAll('.form-field__input')
-      const pathInput = inputs[1] as HTMLInputElement
-      pathInput.value = '/some/path'
-      pathInput.dispatchEvent(new Event('input'))
+      const browseBtn = document.body.querySelector('.settings-item__browse') as HTMLElement
+      browseBtn.click()
+      await nextTick()
+
+      const nameInput = document.body.querySelector('.form-field__input') as HTMLInputElement
+      nameInput.value = ''
+      nameInput.dispatchEvent(new Event('input'))
+      await nextTick()
+
       ;(document.body.querySelector('.button-primary') as HTMLElement).click()
       expect(wrapper.emitted('create')).toBeFalsy()
     })
 
-    it('submit with whitespace-only name → does NOT emit create', () => {
+    it('submit with whitespace-only name (after Browse) → does NOT emit create', async () => {
+      mockPickFolder('/some/path')
       const wrapper = mount(NewProjectModal, {
         props: { show: true },
         attachTo: document.body
       })
-      const inputs = document.body.querySelectorAll('.form-field__input')
-      const nameInput = inputs[0] as HTMLInputElement
-      const pathInput = inputs[1] as HTMLInputElement
+      const browseBtn = document.body.querySelector('.settings-item__browse') as HTMLElement
+      browseBtn.click()
+      await nextTick()
+
+      const nameInput = document.body.querySelector('.form-field__input') as HTMLInputElement
       nameInput.value = '   '
       nameInput.dispatchEvent(new Event('input'))
-      pathInput.value = '/some/path'
-      pathInput.dispatchEvent(new Event('input'))
+      await nextTick()
+
       ;(document.body.querySelector('.button-primary') as HTMLElement).click()
       expect(wrapper.emitted('create')).toBeFalsy()
     })
   })
 
   describe('happy path', () => {
-    it('fill name + path → click 创建 → emits create with { name, path }', () => {
+    it('fill name + path → click 创建 → emits create with { name, path }', async () => {
+      mockPickFolder('/path/to/project')
       const wrapper = mount(NewProjectModal, {
         props: { show: true },
         attachTo: document.body
       })
-      const inputs = document.body.querySelectorAll('.form-field__input')
-      const nameInput = inputs[0] as HTMLInputElement
-      const pathInput = inputs[1] as HTMLInputElement
+      const nameInput = document.body.querySelector('.form-field__input') as HTMLInputElement
       nameInput.value = 'my-project'
       nameInput.dispatchEvent(new Event('input'))
-      pathInput.value = '/path/to/project'
-      pathInput.dispatchEvent(new Event('input'))
+      await nextTick()
+
+      const browseBtn = document.body.querySelector('.settings-item__browse') as HTMLElement
+      browseBtn.click()
+      await nextTick()
+
       ;(document.body.querySelector('.button-primary') as HTMLElement).click()
       expect(wrapper.emitted('create')).toBeTruthy()
       expect(wrapper.emitted('create')![0]).toEqual([{ name: 'my-project', path: '/path/to/project' }])
     })
 
-    it('emitted name and path are trimmed (no leading/trailing spaces)', () => {
+    it('emitted name is trimmed (no leading/trailing spaces)', async () => {
+      mockPickFolder('/path/to/project')
       const wrapper = mount(NewProjectModal, {
         props: { show: true },
         attachTo: document.body
       })
-      const inputs = document.body.querySelectorAll('.form-field__input')
-      const nameInput = inputs[0] as HTMLInputElement
-      const pathInput = inputs[1] as HTMLInputElement
+      const nameInput = document.body.querySelector('.form-field__input') as HTMLInputElement
       nameInput.value = '  my-project  '
       nameInput.dispatchEvent(new Event('input'))
-      pathInput.value = '  /path/to/project  '
-      pathInput.dispatchEvent(new Event('input'))
+      await nextTick()
+
+      const browseBtn = document.body.querySelector('.settings-item__browse') as HTMLElement
+      browseBtn.click()
+      await nextTick()
+
       ;(document.body.querySelector('.button-primary') as HTMLElement).click()
       expect(wrapper.emitted('create')![0]).toEqual([{ name: 'my-project', path: '/path/to/project' }])
     })
 
-    it('after submit → emits update:show with false (modal closes)', () => {
+    it('after submit → emits update:show with false (modal closes)', async () => {
+      mockPickFolder('/path/to/project')
       const wrapper = mount(NewProjectModal, {
         props: { show: true },
         attachTo: document.body
       })
-      const inputs = document.body.querySelectorAll('.form-field__input')
-      const nameInput = inputs[0] as HTMLInputElement
-      const pathInput = inputs[1] as HTMLInputElement
+      const nameInput = document.body.querySelector('.form-field__input') as HTMLInputElement
       nameInput.value = 'my-project'
       nameInput.dispatchEvent(new Event('input'))
-      pathInput.value = '/path/to/project'
-      pathInput.dispatchEvent(new Event('input'))
+      await nextTick()
+
+      const browseBtn = document.body.querySelector('.settings-item__browse') as HTMLElement
+      browseBtn.click()
+      await nextTick()
+
       ;(document.body.querySelector('.button-primary') as HTMLElement).click()
       expect(wrapper.emitted('update:show')).toBeTruthy()
       expect(wrapper.emitted('update:show')![0]).toEqual([false])
@@ -174,7 +215,7 @@ describe('NewProjectModal', () => {
         props: { show: true },
         attachTo: document.body
       })
-      ;(document.body.querySelector('.button-ghost') as HTMLElement).click()
+      ;(document.body.querySelector('.modal-panel__footer .button-ghost') as HTMLElement).click()
       expect(wrapper.emitted('update:show')).toBeTruthy()
       expect(wrapper.emitted('update:show')![0]).toEqual([false])
     })
@@ -184,7 +225,7 @@ describe('NewProjectModal', () => {
         props: { show: true },
         attachTo: document.body
       })
-      ;(document.body.querySelector('.button-ghost') as HTMLElement).click()
+      ;(document.body.querySelector('.modal-panel__footer .button-ghost') as HTMLElement).click()
       expect(wrapper.emitted('create')).toBeFalsy()
     })
   })
@@ -210,39 +251,43 @@ describe('NewProjectModal', () => {
       expect(document.body.querySelector('.modal-panel__error')).toBeFalsy()
     })
 
-    it('submit clears previous error via store.clearError', () => {
+    it('submit clears previous error via store.clearError', async () => {
       const store = useWorkspaceStore()
       store.lastError = 'prev error'
-      const wrapper = mount(NewProjectModal, {
+      mockPickFolder('/path/to/project')
+      mount(NewProjectModal, {
         props: { show: true },
         attachTo: document.body
       })
-      const inputs = document.body.querySelectorAll('.form-field__input')
-      const nameInput = inputs[0] as HTMLInputElement
-      const pathInput = inputs[1] as HTMLInputElement
+      const nameInput = document.body.querySelector('.form-field__input') as HTMLInputElement
       nameInput.value = 'my-project'
       nameInput.dispatchEvent(new Event('input'))
-      pathInput.value = '/path/to/project'
-      pathInput.dispatchEvent(new Event('input'))
+      await nextTick()
+
+      const browseBtn = document.body.querySelector('.settings-item__browse') as HTMLElement
+      browseBtn.click()
+      await nextTick()
+
       ;(document.body.querySelector('.button-primary') as HTMLElement).click()
       expect(store.lastError).toBeNull()
     })
 
     it('closing modal resets drafts', async () => {
+      mockPickFolder('/path/to/project')
       const wrapper = mount(NewProjectModal, {
         props: { show: true },
         attachTo: document.body
       })
-      const inputs = document.body.querySelectorAll('.form-field__input')
-      const nameInput = inputs[0] as HTMLInputElement
-      const pathInput = inputs[1] as HTMLInputElement
+      const nameInput = document.body.querySelector('.form-field__input') as HTMLInputElement
       nameInput.value = 'my-project'
       nameInput.dispatchEvent(new Event('input'))
-      pathInput.value = '/path/to/project'
-      pathInput.dispatchEvent(new Event('input'))
+      await nextTick()
+
+      const browseBtn = document.body.querySelector('.settings-item__browse') as HTMLElement
+      browseBtn.click()
+      await nextTick()
 
       await wrapper.setProps({ show: false })
-
       await wrapper.setProps({ show: true })
       await nextTick()
       const freshInputs = document.body.querySelectorAll('.form-field__input')

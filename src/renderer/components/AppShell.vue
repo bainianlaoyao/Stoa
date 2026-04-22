@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import GlobalActivityBar from './GlobalActivityBar.vue'
 import CommandSurface from './command/CommandSurface.vue'
+import SettingsSurface from './settings/SettingsSurface.vue'
 import type { ProjectSummary, SessionSummary } from '@shared/project-session'
 import type { ProjectHierarchyNode } from '@renderer/stores/workspaces'
 import type { AppSurface } from './GlobalActivityBar.vue'
@@ -42,13 +43,7 @@ const activeSurface = ref<AppSurface>('command')
         @create-project="emit('createProject', $event)"
         @create-session="emit('createSession', $event)"
       />
-      <section v-else class="placeholder-surface" data-surface="settings" aria-label="Settings surface">
-        <section class="placeholder-surface__lane placeholder-surface__lane--full">
-          <p class="eyebrow">Settings</p>
-          <h2>Settings placeholder</h2>
-          <p>Settings is reserved in the global shell but not expanded in the current rewrite slice.</p>
-        </section>
-      </section>
+      <SettingsSurface v-else />
     </section>
   </main>
 </template>

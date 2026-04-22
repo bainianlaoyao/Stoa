@@ -18,6 +18,16 @@ const store = useWorkspaceStore()
 const draftName = ref('')
 const draftPath = ref('')
 
+async function browseProjectPath() {
+  const path = await window.stoa.pickFolder({ title: '选择项目目录' })
+  if (path) {
+    draftPath.value = path
+    if (!draftName.value.trim()) {
+      draftName.value = path.split(/[/\\]/).filter(Boolean).pop() ?? ''
+    }
+  }
+}
+
 function submit() {
   const name = draftName.value.trim()
   const path = draftPath.value.trim()
@@ -43,12 +53,19 @@ watch(() => props.show, (isVisible) => {
       placeholder="my-project"
       @update:model-value="draftName = $event"
     />
-    <GlassFormField
-      label="项目路径"
-      :model-value="draftPath"
-      placeholder="/path/to/project"
-      @update:model-value="draftPath = $event"
-    />
+    <label class="form-field">
+      <span class="form-field__label">项目路径</span>
+      <div class="settings-item__row">
+        <input
+          class="form-field__input settings-item__path-input"
+          :value="draftPath"
+          placeholder="点击 Browse 选择文件夹"
+          readonly
+          @click="browseProjectPath"
+        />
+        <button class="button-ghost settings-item__browse" type="button" @click="browseProjectPath">Browse</button>
+      </div>
+    </label>
     <div v-if="store.lastError" class="modal-panel__error">{{ store.lastError }}</div>
     <div class="modal-panel__footer">
       <button class="button-ghost" @click="emit('update:show', false)">取消</button>
