@@ -8,4 +8,10 @@ export const IPC_CHANNELS = {
   sessionResize: 'session:resize',
   sessionEvent: 'session:event',
   terminalData: 'terminal:data',
+  settingsGet: 'settings:get',
+  settingsSet: 'settings:set',
+  dialogPickFolder: 'dialog:pick-folder',
+  dialogPickFile: 'dialog:pick-file',
+  settingsDetectShell: 'settings:detect-shell',
+  settingsDetectProvider: 'settings:detect-provider',
 } as const
