@@ -13,7 +13,8 @@ const {
   activeProjectId,
   activeSessionId,
   activeProject,
-  activeSession
+  activeSession,
+  archivedSessions
 } = storeToRefs(workspaceStore)
 
 function handleProjectSelect(projectId: string): void {
@@ -62,12 +63,34 @@ async function handleSessionCreate(payload: { projectId: string; type: string; t
   }
 }
 
+async function handleArchiveSession(sessionId: string): Promise<void> {
+  workspaceStore.archiveSession(sessionId)
+  try {
+    await window.stoa.archiveSession(sessionId)
+  } catch (err) {
+    workspaceStore.lastError = err instanceof Error ? err.message : String(err)
+    workspaceStore.restoreSession(sessionId)
+  }
+}
+
+async function handleRestoreSession(sessionId: string): Promise<void> {
+  workspaceStore.restoreSession(sessionId)
+  try {
+    await window.stoa.restoreSession(sessionId)
+  } catch (err) {
+    workspaceStore.lastError = err instanceof Error ? err.message : String(err)
+    workspaceStore.archiveSession(sessionId)
+  }
+}
+
 let unsubscribeSessionEvent: (() => void) | null = null
 
 onMounted(async () => {
   const bootstrapState = await window.stoa.getBootstrapState()
   workspaceStore.hydrate(bootstrapState)
   await settingsStore.loadSettings()
+  const archived = await window.stoa.listArchivedSessions()
+  workspaceStore.setArchivedSessions(archived)
 
   unsubscribeSessionEvent = window.stoa?.onSessionEvent?.((event: SessionStatusEvent) => {
     console.log('[App.vue] onSessionEvent:', event)
@@ -90,9 +113,12 @@ onBeforeUnmount(() => {
     :active-session-id="activeSessionId"
     :active-project="activeProject"
     :active-session="activeSession"
+    :archived-sessions="archivedSessions"
     @select-project="handleProjectSelect"
     @select-session="handleSessionSelect"
     @create-project="handleProjectCreate"
     @create-session="handleSessionCreate"
+    @archive-session="handleArchiveSession"
+    @restore-session="handleRestoreSession"
   />
 </template>

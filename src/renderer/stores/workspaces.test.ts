@@ -35,7 +35,8 @@ describe('project/session renderer store', () => {
           externalSessionId: 'ext-1',
           createdAt: 'a',
           updatedAt: 'a',
-          lastActivatedAt: 'a'
+          lastActivatedAt: 'a',
+          archived: false
         }
       ]
     })
@@ -81,7 +82,8 @@ describe('project/session renderer store', () => {
           externalSessionId: null,
           createdAt: 'a',
           updatedAt: 'a',
-          lastActivatedAt: 'a'
+          lastActivatedAt: 'a',
+          archived: false
         },
         {
           id: 'session_op_2',
@@ -94,7 +96,8 @@ describe('project/session renderer store', () => {
           externalSessionId: 'ext-2',
           createdAt: 'b',
           updatedAt: 'b',
-          lastActivatedAt: 'b'
+          lastActivatedAt: 'b',
+          archived: false
         }
       ]
     })
@@ -134,7 +137,8 @@ describe('project/session renderer store', () => {
           externalSessionId: 'sess_a1',
           createdAt: 'a',
           updatedAt: 'a',
-          lastActivatedAt: 'a'
+          lastActivatedAt: 'a',
+          archived: false
         },
         {
           id: 'session_op_2',
@@ -147,7 +151,8 @@ describe('project/session renderer store', () => {
           externalSessionId: 'sess_a2',
           createdAt: 'b',
           updatedAt: 'b',
-          lastActivatedAt: 'b'
+          lastActivatedAt: 'b',
+          archived: false
         }
       ]
     })
@@ -157,5 +162,128 @@ describe('project/session renderer store', () => {
     expect(store.activeSession?.id).toBe('session_op_2')
     expect(store.sessions).toHaveLength(2)
     expect(store.projectHierarchy[0]?.sessions[0]?.externalSessionId).toBe('sess_a1')
+  })
+
+  describe('archive and restore', () => {
+    beforeEach(() => {
+      setActivePinia(createPinia())
+    })
+
+    test('projectHierarchy excludes archived sessions', () => {
+      const store = useWorkspaceStore()
+      store.hydrate({
+        activeProjectId: 'project_alpha',
+        activeSessionId: 'session_shell_1',
+        terminalWebhookPort: 43127,
+        projects: [
+          {
+            id: 'project_alpha',
+            name: 'alpha',
+            path: 'D:/alpha',
+            createdAt: 'a',
+            updatedAt: 'a'
+          }
+        ],
+        sessions: [
+          {
+            id: 'session_shell_1',
+            projectId: 'project_alpha',
+            type: 'shell',
+            status: 'running',
+            summary: 'running',
+            title: 'Shell 1',
+            recoveryMode: 'fresh-shell',
+            externalSessionId: null,
+            createdAt: 'a',
+            updatedAt: 'a',
+            lastActivatedAt: 'a',
+            archived: false
+          },
+          {
+            id: 'session_archived',
+            projectId: 'project_alpha',
+            type: 'shell',
+            status: 'exited',
+            summary: 'done',
+            title: 'Old Shell',
+            recoveryMode: 'fresh-shell',
+            externalSessionId: null,
+            createdAt: 'a',
+            updatedAt: 'a',
+            lastActivatedAt: 'a',
+            archived: true
+          }
+        ]
+      })
+
+      expect(store.projectHierarchy).toHaveLength(1)
+      expect(store.projectHierarchy[0]!.sessions).toHaveLength(1)
+      expect(store.projectHierarchy[0]!.sessions[0]!.id).toBe('session_shell_1')
+    })
+
+    test('archiveSession marks session and clears activeSessionId', () => {
+      const store = useWorkspaceStore()
+      store.hydrate({
+        activeProjectId: 'project_alpha',
+        activeSessionId: 'session_shell_1',
+        terminalWebhookPort: 43127,
+        projects: [
+          { id: 'project_alpha', name: 'alpha', path: 'D:/alpha', createdAt: 'a', updatedAt: 'a' }
+        ],
+        sessions: [
+          {
+            id: 'session_shell_1',
+            projectId: 'project_alpha',
+            type: 'shell',
+            status: 'running',
+            summary: 'running',
+            title: 'Shell 1',
+            recoveryMode: 'fresh-shell',
+            externalSessionId: null,
+            createdAt: 'a',
+            updatedAt: 'a',
+            lastActivatedAt: 'a',
+            archived: false
+          }
+        ]
+      })
+
+      store.archiveSession('session_shell_1')
+
+      expect(store.sessions[0]!.archived).toBe(true)
+      expect(store.activeSessionId).toBeNull()
+    })
+
+    test('restoreSession unarchives session', () => {
+      const store = useWorkspaceStore()
+      store.hydrate({
+        activeProjectId: null,
+        activeSessionId: null,
+        terminalWebhookPort: 43127,
+        projects: [
+          { id: 'project_alpha', name: 'alpha', path: 'D:/alpha', createdAt: 'a', updatedAt: 'a' }
+        ],
+        sessions: [
+          {
+            id: 'session_archived',
+            projectId: 'project_alpha',
+            type: 'shell',
+            status: 'exited',
+            summary: 'done',
+            title: 'Old Shell',
+            recoveryMode: 'fresh-shell',
+            externalSessionId: null,
+            createdAt: 'a',
+            updatedAt: 'a',
+            lastActivatedAt: 'a',
+            archived: true
+          }
+        ]
+      })
+
+      store.restoreSession('session_archived')
+
+      expect(store.sessions[0]!.archived).toBe(false)
+    })
   })
 })

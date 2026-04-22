@@ -63,7 +63,8 @@ function toPersistedSession(session: SessionSummary): PersistedSession {
     created_at: session.createdAt,
     updated_at: session.updatedAt,
     last_activated_at: session.lastActivatedAt,
-    recovery_mode: session.recoveryMode
+    recovery_mode: session.recoveryMode,
+    archived: session.archived
   }
 }
 
@@ -79,7 +80,8 @@ function toSessionSummary(session: PersistedSession): SessionSummary {
     externalSessionId: session.external_session_id,
     createdAt: session.created_at,
     updatedAt: session.updated_at,
-    lastActivatedAt: session.last_activated_at
+    lastActivatedAt: session.last_activated_at,
+    archived: session.archived ?? false
   }
 }
 
@@ -143,7 +145,7 @@ export class ProjectSessionManager {
   }
 
   buildBootstrapRecoveryPlan() {
-    return this.state.sessions.map((session) => {
+    return this.state.sessions.filter(s => !s.archived).map((session) => {
       if (session.type === 'shell') {
         return { sessionId: session.id, action: 'fresh-shell' as const }
       }
@@ -224,6 +226,29 @@ export class ProjectSessionManager {
     await this.persist()
   }
 
+  async archiveSession(sessionId: string): Promise<void> {
+    const session = this.state.sessions.find(s => s.id === sessionId)
+    if (!session) return
+    session.archived = true
+    session.updatedAt = new Date().toISOString()
+    if (this.state.activeSessionId === sessionId) {
+      this.state.activeSessionId = null
+    }
+    await this.persist()
+  }
+
+  async restoreSession(sessionId: string): Promise<void> {
+    const session = this.state.sessions.find(s => s.id === sessionId)
+    if (!session) return
+    session.archived = false
+    session.updatedAt = new Date().toISOString()
+    await this.persist()
+  }
+
+  getArchivedSessions(): SessionSummary[] {
+    return this.state.sessions.filter(s => s.archived)
+  }
+
   async createSession(request: CreateSessionRequest): Promise<SessionSummary> {
     const project = this.state.projects.find((candidate) => candidate.id === request.projectId)
     if (!project) {
@@ -242,7 +267,8 @@ export class ProjectSessionManager {
       externalSessionId: request.externalSessionId ?? null,
       createdAt: now,
       updatedAt: now,
-      lastActivatedAt: now
+      lastActivatedAt: now,
+      archived: false
     }
 
     this.state.sessions.push(session)

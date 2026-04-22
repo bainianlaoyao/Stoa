@@ -17,6 +17,7 @@ const emit = defineEmits<{
   selectSession: [sessionId: string]
   createProject: [payload: { name: string; path: string }]
   createSession: [payload: { projectId: string; type: string; title: string }]
+  archiveSession: [sessionId: string]
 }>()
 </script>
 
@@ -32,6 +33,7 @@ const emit = defineEmits<{
           @select-session="emit('selectSession', $event)"
           @create-project="emit('createProject', $event)"
           @create-session="emit('createSession', $event)"
+          @archive-session="emit('archiveSession', $event)"
         />
 
         <TerminalViewport :project="activeProject" :session="activeSession" />

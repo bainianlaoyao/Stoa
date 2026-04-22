@@ -217,7 +217,7 @@ describe('E2E: Main Process Config Guard', () => {
   })
 
   describe('Preload type contract completeness', () => {
-    it('preload api object implements all invoke RendererApi methods', () => {
+    it('preload api object implements all current invoke RendererApi methods', () => {
       const knownInvokeMethods = [
         'getBootstrapState',
         'createProject',
@@ -231,7 +231,10 @@ describe('E2E: Main Process Config Guard', () => {
         'pickFolder',
         'pickFile',
         'detectShell',
-        'detectProvider'
+        'detectProvider',
+        'archiveSession',
+        'restoreSession',
+        'listArchivedSessions'
       ]
 
       for (const method of knownInvokeMethods) {
@@ -242,7 +245,10 @@ describe('E2E: Main Process Config Guard', () => {
       }
 
       const methodCount = preloadSource.match(/async\s+\w+\s*\(/g)
-      expect(methodCount, 'Expected exactly 13 invoke methods in preload api').toHaveLength(13)
+      expect(
+        methodCount,
+        `Expected exactly ${knownInvokeMethods.length} invoke methods in preload api`
+      ).toHaveLength(knownInvokeMethods.length)
     })
 
     it('preload uses correct channel name for each method', () => {
@@ -262,6 +268,9 @@ describe('E2E: Main Process Config Guard', () => {
       expect(invMap.get('pickFile')).toBe('dialog:pick-file')
       expect(invMap.get('detectShell')).toBe('settings:detect-shell')
       expect(invMap.get('detectProvider')).toBe('settings:detect-provider')
+      expect(invMap.get('archiveSession')).toBe('session:archive')
+      expect(invMap.get('restoreSession')).toBe('session:restore')
+      expect(invMap.get('listArchivedSessions')).toBe('session:list-archived')
     })
 
     it('window.stoa type declaration exists in shared/index.d.ts', () => {

@@ -14,6 +14,7 @@ export default defineConfig({
   },
   test: {
     environment: 'happy-dom',
+    pool: 'forks',
     exclude: ['**/node_modules/**', '**/.git/**', '**/.worktrees/**', '**/dist/**', '**/e2e-playwright/**']
   }
 })

@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import GlobalActivityBar from './GlobalActivityBar.vue'
 import CommandSurface from './command/CommandSurface.vue'
 import SettingsSurface from './settings/SettingsSurface.vue'
+import ArchiveSurface from './archive/ArchiveSurface.vue'
 import type { ProjectSummary, SessionSummary } from '@shared/project-session'
 import type { ProjectHierarchyNode } from '@renderer/stores/workspaces'
 import type { AppSurface } from './GlobalActivityBar.vue'
@@ -13,6 +14,7 @@ const props = defineProps<{
   activeSessionId: string | null
   activeProject: ProjectSummary | null
   activeSession: SessionSummary | null
+  archivedSessions: SessionSummary[]
 }>()
 
 const emit = defineEmits<{
@@ -20,6 +22,8 @@ const emit = defineEmits<{
   selectSession: [sessionId: string]
   createProject: [payload: { name: string; path: string }]
   createSession: [payload: { projectId: string; type: string; title: string }]
+  archiveSession: [sessionId: string]
+  restoreSession: [sessionId: string]
 }>()
 
 const activeSurface = ref<AppSurface>('command')
@@ -42,6 +46,13 @@ const activeSurface = ref<AppSurface>('command')
         @select-session="emit('selectSession', $event)"
         @create-project="emit('createProject', $event)"
         @create-session="emit('createSession', $event)"
+        @archive-session="emit('archiveSession', $event)"
+      />
+      <ArchiveSurface
+        v-else-if="activeSurface === 'archive'"
+        aria-label="Archive surface"
+        :archived-sessions="archivedSessions"
+        @restore-session="emit('restoreSession', $event)"
       />
       <SettingsSurface v-else />
     </section>

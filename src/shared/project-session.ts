@@ -31,6 +31,7 @@ export interface SessionSummary {
   createdAt: string
   updatedAt: string
   lastActivatedAt: string | null
+  archived: boolean
 }
 
 export interface PersistedProject {
@@ -54,6 +55,7 @@ export interface PersistedSession {
   updated_at: string
   last_activated_at: string | null
   recovery_mode: SessionRecoveryMode
+  archived: boolean
 }
 
 export interface AppSettings {
@@ -138,6 +140,9 @@ export interface RendererApi {
   pickFile: (options?: { title?: string; filters?: Array<{ name: string; extensions: string[] }> }) => Promise<string | null>
   detectShell: () => Promise<string | null>
   detectProvider: (providerId: string) => Promise<string | null>
+  archiveSession: (sessionId: string) => Promise<void>
+  restoreSession: (sessionId: string) => Promise<void>
+  listArchivedSessions: () => Promise<SessionSummary[]>
 }
 
 export interface SessionEventPayload {

@@ -45,19 +45,21 @@ async function flush(): Promise<void> {
   await new Promise((r) => setTimeout(r, 0))
 }
 
-/** Remove window.vibecoding to simulate preload not loading. */
-function removeVibecoding(): void {
-  Reflect.deleteProperty(window, 'vibecoding')
+/** Remove window.stoa to simulate preload not loading. */
+function removeStoa(): void {
+  Reflect.deleteProperty(window, 'stoa')
 }
 
-/** Set up a fully functional window.vibecoding mock. */
-function setupVibecoding(overrides?: Partial<Window['vibecoding']>): void {
-  window.vibecoding = {
+/** Set up a fully functional window.stoa mock. */
+function setupStoa(overrides?: Partial<typeof window.stoa>): void {
+  window.stoa = {
     getBootstrapState: vi.fn().mockResolvedValue({ ...mockBootstrapState }),
     createProject: vi.fn().mockResolvedValue({ ...mockCreatedProject }),
     createSession: vi.fn().mockResolvedValue({ ...mockCreatedSession }),
     setActiveProject: vi.fn().mockResolvedValue(undefined),
     setActiveSession: vi.fn().mockResolvedValue(undefined),
+    getSettings: vi.fn().mockResolvedValue({ shellPath: '', terminalFontSize: 14, providers: {} }),
+    listArchivedSessions: vi.fn().mockResolvedValue([]),
     ...overrides
   }
 }
@@ -75,7 +77,7 @@ function mountApp(pinia: Pinia) {
 // Tests
 // ---------------------------------------------------------------------------
 
-describe('E2E: App.vue Bridge Guard (window.vibecoding undefined)', () => {
+describe('E2E: App.vue Bridge Guard (window.stoa undefined)', () => {
   let wrapper: VueWrapper | undefined
   let pinia: Pinia
   let consoleErrorSpy: ReturnType<typeof vi.spyOn>
@@ -84,7 +86,7 @@ describe('E2E: App.vue Bridge Guard (window.vibecoding undefined)', () => {
   beforeEach(() => {
     pinia = createPinia()
     setActivePinia(pinia)
-    removeVibecoding()
+    removeStoa()
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     rejectionHandler = vi.fn()
     process.on('unhandledRejection', rejectionHandler)
@@ -101,7 +103,7 @@ describe('E2E: App.vue Bridge Guard (window.vibecoding undefined)', () => {
   })
 
   // -------------------------------------------------------------------------
-  describe('when window.vibecoding is undefined (preload failed to load)', () => {
+  describe('when window.stoa is undefined (preload failed to load)', () => {
     // -----------------------------------------------------------------------
     it('mounting App does not throw unhandled synchronous exception', async () => {
       let syncError: Error | undefined
@@ -134,12 +136,12 @@ describe('E2E: App.vue Bridge Guard (window.vibecoding undefined)', () => {
     // -----------------------------------------------------------------------
     it('handleProjectCreate catches TypeError and sets store.lastError', async () => {
       // Bootstrap with a working bridge first, then kill it before emit.
-      setupVibecoding()
+      setupStoa()
       wrapper = mountApp(pinia)
       await flush()
 
-      // Now remove vibecoding to simulate it becoming unavailable.
-      removeVibecoding()
+      // Now remove stoa to simulate it becoming unavailable.
+      removeStoa()
 
       const appShell = wrapper.findComponent({ name: 'AppShell' })
       await appShell.vm.$emit('createProject', { name: 'test', path: '/test' })
@@ -160,11 +162,11 @@ describe('E2E: App.vue Bridge Guard (window.vibecoding undefined)', () => {
         projects: [{ ...mockCreatedProject }],
         sessions: []
       }
-      setupVibecoding({ getBootstrapState: vi.fn().mockResolvedValue(hydratedState) })
+      setupStoa({ getBootstrapState: vi.fn().mockResolvedValue(hydratedState) })
       wrapper = mountApp(pinia)
       await flush()
 
-      removeVibecoding()
+      removeStoa()
 
       const appShell = wrapper.findComponent({ name: 'AppShell' })
       await appShell.vm.$emit('createSession', {
@@ -182,16 +184,16 @@ describe('E2E: App.vue Bridge Guard (window.vibecoding undefined)', () => {
 
     // -----------------------------------------------------------------------
     it('handleProjectSelect throws because void expression is not guarded', async () => {
-      setupVibecoding()
+      setupStoa()
       wrapper = mountApp(pinia)
       await flush()
 
-      removeVibecoding()
+      removeStoa()
 
       const appShell = wrapper.findComponent({ name: 'AppShell' })
 
-      // handleProjectSelect uses `void window.vibecoding.setActiveProject(...)`.
-      // When vibecoding is undefined, accessing .setActiveProject throws
+      // handleProjectSelect uses `void window.stoa.setActiveProject(...)`.
+      // When stoa is undefined, accessing .setActiveProject throws
       // TypeError synchronously — the emit propagates it.
       expect(() => {
         appShell.vm.$emit('selectProject', 'project_1')
@@ -211,15 +213,15 @@ describe('E2E: App.vue Bridge Guard (window.vibecoding undefined)', () => {
           projectId: 'p1'
         }]
       }
-      setupVibecoding({ getBootstrapState: vi.fn().mockResolvedValue(hydratedState) })
+      setupStoa({ getBootstrapState: vi.fn().mockResolvedValue(hydratedState) })
       wrapper = mountApp(pinia)
       await flush()
 
-      removeVibecoding()
+      removeStoa()
 
       const appShell = wrapper.findComponent({ name: 'AppShell' })
 
-      // handleSessionSelect uses `void window.vibecoding.setActiveSession(...)`.
+      // handleSessionSelect uses `void window.stoa.setActiveSession(...)`.
       expect(() => {
         appShell.vm.$emit('selectSession', 's1')
       }).toThrow(TypeError)
@@ -227,13 +229,13 @@ describe('E2E: App.vue Bridge Guard (window.vibecoding undefined)', () => {
   })
 
   // -------------------------------------------------------------------------
-  describe('when window.vibecoding is partially defined', () => {
+  describe('when window.stoa is partially defined', () => {
     // -----------------------------------------------------------------------
     it('missing createProject method — emit still rejects into lastError', async () => {
       // Provide getBootstrapState but omit createProject.
-      window.vibecoding = {
+      window.stoa = {
         getBootstrapState: vi.fn().mockResolvedValue({ ...mockBootstrapState })
-      } as Window['vibecoding']
+      } as typeof window.stoa
 
       wrapper = mountApp(pinia)
       await flush()
@@ -251,9 +253,9 @@ describe('E2E: App.vue Bridge Guard (window.vibecoding undefined)', () => {
     // -----------------------------------------------------------------------
     it('missing getBootstrapState method — hydrate never runs', async () => {
       // Provide createProject but omit getBootstrapState.
-      window.vibecoding = {
+      window.stoa = {
         createProject: vi.fn().mockResolvedValue({ ...mockCreatedProject })
-      } as Window['vibecoding']
+      } as typeof window.stoa
 
       wrapper = mountApp(pinia)
       await flush()
@@ -267,10 +269,10 @@ describe('E2E: App.vue Bridge Guard (window.vibecoding undefined)', () => {
   })
 
   // -------------------------------------------------------------------------
-  describe('vibecoding API returns null responses', () => {
+  describe('stoa API returns null responses', () => {
     // -----------------------------------------------------------------------
     it('getBootstrapState returns null — hydrate(null) throws and store stays empty', async () => {
-      setupVibecoding({
+      setupStoa({
         getBootstrapState: vi.fn().mockResolvedValue(null)
       })
 
@@ -286,7 +288,7 @@ describe('E2E: App.vue Bridge Guard (window.vibecoding undefined)', () => {
 
     // -----------------------------------------------------------------------
     it('createProject returns null — sets lastError with "no response from main process"', async () => {
-      setupVibecoding({
+      setupStoa({
         createProject: vi.fn().mockResolvedValue(null)
       })
 
@@ -312,7 +314,7 @@ describe('E2E: App.vue Bridge Guard (window.vibecoding undefined)', () => {
         projects: [{ ...mockCreatedProject }],
         sessions: []
       }
-      setupVibecoding({
+      setupStoa({
         getBootstrapState: vi.fn().mockResolvedValue(hydratedState),
         createSession: vi.fn().mockResolvedValue(null)
       })

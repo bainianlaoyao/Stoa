@@ -157,6 +157,20 @@ app.whenReady().then(async () => {
     return detectProvider(providerId)
   })
 
+  ipcMain.handle(IPC_CHANNELS.sessionArchive, async (_event, sessionId: string) => {
+    if (!projectSessionManager || !ptyHost) return
+    ptyHost.kill(sessionId)
+    await projectSessionManager.archiveSession(sessionId)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.sessionRestore, async (_event, sessionId: string) => {
+    await projectSessionManager?.restoreSession(sessionId)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.sessionListArchived, async () => {
+    return projectSessionManager?.getArchivedSessions() ?? []
+  })
+
   mainWindow = createMainWindow()
 
   for (const plan of projectSessionManager.buildBootstrapRecoveryPlan()) {
@@ -164,6 +178,7 @@ app.whenReady().then(async () => {
     const session = snapshot.sessions.find(s => s.id === plan.sessionId)
     const project = session ? snapshot.projects.find(p => p.id === session.projectId) : undefined
     if (!session || !project) continue
+    if (session.archived) continue
 
     const provider = getProvider(session.type === 'shell' ? 'local-shell' : 'opencode')
 
