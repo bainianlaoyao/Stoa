@@ -1,20 +1,19 @@
-import { mkdtemp } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, test } from 'vitest'
 import { readProjectSessions } from './state-store'
 import { ProjectSessionManager } from './project-session-manager'
+import { createTestTempDir } from '../../testing/test-temp'
 
 const tempDirs: string[] = []
 
 async function createTempGlobalStatePath(): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), 'stoa-psm-'))
+  const dir = await createTestTempDir('stoa-psm-')
   tempDirs.push(dir)
   return join(dir, 'global.json')
 }
 
 async function createTempProjectDir(prefix = 'project'): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), `stoa-${prefix}-`))
+  const dir = await createTestTempDir(`stoa-${prefix}-`)
   tempDirs.push(dir)
   return dir
 }
@@ -48,6 +47,29 @@ describe('ProjectSessionManager', () => {
     expect(fresh.sessions[0]?.summary).toBe('等待会话启动')
     expect(fresh.activeProjectId).toBe(project.id)
     expect(fresh.activeSessionId).toBe(fresh.sessions[0]?.id ?? null)
+  })
+
+  test('exposes claude permission skipping as disabled by default', () => {
+    const manager = ProjectSessionManager.createForTest()
+
+    expect(manager.getSettings().claudeDangerouslySkipPermissions).toBe(false)
+  })
+
+  test('persists claude permission skipping setting across reloads', async () => {
+    const globalStatePath = await createTempGlobalStatePath()
+    const manager = await ProjectSessionManager.create({
+      webhookPort: null,
+      globalStatePath
+    })
+
+    await manager.setSetting('claudeDangerouslySkipPermissions', true)
+
+    const reloaded = await ProjectSessionManager.create({
+      webhookPort: null,
+      globalStatePath
+    })
+
+    expect(reloaded.getSettings().claudeDangerouslySkipPermissions).toBe(true)
   })
 
   test('rejects orphan sessions and enforces unique project paths', async () => {

@@ -33,6 +33,8 @@ interface MainE2EDebugState {
 interface MainE2EDebugApi {
   getDebugState: () => MainE2EDebugState
   queueDialogPickFolder: (path: string | null) => void
+  getTerminalReplay: (sessionId: string) => Promise<string>
+  appendTerminalData: (sessionId: string, data: string) => Promise<void>
 }
 
 declare global {
@@ -54,6 +56,12 @@ function installMainE2EDebugApi(): void {
     },
     queueDialogPickFolder(path) {
       pendingE2EPickFolders.push(path)
+    },
+    async getTerminalReplay(sessionId) {
+      return await runtimeController?.getTerminalReplay(sessionId) ?? ''
+    },
+    async appendTerminalData(sessionId, data) {
+      await runtimeController?.appendTerminalData({ sessionId, data })
     }
   }
 }
@@ -104,9 +112,10 @@ app.whenReady().then(async () => {
   const webhookPort = await sessionEventBridge.start()
   installMainE2EDebugApi()
 
-  async function resolveRuntimePaths(sessionType: CreateSessionRequest['type']): Promise<{
+async function resolveRuntimePaths(sessionType: CreateSessionRequest['type']): Promise<{
     shellPath: string | null
     providerPath: string | null
+    claudeDangerouslySkipPermissions: boolean
   }> {
     const descriptor = getProviderDescriptorBySessionType(sessionType)
     const settings = projectSessionManager?.getSettings()
@@ -116,7 +125,8 @@ app.whenReady().then(async () => {
     if (descriptor.providerId === 'local-shell') {
       return {
         shellPath,
-        providerPath: null
+        providerPath: null,
+        claudeDangerouslySkipPermissions: settings?.claudeDangerouslySkipPermissions === true
       }
     }
 
@@ -128,7 +138,8 @@ app.whenReady().then(async () => {
 
     return {
       shellPath,
-      providerPath
+      providerPath,
+      claudeDangerouslySkipPermissions: settings?.claudeDangerouslySkipPermissions === true
     }
   }
 
@@ -163,7 +174,7 @@ app.whenReady().then(async () => {
     const descriptor = getProviderDescriptorBySessionType(session.type)
     const provider = getProvider(descriptor.providerId)
     const sessionSecret = sessionEventBridge.issueSessionSecret(session.id)
-    const { shellPath, providerPath } = await resolveRuntimePaths(session.type)
+    const { shellPath, providerPath, claudeDangerouslySkipPermissions } = await resolveRuntimePaths(session.type)
     console.log(`[session-create] Starting ${descriptor.providerId} session ${session.id} in ${project.path}`)
 
     void startSessionRuntime({
@@ -182,7 +193,8 @@ app.whenReady().then(async () => {
       ptyHost,
       manager: runtimeController,
       shellPath,
-      providerPath
+      providerPath,
+      claudeDangerouslySkipPermissions
     }).then(() => {
       console.log(`[session-runtime] Session ${session.id} started successfully`)
     }).catch((err: unknown) => {

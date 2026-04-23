@@ -9,6 +9,7 @@ import type { SessionEventBridge } from './session-event-bridge'
 interface RuntimePaths {
   shellPath: string | null
   providerPath: string | null
+  claudeDangerouslySkipPermissions: boolean
 }
 
 interface LaunchTrackedSessionRuntimeOptions {
@@ -40,7 +41,7 @@ export async function launchTrackedSessionRuntime(options: LaunchTrackedSessionR
   const descriptor = getProviderDescriptorBySessionType(session.type)
   const provider = (options.getProvider ?? getProvider)(descriptor.providerId)
   const sessionSecret = options.sessionEventBridge.issueSessionSecret(session.id)
-  const { shellPath, providerPath } = await options.resolveRuntimePaths(session.type)
+  const { shellPath, providerPath, claudeDangerouslySkipPermissions } = await options.resolveRuntimePaths(session.type)
 
   await (options.startRuntime ?? startSessionRuntime)({
     session: {
@@ -58,7 +59,8 @@ export async function launchTrackedSessionRuntime(options: LaunchTrackedSessionR
     ptyHost: options.ptyHost,
     manager: options.runtimeController,
     shellPath,
-    providerPath
+    providerPath,
+    claudeDangerouslySkipPermissions
   })
 
   return true

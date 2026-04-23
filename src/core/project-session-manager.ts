@@ -128,7 +128,16 @@ export class ProjectSessionManager {
   private constructor(initialState: BootstrapState, globalStatePath?: string, persistedSettings?: AppSettings) {
     this.state = structuredCloneState(initialState)
     this.globalStatePath = globalStatePath
-    this.settings = persistedSettings ? { ...persistedSettings } : { ...DEFAULT_SETTINGS }
+    this.settings = persistedSettings
+      ? {
+          ...DEFAULT_SETTINGS,
+          ...persistedSettings,
+          providers: {
+            ...DEFAULT_SETTINGS.providers,
+            ...persistedSettings.providers
+          }
+        }
+      : { ...DEFAULT_SETTINGS }
   }
 
   static async create(options: ProjectSessionManagerOptions): Promise<ProjectSessionManager> {
@@ -329,8 +338,12 @@ export class ProjectSessionManager {
       this.settings.shellPath = value
     } else if (key === 'terminalFontSize' && typeof value === 'number') {
       this.settings.terminalFontSize = Math.max(12, Math.min(24, value))
+    } else if (key === 'terminalFontFamily' && typeof value === 'string') {
+      this.settings.terminalFontFamily = value
     } else if (key === 'providers' && typeof value === 'object' && value !== null) {
       this.settings.providers = value as Record<string, string>
+    } else if (key === 'claudeDangerouslySkipPermissions' && typeof value === 'boolean') {
+      this.settings.claudeDangerouslySkipPermissions = value
     }
     await this.persist()
   }

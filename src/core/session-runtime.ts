@@ -37,6 +37,7 @@ export interface StartSessionRuntimeOptions {
   manager: SessionRuntimeManager
   shellPath?: string | null
   providerPath?: string | null
+  claudeDangerouslySkipPermissions?: boolean
 }
 
 function toProviderTarget(session: StartSessionRuntimeOptions['session']): ProviderRuntimeTarget {
@@ -61,6 +62,7 @@ export async function startSessionRuntime(options: StartSessionRuntimeOptions): 
     sessionSecret,
     providerPort,
     providerPath: options.providerPath ?? null,
+    claudeDangerouslySkipPermissions: options.claudeDangerouslySkipPermissions === true,
     startedAt: Date.now()
   }
 

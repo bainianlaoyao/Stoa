@@ -9,7 +9,9 @@ function claudeCommand(context: ProviderCommandContext): string {
 function createCommand(target: ProviderRuntimeTarget, context: ProviderCommandContext, args: string[]): ProviderCommand {
   return {
     command: claudeCommand(context),
-    args,
+    args: context.claudeDangerouslySkipPermissions === true
+      ? [...args, '--dangerously-skip-permissions']
+      : args,
     cwd: target.path,
     env: process.env as Record<string, string>
   }

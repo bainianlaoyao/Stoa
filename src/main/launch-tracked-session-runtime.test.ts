@@ -24,7 +24,8 @@ describe('launchTrackedSessionRuntime', () => {
     const getProvider = vi.fn(() => provider)
     const resolveRuntimePaths = vi.fn(async () => ({
       shellPath: 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
-      providerPath: null
+      providerPath: null,
+      claudeDangerouslySkipPermissions: false
     }))
     const issueSessionSecret = vi.fn(() => 'secret-1')
     const startRuntime = vi.fn(async () => {})
