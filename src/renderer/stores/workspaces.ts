@@ -5,6 +5,7 @@ import type { BootstrapState, ProjectSummary, SessionStatus, SessionSummary } fr
 export interface ProjectHierarchyNode extends ProjectSummary {
   active: boolean
   sessions: Array<SessionSummary & { active: boolean }>
+  archivedSessions: Array<SessionSummary & { active: boolean }>
 }
 
 export const useWorkspaceStore = defineStore('workspaces', () => {
@@ -14,7 +15,6 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
   const activeSessionId = ref<string | null>(null)
   const terminalWebhookPort = ref<number | null>(null)
   const lastError = ref<string | null>(null)
-  const archivedSessions = ref<SessionSummary[]>([])
 
   const activeProject = computed(() => {
     return projects.value.find((project) => project.id === activeProjectId.value) ?? null
@@ -25,16 +25,28 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
   })
 
   const projectHierarchy = computed<ProjectHierarchyNode[]>(() => {
-    return projects.value.map((project) => ({
-      ...project,
-      active: project.id === activeProjectId.value,
-      sessions: sessions.value
+    return projects.value.map((project) => {
+      const projectSessions = sessions.value
         .filter((session) => session.projectId === project.id && !session.archived)
         .map((session) => ({
           ...session,
           active: session.id === activeSessionId.value
         }))
-    }))
+
+      const archivedProjectSessions = sessions.value
+        .filter((session) => session.projectId === project.id && session.archived)
+        .map((session) => ({
+          ...session,
+          active: session.id === activeSessionId.value
+        }))
+
+      return {
+        ...project,
+        active: project.id === activeProjectId.value,
+        sessions: projectSessions,
+        archivedSessions: archivedProjectSessions
+      }
+    })
   })
 
   function hydrate(state: BootstrapState): void {
@@ -97,10 +109,6 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
     session.archived = false
   }
 
-  function setArchivedSessions(sessions: SessionSummary[]): void {
-    archivedSessions.value = sessions
-  }
-
   return {
     projects,
     sessions,
@@ -118,9 +126,7 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
     setActiveProject,
     setActiveSession,
     clearError,
-    archivedSessions,
     archiveSession,
-    restoreSession,
-    setArchivedSessions
+    restoreSession
   }
 })

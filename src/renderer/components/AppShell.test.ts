@@ -68,19 +68,20 @@ describe('AppShell', () => {
         activeProjectId: null,
         activeSessionId: null,
         activeProject: null,
-        activeSession: null,
-        archivedSessions: []
+        activeSession: null
       }
     })
 
     const labels = wrapper.findAll('[data-activity-item]').map((node) => node.attributes('data-activity-item'))
     const navigation = wrapper.get('nav[aria-label="Global activity"]')
     const commandButton = wrapper.get('button[aria-label="Command panel"]')
+    const archiveButton = wrapper.get('button[aria-label="Archive"]')
     const settingsButton = wrapper.get('button[aria-label="Settings"]')
 
     expect(labels).toEqual(['command', 'archive', 'settings'])
     expect(navigation).toBeTruthy()
     expect(commandButton.attributes('aria-current')).toBe('true')
+    expect(archiveButton.attributes('aria-current')).toBeUndefined()
     expect(settingsButton.attributes('aria-current')).toBeUndefined()
     expect(wrapper.find('[data-command-surface="true"]').exists()).toBe(true)
     expect(wrapper.find('[data-surface="command"][aria-label="Command surface"]').exists()).toBe(true)
@@ -94,6 +95,7 @@ describe('AppShell', () => {
         hierarchy: [{
           ...baseProject,
           active: true,
+          archivedSessions: [],
           sessions: [{
             ...baseSession,
             active: true
@@ -102,8 +104,7 @@ describe('AppShell', () => {
         activeProjectId: baseProject.id,
         activeSessionId: baseSession.id,
         activeProject: baseProject,
-        activeSession: baseSession,
-        archivedSessions: []
+        activeSession: baseSession
       }
     })
 
@@ -114,6 +115,36 @@ describe('AppShell', () => {
     expect(wrapper.text()).toContain('Session details')
   })
 
+  it('switches to archive surface when the archive activity is selected', async () => {
+    const wrapper = mount(AppShell, {
+      global: { plugins: [createPinia()] },
+      props: {
+        hierarchy: [{
+          ...baseProject,
+          active: false,
+          sessions: [],
+          archivedSessions: [{
+            ...baseSession,
+            id: 'session-archived',
+            archived: true,
+            active: false
+          }]
+        }],
+        activeProjectId: null,
+        activeSessionId: null,
+        activeProject: null,
+        activeSession: null
+      }
+    })
+
+    await wrapper.get('button[aria-label="Archive"]').trigger('click')
+
+    expect(wrapper.get('[data-surface="archive"][aria-label="Archive surface"]')).toBeTruthy()
+    expect(wrapper.get('button[aria-label="Archive"]').attributes('aria-current')).toBe('true')
+    expect(wrapper.find('[data-surface="command"][aria-label="Command surface"]').exists()).toBe(false)
+    expect(wrapper.text()).toContain('已归档会话')
+  })
+
   it('switches to a named settings surface when the settings activity is selected', async () => {
     const wrapper = mount(AppShell, {
       global: { plugins: [createPinia()] },
@@ -122,8 +153,7 @@ describe('AppShell', () => {
         activeProjectId: null,
         activeSessionId: null,
         activeProject: null,
-        activeSession: null,
-        archivedSessions: []
+        activeSession: null
       }
     })
 
@@ -134,22 +164,31 @@ describe('AppShell', () => {
     expect(wrapper.find('[data-surface="command"][aria-label="Command surface"]').exists()).toBe(false)
   })
 
-  it('switches to archive surface when archive activity is selected', async () => {
+  it('forwards restoreSession from archive surface', async () => {
     const wrapper = mount(AppShell, {
       global: { plugins: [createPinia()] },
       props: {
-        hierarchy: [],
+        hierarchy: [{
+          ...baseProject,
+          active: false,
+          sessions: [],
+          archivedSessions: [{
+            ...baseSession,
+            id: 'session-archived',
+            archived: true,
+            active: false
+          }]
+        }],
         activeProjectId: null,
         activeSessionId: null,
         activeProject: null,
-        activeSession: null,
-        archivedSessions: []
+        activeSession: null
       }
     })
 
     await wrapper.get('button[aria-label="Archive"]').trigger('click')
+    await wrapper.get('[data-archive-restore="session-archived"]').trigger('click')
 
-    expect(wrapper.find('[data-surface="archive"][aria-label="Archive surface"]').exists()).toBe(true)
-    expect(wrapper.find('[data-surface="command"]').exists()).toBe(false)
+    expect(wrapper.emitted('restoreSession')).toEqual([['session-archived']])
   })
 })

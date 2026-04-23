@@ -6,13 +6,23 @@ import { PtyHost } from '@core/pty-host'
 import { detectShell, detectProvider } from '@core/settings-detector'
 import { startSessionRuntime } from '@core/session-runtime'
 import { getProvider } from '@extensions/providers'
+import { getProviderDescriptorByProviderId, getProviderDescriptorBySessionType } from '@shared/provider-descriptors'
 import { SessionRuntimeController } from './session-runtime-controller'
+import { SessionEventBridge } from './session-event-bridge'
 import type { CreateProjectRequest, CreateSessionRequest } from '@shared/project-session'
 
 let mainWindow: BrowserWindow | null = null
 let projectSessionManager: ProjectSessionManager | null = null
 let ptyHost: PtyHost | null = null
 let runtimeController: SessionRuntimeController | null = null
+let sessionEventBridge: SessionEventBridge | null = null
+let isQuittingAfterBridgeStop = false
+
+async function stopSessionEventBridge(): Promise<void> {
+  const activeBridge = sessionEventBridge
+  sessionEventBridge = null
+  await activeBridge?.stop()
+}
 
 function createMainWindow(): BrowserWindow {
   const window = new BrowserWindow({
@@ -49,6 +59,36 @@ app.whenReady().then(async () => {
     projectSessionManager,
     () => mainWindow
   )
+  sessionEventBridge = new SessionEventBridge(projectSessionManager, runtimeController)
+  const webhookPort = await sessionEventBridge.start()
+
+  async function resolveRuntimePaths(sessionType: CreateSessionRequest['type']): Promise<{
+    shellPath: string | null
+    providerPath: string | null
+  }> {
+    const descriptor = getProviderDescriptorBySessionType(sessionType)
+    const settings = projectSessionManager?.getSettings()
+    const configuredShellPath = settings?.shellPath?.trim() ?? ''
+    const shellPath = configuredShellPath.length > 0 ? configuredShellPath : await detectShell()
+
+    if (descriptor.providerId === 'local-shell') {
+      return {
+        shellPath,
+        providerPath: null
+      }
+    }
+
+    const configuredProviderPath = settings?.providers[descriptor.providerId]?.trim() ?? ''
+    const providerPath =
+      configuredProviderPath.length > 0
+        ? configuredProviderPath
+        : await detectProvider(descriptor.executableName, shellPath)
+
+    return {
+      shellPath,
+      providerPath
+    }
+  }
 
   ipcMain.handle(IPC_CHANNELS.projectBootstrap, async () => {
     return projectSessionManager?.snapshot() ?? {
@@ -66,8 +106,8 @@ app.whenReady().then(async () => {
 
   ipcMain.handle(IPC_CHANNELS.sessionCreate, async (_event, payload: CreateSessionRequest) => {
     const session = await projectSessionManager?.createSession(payload)
-    if (!session || !projectSessionManager || !ptyHost || !runtimeController) {
-      console.log(`[session-create] Aborted: session=${!!session} manager=${!!projectSessionManager} pty=${!!ptyHost} ctrl=${!!runtimeController}`)
+    if (!session || !projectSessionManager || !ptyHost || !runtimeController || !sessionEventBridge) {
+      console.log(`[session-create] Aborted: session=${!!session} manager=${!!projectSessionManager} pty=${!!ptyHost} ctrl=${!!runtimeController} bridge=${!!sessionEventBridge}`)
       return null
     }
 
@@ -78,9 +118,11 @@ app.whenReady().then(async () => {
       return session
     }
 
-    const providerId = session.type === 'shell' ? 'local-shell' : 'opencode'
-    const provider = getProvider(providerId)
-    console.log(`[session-create] Starting ${providerId} session ${session.id} in ${project.path}`)
+    const descriptor = getProviderDescriptorBySessionType(session.type)
+    const provider = getProvider(descriptor.providerId)
+    const sessionSecret = sessionEventBridge.issueSessionSecret(session.id)
+    const { shellPath, providerPath } = await resolveRuntimePaths(session.type)
+    console.log(`[session-create] Starting ${descriptor.providerId} session ${session.id} in ${project.path}`)
 
     void startSessionRuntime({
       session: {
@@ -90,12 +132,15 @@ app.whenReady().then(async () => {
         title: session.title,
         type: session.type,
         status: session.status,
-        externalSessionId: session.externalSessionId
+        externalSessionId: session.externalSessionId,
+        sessionSecret
       },
-      webhookPort: 43127,
+      webhookPort,
       provider,
       ptyHost,
-      manager: runtimeController
+      manager: runtimeController,
+      shellPath,
+      providerPath
     }).then(() => {
       console.log(`[session-runtime] Session ${session.id} started successfully`)
     }).catch((err: unknown) => {
@@ -112,6 +157,10 @@ app.whenReady().then(async () => {
 
   ipcMain.handle(IPC_CHANNELS.sessionSetActive, async (_event, sessionId: string) => {
     await projectSessionManager?.setActiveSession(sessionId)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.sessionTerminalReplay, async (_event, sessionId: string) => {
+    return runtimeController?.getTerminalReplay(sessionId) ?? ''
   })
 
   ipcMain.handle(IPC_CHANNELS.sessionInput, async (_event, sessionId: string, data: string) => {
@@ -154,7 +203,8 @@ app.whenReady().then(async () => {
   })
 
   ipcMain.handle(IPC_CHANNELS.settingsDetectProvider, async (_event, providerId: string) => {
-    return detectProvider(providerId)
+    const descriptor = getProviderDescriptorByProviderId(providerId)
+    return detectProvider(descriptor?.executableName ?? providerId, projectSessionManager?.getSettings().shellPath ?? null)
   })
 
   ipcMain.handle(IPC_CHANNELS.sessionArchive, async (_event, sessionId: string) => {
@@ -180,7 +230,10 @@ app.whenReady().then(async () => {
     if (!session || !project) continue
     if (session.archived) continue
 
-    const provider = getProvider(session.type === 'shell' ? 'local-shell' : 'opencode')
+    const descriptor = getProviderDescriptorBySessionType(session.type)
+    const provider = getProvider(descriptor.providerId)
+    const sessionSecret = sessionEventBridge.issueSessionSecret(session.id)
+    const { shellPath, providerPath } = await resolveRuntimePaths(session.type)
 
     void startSessionRuntime({
       session: {
@@ -190,12 +243,15 @@ app.whenReady().then(async () => {
         title: session.title,
         type: session.type,
         status: session.status,
-        externalSessionId: session.externalSessionId
+        externalSessionId: session.externalSessionId,
+        sessionSecret
       },
-      webhookPort: 43127,
+      webhookPort,
       provider,
       ptyHost,
-      manager: runtimeController
+      manager: runtimeController,
+      shellPath,
+      providerPath
     }).catch((err: unknown) => {
       console.error(`[bootstrap-recovery] Failed to recover session ${session.id}:`, err)
       void runtimeController?.markSessionExited(session.id, `恢复失败: ${err instanceof Error ? err.message : String(err)}`)
@@ -207,6 +263,20 @@ app.whenReady().then(async () => {
       mainWindow = createMainWindow()
     }
   })
+})
+
+app.on('before-quit', async (event) => {
+  if (isQuittingAfterBridgeStop) {
+    return
+  }
+
+  event.preventDefault()
+  isQuittingAfterBridgeStop = true
+  try {
+    await stopSessionEventBridge()
+  } finally {
+    app.quit()
+  }
 })
 
 app.on('window-all-closed', () => {

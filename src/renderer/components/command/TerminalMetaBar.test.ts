@@ -10,7 +10,7 @@ const mockProject: ProjectSummary = {
 const mockSession: SessionSummary = {
   id: 'session_1', projectId: 'project_1', type: 'opencode', status: 'running',
   title: 'test session', summary: 'running', recoveryMode: 'resume-external',
-  externalSessionId: 'ext-1', createdAt: 'a', updatedAt: 'a', lastActivatedAt: 'a'
+  externalSessionId: 'ext-1', createdAt: 'a', updatedAt: 'a', lastActivatedAt: 'a', archived: false
 }
 
 describe('TerminalMetaBar', () => {

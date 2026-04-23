@@ -91,6 +91,59 @@ describe('SessionRuntimeController', () => {
     })
   })
 
+  test('applySessionEvent updates manager state and pushes awaiting_input via IPC', async () => {
+    const { window: win, sent } = createMockWindow()
+    const project = await manager.createProject({ path: await createTestWorkspace('ctrl-'), name: 'test' })
+    const session = await manager.createSession({ projectId: project.id, type: 'opencode', title: 'S1' })
+
+    const controller = new SessionRuntimeController(manager, () => win)
+    await controller.applySessionEvent({
+      sessionId: session.id,
+      status: 'awaiting_input',
+      summary: 'session.idle',
+      externalSessionId: 'opencode-real-123'
+    })
+
+    const updated = manager.snapshot().sessions[0]!
+    expect(updated.status).toBe('awaiting_input')
+    expect(updated.summary).toBe('session.idle')
+    expect(updated.externalSessionId).toBe('opencode-real-123')
+    expect(sent).toHaveLength(1)
+    expect(sent[0]!.data).toEqual({
+      sessionId: session.id,
+      status: 'awaiting_input',
+      summary: 'session.idle'
+    })
+  })
+
+  test('markSessionRunning pushes the actual preserved manager state when richer status already won', async () => {
+    const { window: win, sent } = createMockWindow()
+    const project = await manager.createProject({ path: await createTestWorkspace('ctrl-'), name: 'test' })
+    const session = await manager.createSession({ projectId: project.id, type: 'opencode', title: 'S1' })
+    const controller = new SessionRuntimeController(manager, () => win)
+
+    await controller.applySessionEvent({
+      sessionId: session.id,
+      status: 'awaiting_input',
+      summary: 'session.idle',
+      externalSessionId: 'opencode-real-123'
+    })
+    sent.length = 0
+
+    await controller.markSessionRunning(session.id, 'opencode-real-456')
+
+    const updated = manager.snapshot().sessions[0]!
+    expect(updated.status).toBe('awaiting_input')
+    expect(updated.summary).toBe('session.idle')
+    expect(updated.externalSessionId).toBe('opencode-real-456')
+    expect(sent).toHaveLength(1)
+    expect(sent[0]!.data).toEqual({
+      sessionId: session.id,
+      status: 'awaiting_input',
+      summary: 'session.idle'
+    })
+  })
+
   test('appendTerminalData pushes terminal data to renderer', async () => {
     const { window: win, sent } = createMockWindow()
 
@@ -100,6 +153,34 @@ describe('SessionRuntimeController', () => {
     expect(sent).toHaveLength(1)
     expect(sent[0]!.channel).toBe(IPC_CHANNELS.terminalData)
     expect(sent[0]!.data).toEqual({ sessionId: 's1', data: 'hello world' })
+  })
+
+  test('getTerminalReplay returns the accumulated backlog for a running session', async () => {
+    const { window: win } = createMockWindow()
+    const controller = new SessionRuntimeController(manager, () => win) as unknown as {
+      getTerminalReplay?: (sessionId: string) => Promise<string>
+    }
+
+    await controller.appendTerminalData?.({ sessionId: 'session-op-1', data: 'hello ' })
+    await controller.appendTerminalData?.({ sessionId: 'session-op-1', data: 'world' })
+
+    expect(controller.getTerminalReplay).toBeTypeOf('function')
+    await expect(controller.getTerminalReplay?.('session-op-1')).resolves.toBe('hello world')
+  })
+
+  test('getTerminalReplay keeps session backlogs isolated', async () => {
+    const { window: win } = createMockWindow()
+    const controller = new SessionRuntimeController(manager, () => win) as unknown as {
+      getTerminalReplay?: (sessionId: string) => Promise<string>
+      appendTerminalData: (chunk: { sessionId: string; data: string }) => Promise<void>
+    }
+
+    await controller.appendTerminalData({ sessionId: 'session-shell-1', data: 'shell' })
+    await controller.appendTerminalData({ sessionId: 'session-op-2', data: 'opencode' })
+
+    expect(controller.getTerminalReplay).toBeTypeOf('function')
+    await expect(controller.getTerminalReplay?.('session-shell-1')).resolves.toBe('shell')
+    await expect(controller.getTerminalReplay?.('session-op-2')).resolves.toBe('opencode')
   })
 
   test('appendTerminalData is no-op when window is destroyed', async () => {

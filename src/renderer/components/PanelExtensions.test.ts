@@ -33,7 +33,8 @@ const mockSession: SessionSummary = {
   externalSessionId: null,
   createdAt: 't',
   updatedAt: 't',
-  lastActivatedAt: 't'
+  lastActivatedAt: 't',
+  archived: false
 }
 
 function mountPanel(

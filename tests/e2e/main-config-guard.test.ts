@@ -140,6 +140,12 @@ describe('E2E: Main Process Config Guard', () => {
     })
   })
 
+  describe('Provider routing guard', () => {
+    it('main/index.ts does not hardcode shell/opencode provider ternary routing anymore', () => {
+      expect(mainSource).not.toContain("session.type === 'shell' ? 'local-shell' : 'opencode'")
+    })
+  })
+
   describe('IPC handler registration completeness', () => {
     it('every RendererApi method has a corresponding ipcMain.handle registration', () => {
       const rendererApiMethods = extractRendererApiMethods(projectSessionSource)
@@ -149,6 +155,7 @@ describe('E2E: Main Process Config Guard', () => {
         ['createSession', 'sessionCreate'],
         ['setActiveProject', 'projectSetActive'],
         ['setActiveSession', 'sessionSetActive'],
+        ['getTerminalReplay', 'sessionTerminalReplay'],
         ['sendSessionInput', 'sessionInput'],
         ['sendSessionResize', 'sessionResize'],
         ['getSettings', 'settingsGet'],
@@ -224,6 +231,7 @@ describe('E2E: Main Process Config Guard', () => {
         'createSession',
         'setActiveProject',
         'setActiveSession',
+        'getTerminalReplay',
         'sendSessionInput',
         'sendSessionResize',
         'getSettings',
@@ -260,6 +268,7 @@ describe('E2E: Main Process Config Guard', () => {
       expect(invMap.get('createSession')).toBe('session:create')
       expect(invMap.get('setActiveProject')).toBe('project:set-active')
       expect(invMap.get('setActiveSession')).toBe('session:set-active')
+      expect(invMap.get('getTerminalReplay')).toBe('session:terminal-replay')
       expect(invMap.get('sendSessionInput')).toBe('session:input')
       expect(invMap.get('sendSessionResize')).toBe('session:resize')
       expect(invMap.get('getSettings')).toBe('settings:get')

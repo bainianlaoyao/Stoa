@@ -1,4 +1,4 @@
-export type SessionType = 'shell' | 'opencode'
+export type SessionType = 'shell' | 'opencode' | 'codex' | 'claude-code'
 export type SessionRecoveryMode = 'fresh-shell' | 'resume-external'
 export type SessionStatus =
   | 'bootstrapping'
@@ -61,12 +61,16 @@ export interface PersistedSession {
 export interface AppSettings {
   shellPath: string
   terminalFontSize: number
+  terminalFontFamily: string
   providers: Record<string, string>
 }
+
+export const BUILTIN_FONT_FAMILIES = ['JetBrains Mono', 'Cascadia Mono'] as const
 
 export const DEFAULT_SETTINGS: AppSettings = {
   shellPath: '',
   terminalFontSize: 14,
+  terminalFontFamily: 'JetBrains Mono',
   providers: {}
 }
 
@@ -130,6 +134,7 @@ export interface RendererApi {
   createSession: (request: CreateSessionRequest) => Promise<SessionSummary>
   setActiveProject: (projectId: string) => Promise<void>
   setActiveSession: (sessionId: string) => Promise<void>
+  getTerminalReplay: (sessionId: string) => Promise<string>
   sendSessionInput: (sessionId: string, data: string) => Promise<void>
   sendSessionResize: (sessionId: string, cols: number, rows: number) => Promise<void>
   onTerminalData: (callback: (chunk: TerminalDataChunk) => void) => () => void
@@ -149,6 +154,7 @@ export interface SessionEventPayload {
   status?: SessionStatus
   summary?: string
   isProvisional?: boolean
+  externalSessionId?: string | null
 }
 
 export interface CanonicalSessionEvent {
@@ -167,6 +173,8 @@ export interface ProviderCommandContext {
   webhookPort: number
   sessionSecret: string
   providerPort: number
+  providerPath?: string | null
+  startedAt?: number
 }
 
 export interface ProviderCommand {

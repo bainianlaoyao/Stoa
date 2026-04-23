@@ -775,7 +775,7 @@ describe('E2E: Backend Full User Lifecycle', () => {
       })
 
       const command = pty.lastCall()!.command
-      expect(command.args).toContain('--port')
+      expect(command.args).toEqual([])
       expect(command.args).not.toContain('--session')
     })
 
@@ -801,8 +801,91 @@ describe('E2E: Backend Full User Lifecycle', () => {
       })
 
       const command = pty.lastCall()!.command
-      expect(command.args).toContain('--session')
-      expect(command.args).toContain('ext-123')
+      expect(command.args).toEqual(['--session', 'ext-123'])
+    })
+
+    test('opencode session launches through configured user shell when shellPath is provided', async () => {
+      const provider = getProvider('opencode')
+      const pty = createMockPtyHost()
+      const mock = createMockManager()
+
+      await startSessionRuntime({
+        session: {
+          id: 'session_op_1',
+          projectId: 'project_test',
+          path: 'D:/demo',
+          title: 'OpenCode Test',
+          type: 'opencode',
+          status: 'bootstrapping',
+          externalSessionId: null
+        },
+        webhookPort: 43127,
+        provider,
+        ptyHost: pty.host,
+        manager: mock.manager,
+        shellPath: 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe'
+      })
+
+      const command = pty.lastCall()!.command
+      expect(command.command).toBe('C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe')
+      expect(command.args).toContain('-Command')
+    })
+
+    test('opencode session bridges cmd shell with .ps1 provider path through powershell', async () => {
+      const provider = getProvider('opencode')
+      const pty = createMockPtyHost()
+      const mock = createMockManager()
+
+      await startSessionRuntime({
+        session: {
+          id: 'session_op_1',
+          projectId: 'project_test',
+          path: 'D:/demo',
+          title: 'OpenCode Test',
+          type: 'opencode',
+          status: 'bootstrapping',
+          externalSessionId: null
+        },
+        webhookPort: 43127,
+        provider,
+        ptyHost: pty.host,
+        manager: mock.manager,
+        shellPath: 'C:\\Windows\\System32\\cmd.exe',
+        providerPath: 'C:\\Users\\test\\AppData\\Roaming\\npm\\opencode.ps1'
+      })
+
+      const command = pty.lastCall()!.command
+      expect(command.command).toBe('C:\\Windows\\System32\\cmd.exe')
+      expect(command.args.slice(0, 3)).toEqual(['/d', '/s', '/c'])
+      expect(command.args[3]).toContain('powershell.exe')
+      expect(command.args[3]).toContain('opencode.ps1')
+    })
+
+    test('fresh start preserves existing externalSessionId during runtime transition', async () => {
+      const provider = getProvider('opencode')
+      const pty = createMockPtyHost()
+      const mock = createMockManager()
+
+      await startSessionRuntime({
+        session: {
+          id: 'session_op_1',
+          projectId: 'project_test',
+          path: 'D:/demo',
+          title: 'OpenCode Test',
+          type: 'opencode',
+          status: 'needs_confirmation',
+          externalSessionId: 'stale-ext'
+        },
+        webhookPort: 43127,
+        provider,
+        ptyHost: pty.host,
+        manager: mock.manager
+      })
+
+      const startingLog = mock.log.find(entry => entry.method === 'markSessionStarting')
+      const runningLog = mock.log.find(entry => entry.method === 'markSessionRunning')
+      expect(startingLog?.args[2]).toBe('stale-ext')
+      expect(runningLog?.args[1]).toBe('stale-ext')
     })
 
     test('PTY exit callback triggers markSessionExited', async () => {
@@ -859,17 +942,31 @@ describe('E2E: Backend Full User Lifecycle', () => {
       expect(command.cwd).toBe('D:/demo')
     })
 
-    test('opencode provider: buildStartCommand includes --port flag', async () => {
+    test('opencode provider: buildStartCommand preserves manual shell semantics', async () => {
       const provider = getProvider('opencode')
       const command = await provider.buildStartCommand(
         { session_id: 's1', project_id: 'p1', path: 'D:/demo', title: 'test', type: 'opencode' },
         { webhookPort: 43127, sessionSecret: 'secret', providerPort: 43128 }
       )
 
-      const expectedCmd = process.platform === 'win32' ? 'opencode.cmd' : 'opencode'
-      expect(command.command).toBe(expectedCmd)
-      expect(command.args).toContain('--port')
-      expect(command.args).toContain('43128')
+      expect(command.command).toBe('opencode')
+      expect(command.args).toEqual([])
+    })
+
+    test('opencode provider: buildStartCommand uses configured provider path when available', async () => {
+      const provider = getProvider('opencode')
+      const command = await provider.buildStartCommand(
+        { session_id: 's1', project_id: 'p1', path: 'D:/demo', title: 'test', type: 'opencode' },
+        {
+          webhookPort: 43127,
+          sessionSecret: 'secret',
+          providerPort: 43128,
+          providerPath: 'C:/Users/test/AppData/Roaming/npm/opencode.ps1'
+        }
+      )
+
+      expect(command.command).toBe('C:/Users/test/AppData/Roaming/npm/opencode.ps1')
+      expect(command.args).toEqual([])
     })
 
     test('opencode provider: buildResumeCommand includes --session flag', async () => {
@@ -880,8 +977,7 @@ describe('E2E: Backend Full User Lifecycle', () => {
         { webhookPort: 43127, sessionSecret: 'secret', providerPort: 43128 }
       )
 
-      expect(command.args).toContain('--session')
-      expect(command.args).toContain('ext-session-42')
+      expect(command.args).toEqual(['--session', 'ext-session-42'])
     })
 
     test('opencode provider: installSidecar writes plugin file to disk', async () => {

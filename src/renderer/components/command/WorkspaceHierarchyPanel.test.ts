@@ -12,6 +12,18 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
+const mockAddButtonRect = {
+  left: 24,
+  top: 36,
+  width: 24,
+  height: 24,
+  right: 48,
+  bottom: 60,
+  x: 24,
+  y: 36,
+  toJSON: () => ({})
+}
+
 function createHierarchy(): ProjectHierarchyNode[] {
   return [
     {
@@ -21,6 +33,7 @@ function createHierarchy(): ProjectHierarchyNode[] {
       createdAt: 'a',
       updatedAt: 'a',
       active: true,
+      archivedSessions: [],
       sessions: [
         {
           id: 'session_1',
@@ -34,6 +47,7 @@ function createHierarchy(): ProjectHierarchyNode[] {
           createdAt: 'a',
           updatedAt: 'a',
           lastActivatedAt: 'a',
+          archived: false,
           active: false
         },
         {
@@ -48,6 +62,7 @@ function createHierarchy(): ProjectHierarchyNode[] {
           createdAt: 'b',
           updatedAt: 'b',
           lastActivatedAt: 'b',
+          archived: false,
           active: true
         }
       ]
@@ -64,6 +79,7 @@ function createTwoProjectHierarchy(): ProjectHierarchyNode[] {
       createdAt: 'a',
       updatedAt: 'a',
       active: true,
+      archivedSessions: [],
       sessions: [
         {
           id: 'session_1',
@@ -77,6 +93,7 @@ function createTwoProjectHierarchy(): ProjectHierarchyNode[] {
           createdAt: 'a',
           updatedAt: 'a',
           lastActivatedAt: 'a',
+          archived: false,
           active: false
         }
       ]
@@ -88,6 +105,7 @@ function createTwoProjectHierarchy(): ProjectHierarchyNode[] {
       createdAt: 'c',
       updatedAt: 'c',
       active: false,
+      archivedSessions: [],
       sessions: [
         {
           id: 'session_3',
@@ -101,6 +119,7 @@ function createTwoProjectHierarchy(): ProjectHierarchyNode[] {
           createdAt: 'c',
           updatedAt: 'c',
           lastActivatedAt: 'c',
+          archived: false,
           active: false
         }
       ]
@@ -117,6 +136,25 @@ function mountPanel(overrides: { hierarchy?: ProjectHierarchyNode[]; activeProje
       activeSessionId: overrides.activeSessionId !== undefined ? overrides.activeSessionId : 'session_2'
     }
   })
+}
+
+async function openFloatingCard(wrapper: ReturnType<typeof mountPanel>) {
+  const addButton = wrapper.find('.route-add-session')
+  Object.defineProperty(addButton.element, 'getBoundingClientRect', {
+    value: () => mockAddButtonRect
+  })
+  await addButton.trigger('mousedown')
+  await addButton.trigger('mouseup')
+}
+
+async function openRadialMenu(wrapper: ReturnType<typeof mountPanel>) {
+  vi.useFakeTimers()
+  const addButton = wrapper.find('.route-add-session')
+  Object.defineProperty(addButton.element, 'getBoundingClientRect', {
+    value: () => mockAddButtonRect
+  })
+  await addButton.trigger('mousedown')
+  await vi.advanceTimersByTimeAsync(220)
 }
 
 describe('WorkspaceHierarchyPanel', () => {
@@ -204,6 +242,7 @@ describe('WorkspaceHierarchyPanel', () => {
       const btns = wrapper.findAll('.route-add-session')
       expect(btns).toHaveLength(1)
       expect(btns[0].text()).toBe('+')
+      expect(btns[0].classes()).toContain('route-icon-button')
     })
   })
 
@@ -298,13 +337,33 @@ describe('WorkspaceHierarchyPanel', () => {
       expect(wrapper.emitted('selectSession')).toEqual([['session_1']])
     })
 
-    it('clicking archive button emits archiveSession with session id', async () => {
+    it('does not render archived sessions in the hierarchy panel', async () => {
+      const wrapper = mountPanel({
+        hierarchy: [{
+          ...createHierarchy()[0]!,
+          sessions: [createHierarchy()[0]!.sessions[0]!],
+          archivedSessions: [{
+            ...createHierarchy()[0]!.sessions[1]!,
+            id: 'session_archived',
+            title: 'old shell',
+            archived: true,
+            active: false
+          }]
+        }]
+      })
+
+      expect(wrapper.find('[data-archived-group="project_alpha"]').exists()).toBe(false)
+      expect(wrapper.find('[data-archived-session="session_archived"]').exists()).toBe(false)
+    })
+
+    it('clicking archive action emits archiveSession without selecting the row', async () => {
       const wrapper = mountPanel()
 
-      await wrapper.find('[data-archive-session="session_1"]').trigger('click')
+      await wrapper.find('[data-row-archive="session_1"]').trigger('click')
 
       expect(wrapper.emitted('archiveSession')).toEqual([['session_1']])
       expect(wrapper.emitted('selectSession')).toBeUndefined()
+      expect(wrapper.find('[data-row-archive="session_1"] svg').exists()).toBe(true)
     })
   })
 
@@ -323,14 +382,7 @@ describe('WorkspaceHierarchyPanel', () => {
 
     it('quick click on "+" opens floating card', async () => {
       const wrapper = mountPanel()
-      const addButton = wrapper.find('.route-add-session')
-
-      Object.defineProperty(addButton.element, 'getBoundingClientRect', {
-        value: () => ({ left: 24, top: 36, width: 24, height: 24, right: 48, bottom: 60, x: 24, y: 36, toJSON: () => ({}) })
-      })
-
-      await addButton.trigger('mousedown')
-      await addButton.trigger('mouseup')
+      await openFloatingCard(wrapper)
 
       const floatingCard = wrapper.findComponent(ProviderFloatingCard)
       const radialMenu = wrapper.findComponent(ProviderRadialMenu)
@@ -344,7 +396,7 @@ describe('WorkspaceHierarchyPanel', () => {
       const addButton = wrapper.find('.route-add-session')
 
       Object.defineProperty(addButton.element, 'getBoundingClientRect', {
-        value: () => ({ left: 24, top: 36, width: 24, height: 24, right: 48, bottom: 60, x: 24, y: 36, toJSON: () => ({}) })
+        value: () => mockAddButtonRect
       })
 
       await addButton.trigger('mousedown')
@@ -360,14 +412,7 @@ describe('WorkspaceHierarchyPanel', () => {
 
     it('clicking outside closes floating card opened by quick click', async () => {
       const wrapper = mountPanel()
-      const addButton = wrapper.find('.route-add-session')
-
-      Object.defineProperty(addButton.element, 'getBoundingClientRect', {
-        value: () => ({ left: 24, top: 36, width: 24, height: 24, right: 48, bottom: 60, x: 24, y: 36, toJSON: () => ({}) })
-      })
-
-      await addButton.trigger('mousedown')
-      await addButton.trigger('mouseup')
+      await openFloatingCard(wrapper)
 
       expect(wrapper.findComponent(ProviderFloatingCard).props('visible')).toBe(true)
 
@@ -379,12 +424,11 @@ describe('WorkspaceHierarchyPanel', () => {
 
     it('long press opens radial menu and closes it on mouseup', async () => {
       vi.useFakeTimers()
-
       const wrapper = mountPanel()
       const addButton = wrapper.find('.route-add-session')
 
       Object.defineProperty(addButton.element, 'getBoundingClientRect', {
-        value: () => ({ left: 24, top: 36, width: 24, height: 24, right: 48, bottom: 60, x: 24, y: 36, toJSON: () => ({}) })
+        value: () => mockAddButtonRect
       })
 
       await addButton.trigger('mousedown')
@@ -396,6 +440,61 @@ describe('WorkspaceHierarchyPanel', () => {
       await addButton.trigger('mouseup')
 
       expect(wrapper.findComponent(ProviderRadialMenu).props('visible')).toBe(false)
+    })
+
+    it('releasing on a radial item after long press creates a session', async () => {
+      vi.useFakeTimers()
+      const wrapper = mountPanel()
+
+      await openRadialMenu(wrapper)
+
+      const codexButton = document.body.querySelector('button[aria-label="Create Codex session"]')
+      expect(codexButton).toBeTruthy()
+
+      codexButton?.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.emitted('createSession')).toContainEqual([{
+        projectId: 'project_alpha',
+        type: 'codex',
+        title: 'codex-infra-control'
+      }])
+      expect(wrapper.findComponent(ProviderRadialMenu).props('visible')).toBe(false)
+    })
+
+    it('releasing outside after long press closes radial menu', async () => {
+      vi.useFakeTimers()
+      const wrapper = mountPanel()
+
+      await openRadialMenu(wrapper)
+      expect(wrapper.findComponent(ProviderRadialMenu).props('visible')).toBe(true)
+
+      document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.findComponent(ProviderRadialMenu).props('visible')).toBe(false)
+    })
+
+    it('creating codex from floating card auto-generates codex project title', async () => {
+      const wrapper = mountPanel()
+      await openFloatingCard(wrapper)
+      await wrapper.findComponent(ProviderFloatingCard).vm.$emit('create', { type: 'codex' })
+      expect(wrapper.emitted('createSession')).toContainEqual([{
+        projectId: 'project_alpha',
+        type: 'codex',
+        title: 'codex-infra-control'
+      }])
+    })
+
+    it('creating claude-code from radial menu auto-generates claude project title', async () => {
+      const wrapper = mountPanel()
+      await openRadialMenu(wrapper)
+      await wrapper.findComponent(ProviderRadialMenu).vm.$emit('create', { type: 'claude-code' })
+      expect(wrapper.emitted('createSession')).toContainEqual([{
+        projectId: 'project_alpha',
+        type: 'claude-code',
+        title: 'claude-infra-control'
+      }])
     })
   })
 
@@ -434,6 +533,7 @@ describe('WorkspaceHierarchyPanel', () => {
           createdAt: 'a',
           updatedAt: 'a',
           active: true,
+          archivedSessions: [],
           sessions: []
         }
       ]

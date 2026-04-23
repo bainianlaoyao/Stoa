@@ -1,5 +1,6 @@
 import { mkdir } from 'node:fs/promises'
 import { expect, type Locator, type Page } from '@playwright/test'
+import type { SessionType } from '@shared/project-session'
 
 export async function createProject(page: Page, options: { name: string; path: string }): Promise<Locator> {
   await mkdir(options.path, { recursive: true })
@@ -20,7 +21,7 @@ export async function createProject(page: Page, options: { name: string; path: s
 export async function createSession(
   page: Page,
   projectRow: Locator,
-  options: { title: string; type: 'shell' | 'opencode' }
+  options: { title: string; type: SessionType }
 ): Promise<Locator> {
   await projectRow.getByRole('button', { name: /Add session to / }).click()
 

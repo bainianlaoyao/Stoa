@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onBeforeUnmount, nextTick, computed } from 'vue'
-import { Terminal } from '@xterm/xterm'
-import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
-import type { ProjectSummary, SessionSummary, TerminalDataChunk } from '@shared/project-session'
+import { createTerminalRuntime } from '@renderer/terminal/xterm-runtime'
+import { useSettingsStore } from '@renderer/stores/settings'
+import type { FitAddon } from '@xterm/addon-fit'
+import type { Terminal } from '@xterm/xterm'
+import type { ProjectSummary, SessionStatus, SessionSummary, TerminalDataChunk } from '@shared/project-session'
 
 const props = defineProps<{
   project: ProjectSummary | null
@@ -11,7 +13,11 @@ const props = defineProps<{
 }>()
 
 const terminalContainer = ref<HTMLDivElement>()
-const isRunning = computed(() => props.session?.status === 'running')
+const LIVE_TERMINAL_STATUSES = new Set<SessionStatus>(['running', 'awaiting_input'])
+const settingsStore = useSettingsStore()
+const isLiveTerminal = computed(() => {
+  return props.session ? LIVE_TERMINAL_STATUSES.has(props.session.status) : false
+})
 
 let terminal: Terminal | null = null
 let fitAddon: FitAddon | null = null
@@ -19,8 +25,13 @@ let resizeObserver: ResizeObserver | null = null
 let unsubscribeData: (() => void) | null = null
 let unsubscribeEvents: (() => void) | null = null
 let dataDisposable: { dispose(): void } | null = null
+let mountVersion = 0
+let setupScheduleVersion = 0
+const REPLAY_FALLBACK_TIMEOUT_MS = 1_000
 
 function disposeTerminal() {
+  setupScheduleVersion += 1
+  mountVersion += 1
   dataDisposable?.dispose()
   dataDisposable = null
   unsubscribeData?.()
@@ -35,98 +46,178 @@ function disposeTerminal() {
   terminal = null
 }
 
-function setupTerminal() {
-  if (!terminalContainer.value || !props.session) return
-
-  terminal = new Terminal({
-    fontFamily: "var(--font-mono)",
-    fontSize: 13,
-    lineHeight: 1.5,
-    theme: {
-      background: 'var(--terminal-bg)',
-      foreground: 'var(--terminal-text)',
-      cursor: 'var(--terminal-text)',
-      cursorAccent: 'var(--terminal-bg)',
-      selectionBackground: 'rgba(226, 232, 240, 0.2)',
-      black: '#0a0b0d',
-      red: '#ef4444',
-      green: '#10b981',
-      yellow: '#f59e0b',
-      blue: '#3b82f6',
-      magenta: '#8b5cf6',
-      cyan: '#06b6d4',
-      white: '#e2e8f0',
-      brightBlack: '#64748b',
-      brightRed: '#f87171',
-      brightGreen: '#34d399',
-      brightYellow: '#fbbf24',
-      brightBlue: '#60a5fa',
-      brightMagenta: '#a78bfa',
-      brightCyan: '#22d3ee',
-      brightWhite: '#f8fafc',
-    },
-    allowProposedApi: true,
-    scrollback: 10_000,
-    convertEol: true,
+function writeChunk(targetTerminal: Terminal, data: string): Promise<void> {
+  return new Promise((resolve) => {
+    targetTerminal.write(data, () => resolve())
   })
+}
 
-  fitAddon = new FitAddon()
-  terminal.loadAddon(fitAddon)
-  terminal.open(terminalContainer.value)
+function scheduleTerminalSetup() {
+  const localScheduleVersion = ++setupScheduleVersion
 
   nextTick(() => {
-    fitAddon?.fit()
-    const cols = terminal?.cols
-    const rows = terminal?.rows
-    if (cols && rows && props.session && window.stoa?.sendSessionResize) {
-      window.stoa.sendSessionResize(props.session.id, cols, rows)
+    if (localScheduleVersion !== setupScheduleVersion) {
+      return
+    }
+
+    if (props.session && isLiveTerminal.value) {
+      setupTerminal()
+    }
+  })
+}
+
+function setupTerminal() {
+  if (!terminalContainer.value || !props.session) return
+  const sessionId = props.session.id
+  const stoa = window.stoa
+  if (!stoa) return
+
+  const localMountVersion = ++mountVersion
+  let replayResolved = false
+  const pendingOutput: string[] = []
+  let writeChain = Promise.resolve()
+  let replayFallbackTimer: ReturnType<typeof setTimeout> | null = null
+
+  const { terminal: localTerminal, fitAddon: localFitAddon } = createTerminalRuntime(
+    undefined,
+    undefined,
+    undefined,
+    settingsStore.terminalFontSize,
+    settingsStore.terminalFontFamily
+  )
+  terminal = localTerminal
+  fitAddon = localFitAddon
+  localTerminal.open(terminalContainer.value)
+
+  const isActiveMount = () => mountVersion === localMountVersion && terminal === localTerminal
+  const enqueueWrite = (data: string) => {
+    if (!data) return
+
+    writeChain = writeChain.then(async () => {
+      if (!isActiveMount()) {
+        return
+      }
+
+      await writeChunk(localTerminal, data)
+    })
+  }
+  const clearReplayFallbackTimer = () => {
+    if (replayFallbackTimer === null) {
+      return
+    }
+
+    clearTimeout(replayFallbackTimer)
+    replayFallbackTimer = null
+  }
+  const resolveReplayGate = () => {
+    if (replayResolved) {
+      return
+    }
+
+    replayResolved = true
+    clearReplayFallbackTimer()
+    for (const pendingChunk of pendingOutput) {
+      enqueueWrite(pendingChunk)
+    }
+    pendingOutput.length = 0
+  }
+  const queueOrWrite = (data: string) => {
+    if (!data) {
+      return
+    }
+
+    if (replayResolved) {
+      enqueueWrite(data)
+      return
+    }
+
+    pendingOutput.push(data)
+  }
+
+  nextTick(async () => {
+    if (!isActiveMount()) {
+      return
+    }
+
+    await (document.fonts?.ready ?? Promise.resolve())
+    localFitAddon.fit()
+    const cols = localTerminal.cols
+    const rows = localTerminal.rows
+    if (cols && rows) {
+      stoa.sendSessionResize(sessionId, cols, rows)
     }
   })
 
-  dataDisposable = terminal.onData((data) => {
-    if (props.session && window.stoa?.sendSessionInput) {
-      window.stoa.sendSessionInput(props.session.id, data)
-    }
+  dataDisposable = localTerminal.onData((data) => {
+    stoa.sendSessionInput(sessionId, data)
   })
 
   resizeObserver = new ResizeObserver(() => {
-    if (!fitAddon || !terminal) return
-    fitAddon.fit()
-    const { cols, rows } = terminal
-    if (props.session && window.stoa?.sendSessionResize) {
-      window.stoa.sendSessionResize(props.session.id, cols, rows)
-    }
+    if (!isActiveMount()) return
+    localFitAddon.fit()
+    const { cols, rows } = localTerminal
+    stoa.sendSessionResize(sessionId, cols, rows)
   })
   resizeObserver.observe(terminalContainer.value)
 
-  unsubscribeData = window.stoa?.onTerminalData?.((chunk: TerminalDataChunk) => {
-    if (chunk.sessionId === props.session?.id) {
-      terminal?.write(chunk.data)
+  unsubscribeData = stoa.onTerminalData((chunk: TerminalDataChunk) => {
+    if (chunk.sessionId === sessionId) {
+      queueOrWrite(chunk.data)
     }
-  }) ?? null
+  })
 
-  unsubscribeEvents = window.stoa?.onSessionEvent?.((event) => {
-    if (event.sessionId === props.session?.id && event.status === 'exited') {
-      terminal?.write('\r\n\x1b[90m[session exited]\x1b[0m')
+  unsubscribeEvents = stoa.onSessionEvent((event) => {
+    if (event.sessionId === sessionId && event.status === 'exited') {
+      queueOrWrite('\r\n\x1b[90m[session exited]\x1b[0m')
     }
-  }) ?? null
+  })
+
+  replayFallbackTimer = setTimeout(() => {
+    if (!isActiveMount()) {
+      clearReplayFallbackTimer()
+      return
+    }
+
+    resolveReplayGate()
+  }, REPLAY_FALLBACK_TIMEOUT_MS)
+
+  void stoa.getTerminalReplay(sessionId)
+    .then((replay) => {
+      if (!isActiveMount() || replayResolved) {
+        return
+      }
+
+      if (replay) {
+        enqueueWrite(replay)
+      }
+    })
+    .catch(() => {
+      // Keep terminal usable if replay retrieval fails; buffered chunks are flushed in finally.
+    })
+    .finally(() => {
+      clearReplayFallbackTimer()
+
+      if (!isActiveMount()) {
+        return
+      }
+
+      resolveReplayGate()
+    })
 }
 
 watch(
-  isRunning,
-  (running) => {
+  [() => props.session?.id ?? null, isLiveTerminal, () => settingsStore.terminalFontSize],
+  ([sessionId, liveTerminal]) => {
     disposeTerminal()
-    nextTick(() => {
-      if (running) {
-        setupTerminal()
-      }
-    })
+    if (sessionId && liveTerminal) {
+      scheduleTerminalSetup()
+    }
   }
 )
 
 onMounted(() => {
-  if (isRunning.value) {
-    nextTick(setupTerminal)
+  if (isLiveTerminal.value) {
+    scheduleTerminalSetup()
   }
 })
 
@@ -136,7 +227,11 @@ onBeforeUnmount(disposeTerminal)
 <template>
   <section class="terminal-viewport">
     <template v-if="project && session">
-      <div v-if="isRunning" class="terminal-viewport__xterm" ref="terminalContainer" />
+      <div v-if="isLiveTerminal" class="terminal-viewport__xterm">
+        <div class="terminal-viewport__shell">
+          <div class="terminal-viewport__xterm-mount" ref="terminalContainer" />
+        </div>
+      </div>
 
       <div v-else class="terminal-viewport__overlay">
         <header class="terminal-viewport__header">
@@ -193,14 +288,48 @@ onBeforeUnmount(disposeTerminal)
 .terminal-viewport__xterm {
   height: 100%;
   width: 100%;
-  border-radius: var(--radius-sm);
-  background: var(--terminal-bg);
+  min-height: 0;
+}
+
+.terminal-viewport__shell {
+  height: 100%;
+  width: 100%;
+  min-height: 0;
+  padding: var(--terminal-shell-gap);
+  border-radius: var(--radius-md);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.01)),
+    var(--terminal-bg);
+  border: 1px solid var(--terminal-border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
   overflow: hidden;
 }
 
-.terminal-viewport__xterm :deep(.xterm) {
+.terminal-viewport__xterm-mount {
   height: 100%;
-  padding: 4px;
+  width: 100%;
+  min-height: 0;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.terminal-viewport__xterm-mount :deep(.xterm) {
+  height: 100%;
+  width: 100%;
+}
+
+.terminal-viewport__xterm-mount :deep(.xterm-viewport) {
+  background-color: var(--terminal-bg) !important;
+}
+
+.terminal-viewport__xterm-mount :deep(.xterm-viewport) {
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.terminal-viewport__xterm-mount :deep(.xterm-viewport::-webkit-scrollbar) {
+  width: 0;
+  height: 0;
 }
 
 .terminal-viewport__overlay {
@@ -224,7 +353,7 @@ onBeforeUnmount(disposeTerminal)
 
 .terminal-viewport__header h2 {
   color: var(--terminal-text);
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
 }
 
@@ -233,7 +362,7 @@ onBeforeUnmount(disposeTerminal)
   color: rgba(226, 232, 240, 0.45);
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
 }
 
@@ -241,7 +370,7 @@ onBeforeUnmount(disposeTerminal)
   display: flex;
   gap: 8px;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
   color: rgba(226, 232, 240, 0.5);
 }
 
@@ -254,7 +383,7 @@ onBeforeUnmount(disposeTerminal)
 .terminal-viewport__details p {
   margin: 0 0 12px;
   color: rgba(226, 232, 240, 0.6);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .terminal-viewport__field-list {
@@ -270,7 +399,7 @@ onBeforeUnmount(disposeTerminal)
 }
 
 .terminal-viewport__field-list dt {
-  font-size: 10px;
+  font-size: 11px;
   color: rgba(226, 232, 240, 0.35);
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -279,13 +408,13 @@ onBeforeUnmount(disposeTerminal)
 .terminal-viewport__field-list dd {
   margin: 0;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   color: var(--terminal-text);
 }
 
 .terminal-viewport__field-list code {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   background: rgba(226, 232, 240, 0.06);
   padding: 1px 4px;
   border-radius: 3px;

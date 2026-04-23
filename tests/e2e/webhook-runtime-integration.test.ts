@@ -4,16 +4,16 @@ import { afterEach, describe, expect, test } from 'vitest'
 import { IPC_CHANNELS } from '@core/ipc-channels'
 import { ProjectSessionManager } from '@core/project-session-manager'
 import { readProjectSessions } from '@core/state-store'
-import { createLocalWebhookServer, type LocalWebhookServer } from '@core/webhook-server'
 import type { CanonicalSessionEvent, SessionStatusEvent } from '@shared/project-session'
 import { SessionRuntimeController } from '../../src/main/session-runtime-controller'
+import { SessionEventBridge } from '../../src/main/session-event-bridge'
 import {
   createMockWindow,
   createTestGlobalStatePath,
   createTestWorkspace
 } from './helpers'
 
-const servers: LocalWebhookServer[] = []
+const bridges: SessionEventBridge[] = []
 
 interface WebhookHarness {
   manager: ProjectSessionManager
@@ -32,13 +32,19 @@ interface WebhookHarness {
 function createCanonicalEvent(
   sessionId: string,
   projectId: string,
-  status: 'running' | 'exited',
-  summary: string
+  status: 'running' | 'awaiting_input' | 'exited',
+  summary: string,
+  externalSessionId?: string
 ): CanonicalSessionEvent {
   return {
     event_version: 1,
     event_id: `evt_${randomUUID()}`,
-    event_type: status === 'running' ? 'session.started' : 'session.completed',
+    event_type:
+      status === 'running'
+        ? 'session.started'
+        : status === 'awaiting_input'
+          ? 'session.idle'
+          : 'session.completed',
     timestamp: new Date().toISOString(),
     session_id: sessionId,
     project_id: projectId,
@@ -46,7 +52,8 @@ function createCanonicalEvent(
     payload: {
       status,
       summary,
-      isProvisional: false
+      isProvisional: false,
+      externalSessionId
     }
   }
 }
@@ -132,38 +139,16 @@ async function createWebhookHarness(): Promise<WebhookHarness> {
 
   const session = await manager.createSession({
     projectId: project.id,
-    type: 'shell',
-    title: 'Webhook Runtime Shell'
+    type: 'opencode',
+    title: 'Webhook Runtime OpenCode'
   })
 
-  const secret = `secret-${randomUUID()}`
-  const secretsBySession = new Map<string, string>([[session.id, secret]])
   const { window, sent } = createMockWindow()
   const controller = new SessionRuntimeController(manager, () => window)
-
-  const server = createLocalWebhookServer({
-    getSessionSecret(sessionId) {
-      return secretsBySession.get(sessionId) ?? null
-    },
-    async onEvent(event) {
-      const currentSession = getSessionState(manager, event.session_id)
-
-      if (event.payload.status === 'running') {
-        await controller.markSessionRunning(event.session_id, currentSession.externalSessionId)
-        return
-      }
-
-      if (event.payload.status === 'exited') {
-        await controller.markSessionExited(event.session_id, event.payload.summary ?? '会话已退出')
-        return
-      }
-
-      throw new Error(`Unsupported webhook status for test: ${event.payload.status ?? 'missing'}`)
-    }
-  })
-
-  servers.push(server)
-  const port = await server.start()
+  const bridge = new SessionEventBridge(manager, controller)
+  bridges.push(bridge)
+  const port = await bridge.start()
+  const secret = bridge.issueSessionSecret(session.id)
 
   return {
     manager,
@@ -182,15 +167,21 @@ async function createWebhookHarness(): Promise<WebhookHarness> {
 
 describe('E2E: webhook runtime integration', () => {
   afterEach(async () => {
-    await Promise.allSettled(servers.splice(0).map(async server => server.stop()))
+    await Promise.allSettled(bridges.splice(0).map(async bridge => bridge.stop()))
   })
 
-  test('accepts the correct secret and pushes running state through the controller', async () => {
+  test('accepts the correct secret and pushes running state with provider externalSessionId through the bridge', async () => {
     const harness = await createWebhookHarness()
     const response = await httpPost(
       harness.port,
       '/events',
-      createCanonicalEvent(harness.session.id, harness.session.projectId, 'running', 'event accepted'),
+      createCanonicalEvent(
+        harness.session.id,
+        harness.session.projectId,
+        'running',
+        'event accepted',
+        'opencode-real-123'
+      ),
       { 'x-stoa-secret': harness.secret }
     )
 
@@ -203,18 +194,20 @@ describe('E2E: webhook runtime integration', () => {
       {
         sessionId: harness.session.id,
         status: 'running',
-        summary: '会话运行中'
+        summary: 'event accepted'
       }
     ])
 
     expect(getSessionState(harness.manager, harness.session.id).status).toBe('running')
+    expect(getSessionState(harness.manager, harness.session.id).externalSessionId).toBe('opencode-real-123')
 
     const diskSessions = await readProjectSessions(harness.workspaceDir)
     const persistedSession = diskSessions.sessions.find(candidate => candidate.session_id === harness.session.id)
 
     expect(persistedSession).toBeDefined()
     expect(persistedSession!.last_known_status).toBe('running')
-    expect(persistedSession!.last_summary).toBe('会话运行中')
+    expect(persistedSession!.last_summary).toBe('event accepted')
+    expect(persistedSession!.external_session_id).toBe('opencode-real-123')
   })
 
   test('rejects wrong and missing secrets without changing state or pushing IPC events', async () => {
@@ -231,14 +224,26 @@ describe('E2E: webhook runtime integration', () => {
     const wrongSecretResponse = await httpPost(
       harness.port,
       '/events',
-      createCanonicalEvent(harness.session.id, harness.session.projectId, 'running', 'should be rejected'),
+      createCanonicalEvent(
+        harness.session.id,
+        harness.session.projectId,
+        'running',
+        'should be rejected',
+        'opencode-real-123'
+      ),
       { 'x-stoa-secret': 'wrong-secret' }
     )
 
     const missingSecretResponse = await httpPost(
       harness.port,
       '/events',
-      createCanonicalEvent(harness.session.id, harness.session.projectId, 'running', 'should also be rejected')
+      createCanonicalEvent(
+        harness.session.id,
+        harness.session.projectId,
+        'running',
+        'should also be rejected',
+        'opencode-real-123'
+      )
     )
 
     expect(wrongSecretResponse.statusCode).toBe(401)
@@ -255,15 +260,66 @@ describe('E2E: webhook runtime integration', () => {
     expect(persistedSession).toBeDefined()
     expect(persistedSession!.last_known_status).toBe('bootstrapping')
     expect(persistedSession!.last_summary).toBe('等待会话启动')
+    expect(persistedSession!.external_session_id).toBeNull()
   })
 
-  test('pushes and persists running then exited transitions from webhook events', async () => {
+  test('idle webhook event persists awaiting_input and the provider externalSessionId', async () => {
+    const harness = await createWebhookHarness()
+
+    const idleResponse = await httpPost(
+      harness.port,
+      '/events',
+      createCanonicalEvent(
+        harness.session.id,
+        harness.session.projectId,
+        'awaiting_input',
+        'session.idle',
+        'opencode-real-456'
+      ),
+      { 'x-stoa-secret': harness.secret }
+    )
+
+    expect(idleResponse.statusCode).toBe(202)
+
+    await waitFor(async () => {
+      const diskSessions = await readProjectSessions(harness.workspaceDir)
+      const persistedSession = diskSessions.sessions.find(candidate => candidate.session_id === harness.session.id)
+      return getSessionEvents(harness.sent).length === 1
+        && persistedSession?.last_known_status === 'awaiting_input'
+    })
+
+    expect(getSessionEvents(harness.sent)[0]).toEqual({
+      sessionId: harness.session.id,
+      status: 'awaiting_input',
+      summary: 'session.idle'
+    })
+
+    const idleDiskSessions = await readProjectSessions(harness.workspaceDir)
+    const idlePersistedSession = idleDiskSessions.sessions.find(
+      candidate => candidate.session_id === harness.session.id
+    )
+
+    expect(idlePersistedSession).toBeDefined()
+    expect(idlePersistedSession!.last_known_status).toBe('awaiting_input')
+    expect(idlePersistedSession!.last_summary).toBe('session.idle')
+    expect(idlePersistedSession!.external_session_id).toBe('opencode-real-456')
+    expect(getSessionState(harness.manager, harness.session.id).status).toBe('awaiting_input')
+    expect(getSessionState(harness.manager, harness.session.id).externalSessionId).toBe('opencode-real-456')
+  })
+
+  test('running then exited webhook events persist final exited state through the bridge', async () => {
     const harness = await createWebhookHarness()
 
     const runningResponse = await httpPost(
       harness.port,
       '/events',
-      createCanonicalEvent(harness.session.id, harness.session.projectId, 'running', 'webhook says running'),
+      createCanonicalEvent(
+        harness.session.id,
+        harness.session.projectId,
+        'running',
+        'session.started',
+        'opencode-real-789'
+      ),
       { 'x-stoa-secret': harness.secret }
     )
 
@@ -276,25 +332,16 @@ describe('E2E: webhook runtime integration', () => {
         && persistedSession?.last_known_status === 'running'
     })
 
-    expect(getSessionEvents(harness.sent)[0]).toEqual({
-      sessionId: harness.session.id,
-      status: 'running',
-      summary: '会话运行中'
-    })
-
-    const runningDiskSessions = await readProjectSessions(harness.workspaceDir)
-    const runningPersistedSession = runningDiskSessions.sessions.find(
-      candidate => candidate.session_id === harness.session.id
-    )
-
-    expect(runningPersistedSession).toBeDefined()
-    expect(runningPersistedSession!.last_known_status).toBe('running')
-
-    const exitSummary = `${harness.session.type} 已退出 (0)`
     const exitedResponse = await httpPost(
       harness.port,
       '/events',
-      createCanonicalEvent(harness.session.id, harness.session.projectId, 'exited', exitSummary),
+      createCanonicalEvent(
+        harness.session.id,
+        harness.session.projectId,
+        'exited',
+        'session.completed',
+        'opencode-real-789'
+      ),
       { 'x-stoa-secret': harness.secret }
     )
 
@@ -313,16 +360,14 @@ describe('E2E: webhook runtime integration', () => {
       {
         sessionId: harness.session.id,
         status: 'running',
-        summary: '会话运行中'
+        summary: 'session.started'
       },
       {
         sessionId: harness.session.id,
         status: 'exited',
-        summary: exitSummary
+        summary: 'session.completed'
       }
     ])
-
-    expect(getSessionState(harness.manager, harness.session.id).status).toBe('exited')
 
     const exitedDiskSessions = await readProjectSessions(harness.workspaceDir)
     const exitedPersistedSession = exitedDiskSessions.sessions.find(
@@ -331,6 +376,9 @@ describe('E2E: webhook runtime integration', () => {
 
     expect(exitedPersistedSession).toBeDefined()
     expect(exitedPersistedSession!.last_known_status).toBe('exited')
-    expect(exitedPersistedSession!.last_summary).toBe(exitSummary)
+    expect(exitedPersistedSession!.last_summary).toBe('session.completed')
+    expect(exitedPersistedSession!.external_session_id).toBe('opencode-real-789')
+    expect(getSessionState(harness.manager, harness.session.id).status).toBe('exited')
+    expect(getSessionState(harness.manager, harness.session.id).externalSessionId).toBe('opencode-real-789')
   })
 })

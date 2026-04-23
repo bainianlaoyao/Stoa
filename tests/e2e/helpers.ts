@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterEach } from 'vitest'
 import { ProjectSessionManager } from '@core/project-session-manager'
 import { readGlobalState } from '@core/state-store'
-import type { ProviderCommand } from '@shared/project-session'
+import type { ProviderCommand, SessionType } from '@shared/project-session'
 import type { ProviderDefinition, ProviderRuntimeTarget } from '@extensions/providers'
 import type { PersistedGlobalStateV3 } from '@shared/project-session'
 
@@ -42,7 +42,7 @@ interface SeedOptions {
   globalStatePath: string
   webhookPort?: number | null
   projects?: Array<{ ref?: string; path: string; name: string }>
-  sessions?: Array<{ projectRef?: string; projectId?: string; type: 'shell' | 'opencode'; title: string; externalSessionId?: string | null }>
+  sessions?: Array<{ projectRef?: string; projectId?: string; type: SessionType; title: string; externalSessionId?: string | null }>
 }
 
 export async function createSeededManager(options: SeedOptions): Promise<ProjectSessionManager> {

@@ -250,8 +250,8 @@ describe('E2E: Store Lifecycle Synchronization', () => {
       const externalId = backendSnapshot.sessions.find(s => s.id === session.id)!.externalSessionId
       store.updateSession(session.id, { externalSessionId: externalId })
 
-      expect(store.sessions[0]!.externalSessionId).toMatch(/^shell-/)
-      expect(store.activeSession!.externalSessionId).toMatch(/^shell-/)
+      expect(store.sessions[0]!.externalSessionId).toBeNull()
+      expect(store.activeSession!.externalSessionId).toBeNull()
     })
   })
 

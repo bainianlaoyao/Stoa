@@ -39,6 +39,7 @@ const RENDERER_API_INVOKE_CHANNELS = [
   IPC_CHANNELS.sessionCreate,
   IPC_CHANNELS.projectSetActive,
   IPC_CHANNELS.sessionSetActive,
+  IPC_CHANNELS.sessionTerminalReplay,
   IPC_CHANNELS.sessionInput,
   IPC_CHANNELS.sessionResize
 ] as const
@@ -50,6 +51,7 @@ function createPreloadApi(bus: FakeIpcBus): RendererApi {
     createSession: (request: CreateSessionRequest) => bus.invoke(IPC_CHANNELS.sessionCreate, request),
     setActiveProject: (projectId: string) => bus.invoke(IPC_CHANNELS.projectSetActive, projectId),
     setActiveSession: (sessionId: string) => bus.invoke(IPC_CHANNELS.sessionSetActive, sessionId),
+    getTerminalReplay: (sessionId: string) => bus.invoke(IPC_CHANNELS.sessionTerminalReplay, sessionId),
     sendSessionInput: (sessionId: string, data: string) => bus.invoke(IPC_CHANNELS.sessionInput, sessionId, data),
     sendSessionResize: (sessionId: string, cols: number, rows: number) => bus.invoke(IPC_CHANNELS.sessionResize, sessionId, cols, rows),
     onTerminalData: () => () => {},
@@ -84,6 +86,10 @@ async function registerMainHandlers(
 
   bus.handle(IPC_CHANNELS.sessionSetActive, async (_event, sessionId: string) => {
     await manager.setActiveSession(sessionId)
+  })
+
+  bus.handle(IPC_CHANNELS.sessionTerminalReplay, async (_event, sessionId: string) => {
+    return `[replay:${sessionId}]`
   })
 
   bus.handle(IPC_CHANNELS.sessionInput, async () => {
@@ -128,6 +134,7 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
       expect(IPC_CHANNELS.projectSetActive).toBe('project:set-active')
       expect(IPC_CHANNELS.sessionCreate).toBe('session:create')
       expect(IPC_CHANNELS.sessionSetActive).toBe('session:set-active')
+      expect(IPC_CHANNELS.sessionTerminalReplay).toBe('session:terminal-replay')
       expect(IPC_CHANNELS.sessionInput).toBe('session:input')
       expect(IPC_CHANNELS.sessionResize).toBe('session:resize')
       expect(IPC_CHANNELS.terminalData).toBe('terminal:data')
@@ -217,6 +224,12 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
       expect(state1.projects[0]!.id).toBe(project.id)
       expect(state1.sessions[0]!.id).toBe(session.id)
     })
+
+    test('getTerminalReplay round-trip returns the current session backlog payload', async () => {
+      const backlog = await api.getTerminalReplay('session_op_1')
+
+      expect(backlog).toBe('[replay:session_op_1]')
+    })
   })
 
   describe('Null manager returns fallback values', () => {
@@ -249,6 +262,7 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
 
       bus.handle(IPC_CHANNELS.projectSetActive, async () => { return })
       bus.handle(IPC_CHANNELS.sessionSetActive, async () => { return })
+      bus.handle(IPC_CHANNELS.sessionTerminalReplay, async () => '')
       bus.handle(IPC_CHANNELS.sessionInput, async () => { return })
       bus.handle(IPC_CHANNELS.sessionResize, async () => { return })
 
@@ -349,6 +363,7 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
         createSession: IPC_CHANNELS.sessionCreate,
         setActiveProject: IPC_CHANNELS.projectSetActive,
         setActiveSession: IPC_CHANNELS.sessionSetActive,
+        getTerminalReplay: IPC_CHANNELS.sessionTerminalReplay,
         sendSessionInput: IPC_CHANNELS.sessionInput,
         sendSessionResize: IPC_CHANNELS.sessionResize,
         onTerminalData: IPC_CHANNELS.terminalData,
@@ -356,11 +371,11 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
       }
 
       const methods = Object.keys(apiMethodToChannel)
-      expect(methods).toHaveLength(9)
+      expect(methods).toHaveLength(10)
 
       const channelValues = Object.values(apiMethodToChannel)
       const uniqueChannels = new Set(channelValues)
-      expect(uniqueChannels.size).toBe(9)
+      expect(uniqueChannels.size).toBe(10)
 
       for (const channel of channelValues) {
         expect(typeof channel).toBe('string')
@@ -404,6 +419,15 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
       const api = createPreloadApi(bus)
 
       await expect(api.sendSessionResize('session-1', 120, 30)).resolves.toBeUndefined()
+    })
+
+    test('getTerminalReplay does not throw', async () => {
+      const bus = new FakeIpcBus()
+      const globalStatePath = await createTestGlobalStatePath()
+      await registerMainHandlers(bus, globalStatePath)
+      const api = createPreloadApi(bus)
+
+      await expect(api.getTerminalReplay('session-1')).resolves.toBe('[replay:session-1]')
     })
   })
 })

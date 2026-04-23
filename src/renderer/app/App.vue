@@ -13,8 +13,7 @@ const {
   activeProjectId,
   activeSessionId,
   activeProject,
-  activeSession,
-  archivedSessions
+  activeSession
 } = storeToRefs(workspaceStore)
 
 function handleProjectSelect(projectId: string): void {
@@ -45,13 +44,11 @@ async function handleProjectCreate(payload: { name: string; path: string }): Pro
 async function handleSessionCreate(payload: { projectId: string; type: string; title: string }): Promise<void> {
   workspaceStore.clearError()
   try {
-    console.log('[App.vue] handleSessionCreate:', payload)
     const created = await window.stoa.createSession({
       projectId: payload.projectId,
       type: payload.type as SessionType,
       title: payload.title
     })
-    console.log('[App.vue] createSession result:', created)
     if (!created) {
       workspaceStore.lastError = 'Failed to create session: no response from main process'
       return
@@ -89,11 +86,8 @@ onMounted(async () => {
   const bootstrapState = await window.stoa.getBootstrapState()
   workspaceStore.hydrate(bootstrapState)
   await settingsStore.loadSettings()
-  const archived = await window.stoa.listArchivedSessions()
-  workspaceStore.setArchivedSessions(archived)
 
   unsubscribeSessionEvent = window.stoa?.onSessionEvent?.((event: SessionStatusEvent) => {
-    console.log('[App.vue] onSessionEvent:', event)
     workspaceStore.updateSession(event.sessionId, {
       status: event.status,
       summary: event.summary
@@ -113,7 +107,6 @@ onBeforeUnmount(() => {
     :active-session-id="activeSessionId"
     :active-project="activeProject"
     :active-session="activeSession"
-    :archived-sessions="archivedSessions"
     @select-project="handleProjectSelect"
     @select-session="handleSessionSelect"
     @create-project="handleProjectCreate"

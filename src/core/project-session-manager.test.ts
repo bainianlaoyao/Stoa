@@ -142,6 +142,46 @@ describe('ProjectSessionManager', () => {
     expect(snapshot.sessions[0]?.title).toBe('Alpha opencode')
   })
 
+  test('seeds external session ids for claude-code sessions at creation time', async () => {
+    const manager = ProjectSessionManager.createForTest()
+    const project = await manager.createProject({
+      name: 'alpha',
+      path: 'D:/alpha',
+      defaultSessionType: 'shell'
+    })
+
+    const session = await manager.createSession({
+      projectId: project.id,
+      type: 'claude-code',
+      title: 'Claude alpha'
+    })
+
+    expect(session.recoveryMode).toBe('resume-external')
+    expect(session.externalSessionId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+    )
+  })
+
+  test('treats null claude-code externalSessionId as unset and still seeds a UUID', async () => {
+    const manager = ProjectSessionManager.createForTest()
+    const project = await manager.createProject({
+      name: 'alpha',
+      path: 'D:/alpha',
+      defaultSessionType: 'shell'
+    })
+
+    const session = await manager.createSession({
+      projectId: project.id,
+      type: 'claude-code',
+      title: 'Claude alpha',
+      externalSessionId: null
+    })
+
+    expect(session.externalSessionId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+    )
+  })
+
   test('relaunches shell sessions and resumes opencode sessions during bootstrap', async () => {
     const manager = ProjectSessionManager.createForTest()
     const project = await manager.createProject({
@@ -170,6 +210,35 @@ describe('ProjectSessionManager', () => {
     ])
   })
 
+  test('includes codex and claude-code sessions in bootstrap resume plans', async () => {
+    const manager = ProjectSessionManager.createForTest()
+    const project = await manager.createProject({
+      name: 'alpha',
+      path: 'D:/alpha',
+      defaultSessionType: 'shell'
+    })
+
+    const codex = await manager.createSession({
+      projectId: project.id,
+      type: 'codex',
+      title: 'Codex alpha'
+    })
+    const claude = await manager.createSession({
+      projectId: project.id,
+      type: 'claude-code',
+      title: 'Claude alpha'
+    })
+
+    expect(manager.buildBootstrapRecoveryPlan()).toEqual([
+      { sessionId: codex.id, action: 'resume-external', externalSessionId: null },
+      {
+        sessionId: claude.id,
+        action: 'resume-external',
+        externalSessionId: claude.externalSessionId
+      }
+    ])
+  })
+
   describe('session lifecycle methods', () => {
     test('markSessionStarting updates status and summary', async () => {
       const globalStatePath = await createTempGlobalStatePath()
@@ -185,19 +254,46 @@ describe('ProjectSessionManager', () => {
       expect(updated.summary).toBe('正在启动 shell')
     })
 
-    test('markSessionRunning updates status and externalSessionId', async () => {
+    test('markSessionRunning preserves null externalSessionId for fresh shell starts', async () => {
       const globalStatePath = await createTempGlobalStatePath()
       const projectDir = await createTempProjectDir()
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
       const project = await manager.createProject({ path: projectDir, name: 'test' })
       const session = await manager.createSession({ projectId: project.id, type: 'shell', title: 'S1' })
 
-      await manager.markSessionRunning(session.id, 'shell-abc-123')
+      await manager.markSessionRunning(session.id, null)
 
       const updated = manager.snapshot().sessions.find(s => s.id === session.id)!
       expect(updated.status).toBe('running')
-      expect(updated.externalSessionId).toBe('shell-abc-123')
+      expect(updated.externalSessionId).toBeNull()
       expect(updated.summary).toBe('会话运行中')
+    })
+
+    test('markSessionRunning does not invent a session id for shell sessions', async () => {
+      const manager = ProjectSessionManager.createForTest()
+      const project = await manager.createProject({ name: 'test', path: 'D:/test' })
+      const session = await manager.createSession({ projectId: project.id, type: 'shell', title: 'S1' })
+
+      await manager.markSessionRunning(session.id, null)
+
+      const updated = manager.snapshot().sessions.find(s => s.id === session.id)!
+      expect(updated.externalSessionId).toBeNull()
+    })
+
+    test('markSessionRunning does not downgrade richer canonical states but can still refresh externalSessionId', async () => {
+      const globalStatePath = await createTempGlobalStatePath()
+      const projectDir = await createTempProjectDir()
+      const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
+      const project = await manager.createProject({ path: projectDir, name: 'test' })
+      const session = await manager.createSession({ projectId: project.id, type: 'opencode', title: 'S1' })
+
+      await manager.applySessionEvent(session.id, 'awaiting_input', 'session.idle', 'opencode-real-123')
+      await manager.markSessionRunning(session.id, 'opencode-real-456')
+
+      const updated = manager.snapshot().sessions.find(s => s.id === session.id)!
+      expect(updated.status).toBe('awaiting_input')
+      expect(updated.summary).toBe('session.idle')
+      expect(updated.externalSessionId).toBe('opencode-real-456')
     })
 
     test('markSessionExited updates status and summary', async () => {

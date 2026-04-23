@@ -37,14 +37,29 @@ describe('ProviderFloatingCard', () => {
     expect(group).toBeTruthy()
   })
 
-  it('renders 2 buttons with correct aria-labels', () => {
+  it('renders 4 buttons with correct aria-labels', () => {
     mountCard()
 
     const buttons = Array.from(document.body.querySelectorAll('button'))
     const labels = buttons.map(button => button.getAttribute('aria-label'))
 
-    expect(buttons).toHaveLength(2)
-    expect(labels).toEqual(['Create OpenCode session', 'Create Shell session'])
+    expect(buttons).toHaveLength(4)
+    expect(labels).toEqual([
+      'Create OpenCode session',
+      'Create Codex session',
+      'Create Claude Code session',
+      'Create Shell session'
+    ])
+  })
+
+  it('renders provider image assets for every session type', () => {
+    mountCard()
+
+    expect(document.body.querySelector('button[aria-label="Create OpenCode session"] img')).toBeTruthy()
+    expect(document.body.querySelector('button[aria-label="Create Codex session"] img')).toBeTruthy()
+    expect(document.body.querySelector('button[aria-label="Create Claude Code session"] img')).toBeTruthy()
+    expect(document.body.querySelector('button[aria-label="Create Shell session"] img')).toBeTruthy()
+    expect(document.body.querySelector('button svg')).toBeFalsy()
   })
 
   it('clicking Shell button emits create with { type: "shell" }', async () => {
@@ -67,6 +82,17 @@ describe('ProviderFloatingCard', () => {
     ;(button as HTMLButtonElement).click()
 
     expect(wrapper.emitted('create')).toEqual([[{ type: 'opencode' }]])
+  })
+
+  it('clicking Codex button emits create with { type: "codex" }', async () => {
+    const wrapper = mountCard()
+
+    const button = document.body.querySelector('button[aria-label="Create Codex session"]')
+    expect(button).toBeTruthy()
+
+    ;(button as HTMLButtonElement).click()
+
+    expect(wrapper.emitted('create')).toEqual([[{ type: 'codex' }]])
   })
 
   it('does not render when visible=false', () => {

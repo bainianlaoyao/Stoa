@@ -3,8 +3,9 @@ import { join } from 'node:path'
 import type { CanonicalSessionEvent, ProviderCommand, ProviderCommandContext } from '@shared/project-session'
 import type { ProviderDefinition, ProviderRuntimeTarget } from './index'
 
-function opencodeCommand(): string {
-  return process.platform === 'win32' ? 'opencode.cmd' : 'opencode'
+function opencodeCommand(context: ProviderCommandContext): string {
+  const configuredPath = context.providerPath?.trim()
+  return configuredPath && configuredPath.length > 0 ? configuredPath : 'opencode'
 }
 
 function createProviderEnv(target: ProviderRuntimeTarget, context: ProviderCommandContext): Record<string, string> {
@@ -20,7 +21,7 @@ function createProviderEnv(target: ProviderRuntimeTarget, context: ProviderComma
 
 function createCommand(target: ProviderRuntimeTarget, context: ProviderCommandContext, args: string[]): ProviderCommand {
   return {
-    command: opencodeCommand(),
+    command: opencodeCommand(context),
     args,
     cwd: target.path,
     env: createProviderEnv(target, context)
@@ -34,7 +35,7 @@ async function writeSidecarPlugin(target: ProviderRuntimeTarget, context: Provid
   await mkdir(pluginDir, { recursive: true })
   await writeFile(
     pluginPath,
-    `export const StoaStatusPlugin = async () => ({\n  event: async ({ event }) => {\n    await fetch('http://127.0.0.1:${context.webhookPort}/events', {\n      method: 'POST',\n      headers: {\n        'content-type': 'application/json',\n        'x-stoa-secret': '${context.sessionSecret}'\n      },\n      body: JSON.stringify({\n        event_version: 1,\n        event_id: event.id ?? crypto.randomUUID(),\n        event_type: event.type ?? 'session.status_changed',\n        timestamp: new Date().toISOString(),\n        session_id: event.properties?.sessionID ?? '${target.session_id}',\n        project_id: '${target.project_id}',\n        correlation_id: event.properties?.messageID ?? undefined,\n        source: 'hook-sidecar',\n        payload: {\n          status: event.type === 'session.idle' ? 'awaiting_input' : 'running',\n          summary: event.type,\n          isProvisional: false\n        }\n      })\n    })\n  }\n})\n`,
+    `export const StoaStatusPlugin = async () => ({\n  event: async ({ event }) => {\n    await fetch('http://127.0.0.1:${context.webhookPort}/events', {\n      method: 'POST',\n      headers: {\n        'content-type': 'application/json',\n        'x-stoa-secret': '${context.sessionSecret}'\n      },\n      body: JSON.stringify({\n        event_version: 1,\n        event_id: event.id ?? crypto.randomUUID(),\n        event_type: event.type ?? 'session.status_changed',\n        timestamp: new Date().toISOString(),\n        session_id: '${target.session_id}',\n        project_id: '${target.project_id}',\n        correlation_id: event.properties?.messageID ?? undefined,\n        source: 'hook-sidecar',\n        payload: {\n          status: event.type === 'session.idle' ? 'awaiting_input' : 'running',\n          summary: event.type,\n          isProvisional: false,\n          externalSessionId: event.properties?.sessionID ?? undefined\n        }\n      })\n    })\n  }\n})\n`,
     'utf-8'
   )
 }
@@ -49,10 +50,10 @@ export function createOpenCodeProvider(): ProviderDefinition {
       return true
     },
     async buildStartCommand(target, context) {
-      return createCommand(target, context, ['--port', String(context.providerPort)])
+      return createCommand(target, context, [])
     },
     async buildResumeCommand(target, externalSessionId, context) {
-      return createCommand(target, context, ['--port', String(context.providerPort), '--session', externalSessionId])
+      return createCommand(target, context, ['--session', externalSessionId])
     },
     resolveSessionId(event: CanonicalSessionEvent) {
       return event.session_id ?? null

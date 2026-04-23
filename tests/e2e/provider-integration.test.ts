@@ -42,12 +42,14 @@ function createContext(overrides: Partial<ProviderCommandContext> = {}): Provide
 
 describe('E2E: Provider Integration', () => {
   describe('Provider registry', () => {
-    test('listProviders returns both local-shell and opencode providers', () => {
+    test('listProviders returns local-shell opencode codex and claude-code providers', () => {
       const providers = listProviders()
       const ids = providers.map(p => p.providerId)
       expect(ids).toContain('local-shell')
       expect(ids).toContain('opencode')
-      expect(providers).toHaveLength(2)
+      expect(ids).toContain('codex')
+      expect(ids).toContain('claude-code')
+      expect(providers).toHaveLength(4)
     })
 
     test('getProvider returns local shell provider', () => {
@@ -58,6 +60,16 @@ describe('E2E: Provider Integration', () => {
     test('getProvider returns opencode provider', () => {
       const provider = getProvider('opencode')
       expect(provider.providerId).toBe('opencode')
+    })
+
+    test('getProvider returns codex provider', () => {
+      const provider = getProvider('codex')
+      expect(provider.providerId).toBe('codex')
+    })
+
+    test('getProvider returns claude-code provider', () => {
+      const provider = getProvider('claude-code')
+      expect(provider.providerId).toBe('claude-code')
     })
 
     test('getProvider falls back to local-shell for unknown provider', () => {
@@ -133,16 +145,39 @@ describe('E2E: Provider Integration', () => {
   })
 
   describe('OpenCode provider', () => {
-    test('buildStartCommand includes --port flag with correct port', async () => {
+    test('buildStartCommand keeps semantic command name when no provider path is configured', async () => {
       const provider = getProvider('opencode')
       const target = createTarget({ type: 'opencode' })
       const context = createContext({ providerPort: 44000 })
 
       const command = await provider.buildStartCommand(target, context)
 
-      expect(command.args).toContain('--port')
-      const portIndex = command.args.indexOf('--port')
-      expect(command.args[portIndex + 1]).toBe('44000')
+      expect(command.command).toBe('opencode')
+      expect(command.args).toEqual([])
+    })
+
+    test('buildStartCommand uses configured provider path when provided', async () => {
+      const provider = getProvider('opencode')
+      const target = createTarget({ type: 'opencode' })
+      const context = {
+        ...createContext(),
+        providerPath: 'C:/Users/test/AppData/Roaming/npm/opencode.ps1'
+      } as ProviderCommandContext
+
+      const command = await provider.buildStartCommand(target, context)
+
+      expect(command.command).toBe('C:/Users/test/AppData/Roaming/npm/opencode.ps1')
+      expect(command.args).toEqual([])
+    })
+
+    test('buildStartCommand does not force pure mode', async () => {
+      const provider = getProvider('opencode')
+      const target = createTarget({ type: 'opencode' })
+      const context = createContext({ providerPort: 44000 })
+
+      const command = await provider.buildStartCommand(target, context)
+
+      expect(command.args).toEqual([])
     })
 
     test('buildStartCommand sets STOA_* environment variables', async () => {
@@ -174,20 +209,17 @@ describe('E2E: Provider Integration', () => {
 
       const command = await provider.buildResumeCommand(target, 'ext-session-42', context)
 
-      expect(command.args).toContain('--session')
-      expect(command.args).toContain('ext-session-42')
+      expect(command.args).toEqual(['--session', 'ext-session-42'])
     })
 
-    test('buildResumeCommand includes --port flag', async () => {
+    test('buildResumeCommand only adds the resume session id', async () => {
       const provider = getProvider('opencode')
       const target = createTarget({ type: 'opencode' })
       const context = createContext({ providerPort: 44000 })
 
       const command = await provider.buildResumeCommand(target, 'ext-1', context)
 
-      expect(command.args).toContain('--port')
-      const portIndex = command.args.indexOf('--port')
-      expect(command.args[portIndex + 1]).toBe('44000')
+      expect(command.args).toEqual(['--session', 'ext-1'])
     })
 
     test('supportsResume() returns true', () => {
@@ -198,6 +230,85 @@ describe('E2E: Provider Integration', () => {
     test('supportsStructuredEvents() returns true', () => {
       const provider = getProvider('opencode')
       expect(provider.supportsStructuredEvents()).toBe(true)
+    })
+  })
+
+  describe('Codex provider', () => {
+    test('buildStartCommand keeps semantic command name when no provider path is configured', async () => {
+      const provider = getProvider('codex')
+      const target = createTarget({ type: 'codex' })
+      const context = createContext()
+
+      const command = await provider.buildStartCommand(target, context)
+
+      expect(command.command).toBe('codex')
+      expect(command.args).toEqual([])
+    })
+
+    test('buildResumeCommand resumes by external session id', async () => {
+      const provider = getProvider('codex')
+      const target = createTarget({ type: 'codex' })
+      const context = createContext()
+
+      const command = await provider.buildResumeCommand(target, '019c75d6-5db6-7c21-8d2f-f0602da4f64d', context)
+
+      expect(command.args).toEqual(['resume', '019c75d6-5db6-7c21-8d2f-f0602da4f64d'])
+    })
+
+    test('buildFallbackResumeCommand falls back to resume --last when external session id is unavailable', async () => {
+      const provider = getProvider('codex')
+      const target = createTarget({ type: 'codex' })
+      const context = createContext()
+
+      const command = await provider.buildFallbackResumeCommand?.(target, context)
+
+      expect(command?.args).toEqual(['resume', '--last'])
+    })
+
+    test('supportsStructuredEvents() returns false', () => {
+      const provider = getProvider('codex')
+      expect(provider.supportsStructuredEvents()).toBe(false)
+    })
+  })
+
+  describe('Claude Code provider', () => {
+    test('buildStartCommand seeds session id through --session-id', async () => {
+      const provider = getProvider('claude-code')
+      const target = createTarget({
+        type: 'claude-code',
+        external_session_id: '11111111-1111-1111-1111-111111111111'
+      })
+      const context = createContext()
+
+      const command = await provider.buildStartCommand(target, context)
+
+      expect(command.command).toBe('claude')
+      expect(command.args).toEqual(['--session-id', '11111111-1111-1111-1111-111111111111'])
+    })
+
+    test('buildStartCommand rejects missing external session ids', async () => {
+      const provider = getProvider('claude-code')
+      const target = createTarget({ type: 'claude-code' })
+      const context = createContext()
+
+      await expect(provider.buildStartCommand(target, context)).rejects.toThrow(
+        'claude-code sessions require an external_session_id'
+      )
+    })
+
+    test('buildResumeCommand resumes by external session id', async () => {
+      const provider = getProvider('claude-code')
+      const target = createTarget({ type: 'claude-code' })
+      const context = createContext()
+
+      const command = await provider.buildResumeCommand(target, '11111111-1111-1111-1111-111111111111', context)
+
+      expect(command.args).toEqual(['--resume', '11111111-1111-1111-1111-111111111111'])
+    })
+
+    test('supportsStructuredEvents() returns false', () => {
+      const provider = getProvider('claude-code')
+      expect(provider.supportsStructuredEvents()).toBe(false)
     })
   })
 
@@ -271,6 +382,25 @@ describe('E2E: Provider Integration', () => {
       const content = await readFile(pluginPath, 'utf-8')
       expect(content).toContain('session_test_s99')
       expect(content).toContain('project_test_p99')
+    })
+
+    test('sidecar plugin keeps internal session_id fixed and sends externalSessionId separately', async () => {
+      const workspaceDir = await createTempDir('stoa-sidecar-provider-id-')
+      const provider = getProvider('opencode')
+
+      await provider.installSidecar(
+        createTarget({
+          path: workspaceDir,
+          session_id: 'session_internal_1',
+          project_id: 'project_internal_1'
+        }),
+        createContext({ webhookPort: 43127, sessionSecret: 'secret-1' })
+      )
+
+      const content = await readFile(join(workspaceDir, '.opencode', 'plugins', 'stoa-status.ts'), 'utf8')
+      expect(content).toContain("session_id: 'session_internal_1'")
+      expect(content).toContain('externalSessionId: event.properties?.sessionID ?? undefined')
+      expect(content).toContain("status: event.type === 'session.idle' ? 'awaiting_input' : 'running'")
     })
 
     test('calling installSidecar twice overwrites the file', async () => {

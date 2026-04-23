@@ -2,21 +2,22 @@
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import ArchiveSurface from './ArchiveSurface.vue'
-import type { SessionSummary } from '@shared/project-session'
 
-const archivedSession: SessionSummary = {
+const archivedSession = {
   id: 'session-archived-1',
   projectId: 'project-1',
-  type: 'shell',
-  status: 'exited',
+  type: 'shell' as const,
+  status: 'exited' as const,
   title: 'Old Shell',
   summary: 'done',
-  recoveryMode: 'fresh-shell',
+  recoveryMode: 'fresh-shell' as const,
   externalSessionId: null,
   createdAt: '2026-04-21T00:00:00.000Z',
   updatedAt: '2026-04-21T00:00:00.000Z',
   lastActivatedAt: '2026-04-21T00:00:00.000Z',
-  archived: true
+  archived: true,
+  projectName: 'Alpha',
+  projectPath: 'D:/workspace/alpha'
 }
 
 describe('ArchiveSurface', () => {
@@ -30,12 +31,14 @@ describe('ArchiveSurface', () => {
     expect(wrapper.find('.archive-empty').exists()).toBe(true)
   })
 
-  it('renders archived session cards', () => {
+  it('renders archived session cards with project metadata', () => {
     const wrapper = mount(ArchiveSurface, {
       props: { archivedSessions: [archivedSession] }
     })
     expect(wrapper.find('[data-archive-session="session-archived-1"]').exists()).toBe(true)
     expect(wrapper.find('.archive-card__title').text()).toBe('Old Shell')
+    expect(wrapper.text()).toContain('Alpha')
+    expect(wrapper.text()).toContain('D:/workspace/alpha')
   })
 
   it('restore button emits restoreSession event', async () => {

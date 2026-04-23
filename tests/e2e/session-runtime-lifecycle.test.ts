@@ -179,7 +179,7 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
 
       let snapshot = manager.snapshot()
       expect(snapshot.sessions.find(s => s.id === session.id)!.status).toBe('running')
-      expect(snapshot.sessions.find(s => s.id === session.id)!.externalSessionId).toMatch(/^shell-/)
+      expect(snapshot.sessions.find(s => s.id === session.id)!.externalSessionId).toBeNull()
 
       await waitForExit(capturing.exitSignal)
 
@@ -384,7 +384,7 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
       expect(snapshot.sessions[0]!.status).toBe('exited')
       expect(snapshot.sessions[0]!.summary).toMatch(/已退出/)
       expect(snapshot.sessions[0]!.id).toBe(session.id)
-      expect(snapshot.sessions[0]!.externalSessionId).toMatch(/^shell-/)
+      expect(snapshot.sessions[0]!.externalSessionId).toBeNull()
     })
   })
 

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { SessionType } from '@shared/project-session'
+import { getProviderDescriptorBySessionType } from '@shared/provider-descriptors'
 import { PROVIDER_ICONS } from '@renderer/composables/provider-icons'
 
 const props = defineProps<{
@@ -16,7 +17,7 @@ const emit = defineEmits<{
 
 const providerButtons = computed(() => PROVIDER_ICONS.map((provider) => ({
   ...provider,
-  providerName: provider.type === 'opencode' ? 'OpenCode' : 'Shell'
+  providerName: getProviderDescriptorBySessionType(provider.type).displayName
 })))
 
 const cardStyle = computed(() => ({
@@ -46,21 +47,13 @@ function emitCreate(type: SessionType) {
         :aria-label="`Create ${provider.providerName} session`"
         @click="emitCreate(provider.type)"
       >
-        <svg
-          class="provider-icon-cell__icon"
-          :viewBox="provider.viewBox"
+        <img
+          class="provider-icon-cell__image"
           aria-hidden="true"
-          focusable="false"
-          v-html="provider.svg"
+          alt=""
+          :src="provider.src"
         />
       </button>
     </div>
   </Teleport>
 </template>
-
-<style scoped>
-.provider-icon-cell__icon {
-  width: 22px;
-  height: 22px;
-}
-</style>

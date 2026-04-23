@@ -5,6 +5,7 @@ import type {
   SessionSummary,
   SessionType
 } from './project-session'
+import { getProviderDescriptorBySessionType, listProviderDescriptors } from './provider-descriptors'
 
 describe('project/session shared contracts', () => {
   it('models canonical project -> session hierarchy', () => {
@@ -27,7 +28,8 @@ describe('project/session shared contracts', () => {
       externalSessionId: null,
       createdAt: '2026-04-19T00:00:00.000Z',
       updatedAt: '2026-04-19T00:00:00.000Z',
-      lastActivatedAt: '2026-04-19T00:00:00.000Z'
+      lastActivatedAt: '2026-04-19T00:00:00.000Z',
+      archived: false
     }
 
     const state: PersistedAppStateV2 = {
@@ -55,12 +57,36 @@ describe('project/session shared contracts', () => {
           created_at: session.createdAt,
           updated_at: session.updatedAt,
           last_activated_at: session.lastActivatedAt,
-          recovery_mode: session.recoveryMode
+          recovery_mode: session.recoveryMode,
+          archived: session.archived
         }
       ]
     }
 
     expect(state.projects[0]?.path).toBe('D:/alpha')
     expect(state.sessions[0]?.project_id).toBe('project_alpha')
+  })
+
+  it('supports shell, opencode, codex, and claude-code session types', () => {
+    const sessionTypes: SessionType[] = ['shell', 'opencode', 'codex', 'claude-code']
+
+    expect(sessionTypes).toEqual(['shell', 'opencode', 'codex', 'claude-code'])
+    expect(getProviderDescriptorBySessionType('claude-code')).toMatchObject({
+      providerId: 'claude-code',
+      executableName: 'claude',
+      titlePrefix: 'claude',
+      seedsExternalSessionId: true
+    })
+    expect(getProviderDescriptorBySessionType('codex')).toMatchObject({
+      providerId: 'codex',
+      executableName: 'codex',
+      supportsResume: true
+    })
+    expect(listProviderDescriptors().map((descriptor) => descriptor.sessionType)).toEqual([
+      'opencode',
+      'codex',
+      'claude-code',
+      'shell'
+    ])
   })
 })

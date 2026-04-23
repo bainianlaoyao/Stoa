@@ -4,3 +4,7 @@ dist/
 *.tsbuildinfo
 .opencode/
 .worktrees/
+*.png
+tmp/
+.claude
+.superpowers

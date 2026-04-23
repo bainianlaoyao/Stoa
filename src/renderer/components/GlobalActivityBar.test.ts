@@ -59,12 +59,13 @@ describe('GlobalActivityBar', () => {
     expect(wrapper.emitted('select')![0]).toEqual(['command'])
   })
 
-  it('renders command in top cluster and archive+settings in bottom cluster', () => {
+  it('renders command in top cluster and archive above settings in bottom cluster', () => {
     const wrapper = mountBar()
     const topCluster = wrapper.find('.activity-bar__cluster--top')
     const bottomCluster = wrapper.find('.activity-bar__cluster--bottom')
     expect(topCluster.find('[data-activity-item="command"]').exists()).toBe(true)
     expect(bottomCluster.find('[data-activity-item="archive"]').exists()).toBe(true)
     expect(bottomCluster.find('[data-activity-item="settings"]').exists()).toBe(true)
+    expect(bottomCluster.findAll('[data-activity-item]').map((node) => node.attributes('data-activity-item'))).toEqual(['archive', 'settings'])
   })
 })
