@@ -135,3 +135,12 @@
     color: var(--color-text-strong);
   }
 }
+
+@utility eyebrow {
+  margin: 0 0 8px;
+  color: var(--color-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: var(--text-caption);
+  font-weight: 600;
+}
