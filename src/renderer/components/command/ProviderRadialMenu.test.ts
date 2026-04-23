@@ -51,7 +51,7 @@ describe('ProviderRadialMenu', () => {
     ])
   })
 
-  it('renders product image assets for Codex and Claude Code, and svg icons for the others', () => {
+  it('renders provider image assets for every session type', () => {
     mount(ProviderRadialMenu, {
       props: {
         visible: true,
@@ -61,10 +61,11 @@ describe('ProviderRadialMenu', () => {
       attachTo: document.body
     })
 
+    expect(document.body.querySelector('button[aria-label="Create OpenCode session"] img')).toBeTruthy()
     expect(document.body.querySelector('button[aria-label="Create Codex session"] img')).toBeTruthy()
     expect(document.body.querySelector('button[aria-label="Create Claude Code session"] img')).toBeTruthy()
-    expect(document.body.querySelector('button[aria-label="Create OpenCode session"] svg')).toBeTruthy()
-    expect(document.body.querySelector('button[aria-label="Create Shell session"] svg')).toBeTruthy()
+    expect(document.body.querySelector('button[aria-label="Create Shell session"] img')).toBeTruthy()
+    expect(document.body.querySelector('button svg')).toBeFalsy()
   })
 
   it('clicking Shell button emits create with { type: \'shell\' }', async () => {

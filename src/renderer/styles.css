@@ -1170,10 +1170,9 @@ h2 {
   }
 }
 
-.provider-icon-cell__icon,
 .provider-icon-cell__image {
-  width: 22px;
-  height: 22px;
+  width: 33px;
+  height: 33px;
   display: block;
   object-fit: contain;
 }
@@ -1221,10 +1220,9 @@ h2 {
   box-shadow: var(--shadow-card);
 }
 
-.radial-menu__item-icon,
 .radial-menu__item-image {
-  width: 20px;
-  height: 20px;
+  width: 30px;
+  height: 30px;
   display: block;
   object-fit: contain;
 }

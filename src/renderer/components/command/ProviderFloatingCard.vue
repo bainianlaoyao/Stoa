@@ -48,19 +48,10 @@ function emitCreate(type: SessionType) {
         @click="emitCreate(provider.type)"
       >
         <img
-          v-if="provider.kind === 'image'"
           class="provider-icon-cell__image"
           aria-hidden="true"
           alt=""
           :src="provider.src"
-        />
-        <svg
-          v-else
-          class="provider-icon-cell__icon"
-          :viewBox="provider.viewBox"
-          aria-hidden="true"
-          focusable="false"
-          v-html="provider.svg"
         />
       </button>
     </div>
