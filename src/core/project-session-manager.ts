@@ -155,7 +155,6 @@ export class ProjectSessionManager {
     }
 
     const manager = new ProjectSessionManager(initialState, options.globalStatePath, persistedGlobal.settings)
-    await manager.persist()
     return manager
   }
 
