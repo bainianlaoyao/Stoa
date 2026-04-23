@@ -14,6 +14,10 @@
     "verify:packaging": "node scripts/verify-packaging-baseline.mjs",
     "typecheck": "vue-tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.node.json",
     "test": "vitest run",
+    "test:generate": "tsx testing/generators/write-generated-playwright.mjs",
+    "test:e2e": "playwright test",
+    "test:behavior-coverage": "vitest run testing/generators/behavior-coverage.test.ts",
+    "test:all": "npm run test:generate && npm run test && npm run test:e2e && npm run test:behavior-coverage",
     "test:watch": "vitest"
   },
   "dependencies": {
@@ -36,6 +40,7 @@
     "electron-builder": "^26.0.12",
     "electron-vite": "^4.0.0",
     "happy-dom": "^18.0.1",
+    "tsx": "^4.20.6",
     "typescript": "^5.9.3",
     "vite": "^7.1.7",
     "vitest": "^3.2.4",
