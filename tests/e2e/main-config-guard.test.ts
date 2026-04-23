@@ -242,7 +242,10 @@ describe('E2E: Main Process Config Guard', () => {
         'detectProvider',
         'archiveSession',
         'restoreSession',
-        'listArchivedSessions'
+        'listArchivedSessions',
+        'minimizeWindow',
+        'maximizeWindow',
+        'closeWindow'
       ]
 
       for (const method of knownInvokeMethods) {

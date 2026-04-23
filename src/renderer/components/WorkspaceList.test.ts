@@ -1,5 +1,6 @@
 import { mount } from '@vue/test-utils'
 import { describe, expect, test } from 'vitest'
+import { nextTick } from 'vue'
 import WorkspaceList from './WorkspaceList.vue'
 
 describe('WorkspaceList', () => {
@@ -45,7 +46,15 @@ describe('WorkspaceList', () => {
 
     expect(wrapper.text()).toContain('alpha')
     expect(wrapper.text()).toContain('Deploy')
+
+    // Selected session type shows in the listbox button
     expect(wrapper.text()).toContain('OpenCode')
+
+    // Open the listbox to verify all session type options are available
+    const button = wrapper.find('[data-testid="glass-listbox-button"]')
+    await button.trigger('click')
+    await nextTick()
+
     expect(wrapper.text()).toContain('Codex')
     expect(wrapper.text()).toContain('Claude Code')
     expect(wrapper.text()).toContain('Shell')

@@ -129,8 +129,14 @@ describe('GeneralSettings', () => {
 
     await nextTick()
 
-    const select = wrapper.find('[data-settings-field="terminalFontSize"] select')
-    await select.setValue('18')
+    const field = wrapper.find('[data-settings-field="terminalFontSize"]')
+    const button = field.find('[data-testid="glass-listbox-button"]')
+    await button.trigger('click')
+    await nextTick()
+
+    const options = field.findAll('li.glass-listbox__option')
+    const option18 = options.find((li) => li.text().includes('18px'))
+    await option18!.trigger('click')
     await nextTick()
 
     expect(setSettingMock).toHaveBeenCalledWith('terminalFontSize', 18)
@@ -147,8 +153,14 @@ describe('GeneralSettings', () => {
 
     await nextTick()
 
-    const select = wrapper.find('[data-settings-field="terminalFontFamily"] select')
-    await select.setValue('Cascadia Mono')
+    const field = wrapper.find('[data-settings-field="terminalFontFamily"]')
+    const button = field.find('[data-testid="glass-listbox-button"]')
+    await button.trigger('click')
+    await nextTick()
+
+    const options = field.findAll('li.glass-listbox__option')
+    const cascadiaOption = options.find((li) => li.text().includes('Cascadia Mono'))
+    await cascadiaOption!.trigger('click')
     await nextTick()
 
     expect(setSettingMock).toHaveBeenCalledWith('terminalFontFamily', 'Cascadia Mono')

@@ -3,6 +3,7 @@ import { useI18n } from 'vue-i18n'
 import type { SessionType } from '@shared/project-session'
 import { listProviderDescriptors } from '@shared/provider-descriptors'
 import type { ProjectHierarchyNode } from '@renderer/stores/workspaces'
+import GlassListbox from './primitives/GlassListbox.vue'
 
 const { t } = useI18n()
 
@@ -41,10 +42,6 @@ function updateProjectPath(event: Event): void {
 
 function updateSessionTitle(event: Event): void {
   emit('update:sessionTitle', (event.target as HTMLInputElement).value)
-}
-
-function updateSessionType(event: Event): void {
-  emit('update:sessionType', (event.target as HTMLSelectElement).value as SessionType)
 }
 
 const sessionTypeOptions = listProviderDescriptors().map((descriptor) => ({
@@ -92,18 +89,11 @@ const sessionTypeOptions = listProviderDescriptors().map((descriptor) => ({
       </label>
       <label class="workspace-create-panel__field">
         <span>{{ t('workspace.sessionType') }}</span>
-        <select
-          :value="props.sessionType"
-          @change="updateSessionType"
-        >
-          <option
-            v-for="option in sessionTypeOptions"
-            :key="option.value"
-            :value="option.value"
-          >
-            {{ option.label }}
-          </option>
-        </select>
+        <GlassListbox
+          :model-value="props.sessionType"
+          :options="sessionTypeOptions"
+          @update:model-value="emit('update:sessionType', $event)"
+        />
       </label>
     </section>
 

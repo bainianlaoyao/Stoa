@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import GlassListbox from './GlassListbox.vue'
+
 defineProps<{
   label: string
   modelValue: string
@@ -23,14 +25,11 @@ const emit = defineEmits<{
       :placeholder="placeholder"
       @input="emit('update:modelValue', ($event.target as HTMLInputElement).value)"
     />
-    <select
+    <GlassListbox
       v-else
-      data-testid="form-select"
-      class="bg-surface-solid border border-line rounded-lg px-2.5 py-2 font-inherit text-text-strong outline-none w-full appearance-none focus:border-accent focus:ring-2 focus:ring-accent/12"
-      :value="modelValue"
-      @change="emit('update:modelValue', ($event.target as HTMLSelectElement).value)"
-    >
-      <option v-for="opt in options" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-    </select>
+      :model-value="modelValue"
+      :options="options ?? []"
+      @update:model-value="emit('update:modelValue', $event)"
+    />
   </label>
 </template>

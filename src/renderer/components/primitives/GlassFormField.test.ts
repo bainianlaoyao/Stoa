@@ -20,11 +20,11 @@ describe('GlassFormField', () => {
       expect(wrapper.find('[data-testid="form-input"]').exists()).toBe(true)
     })
 
-    it('does NOT render form select when type is not select', () => {
+    it('does NOT render listbox button when type is not select', () => {
       const wrapper = mount(GlassFormField, {
         props: { label: 'Name', modelValue: '' }
       })
-      expect(wrapper.find('[data-testid="form-select"]').exists()).toBe(false)
+      expect(wrapper.find('[data-testid="glass-listbox-button"]').exists()).toBe(false)
     })
 
     it('input value matches modelValue prop', () => {
@@ -60,11 +60,11 @@ describe('GlassFormField', () => {
       { value: 'b', label: 'Option B' }
     ]
 
-    it('renders form select when type=select', () => {
+    it('renders listbox button when type=select', () => {
       const wrapper = mount(GlassFormField, {
         props: { label: 'Pick', modelValue: 'a', type: 'select', options }
       })
-      expect(wrapper.find('[data-testid="form-select"]').exists()).toBe(true)
+      expect(wrapper.find('[data-testid="glass-listbox-button"]').exists()).toBe(true)
     })
 
     it('does NOT render form input when type=select', () => {
@@ -74,52 +74,58 @@ describe('GlassFormField', () => {
       expect(wrapper.find('[data-testid="form-input"]').exists()).toBe(false)
     })
 
-    it('renders option elements from options prop', () => {
+    it('shows selected option label in button', () => {
       const wrapper = mount(GlassFormField, {
         props: { label: 'Pick', modelValue: 'a', type: 'select', options }
       })
-      const optionElements = wrapper.findAll('option')
-      expect(optionElements).toHaveLength(2)
-      expect((optionElements[0].element as HTMLOptionElement).value).toBe('a')
-      expect(optionElements[0].text()).toBe('Option A')
-      expect((optionElements[1].element as HTMLOptionElement).value).toBe('b')
-      expect(optionElements[1].text()).toBe('Option B')
+      const button = wrapper.find('[data-testid="glass-listbox-button"]')
+      expect(button.text()).toContain('Option A')
     })
 
-    it('changing select emits update:modelValue with selected value', async () => {
+    it('clicking listbox button opens options panel', async () => {
       const wrapper = mount(GlassFormField, {
         props: { label: 'Pick', modelValue: 'a', type: 'select', options }
       })
-      const select = wrapper.find('[data-testid="form-select"]')
-      await select.setValue('b')
+      const button = wrapper.find('[data-testid="glass-listbox-button"]')
+      await button.trigger('click')
+
+      const listItems = wrapper.findAll('li.glass-listbox__option')
+      expect(listItems).toHaveLength(2)
+      expect(listItems[0].text()).toBe('Option A')
+      expect(listItems[1].text()).toBe('Option B')
+    })
+
+    it('clicking an option emits update:modelValue', async () => {
+      const wrapper = mount(GlassFormField, {
+        props: { label: 'Pick', modelValue: 'a', type: 'select', options }
+      })
+      // Open the listbox
+      const button = wrapper.find('[data-testid="glass-listbox-button"]')
+      await button.trigger('click')
+
+      // Click the second option
+      const listItems = wrapper.findAll('li.glass-listbox__option')
+      await listItems[1].trigger('click')
+
       expect(wrapper.emitted('update:modelValue')).toBeTruthy()
       expect(wrapper.emitted('update:modelValue')![0]).toEqual(['b'])
-    })
-
-    it('select value matches modelValue prop', () => {
-      const wrapper = mount(GlassFormField, {
-        props: { label: 'Pick', modelValue: 'b', type: 'select', options }
-      })
-      const select = wrapper.find('[data-testid="form-select"]')
-      expect((select.element as HTMLSelectElement).value).toBe('b')
     })
   })
 
   describe('edge cases', () => {
-    it('empty options array renders empty select without crash', () => {
+    it('empty options array renders without crash', () => {
       const wrapper = mount(GlassFormField, {
         props: { label: 'Pick', modelValue: '', type: 'select', options: [] }
       })
-      expect(wrapper.find('[data-testid="form-select"]').exists()).toBe(true)
-      expect(wrapper.findAll('option')).toHaveLength(0)
+      expect(wrapper.find('[data-testid="glass-listbox-button"]').exists()).toBe(true)
     })
 
-    it('undefined type defaults to text (renders input, not select)', () => {
+    it('undefined type defaults to text (renders input, not listbox)', () => {
       const wrapper = mount(GlassFormField, {
         props: { label: 'Name', modelValue: '' }
       })
       expect(wrapper.find('[data-testid="form-input"]').exists()).toBe(true)
-      expect(wrapper.find('[data-testid="form-select"]').exists()).toBe(false)
+      expect(wrapper.find('[data-testid="glass-listbox-button"]').exists()).toBe(false)
     })
 
     it('renders correctly without placeholder prop', () => {
