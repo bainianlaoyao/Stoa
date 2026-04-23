@@ -7,6 +7,7 @@ describe('session restore journey', () => {
     expect(sessionRestoreJourney.behavior).toBe('session.restore')
     expect(sessionRestoreJourney.usageMode).toBe('recovery_workflow')
     expect(sessionRestoreJourney.act).toEqual(['open.archive.surface', 'click.archive.restore'])
+    expect(sessionRestoreJourney.assert).toContain('persisted.sessionRestored')
     expect(sessionRestoreJourney.variants).toContain('base')
   })
 })

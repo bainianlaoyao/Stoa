@@ -11,6 +11,7 @@ export const sessionRestoreBehavior = defineBehavior({
   expects: [
     'archive.sessionRemoved',
     'command.sessionVisible',
+    'persisted.sessionRestored',
     'session.archived=false',
     'session.status in [starting, running]'
   ],
