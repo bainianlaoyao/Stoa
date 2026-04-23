@@ -154,21 +154,21 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <aside class="workspace-hierarchy-panel" aria-label="Workspace hierarchy">
-    <div class="route-body">
-      <div class="route-actions">
-        <button class="route-action" type="button" @click="showNewProject = true">
-          <span class="route-action-label">New Project</span>
-          <span class="route-action-icon">+</span>
+  <aside class="min-h-0 rounded-[10px] overflow-hidden bg-white/40 border border-black/6" aria-label="Workspace hierarchy">
+    <div class="min-h-0 overflow-auto p-2.5 grid gap-3 align-content-start">
+      <div class="grid gap-1">
+        <button class="flex items-center justify-between gap-2 px-2.5 py-2 border border-black/[0.03] rounded-lg bg-surface-solid text-text-strong shadow-[0_1px_3px_rgba(0,0,0,0.02)] cursor-pointer transition-colors duration-200 hover:bg-[#f8f9fb] focus-visible:bg-[#f8f9fb] focus-visible:outline-none" type="button" @click="showNewProject = true">
+          <span class="text-xs font-semibold tracking-[0.05em]">New Project</span>
+          <span class="w-[18px] h-[18px] grid place-items-center rounded-full bg-canvas text-text-strong text-xs">+</span>
         </button>
       </div>
 
-      <div class="route-group">
-        <h2 class="group-label">Projects</h2>
+      <div class="grid gap-1">
+        <div class="group-label">Projects</div>
 
-        <div v-for="project in hierarchy" :key="project.id" class="route-project">
+        <div v-for="project in hierarchy" :key="project.id" class="grid gap-1">
           <div
-            class="route-project-row"
+            class="grid grid-cols-[minmax(0,1fr)_auto] gap-2 items-center"
             @contextmenu="onProjectRowContextmenu($event, project.id)"
           >
             <button
@@ -272,6 +272,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+/* Layout */
 .route-session-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -293,14 +294,120 @@ onBeforeUnmount(() => {
   flex: none;
 }
 
+/* Route items */
+.route-item {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 6px 8px 6px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.route-item:hover:not(.route-item--active),
+.route-item:focus-visible {
+  background: rgba(255, 255, 255, 0.5);
+  outline: none;
+}
+
+.route-item--active {
+  background: var(--color-surface-solid);
+  border-color: rgba(0, 0, 0, 0.04);
+  box-shadow: var(--shadow-card);
+}
+
+.route-item.child {
+  padding-left: 24px;
+}
+
+.route-item--parent {
+  padding-right: 10px;
+}
+
+/* Route dot status colors */
+.route-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-subtle);
+}
+
+.route-dot.idle,
+.route-dot.starting,
+.route-dot.bootstrapping {
+  background: #cbd5e1;
+}
+
+.route-dot.running {
+  background: var(--color-success);
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.15);
+}
+
+.route-dot.awaiting_input,
+.route-dot.awaiting,
+.route-dot.degraded {
+  background: var(--color-warning);
+}
+
+.route-dot.error,
+.route-dot.exited {
+  background: var(--color-error);
+}
+
+/* Copy/text */
+.route-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.route-name {
+  overflow: hidden;
+  color: var(--color-text-strong);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--text-body-sm);
+  font-weight: 600;
+}
+
+.route-path,
+.route-time {
+  color: var(--color-muted);
+  font: var(--text-caption) var(--font-mono);
+}
+
+/* Group label */
+.group-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  font-size: var(--text-caption);
+  font-weight: 600;
+  color: var(--color-muted);
+}
+
+.group-label::before {
+  content: '\25BE';
+  font-size: var(--text-caption);
+  opacity: 0.6;
+}
+
+/* Icon buttons */
 .route-icon-button {
   width: 24px;
   height: 24px;
   padding: 0;
-  border: 1px solid var(--line);
+  border: 1px solid var(--color-line);
   border-radius: var(--radius-sm);
-  background: var(--surface-solid);
-  color: var(--muted);
+  background: var(--color-surface-solid);
+  color: var(--color-muted);
   display: grid;
   place-items: center;
   box-shadow: var(--shadow-card);
@@ -310,9 +417,9 @@ onBeforeUnmount(() => {
 
 .route-icon-button:hover,
 .route-icon-button:focus-visible {
-  background: var(--surface);
-  color: var(--text-strong);
-  border-color: var(--accent);
+  background: var(--color-surface);
+  color: var(--color-text-strong);
+  border-color: var(--color-accent);
   outline: none;
 }
 
@@ -325,5 +432,27 @@ onBeforeUnmount(() => {
 .route-icon-button__icon {
   width: 12px;
   height: 12px;
+}
+
+/* Add session button */
+.route-add-session {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--color-muted);
+  font-size: 14px;
+  line-height: 1;
+  font-weight: 400;
+  flex: none;
+  cursor: pointer;
+}
+
+.route-add-session:hover {
+  background: var(--color-black-soft);
+  color: var(--color-text-strong);
 }
 </style>

@@ -2,5 +2,5 @@
 </script>
 
 <template>
-  <div class="hierarchy-node" />
+  <div />
 </template>

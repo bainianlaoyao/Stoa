@@ -22,9 +22,9 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <section class="command-panel" data-surface="command" data-command-surface="true">
-    <div class="command-body">
-      <div class="command-layout">
+  <section class="h-full min-h-0" data-surface="command" data-command-surface="true">
+    <div class="h-full p-2.5 min-h-0 grid">
+      <div class="h-full grid grid-cols-[240px_minmax(0,1fr)] gap-2.5 min-h-0 items-stretch">
         <WorkspaceHierarchyPanel
           :hierarchy="hierarchy"
           :active-project-id="activeProjectId"
