@@ -147,5 +147,18 @@ export function defineGeneratedTestMeta<T extends GeneratedTestMeta>(meta: T): T
     `Generated test ${meta.id} observation layers`,
     `Generated test ${meta.id} must declare observation layers`
   )
+
+  if (meta.statesCovered.length > 0) {
+    assertNonEmptyList(meta.statesCovered, `Generated test ${meta.id} states covered`)
+  }
+
+  if (meta.interruptionsCovered.length > 0) {
+    assertNonEmptyList(meta.interruptionsCovered, `Generated test ${meta.id} interruptions covered`)
+  }
+
+  if (meta.regressionSources.length > 0) {
+    assertNonEmptyList(meta.regressionSources, `Generated test ${meta.id} regression sources`)
+  }
+
   return meta
 }

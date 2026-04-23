@@ -118,6 +118,48 @@ describe('testing contracts', () => {
     ).toThrow('Behavior session.restore interruptions must not contain empty values')
   })
 
+  it('rejects behavior invalid preconditions with blank values', () => {
+    expect(() =>
+      defineBehavior({
+        id: 'session.restore',
+        actor: 'user',
+        goal: 'restore an archived session',
+        entities: ['session'],
+        usageModes: ['recovery_workflow'],
+        preconditions: ['session.archived'],
+        action: 'archive.restoreSession',
+        expects: ['archive.sessionRemoved'],
+        invalidPreconditions: [''],
+        interruptions: ['duplicateAction'],
+        recovery: ['noDuplicateSession'],
+        observationLayers: ['ui'],
+        risk: 'high',
+        coverageBudget: 'critical'
+      })
+    ).toThrow('Behavior session.restore invalid preconditions must not contain empty values')
+  })
+
+  it('rejects behavior recovery steps with blank values', () => {
+    expect(() =>
+      defineBehavior({
+        id: 'session.restore',
+        actor: 'user',
+        goal: 'restore an archived session',
+        entities: ['session'],
+        usageModes: ['recovery_workflow'],
+        preconditions: ['session.archived'],
+        action: 'archive.restoreSession',
+        expects: ['archive.sessionRemoved'],
+        invalidPreconditions: ['session.notArchived'],
+        interruptions: ['duplicateAction'],
+        recovery: ['   '],
+        observationLayers: ['ui'],
+        risk: 'high',
+        coverageBudget: 'critical'
+      })
+    ).toThrow('Behavior session.restore recovery must not contain empty values')
+  })
+
   it('preserves topology test ids', () => {
     const topology = defineTopology({
       surface: 'archive',
@@ -186,5 +228,50 @@ describe('testing contracts', () => {
 
     expect(journey.behavior).toBe('session.restore')
     expect(meta.behaviorIds).toEqual(['session.restore'])
+  })
+
+  it('rejects generated metadata states covered with blank values', () => {
+    expect(() =>
+      defineGeneratedTestMeta({
+        id: 'journey.session.restore.base',
+        behaviorIds: ['session.restore'],
+        entities: ['session', 'archive'],
+        statesCovered: ['   '],
+        interruptionsCovered: [],
+        observationLayers: ['ui', 'main-debug-state'],
+        riskBudget: 'critical',
+        regressionSources: []
+      })
+    ).toThrow('Generated test journey.session.restore.base states covered must not contain empty values')
+  })
+
+  it('rejects generated metadata interruptions covered with blank values', () => {
+    expect(() =>
+      defineGeneratedTestMeta({
+        id: 'journey.session.restore.base',
+        behaviorIds: ['session.restore'],
+        entities: ['session', 'archive'],
+        statesCovered: ['session.archived'],
+        interruptionsCovered: [''],
+        observationLayers: ['ui', 'main-debug-state'],
+        riskBudget: 'critical',
+        regressionSources: []
+      })
+    ).toThrow('Generated test journey.session.restore.base interruptions covered must not contain empty values')
+  })
+
+  it('rejects generated metadata regression sources with blank values', () => {
+    expect(() =>
+      defineGeneratedTestMeta({
+        id: 'journey.session.restore.base',
+        behaviorIds: ['session.restore'],
+        entities: ['session', 'archive'],
+        statesCovered: ['session.archived'],
+        interruptionsCovered: [],
+        observationLayers: ['ui', 'main-debug-state'],
+        riskBudget: 'critical',
+        regressionSources: ['   ']
+      })
+    ).toThrow('Generated test journey.session.restore.base regression sources must not contain empty values')
   })
 })
