@@ -10,3 +10,4 @@ tmp/
 .superpowers
 release/
 .agents/
+.tmp/
