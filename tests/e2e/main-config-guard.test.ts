@@ -149,6 +149,7 @@ describe('E2E: Main Process Config Guard', () => {
         ['createSession', 'sessionCreate'],
         ['setActiveProject', 'projectSetActive'],
         ['setActiveSession', 'sessionSetActive'],
+        ['getTerminalReplay', 'sessionTerminalReplay'],
         ['sendSessionInput', 'sessionInput'],
         ['sendSessionResize', 'sessionResize'],
         ['getSettings', 'settingsGet'],
@@ -224,6 +225,7 @@ describe('E2E: Main Process Config Guard', () => {
         'createSession',
         'setActiveProject',
         'setActiveSession',
+        'getTerminalReplay',
         'sendSessionInput',
         'sendSessionResize',
         'getSettings',
@@ -260,6 +262,7 @@ describe('E2E: Main Process Config Guard', () => {
       expect(invMap.get('createSession')).toBe('session:create')
       expect(invMap.get('setActiveProject')).toBe('project:set-active')
       expect(invMap.get('setActiveSession')).toBe('session:set-active')
+      expect(invMap.get('getTerminalReplay')).toBe('session:terminal-replay')
       expect(invMap.get('sendSessionInput')).toBe('session:input')
       expect(invMap.get('sendSessionResize')).toBe('session:resize')
       expect(invMap.get('getSettings')).toBe('settings:get')

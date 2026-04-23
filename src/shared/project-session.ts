@@ -130,6 +130,7 @@ export interface RendererApi {
   createSession: (request: CreateSessionRequest) => Promise<SessionSummary>
   setActiveProject: (projectId: string) => Promise<void>
   setActiveSession: (sessionId: string) => Promise<void>
+  getTerminalReplay: (sessionId: string) => Promise<string>
   sendSessionInput: (sessionId: string, data: string) => Promise<void>
   sendSessionResize: (sessionId: string, cols: number, rows: number) => Promise<void>
   onTerminalData: (callback: (chunk: TerminalDataChunk) => void) => () => void
@@ -149,6 +150,7 @@ export interface SessionEventPayload {
   status?: SessionStatus
   summary?: string
   isProvisional?: boolean
+  externalSessionId?: string | null
 }
 
 export interface CanonicalSessionEvent {
@@ -167,6 +169,7 @@ export interface ProviderCommandContext {
   webhookPort: number
   sessionSecret: string
   providerPort: number
+  providerPath?: string | null
 }
 
 export interface ProviderCommand {

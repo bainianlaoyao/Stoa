@@ -169,7 +169,7 @@ describe('project/session renderer store', () => {
       setActivePinia(createPinia())
     })
 
-    test('projectHierarchy excludes archived sessions', () => {
+    test('projectHierarchy derives archived sessions per project from canonical sessions', () => {
       const store = useWorkspaceStore()
       store.hydrate({
         activeProjectId: 'project_alpha',
@@ -217,11 +217,11 @@ describe('project/session renderer store', () => {
       })
 
       expect(store.projectHierarchy).toHaveLength(1)
-      expect(store.projectHierarchy[0]!.sessions).toHaveLength(1)
-      expect(store.projectHierarchy[0]!.sessions[0]!.id).toBe('session_shell_1')
+      expect(store.projectHierarchy[0]!.sessions.map((session) => session.id)).toEqual(['session_shell_1'])
+      expect(store.projectHierarchy[0]!.archivedSessions.map((session) => session.id)).toEqual(['session_archived'])
     })
 
-    test('archiveSession marks session and clears activeSessionId', () => {
+    test('archiveSession moves a session from active rows to archived rows for its project', () => {
       const store = useWorkspaceStore()
       store.hydrate({
         activeProjectId: 'project_alpha',
@@ -251,10 +251,12 @@ describe('project/session renderer store', () => {
       store.archiveSession('session_shell_1')
 
       expect(store.sessions[0]!.archived).toBe(true)
+      expect(store.projectHierarchy[0]!.sessions).toHaveLength(0)
+      expect(store.projectHierarchy[0]!.archivedSessions[0]!.id).toBe('session_shell_1')
       expect(store.activeSessionId).toBeNull()
     })
 
-    test('restoreSession unarchives session', () => {
+    test('restoreSession moves a session from archived rows back to active rows for its project', () => {
       const store = useWorkspaceStore()
       store.hydrate({
         activeProjectId: null,
@@ -284,6 +286,8 @@ describe('project/session renderer store', () => {
       store.restoreSession('session_archived')
 
       expect(store.sessions[0]!.archived).toBe(false)
+      expect(store.projectHierarchy[0]!.archivedSessions).toHaveLength(0)
+      expect(store.projectHierarchy[0]!.sessions[0]!.id).toBe('session_archived')
     })
   })
 })

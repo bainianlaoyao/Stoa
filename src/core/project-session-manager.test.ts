@@ -185,19 +185,46 @@ describe('ProjectSessionManager', () => {
       expect(updated.summary).toBe('正在启动 shell')
     })
 
-    test('markSessionRunning updates status and externalSessionId', async () => {
+    test('markSessionRunning preserves null externalSessionId for fresh shell starts', async () => {
       const globalStatePath = await createTempGlobalStatePath()
       const projectDir = await createTempProjectDir()
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
       const project = await manager.createProject({ path: projectDir, name: 'test' })
       const session = await manager.createSession({ projectId: project.id, type: 'shell', title: 'S1' })
 
-      await manager.markSessionRunning(session.id, 'shell-abc-123')
+      await manager.markSessionRunning(session.id, null)
 
       const updated = manager.snapshot().sessions.find(s => s.id === session.id)!
       expect(updated.status).toBe('running')
-      expect(updated.externalSessionId).toBe('shell-abc-123')
+      expect(updated.externalSessionId).toBeNull()
       expect(updated.summary).toBe('会话运行中')
+    })
+
+    test('markSessionRunning does not invent a session id for shell sessions', async () => {
+      const manager = ProjectSessionManager.createForTest()
+      const project = await manager.createProject({ name: 'test', path: 'D:/test' })
+      const session = await manager.createSession({ projectId: project.id, type: 'shell', title: 'S1' })
+
+      await manager.markSessionRunning(session.id, null)
+
+      const updated = manager.snapshot().sessions.find(s => s.id === session.id)!
+      expect(updated.externalSessionId).toBeNull()
+    })
+
+    test('markSessionRunning does not downgrade richer canonical states but can still refresh externalSessionId', async () => {
+      const globalStatePath = await createTempGlobalStatePath()
+      const projectDir = await createTempProjectDir()
+      const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
+      const project = await manager.createProject({ path: projectDir, name: 'test' })
+      const session = await manager.createSession({ projectId: project.id, type: 'opencode', title: 'S1' })
+
+      await manager.applySessionEvent(session.id, 'awaiting_input', 'session.idle', 'opencode-real-123')
+      await manager.markSessionRunning(session.id, 'opencode-real-456')
+
+      const updated = manager.snapshot().sessions.find(s => s.id === session.id)!
+      expect(updated.status).toBe('awaiting_input')
+      expect(updated.summary).toBe('session.idle')
+      expect(updated.externalSessionId).toBe('opencode-real-456')
     })
 
     test('markSessionExited updates status and summary', async () => {

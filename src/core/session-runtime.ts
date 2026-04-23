@@ -1,5 +1,6 @@
 import type { ProviderCommand } from '@shared/project-session'
 import type { ProviderDefinition, ProviderRuntimeTarget } from '@extensions/providers'
+import { wrapCommandForShell } from './shell-command'
 
 export interface SessionRuntimeManager {
   markSessionStarting: (sessionId: string, summary: string, externalSessionId: string | null) => Promise<void>
@@ -14,7 +15,7 @@ interface SessionRuntimePtyHost {
     command: ProviderCommand,
     onData: (data: string) => void,
     onExit: (exitCode: number) => void
-  ) => { runtimeId: string; sessionId: string }
+  ) => { runtimeId: string }
 }
 
 export interface StartSessionRuntimeOptions {
@@ -33,6 +34,8 @@ export interface StartSessionRuntimeOptions {
   provider: ProviderDefinition
   ptyHost: SessionRuntimePtyHost
   manager: SessionRuntimeManager
+  shellPath?: string | null
+  providerPath?: string | null
 }
 
 function toProviderTarget(session: StartSessionRuntimeOptions['session']): ProviderRuntimeTarget {
@@ -53,7 +56,8 @@ export async function startSessionRuntime(options: StartSessionRuntimeOptions): 
   const context = {
     webhookPort,
     sessionSecret,
-    providerPort
+    providerPort,
+    providerPath: options.providerPath ?? null
   }
 
   console.log(`[session-runtime] installSidecar for ${session.id}`)
@@ -66,12 +70,18 @@ export async function startSessionRuntime(options: StartSessionRuntimeOptions): 
     && !!session.externalSessionId
     && session.status !== 'needs_confirmation'
 
-  const command = canResume
+  const providerCommand = canResume
     ? await provider.buildResumeCommand(target, session.externalSessionId!, context)
     : await provider.buildStartCommand(target, context)
 
+  const command =
+    session.type === 'opencode' && options.shellPath
+      ? wrapCommandForShell(options.shellPath, providerCommand)
+      : providerCommand
+  const activeExternalSessionId = canResume ? session.externalSessionId : null
+
   console.log(`[session-runtime] markSessionStarting for ${session.id} (command: ${command.command} ${command.args.join(' ')})`)
-  await manager.markSessionStarting(session.id, `正在启动 ${session.type}`, session.externalSessionId)
+  await manager.markSessionStarting(session.id, `正在启动 ${session.type}`, activeExternalSessionId)
   console.log(`[session-runtime] markSessionStarting done, spawning PTY for ${session.id}`)
 
   const started = ptyHost.start(
@@ -86,7 +96,7 @@ export async function startSessionRuntime(options: StartSessionRuntimeOptions): 
     }
   )
 
-  console.log(`[session-runtime] markSessionRunning for ${session.id} (shellId: ${started.sessionId})`)
-  await manager.markSessionRunning(session.id, canResume ? session.externalSessionId : started.sessionId)
+  console.log(`[session-runtime] markSessionRunning for ${session.id} (runtimeId: ${started.runtimeId})`)
+  await manager.markSessionRunning(session.id, activeExternalSessionId)
   console.log(`[session-runtime] markSessionRunning done for ${session.id}`)
 }

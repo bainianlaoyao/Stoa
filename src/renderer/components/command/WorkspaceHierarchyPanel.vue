@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import type { SessionType } from '@shared/project-session'
 import type { ProjectHierarchyNode } from '@renderer/stores/workspaces'
-import { useWorkspaceStore } from '@renderer/stores/workspaces'
 import NewProjectModal from './NewProjectModal.vue'
 import ProviderFloatingCard from './ProviderFloatingCard.vue'
 import ProviderRadialMenu from './ProviderRadialMenu.vue'
@@ -22,7 +21,6 @@ const emit = defineEmits<{
 }>()
 
 const showNewProject = ref(false)
-const workspaceStore = useWorkspaceStore()
 
 const floatingCardVisible = ref(false)
 const floatingCardProjectId = ref('')
@@ -140,25 +138,6 @@ onMounted(() => {
 onBeforeUnmount(() => {
   document.removeEventListener('mousedown', handleDocumentMouseDown)
 })
-
-watch(
-  () => workspaceStore.isCreatingSession,
-  (isCreatingSession, wasCreatingSession) => {
-    if (wasCreatingSession && !isCreatingSession && workspaceStore.sessionCreateSucceeded) {
-      floatingCardVisible.value = false
-      radialMenuVisible.value = false
-    }
-  }
-)
-
-watch(
-  () => workspaceStore.isCreatingProject,
-  (isCreatingProject, wasCreatingProject) => {
-    if (wasCreatingProject && !isCreatingProject && workspaceStore.projectCreateSucceeded) {
-      showNewProject.value = false
-    }
-  }
-)
 </script>
 
 <template>
@@ -194,7 +173,7 @@ watch(
             </button>
             <div class="route-project-actions">
               <button
-                class="route-add-session"
+                class="route-add-session route-icon-button"
                 type="button"
                 :aria-label="`Add session to ${project.name}`"
                 title="Add session · long-press for radial"
@@ -202,7 +181,7 @@ watch(
                 @mouseup="onAddButtonMouseUp"
                 @mouseleave="onAddButtonMouseLeave"
               >
-                +
+                <span class="route-icon-button__glyph" aria-hidden="true">+</span>
               </button>
             </div>
           </div>
@@ -225,15 +204,32 @@ watch(
                 <div class="route-time">{{ session.type }}</div>
               </div>
             </button>
-            <button
-              class="route-archive-session"
-              type="button"
-              :aria-label="`Archive ${session.title}`"
-              :data-archive-session="session.id"
-              @click.stop="emit('archiveSession', session.id)"
-            >
-              ×
-            </button>
+            <span class="route-row-actions">
+              <button
+                class="route-row-action route-icon-button"
+                type="button"
+                :aria-label="`Archive ${session.title}`"
+                title="Archive session"
+                :data-row-archive="session.id"
+                @click.stop="emit('archiveSession', session.id)"
+              >
+                <svg
+                  class="route-icon-button__icon"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M2.5 3.5H13.5V6H2.5V3.5ZM4 7.5H12V12.5H4V7.5ZM6 9.5H10"
+                    stroke="currentColor"
+                    stroke-width="1.25"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+              </button>
+            </span>
           </div>
         </div>
       </div>
@@ -242,7 +238,6 @@ watch(
 
   <NewProjectModal
     v-model:show="showNewProject"
-    :pending="workspaceStore.isCreatingProject"
     @create="emit('createProject', $event)"
   />
 
@@ -262,3 +257,60 @@ watch(
     @close="closeRadialMenu"
   />
 </template>
+
+<style scoped>
+.route-session-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.route-session-row .route-item {
+  min-width: 0;
+}
+
+.route-project-actions,
+.route-row-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
+.route-icon-button {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-solid);
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+  box-shadow: var(--shadow-card);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.route-icon-button:hover,
+.route-icon-button:focus-visible {
+  background: var(--surface);
+  color: var(--text-strong);
+  border-color: var(--accent);
+  outline: none;
+}
+
+.route-icon-button__glyph {
+  color: currentColor;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.route-icon-button__icon {
+  width: 12px;
+  height: 12px;
+}
+</style>

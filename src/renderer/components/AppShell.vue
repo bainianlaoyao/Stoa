@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import GlobalActivityBar from './GlobalActivityBar.vue'
 import CommandSurface from './command/CommandSurface.vue'
-import SettingsSurface from './settings/SettingsSurface.vue'
 import ArchiveSurface from './archive/ArchiveSurface.vue'
+import SettingsSurface from './settings/SettingsSurface.vue'
 import type { ProjectSummary, SessionSummary } from '@shared/project-session'
 import type { ProjectHierarchyNode } from '@renderer/stores/workspaces'
 import type { AppSurface } from './GlobalActivityBar.vue'
@@ -14,7 +14,6 @@ const props = defineProps<{
   activeSessionId: string | null
   activeProject: ProjectSummary | null
   activeSession: SessionSummary | null
-  archivedSessions: SessionSummary[]
 }>()
 
 const emit = defineEmits<{
@@ -27,6 +26,16 @@ const emit = defineEmits<{
 }>()
 
 const activeSurface = ref<AppSurface>('command')
+
+const archivedSessions = computed(() => {
+  return props.hierarchy.flatMap((project) =>
+    project.archivedSessions.map((session) => ({
+      ...session,
+      projectName: project.name,
+      projectPath: project.path
+    }))
+  )
+})
 </script>
 
 <template>
@@ -50,7 +59,6 @@ const activeSurface = ref<AppSurface>('command')
       />
       <ArchiveSurface
         v-else-if="activeSurface === 'archive'"
-        aria-label="Archive surface"
         :archived-sessions="archivedSessions"
         @restore-session="emit('restoreSession', $event)"
       />

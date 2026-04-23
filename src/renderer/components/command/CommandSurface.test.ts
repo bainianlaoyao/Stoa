@@ -15,6 +15,7 @@ const hierarchy: ProjectHierarchyNode[] = [
     createdAt: 'a',
     updatedAt: 'a',
     active: true,
+    archivedSessions: [],
     sessions: [
       {
         id: 'session_1',
@@ -28,6 +29,7 @@ const hierarchy: ProjectHierarchyNode[] = [
         createdAt: 'a',
         updatedAt: 'a',
         lastActivatedAt: 'a',
+        archived: false,
         active: true
       }
     ]

@@ -27,7 +27,8 @@ describe('project/session shared contracts', () => {
       externalSessionId: null,
       createdAt: '2026-04-19T00:00:00.000Z',
       updatedAt: '2026-04-19T00:00:00.000Z',
-      lastActivatedAt: '2026-04-19T00:00:00.000Z'
+      lastActivatedAt: '2026-04-19T00:00:00.000Z',
+      archived: false
     }
 
     const state: PersistedAppStateV2 = {
@@ -55,7 +56,8 @@ describe('project/session shared contracts', () => {
           created_at: session.createdAt,
           updated_at: session.updatedAt,
           last_activated_at: session.lastActivatedAt,
-          recovery_mode: session.recoveryMode
+          recovery_mode: session.recoveryMode,
+          archived: session.archived
         }
       ]
     }

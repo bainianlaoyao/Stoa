@@ -9,6 +9,7 @@ import type {
   PersistedProjectSessions,
   PersistedSession,
   ProjectSummary,
+  SessionStatus,
   SessionSummary,
   SessionType
 } from '@shared/project-session'
@@ -100,6 +101,14 @@ function createSessionRecoveryMode(type: SessionType) {
   return type === 'shell' ? 'fresh-shell' : 'resume-external'
 }
 
+const NON_REGRESSIBLE_RUNNING_STATUSES = new Set<SessionStatus>([
+  'awaiting_input',
+  'degraded',
+  'needs_confirmation',
+  'error',
+  'exited'
+])
+
 export class ProjectSessionManager {
   private state: BootstrapState
   private readonly globalStatePath?: string
@@ -183,32 +192,51 @@ export class ProjectSessionManager {
     return { ...project }
   }
 
-  async markSessionStarting(sessionId: string, summary: string, _externalSessionId: string | null): Promise<void> {
+  async setTerminalWebhookPort(port: number | null): Promise<void> {
+    this.state.terminalWebhookPort = port
+    await this.persist()
+  }
+
+  async applySessionEvent(
+    sessionId: string,
+    status: SessionStatus,
+    summary: string,
+    externalSessionId?: string | null
+  ): Promise<void> {
     const session = this.state.sessions.find(s => s.id === sessionId)
     if (!session) return
-    session.status = 'starting'
+
+    session.status = status
     session.summary = summary
+    if (externalSessionId !== undefined) {
+      session.externalSessionId = externalSessionId
+    }
     session.updatedAt = new Date().toISOString()
     await this.persist()
+  }
+
+  async markSessionStarting(sessionId: string, summary: string, externalSessionId: string | null): Promise<void> {
+    await this.applySessionEvent(sessionId, 'starting', summary, externalSessionId)
   }
 
   async markSessionRunning(sessionId: string, externalSessionId: string | null): Promise<void> {
     const session = this.state.sessions.find(s => s.id === sessionId)
     if (!session) return
-    session.status = 'running'
-    session.externalSessionId = externalSessionId
-    session.summary = '会话运行中'
-    session.updatedAt = new Date().toISOString()
-    await this.persist()
+
+    if (NON_REGRESSIBLE_RUNNING_STATUSES.has(session.status)) {
+      if (externalSessionId !== undefined) {
+        session.externalSessionId = externalSessionId
+      }
+      session.updatedAt = new Date().toISOString()
+      await this.persist()
+      return
+    }
+
+    await this.applySessionEvent(sessionId, 'running', '会话运行中', externalSessionId)
   }
 
   async markSessionExited(sessionId: string, summary: string): Promise<void> {
-    const session = this.state.sessions.find(s => s.id === sessionId)
-    if (!session) return
-    session.status = 'exited'
-    session.summary = summary
-    session.updatedAt = new Date().toISOString()
-    await this.persist()
+    await this.applySessionEvent(sessionId, 'exited', summary)
   }
 
   async setActiveProject(projectId: string): Promise<void> {

@@ -21,6 +21,7 @@ function createHierarchy(): ProjectHierarchyNode[] {
       createdAt: 'a',
       updatedAt: 'a',
       active: true,
+      archivedSessions: [],
       sessions: [
         {
           id: 'session_1',
@@ -34,6 +35,7 @@ function createHierarchy(): ProjectHierarchyNode[] {
           createdAt: 'a',
           updatedAt: 'a',
           lastActivatedAt: 'a',
+          archived: false,
           active: false
         },
         {
@@ -48,6 +50,7 @@ function createHierarchy(): ProjectHierarchyNode[] {
           createdAt: 'b',
           updatedAt: 'b',
           lastActivatedAt: 'b',
+          archived: false,
           active: true
         }
       ]
@@ -64,6 +67,7 @@ function createTwoProjectHierarchy(): ProjectHierarchyNode[] {
       createdAt: 'a',
       updatedAt: 'a',
       active: true,
+      archivedSessions: [],
       sessions: [
         {
           id: 'session_1',
@@ -77,6 +81,7 @@ function createTwoProjectHierarchy(): ProjectHierarchyNode[] {
           createdAt: 'a',
           updatedAt: 'a',
           lastActivatedAt: 'a',
+          archived: false,
           active: false
         }
       ]
@@ -88,6 +93,7 @@ function createTwoProjectHierarchy(): ProjectHierarchyNode[] {
       createdAt: 'c',
       updatedAt: 'c',
       active: false,
+      archivedSessions: [],
       sessions: [
         {
           id: 'session_3',
@@ -101,6 +107,7 @@ function createTwoProjectHierarchy(): ProjectHierarchyNode[] {
           createdAt: 'c',
           updatedAt: 'c',
           lastActivatedAt: 'c',
+          archived: false,
           active: false
         }
       ]
@@ -204,6 +211,7 @@ describe('WorkspaceHierarchyPanel', () => {
       const btns = wrapper.findAll('.route-add-session')
       expect(btns).toHaveLength(1)
       expect(btns[0].text()).toBe('+')
+      expect(btns[0].classes()).toContain('route-icon-button')
     })
   })
 
@@ -298,13 +306,33 @@ describe('WorkspaceHierarchyPanel', () => {
       expect(wrapper.emitted('selectSession')).toEqual([['session_1']])
     })
 
-    it('clicking archive button emits archiveSession with session id', async () => {
+    it('does not render archived sessions in the hierarchy panel', async () => {
+      const wrapper = mountPanel({
+        hierarchy: [{
+          ...createHierarchy()[0]!,
+          sessions: [createHierarchy()[0]!.sessions[0]!],
+          archivedSessions: [{
+            ...createHierarchy()[0]!.sessions[1]!,
+            id: 'session_archived',
+            title: 'old shell',
+            archived: true,
+            active: false
+          }]
+        }]
+      })
+
+      expect(wrapper.find('[data-archived-group="project_alpha"]').exists()).toBe(false)
+      expect(wrapper.find('[data-archived-session="session_archived"]').exists()).toBe(false)
+    })
+
+    it('clicking archive action emits archiveSession without selecting the row', async () => {
       const wrapper = mountPanel()
 
-      await wrapper.find('[data-archive-session="session_1"]').trigger('click')
+      await wrapper.find('[data-row-archive="session_1"]').trigger('click')
 
       expect(wrapper.emitted('archiveSession')).toEqual([['session_1']])
       expect(wrapper.emitted('selectSession')).toBeUndefined()
+      expect(wrapper.find('[data-row-archive="session_1"] svg').exists()).toBe(true)
     })
   })
 
@@ -434,6 +462,7 @@ describe('WorkspaceHierarchyPanel', () => {
           createdAt: 'a',
           updatedAt: 'a',
           active: true,
+          archivedSessions: [],
           sessions: []
         }
       ]

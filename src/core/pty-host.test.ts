@@ -83,11 +83,10 @@ describe('PtyHost', () => {
       )
     })
 
-    test('returns PtySession with runtimeId and generated sessionId', () => {
+    test('returns PtySession with runtimeId only', () => {
       const result = host.start('rt-1', defaultCommand, vi.fn(), vi.fn())
 
-      expect(result.runtimeId).toBe('rt-1')
-      expect(result.sessionId).toMatch(/^shell-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)
+      expect(result).toEqual({ runtimeId: 'rt-1' })
     })
 
     test('registers onData callback on the terminal', () => {
@@ -142,9 +141,8 @@ describe('PtyHost', () => {
       const result2 = host.start('rt-2', { ...defaultCommand, command: 'zsh' }, vi.fn(), vi.fn())
       const term2 = mockTerminals[mockTerminals.length - 1]
 
-      expect(result1.runtimeId).toBe('rt-1')
-      expect(result2.runtimeId).toBe('rt-2')
-      expect(result1.sessionId).not.toBe(result2.sessionId)
+      expect(result1).toEqual({ runtimeId: 'rt-1' })
+      expect(result2).toEqual({ runtimeId: 'rt-2' })
 
       // Both sessions should be tracked — write to both
       host.write('rt-1', 'data1')

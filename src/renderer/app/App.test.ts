@@ -52,6 +52,7 @@ function setupStoa(overrides?: Partial<typeof window.stoa>) {
     archiveSession: vi.fn().mockResolvedValue(undefined),
     restoreSession: vi.fn().mockResolvedValue(undefined),
     listArchivedSessions: vi.fn().mockResolvedValue([]),
+    getTerminalReplay: vi.fn().mockResolvedValue(''),
     sendSessionInput: vi.fn().mockResolvedValue(undefined),
     sendSessionResize: vi.fn().mockResolvedValue(undefined),
     onTerminalData: vi.fn().mockReturnValue(() => {}),
@@ -118,28 +119,11 @@ describe('App (root)', () => {
       expect(store.activeSessionId).toBe('s1')
     })
 
-    it('on mount loads archived sessions into the store', async () => {
-      const archivedSession: SessionSummary = {
-        id: 'archived_1',
-        projectId: 'p1',
-        type: 'shell',
-        status: 'exited',
-        title: 'Archived session',
-        summary: 'done',
-        recoveryMode: 'fresh-shell',
-        externalSessionId: null,
-        createdAt: 't',
-        updatedAt: 't',
-        lastActivatedAt: 't',
-        archived: true
-      }
-      setupStoa({ listArchivedSessions: vi.fn().mockResolvedValue([archivedSession]) })
-
+    it('does not fetch a separate archived session list on mount', async () => {
       wrapper = await mountApp(pinia)
       await flush()
 
-      expect(window.stoa.listArchivedSessions).toHaveBeenCalledOnce()
-      expect(useWorkspaceStore(pinia).archivedSessions).toEqual([archivedSession])
+      expect(window.stoa.listArchivedSessions).not.toHaveBeenCalled()
     })
   })
 
@@ -326,6 +310,8 @@ describe('App (root)', () => {
       const store = useWorkspaceStore(pinia)
       expect(window.stoa.restoreSession).toHaveBeenCalledWith('s1')
       expect(store.sessions[0].archived).toBe(false)
+      expect(store.projectHierarchy[0]!.archivedSessions).toHaveLength(0)
+      expect(store.projectHierarchy[0]!.sessions[0]!.id).toBe('s1')
     })
 
     it('restoreSession failure re-archives session and records error', async () => {

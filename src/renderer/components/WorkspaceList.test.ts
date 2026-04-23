@@ -14,6 +14,7 @@ describe('WorkspaceList', () => {
             createdAt: 'a',
             updatedAt: 'a',
             active: true,
+            archivedSessions: [],
             sessions: [
               {
                 id: 'session_op_1',
@@ -27,6 +28,7 @@ describe('WorkspaceList', () => {
                 createdAt: 'a',
                 updatedAt: 'a',
                 lastActivatedAt: 'a',
+                archived: false,
                 active: true
               }
             ]

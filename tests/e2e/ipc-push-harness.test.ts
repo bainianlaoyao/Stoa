@@ -12,6 +12,7 @@ function createPreloadApi(bus: FakeIpcPushBus): RendererApi {
     createSession: (request) => bus.invoke(IPC_CHANNELS.sessionCreate, request),
     setActiveProject: (projectId) => bus.invoke(IPC_CHANNELS.projectSetActive, projectId),
     setActiveSession: (sessionId) => bus.invoke(IPC_CHANNELS.sessionSetActive, sessionId),
+    getTerminalReplay: (sessionId) => bus.invoke(IPC_CHANNELS.sessionTerminalReplay, sessionId),
     sendSessionInput: (sessionId, data) => bus.invoke(IPC_CHANNELS.sessionInput, sessionId, data),
     sendSessionResize: (sessionId, cols, rows) => bus.invoke(IPC_CHANNELS.sessionResize, sessionId, cols, rows),
     onTerminalData(callback) {

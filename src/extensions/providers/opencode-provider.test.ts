@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest'
 import { createOpenCodeProvider } from './opencode-provider'
 
 describe('opencode provider', () => {
-  test('builds a fresh start command with a predictable server port', async () => {
+  test('builds a fresh start command in pure tui mode', async () => {
     const provider = createOpenCodeProvider()
 
     const command = await provider.buildStartCommand({
@@ -17,9 +17,8 @@ describe('opencode provider', () => {
       providerPort: 43128
     })
 
-    expect(command.command).toBe(process.platform === 'win32' ? 'opencode.cmd' : 'opencode')
-    expect(command.args).toContain('--port')
-    expect(command.args).toContain('43128')
+    expect(command.command).toBe('opencode')
+    expect(command.args).toEqual(['--pure'])
     expect(command.cwd).toBe('D:/demo')
     expect(command.env.STOA_SESSION_ID).toBe('session_demo_001')
     expect(command.env.STOA_SESSION_SECRET).toBe('secret-1')
@@ -40,8 +39,27 @@ describe('opencode provider', () => {
       providerPort: 4101
     })
 
-    expect(command.command).toBe(process.platform === 'win32' ? 'opencode.cmd' : 'opencode')
-    expect(command.args).toContain('--session')
-    expect(command.args).toContain('external-123')
+    expect(command.command).toBe('opencode')
+    expect(command.args).toEqual(['--pure', '--session', 'external-123'])
+  })
+
+  test('uses configured provider path when provided in context', async () => {
+    const provider = createOpenCodeProvider()
+
+    const command = await provider.buildStartCommand({
+      session_id: 'session_op_1',
+      project_id: 'project_alpha',
+      path: 'D:/alpha',
+      title: 'Deploy',
+      type: 'opencode'
+    }, {
+      webhookPort: 4100,
+      sessionSecret: 'secret',
+      providerPort: 4101,
+      providerPath: 'C:\\Users\\30280\\AppData\\Roaming\\npm\\opencode.ps1'
+    })
+
+    expect(command.command).toBe('C:\\Users\\30280\\AppData\\Roaming\\npm\\opencode.ps1')
+    expect(command.args).toEqual(['--pure'])
   })
 })

@@ -24,6 +24,9 @@ const api: RendererApi = {
   async setActiveSession(sessionId) {
     return ipcRenderer.invoke('session:set-active', sessionId)
   },
+  async getTerminalReplay(sessionId) {
+    return ipcRenderer.invoke('session:terminal-replay', sessionId) as Promise<string>
+  },
   async sendSessionInput(sessionId, data) {
     return ipcRenderer.invoke('session:input', sessionId, data)
   },

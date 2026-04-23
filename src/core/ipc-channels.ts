@@ -4,6 +4,7 @@ export const IPC_CHANNELS = {
   projectSetActive: 'project:set-active',
   sessionCreate: 'session:create',
   sessionSetActive: 'session:set-active',
+  sessionTerminalReplay: 'session:terminal-replay',
   sessionInput: 'session:input',
   sessionResize: 'session:resize',
   sessionArchive: 'session:archive',

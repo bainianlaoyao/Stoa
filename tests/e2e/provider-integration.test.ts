@@ -133,16 +133,39 @@ describe('E2E: Provider Integration', () => {
   })
 
   describe('OpenCode provider', () => {
-    test('buildStartCommand includes --port flag with correct port', async () => {
+    test('buildStartCommand keeps semantic command name when no provider path is configured', async () => {
       const provider = getProvider('opencode')
       const target = createTarget({ type: 'opencode' })
       const context = createContext({ providerPort: 44000 })
 
       const command = await provider.buildStartCommand(target, context)
 
-      expect(command.args).toContain('--port')
-      const portIndex = command.args.indexOf('--port')
-      expect(command.args[portIndex + 1]).toBe('44000')
+      expect(command.command).toBe('opencode')
+      expect(command.args).toEqual(['--pure'])
+    })
+
+    test('buildStartCommand uses configured provider path when provided', async () => {
+      const provider = getProvider('opencode')
+      const target = createTarget({ type: 'opencode' })
+      const context = {
+        ...createContext(),
+        providerPath: 'C:/Users/test/AppData/Roaming/npm/opencode.ps1'
+      } as ProviderCommandContext
+
+      const command = await provider.buildStartCommand(target, context)
+
+      expect(command.command).toBe('C:/Users/test/AppData/Roaming/npm/opencode.ps1')
+      expect(command.args).toEqual(['--pure'])
+    })
+
+    test('buildStartCommand uses pure tui mode', async () => {
+      const provider = getProvider('opencode')
+      const target = createTarget({ type: 'opencode' })
+      const context = createContext({ providerPort: 44000 })
+
+      const command = await provider.buildStartCommand(target, context)
+
+      expect(command.args).toEqual(['--pure'])
     })
 
     test('buildStartCommand sets STOA_* environment variables', async () => {
@@ -174,20 +197,17 @@ describe('E2E: Provider Integration', () => {
 
       const command = await provider.buildResumeCommand(target, 'ext-session-42', context)
 
-      expect(command.args).toContain('--session')
-      expect(command.args).toContain('ext-session-42')
+      expect(command.args).toEqual(['--pure', '--session', 'ext-session-42'])
     })
 
-    test('buildResumeCommand includes --port flag', async () => {
+    test('buildResumeCommand uses pure tui mode plus resume session id', async () => {
       const provider = getProvider('opencode')
       const target = createTarget({ type: 'opencode' })
       const context = createContext({ providerPort: 44000 })
 
       const command = await provider.buildResumeCommand(target, 'ext-1', context)
 
-      expect(command.args).toContain('--port')
-      const portIndex = command.args.indexOf('--port')
-      expect(command.args[portIndex + 1]).toBe('44000')
+      expect(command.args).toEqual(['--pure', '--session', 'ext-1'])
     })
 
     test('supportsResume() returns true', () => {
@@ -271,6 +291,25 @@ describe('E2E: Provider Integration', () => {
       const content = await readFile(pluginPath, 'utf-8')
       expect(content).toContain('session_test_s99')
       expect(content).toContain('project_test_p99')
+    })
+
+    test('sidecar plugin keeps internal session_id fixed and sends externalSessionId separately', async () => {
+      const workspaceDir = await createTempDir('stoa-sidecar-provider-id-')
+      const provider = getProvider('opencode')
+
+      await provider.installSidecar(
+        createTarget({
+          path: workspaceDir,
+          session_id: 'session_internal_1',
+          project_id: 'project_internal_1'
+        }),
+        createContext({ webhookPort: 43127, sessionSecret: 'secret-1' })
+      )
+
+      const content = await readFile(join(workspaceDir, '.opencode', 'plugins', 'stoa-status.ts'), 'utf8')
+      expect(content).toContain("session_id: 'session_internal_1'")
+      expect(content).toContain('externalSessionId: event.properties?.sessionID ?? undefined')
+      expect(content).toContain("status: event.type === 'session.idle' ? 'awaiting_input' : 'running'")
     })
 
     test('calling installSidecar twice overwrites the file', async () => {

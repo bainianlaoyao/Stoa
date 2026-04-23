@@ -19,6 +19,8 @@
   --terminal-bg: #0a0b0d;
   --terminal-text: #e2e8f0;
   --terminal-border: rgba(255, 255, 255, 0.06);
+  --terminal-shell-padding: 16px;
+  --terminal-content-padding: 10px;
   --black-soft: rgba(0, 0, 0, 0.04);
   --black-faint: rgba(0, 0, 0, 0.02);
   --white-strong: rgba(255, 255, 255, 0.9);
@@ -33,7 +35,14 @@
   --shadow-premium: 0 24px 48px -12px rgba(0, 0, 0, 0.08), 0 8px 16px -4px rgba(0, 0, 0, 0.03), 0 1px 2px rgba(0, 0, 0, 0.02);
   --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
+  --font-size-caption: 11px;
+  --font-size-meta: 12px;
+  --font-size-body-sm: 13px;
+  --font-size-body: 14px;
+  --font-size-title-sm: 15px;
+  --font-size-title: 18px;
   font-family: var(--font-ui);
+  font-size: var(--font-size-body);
   background: var(--canvas);
   color: var(--text);
 }
@@ -45,6 +54,7 @@
 body {
   margin: 0;
   min-height: 100vh;
+  line-height: 1.5;
   background:
     radial-gradient(at 0% 0%, #ffffff 0%, transparent 45%),
     radial-gradient(at 100% 0%, #e8edf7 0%, transparent 48%),
@@ -101,7 +111,7 @@ code {
   border-radius: 8px;
   background: var(--text-strong);
   color: var(--surface-solid);
-  font-size: 11px;
+  font-size: var(--font-size-meta);
   font-weight: 700;
   letter-spacing: 0.5px;
   box-shadow: var(--shadow-soft);
@@ -158,7 +168,7 @@ code {
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  font-size: 10px;
+  font-size: var(--font-size-caption);
   font-weight: 600;
 }
 
@@ -245,7 +255,7 @@ h2 {
 }
 
 .route-action-label {
-  font-size: 10px;
+  font-size: var(--font-size-meta);
   font-weight: 600;
   letter-spacing: 0.05em;
 }
@@ -271,14 +281,14 @@ h2 {
   align-items: center;
   gap: 6px;
   padding: 4px 6px;
-  font-size: 10px;
+  font-size: var(--font-size-caption);
   font-weight: 600;
   color: var(--muted);
 }
 
 .group-label::before {
   content: '▾';
-  font-size: 10px;
+  font-size: var(--font-size-caption);
   opacity: 0.6;
 }
 
@@ -377,8 +387,8 @@ h2 {
   color: var(--text-strong);
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-size: 11px;
-  font-weight: 500;
+  font-size: var(--font-size-body-sm);
+  font-weight: 600;
 }
 
 .placeholder-surface__lane p,
@@ -401,7 +411,7 @@ h2 {
 .route-time,
 .hierarchy-node__meta {
   color: var(--muted);
-  font: 10px var(--font-mono);
+  font: var(--font-size-caption) var(--font-mono);
 }
 
 .route-project-actions {
@@ -454,7 +464,7 @@ h2 {
   justify-content: space-between;
   gap: 8px;
   color: #64748b;
-  font: 10px var(--font-mono);
+  font: var(--font-size-caption) var(--font-mono);
 }
 
 .terminal-meta__group {
@@ -562,7 +572,7 @@ h2 {
 }
 
 .modal-panel__title {
-  font-size: 13px;
+  font-size: var(--font-size-title-sm);
   font-weight: 600;
   color: var(--text-strong);
 }
@@ -614,7 +624,7 @@ h2 {
 }
 
 .form-field__label {
-  font-size: 10px;
+  font-size: var(--font-size-caption);
   font-weight: 600;
   color: var(--muted);
   text-transform: uppercase;
@@ -664,7 +674,7 @@ h2 {
   border: none;
   border-radius: var(--radius-sm);
   padding: 7px 14px;
-  font-size: 11px;
+  font-size: var(--font-size-body-sm);
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -680,7 +690,7 @@ h2 {
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   padding: 7px 14px;
-  font-size: 11px;
+  font-size: var(--font-size-body-sm);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -807,7 +817,7 @@ h2 {
 .settings-surface__hero-label,
 .settings-surface__nav-label {
   color: var(--subtle);
-  font-size: 10px;
+  font-size: var(--font-size-caption);
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -918,7 +928,7 @@ h2 {
 }
 
 .settings-tab-bar__summary {
-  font-size: 11px;
+  font-size: var(--font-size-meta);
 }
 
 .settings-panel {
@@ -939,13 +949,13 @@ h2 {
 }
 
 .settings-panel__title {
-  font-size: 18px;
+  font-size: var(--font-size-title);
   font-weight: 600;
 }
 
 .settings-panel__description {
   max-width: 640px;
-  font-size: 13px;
+  font-size: var(--font-size-body);
 }
 
 .settings-section {
@@ -978,13 +988,13 @@ h2 {
 }
 
 .settings-card__title {
-  font-size: 15px;
+  font-size: var(--font-size-title-sm);
   font-weight: 600;
 }
 
 .settings-card__description {
   margin-top: 4px;
-  font-size: 12px;
+  font-size: var(--font-size-body-sm);
 }
 
 .settings-card__badge {
@@ -995,7 +1005,7 @@ h2 {
   border-radius: 999px;
   background: var(--black-faint);
   color: var(--muted);
-  font-size: 10px;
+  font-size: var(--font-size-caption);
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1222,7 +1232,7 @@ h2 {
   color: var(--muted);
   font-size: 14px;
   line-height: 1;
-  font-weight: 300;
+  font-weight: 400;
   flex: none;
   cursor: pointer;
   transition: all 0.2s ease;

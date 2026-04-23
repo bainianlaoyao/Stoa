@@ -4,3 +4,5 @@ dist/
 *.tsbuildinfo
 .opencode/
 .worktrees/
+*.png
+tmp/

@@ -1,17 +1,14 @@
 import pty, { type IPty } from 'node-pty'
-import { randomUUID } from 'node:crypto'
 import type { ProviderCommand } from '@shared/project-session'
 
 export interface PtySession {
   runtimeId: string
-  sessionId: string
 }
 
 export class PtyHost {
   private readonly sessions = new Map<string, IPty>()
 
   start(runtimeId: string, command: ProviderCommand, onData: (data: string) => void, onExit: (exitCode: number) => void): PtySession {
-    const sessionId = `shell-${randomUUID()}`
     const terminal = pty.spawn(command.command, command.args, {
       cwd: command.cwd,
       name: 'xterm-color',
@@ -27,7 +24,7 @@ export class PtyHost {
     })
 
     this.sessions.set(runtimeId, terminal)
-    return { runtimeId, sessionId }
+    return { runtimeId }
   }
 
   write(workspaceId: string, data: string): void {
