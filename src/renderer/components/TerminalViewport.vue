@@ -279,6 +279,14 @@ onBeforeUnmount(disposeTerminal)
 </template>
 
 <style scoped>
+.terminal-empty-state {
+  min-height: 100%;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 10px;
+  background: var(--color-terminal-bg);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
 .terminal-viewport {
   height: 100%;
   display: grid;
