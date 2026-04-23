@@ -219,4 +219,31 @@ describe('UpdateService', () => {
       })
     )
   })
+
+  test('downloaded to available clears stale install-ready fields', async () => {
+    const updater = new FakeUpdater()
+    const service = new UpdateService({
+      app: {
+        isPackaged: true,
+        getVersion: () => '1.2.3'
+      },
+      updater,
+      sessionManager: {
+        snapshot: () => createSnapshot()
+      },
+      showSessionWarningDialog: async () => true
+    })
+
+    updater.emit('update-downloaded', { version: '1.3.0' })
+    updater.emit('update-available', { version: '1.4.0' })
+
+    await expect(service.getState()).resolves.toEqual(
+      expect.objectContaining({
+        phase: 'available',
+        availableVersion: '1.4.0',
+        downloadedVersion: null,
+        downloadProgressPercent: null
+      })
+    )
+  })
 })

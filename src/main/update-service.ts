@@ -71,6 +71,24 @@ function extractVersion(payload: unknown): string | null {
   return null
 }
 
+function normalizeStateForPhase(state: UpdateState): UpdateState {
+  switch (state.phase) {
+    case 'downloaded':
+      return state
+    case 'downloading':
+      return {
+        ...state,
+        downloadedVersion: null
+      }
+    default:
+      return {
+        ...state,
+        downloadedVersion: null,
+        downloadProgressPercent: null
+      }
+  }
+}
+
 export class UpdateService {
   private state: UpdateState
 
@@ -268,10 +286,10 @@ export class UpdateService {
   }
 
   private setState(next: Partial<UpdateState>): UpdateState {
-    this.state = {
+    this.state = normalizeStateForPhase({
       ...this.state,
       ...next
-    }
+    })
 
     return this.publishState()
   }
