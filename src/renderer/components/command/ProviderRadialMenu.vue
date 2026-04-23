@@ -119,19 +119,49 @@ function createSession(type: SessionType) {
 <style scoped>
 .radial-menu {
   position: fixed;
-  display: block;
+  z-index: 200;
+  pointer-events: none;
 }
 
 .radial-menu__track {
   position: absolute;
-  border-radius: 999px;
+  border: 1px solid var(--color-line);
+  border-radius: 50%;
+  background: var(--color-surface-soft);
+  backdrop-filter: blur(40px) saturate(120%);
+  -webkit-backdrop-filter: blur(40px) saturate(120%);
 }
 
 .radial-menu__item {
   position: absolute;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  backdrop-filter: blur(40px) saturate(120%);
+  -webkit-backdrop-filter: blur(40px) saturate(120%);
+  border: 1px solid var(--color-line);
+  box-shadow: var(--shadow-soft);
+  cursor: pointer;
+  pointer-events: auto;
+  transition: all 0.2s ease;
   transform: translate(-50%, -50%);
+  padding: 0;
+  margin: 0;
+}
+
+.radial-menu__item:hover {
+  background: var(--color-surface-solid);
+  border-color: rgba(0, 0, 0, 0.04);
+  box-shadow: var(--shadow-card);
+}
+
+.radial-menu__item-image {
+  width: 30px;
+  height: 30px;
+  display: block;
+  object-fit: contain;
 }
 </style>

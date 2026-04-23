@@ -8,7 +8,7 @@ function readRendererFile(relativePath: string): string {
 
 describe('renderer typography baseline', () => {
   test('shared renderer styles do not keep tiny 10px text or ultra-light 300 weight', () => {
-    const styles = readRendererFile('src/renderer/styles.css')
+    const styles = readRendererFile('src/renderer/styles/tailwind.css')
 
     expect(styles).not.toMatch(/font-size:\s*10px;/)
     expect(styles).not.toMatch(/font:\s*10px\b/)

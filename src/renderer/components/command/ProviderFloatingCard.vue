@@ -57,3 +57,46 @@ function emitCreate(type: SessionType) {
     </div>
   </Teleport>
 </template>
+
+<style scoped>
+.provider-floating-card {
+  position: fixed;
+  z-index: 100;
+  background: var(--color-surface-solid);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  padding: 6px;
+  display: flex;
+  gap: 4px;
+}
+
+.provider-icon-cell {
+  display: grid;
+  place-items: center;
+  gap: 2px;
+  width: 52px;
+  height: 52px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: var(--font-ui);
+}
+
+.provider-icon-cell:hover {
+  background: var(--color-black-soft);
+}
+
+.provider-icon-cell:active {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.provider-icon-cell__image {
+  width: 33px;
+  height: 33px;
+  display: block;
+  object-fit: contain;
+}
+</style>
