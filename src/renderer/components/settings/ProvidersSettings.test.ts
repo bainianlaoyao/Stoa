@@ -16,6 +16,7 @@ function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
     listArchivedSessions: vi.fn().mockResolvedValue([]),
     setActiveProject: vi.fn().mockResolvedValue(undefined),
     setActiveSession: vi.fn().mockResolvedValue(undefined),
+    getTerminalReplay: vi.fn().mockResolvedValue(''),
     sendSessionInput: vi.fn().mockResolvedValue(undefined),
     sendSessionResize: vi.fn().mockResolvedValue(undefined),
     onTerminalData: vi.fn().mockReturnValue(() => {}),

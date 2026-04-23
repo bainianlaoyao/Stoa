@@ -1,8 +1,24 @@
-import { describe, test, expect, beforeEach } from 'vitest'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { describe, test, expect, beforeEach, afterEach } from 'vitest'
 import { SessionRuntimeController } from './session-runtime-controller'
 import { IPC_CHANNELS } from '@core/ipc-channels'
 import { ProjectSessionManager } from '@core/project-session-manager'
-import { createTestGlobalStatePath, createTestWorkspace } from '../../tests/e2e/helpers'
+
+const tempDirs: string[] = []
+
+async function createTestWorkspace(name: string): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), name))
+  tempDirs.push(dir)
+  return dir
+}
+
+async function createTestGlobalStatePath(): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), 'stoa-controller-state-'))
+  tempDirs.push(dir)
+  return join(dir, 'global.json')
+}
 
 function createMockWindow() {
   const sent: Array<{ channel: string; data: unknown }> = []
@@ -22,6 +38,12 @@ function createMockWindow() {
 
 describe('SessionRuntimeController', () => {
   let manager: ProjectSessionManager
+
+  afterEach(async () => {
+    await Promise.allSettled(
+      tempDirs.splice(0).map(async (dir) => rm(dir, { recursive: true, force: true }))
+    )
+  })
 
   beforeEach(async () => {
     const globalStatePath = await createTestGlobalStatePath()
@@ -157,30 +179,25 @@ describe('SessionRuntimeController', () => {
 
   test('getTerminalReplay returns the accumulated backlog for a running session', async () => {
     const { window: win } = createMockWindow()
-    const controller = new SessionRuntimeController(manager, () => win) as unknown as {
-      getTerminalReplay?: (sessionId: string) => Promise<string>
-    }
+    const controller = new SessionRuntimeController(manager, () => win)
 
-    await controller.appendTerminalData?.({ sessionId: 'session-op-1', data: 'hello ' })
-    await controller.appendTerminalData?.({ sessionId: 'session-op-1', data: 'world' })
+    await controller.appendTerminalData({ sessionId: 'session-op-1', data: 'hello ' })
+    await controller.appendTerminalData({ sessionId: 'session-op-1', data: 'world' })
 
     expect(controller.getTerminalReplay).toBeTypeOf('function')
-    await expect(controller.getTerminalReplay?.('session-op-1')).resolves.toBe('hello world')
+    await expect(controller.getTerminalReplay('session-op-1')).resolves.toBe('hello world')
   })
 
   test('getTerminalReplay keeps session backlogs isolated', async () => {
     const { window: win } = createMockWindow()
-    const controller = new SessionRuntimeController(manager, () => win) as unknown as {
-      getTerminalReplay?: (sessionId: string) => Promise<string>
-      appendTerminalData: (chunk: { sessionId: string; data: string }) => Promise<void>
-    }
+    const controller = new SessionRuntimeController(manager, () => win)
 
     await controller.appendTerminalData({ sessionId: 'session-shell-1', data: 'shell' })
     await controller.appendTerminalData({ sessionId: 'session-op-2', data: 'opencode' })
 
     expect(controller.getTerminalReplay).toBeTypeOf('function')
-    await expect(controller.getTerminalReplay?.('session-shell-1')).resolves.toBe('shell')
-    await expect(controller.getTerminalReplay?.('session-op-2')).resolves.toBe('opencode')
+    await expect(controller.getTerminalReplay('session-shell-1')).resolves.toBe('shell')
+    await expect(controller.getTerminalReplay('session-op-2')).resolves.toBe('opencode')
   })
 
   test('appendTerminalData is no-op when window is destroyed', async () => {
@@ -193,7 +210,7 @@ describe('SessionRuntimeController', () => {
 
     const controller = new SessionRuntimeController(
       manager,
-      () => destroyedWin as unknown as Electron.BrowserWindow
+      () => destroyedWin
     )
     await expect(
       controller.appendTerminalData({ sessionId: 's1', data: 'test' })

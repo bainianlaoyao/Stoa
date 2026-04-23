@@ -1,7 +1,7 @@
 import { describe, expect, test, vi } from 'vitest'
 import type { ProviderDefinition, ProviderRuntimeTarget } from '@extensions/providers'
 import type { ProviderCommandContext } from '@shared/project-session'
-import { startSessionRuntime } from './session-runtime'
+import { startSessionRuntime, type StartSessionRuntimeOptions } from './session-runtime'
 
 function createProvider(overrides: Partial<ProviderDefinition> = {}): ProviderDefinition {
   return {
@@ -39,14 +39,16 @@ function createCapturingPtyHost() {
   }
 }
 
-function createBaseSession(overrides: Record<string, unknown> = {}) {
+function createBaseSession(
+  overrides: Partial<StartSessionRuntimeOptions['session']> = {}
+): StartSessionRuntimeOptions['session'] {
   return {
     id: 'session_op_1',
     projectId: 'project_alpha',
     path: 'D:/demo',
     title: 'Deploy',
     type: 'opencode' as const,
-    status: 'running',
+    status: 'running' as const,
     externalSessionId: null as string | null,
     sessionSecret: 'secret-1',
     providerPort: 43128,

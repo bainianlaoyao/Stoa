@@ -1,8 +1,14 @@
-import type { BrowserWindow } from 'electron'
 import type { SessionStatus } from '@shared/project-session'
 import { IPC_CHANNELS } from '@core/ipc-channels'
 import type { SessionRuntimeManager } from '@core/session-runtime'
 import type { ProjectSessionManager } from '@core/project-session-manager'
+
+export interface RuntimeWindow {
+  isDestroyed: () => boolean
+  webContents: {
+    send: (channel: string, data: unknown) => void
+  }
+}
 
 interface AppliedSessionEvent {
   sessionId: string
@@ -16,7 +22,7 @@ export class SessionRuntimeController implements SessionRuntimeManager {
 
   constructor(
     private readonly manager: ProjectSessionManager,
-    private readonly getWindow: () => BrowserWindow | null
+    private readonly getWindow: () => RuntimeWindow | null
   ) {}
 
   async markSessionStarting(sessionId: string, summary: string, externalSessionId: string | null): Promise<void> {
