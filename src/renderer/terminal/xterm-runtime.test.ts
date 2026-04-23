@@ -155,6 +155,17 @@ describe('createTerminalRuntime', () => {
     }
   })
 
+  test('uses the explicit fontFamily parameter when provided', async () => {
+    const { createTerminalRuntime } = await import('./xterm-runtime')
+
+    const runtime = createTerminalRuntime('linux', vi.fn(), true, 14, 'Cascadia Mono')
+    const terminal = runtime.terminal as unknown as {
+      options: Record<string, unknown>
+    }
+
+    expect(terminal.options.fontFamily).toBe('Cascadia Mono')
+  })
+
   test('disposes WebGL addon when context loss occurs', async () => {
     const { createTerminalRuntime } = await import('./xterm-runtime')
     const { WebglAddon } = await import('@xterm/addon-webgl')

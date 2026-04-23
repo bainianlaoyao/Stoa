@@ -20,7 +20,7 @@ function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
     sendSessionResize: vi.fn().mockResolvedValue(undefined),
     onTerminalData: vi.fn().mockReturnValue(() => {}),
     onSessionEvent: vi.fn().mockReturnValue(() => {}),
-    getSettings: vi.fn().mockResolvedValue({ shellPath: '', terminalFontSize: 14, providers: {} }),
+    getSettings: vi.fn().mockResolvedValue({ shellPath: '', terminalFontSize: 14, terminalFontFamily: 'JetBrains Mono', providers: {} }),
     setSetting: vi.fn().mockResolvedValue(undefined),
     pickFolder: vi.fn().mockResolvedValue(null),
     pickFile: vi.fn().mockResolvedValue(null),
@@ -46,12 +46,13 @@ describe('GeneralSettings', () => {
     document.body.innerHTML = ''
   })
 
-  it('renders shell path input and font size select', () => {
+  it('renders shell path input, font family select and font size select', () => {
     const wrapper = mount(GeneralSettings, {
       global: { plugins: [createPinia()] },
       attachTo: document.body
     })
     expect(wrapper.find('[data-settings-field="shellPath"]').exists()).toBe(true)
+    expect(wrapper.find('[data-settings-field="terminalFontFamily"]').exists()).toBe(true)
     expect(wrapper.find('[data-settings-field="terminalFontSize"]').exists()).toBe(true)
   })
 
@@ -126,5 +127,23 @@ describe('GeneralSettings', () => {
     await nextTick()
 
     expect(setSettingMock).toHaveBeenCalledWith('terminalFontSize', 18)
+  })
+
+  it('changing font family select calls store.updateSetting with terminalFontFamily', async () => {
+    const setSettingMock = vi.fn().mockResolvedValue(undefined)
+    setupVibecodingMock({ setSetting: setSettingMock })
+
+    const wrapper = mount(GeneralSettings, {
+      global: { plugins: [createPinia()] },
+      attachTo: document.body
+    })
+
+    await nextTick()
+
+    const select = wrapper.find('[data-settings-field="terminalFontFamily"] select')
+    await select.setValue('Cascadia Mono')
+    await nextTick()
+
+    expect(setSettingMock).toHaveBeenCalledWith('terminalFontFamily', 'Cascadia Mono')
   })
 })

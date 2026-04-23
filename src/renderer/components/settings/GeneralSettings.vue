@@ -13,6 +13,11 @@ const fontSizeOptions = Array.from({ length: 13 }, (_, i) => ({
   label: `${i + 12}px`
 }))
 
+const fontFamilyOptions = [
+  { value: 'JetBrains Mono', label: 'JetBrains Mono' },
+  { value: 'Cascadia Mono', label: 'Cascadia Mono' }
+]
+
 onMounted(async () => {
   detectedShell.value = await store.detectAndSetShell()
   detecting.value = false
@@ -32,6 +37,10 @@ function handleShellChange(event: Event): void {
 
 function handleFontSizeChange(value: string): void {
   void store.updateSetting('terminalFontSize', Number(value))
+}
+
+function handleFontFamilyChange(value: string): void {
+  void store.updateSetting('terminalFontFamily', value)
 }
 </script>
 
@@ -89,7 +98,15 @@ function handleFontSizeChange(value: string): void {
         </div>
 
         <GlassFormField
-          label="Terminal Font Size"
+          label="Font Family"
+          type="select"
+          :model-value="store.terminalFontFamily"
+          :options="fontFamilyOptions"
+          data-settings-field="terminalFontFamily"
+          @update:model-value="handleFontFamilyChange"
+        />
+        <GlassFormField
+          label="Font Size"
           type="select"
           :model-value="String(store.terminalFontSize)"
           :options="fontSizeOptions"

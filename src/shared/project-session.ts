@@ -61,12 +61,16 @@ export interface PersistedSession {
 export interface AppSettings {
   shellPath: string
   terminalFontSize: number
+  terminalFontFamily: string
   providers: Record<string, string>
 }
+
+export const BUILTIN_FONT_FAMILIES = ['JetBrains Mono', 'Cascadia Mono'] as const
 
 export const DEFAULT_SETTINGS: AppSettings = {
   shellPath: '',
   terminalFontSize: 14,
+  terminalFontFamily: 'JetBrains Mono',
   providers: {}
 }
 

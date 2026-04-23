@@ -1,10 +1,12 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import type { AppSettings } from '@shared/project-session'
+import { BUILTIN_FONT_FAMILIES } from '@shared/project-session'
 
 export const useSettingsStore = defineStore('settings', () => {
   const shellPath = ref('')
   const terminalFontSize = ref(14)
+  const terminalFontFamily = ref('JetBrains Mono')
   const providers = ref<Record<string, string>>({})
   const loaded = ref(false)
 
@@ -13,6 +15,9 @@ export const useSettingsStore = defineStore('settings', () => {
     if (settings) {
       shellPath.value = settings.shellPath
       terminalFontSize.value = settings.terminalFontSize
+      if (settings.terminalFontFamily) {
+        terminalFontFamily.value = settings.terminalFontFamily
+      }
       providers.value = { ...settings.providers }
     }
     loaded.value = true
@@ -24,6 +29,8 @@ export const useSettingsStore = defineStore('settings', () => {
       shellPath.value = value
     } else if (key === 'terminalFontSize' && typeof value === 'number') {
       terminalFontSize.value = Math.max(12, Math.min(24, value))
+    } else if (key === 'terminalFontFamily' && typeof value === 'string') {
+      terminalFontFamily.value = BUILTIN_FONT_FAMILIES.includes(value as any) ? value : 'JetBrains Mono'
     } else if (key === 'providers' && typeof value === 'object' && value !== null) {
       providers.value = { ...(value as Record<string, string>) }
     }
@@ -55,7 +62,7 @@ export const useSettingsStore = defineStore('settings', () => {
   }
 
   return {
-    shellPath, terminalFontSize, providers, loaded,
+    shellPath, terminalFontSize, terminalFontFamily, providers, loaded,
     loadSettings, updateSetting, detectAndSetShell, detectAndSetProvider,
     pickFolder, pickFile
   }

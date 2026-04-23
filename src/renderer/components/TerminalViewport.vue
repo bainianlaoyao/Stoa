@@ -82,7 +82,8 @@ function setupTerminal() {
     undefined,
     undefined,
     undefined,
-    settingsStore.terminalFontSize
+    settingsStore.terminalFontSize,
+    settingsStore.terminalFontFamily
   )
   terminal = localTerminal
   fitAddon = localFitAddon

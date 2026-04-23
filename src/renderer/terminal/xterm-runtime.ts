@@ -74,10 +74,11 @@ export function createTerminalRuntime(
   platform = detectRuntimePlatform(),
   openExternal: ExternalLinkOpener = defaultOpenExternal,
   enableWebgl = canUseWebgl(),
-  fontSize = 14
+  fontSize = 14,
+  fontFamily?: string
 ): XtermRuntime {
   const terminal = new Terminal({
-    fontFamily: resolveTerminalFontFamily(),
+    fontFamily: fontFamily || resolveTerminalFontFamily(),
     fontSize,
     lineHeight: 1.5,
     theme: {
