@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterEach, describe, expect, test } from 'vitest'
 import {
@@ -67,6 +67,7 @@ describe('state-store', () => {
   test('reads and writes per-project sessions', async () => {
     const projectDir = await createTempProjectDir()
     const data: PersistedProjectSessions = {
+      version: 4,
       project_id: 'project_alpha',
       sessions: [
         {
@@ -89,15 +90,56 @@ describe('state-store', () => {
     await writeProjectSessions(projectDir, data)
 
     const read = await readProjectSessions(projectDir)
+    expect(read.version).toBe(4)
+    expect(read.project_id).toBe('project_alpha')
     expect(read.sessions).toHaveLength(1)
     expect(read.sessions[0]!.session_id).toBe('session_shell_1')
     expect(read.sessions[0]!.last_known_status).toBe('running')
   })
 
-  test('returns empty sessions when project has no sessions file', async () => {
+  test('returns versioned empty sessions when project has no sessions file', async () => {
     const projectDir = await createTempProjectDir()
 
     const read = await readProjectSessions(projectDir)
-    expect(read.sessions).toEqual([])
+    expect(read).toEqual({
+      version: 4,
+      project_id: '',
+      sessions: []
+    })
+  })
+
+  test('backs up invalid global state before returning the default', async () => {
+    const globalStatePath = await createTempGlobalStatePath()
+    await writeFile(globalStatePath, '{invalid-json', 'utf-8')
+
+    await expect(readGlobalState(globalStatePath)).resolves.toEqual(DEFAULT_GLOBAL_STATE)
+
+    const backupPath = `${globalStatePath}.invalid-json.bak`
+    await expect(readFile(backupPath, 'utf-8')).resolves.toBe('{invalid-json')
+  })
+
+  test('backs up unsupported unversioned project sessions before returning the default', async () => {
+    const projectDir = await createTempProjectDir()
+    const sessionsPath = join(projectDir, '.stoa', 'sessions.json')
+    await import('node:fs/promises').then(({ mkdir }) => mkdir(join(projectDir, '.stoa'), { recursive: true }))
+    await writeFile(
+      sessionsPath,
+      JSON.stringify({
+        project_id: 'project_alpha',
+        sessions: []
+      }, null, 2),
+      'utf-8'
+    )
+
+    await expect(readProjectSessions(projectDir)).resolves.toEqual({
+      version: 4,
+      project_id: '',
+      sessions: []
+    })
+
+    const backupPath = `${sessionsPath}.unsupported-version.bak`
+    const backup = JSON.parse(await readFile(backupPath, 'utf-8')) as Record<string, unknown>
+    expect(backup.project_id).toBe('project_alpha')
+    expect(backup.sessions).toEqual([])
   })
 })

@@ -96,6 +96,7 @@ export interface PersistedGlobalStateV3 {
 }
 
 export interface PersistedProjectSessions {
+  version: 4
   project_id: string
   sessions: PersistedSession[]
 }
