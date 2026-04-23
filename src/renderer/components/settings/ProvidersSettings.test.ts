@@ -102,7 +102,7 @@ describe('ProvidersSettings', () => {
 
   it('renders Browse button for each provider', () => {
     const wrapper = mountProvidersSettings()
-    const browseButtons = wrapper.findAll('.settings-item__browse')
+    const browseButtons = wrapper.findAll('[data-settings-field^="provider-"] .btn-ghost')
     expect(browseButtons.length).toBeGreaterThanOrEqual(1)
     expect(browseButtons[0].text()).toBe('Browse')
   })
@@ -124,7 +124,7 @@ describe('ProvidersSettings', () => {
 
     await nextTick()
 
-    const browseBtn = wrapper.find('.settings-item__browse')
+    const browseBtn = wrapper.find('[data-settings-field="provider-opencode"] .btn-ghost')
     await browseBtn.trigger('click')
     await nextTick()
 
@@ -139,10 +139,10 @@ describe('ProvidersSettings', () => {
 
     await nextTick()
 
-    const toggle = wrapper.find('[data-settings-field="provider-claude-code-dangerously-skip-permissions"] input[type="checkbox"]')
+    const toggle = wrapper.find('[data-settings-field="provider-claude-code-dangerously-skip-permissions"] button[role="switch"]')
     expect(toggle.exists()).toBe(true)
 
-    await toggle.setValue(true)
+    await toggle.trigger('click')
 
     expect(setSettingMock).toHaveBeenCalledWith('claudeDangerouslySkipPermissions', true)
   })

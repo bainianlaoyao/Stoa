@@ -18,9 +18,9 @@ describe('GlobalActivityBar', () => {
     expect(wrapper.find('nav[data-testid="activity-bar"]').exists()).toBe(true)
   })
 
-  it('renders brand "V" in activity-brand', () => {
+  it('renders brand "S" in activity-brand', () => {
     const wrapper = mountBar()
-    expect(wrapper.find('[data-testid="activity-brand"]').text()).toBe('V')
+    expect(wrapper.find('[data-testid="activity-brand"]').text()).toBe('S')
   })
 
   it('renders 3 activity items with correct data-activity-item values', () => {

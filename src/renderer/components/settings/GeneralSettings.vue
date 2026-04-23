@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '@renderer/stores/settings'
 import GlassFormField from '../primitives/GlassFormField.vue'
+import GlassPathField from '../primitives/GlassPathField.vue'
 import { SUPPORTED_LOCALES } from '@renderer/i18n'
 
 const { t } = useI18n()
@@ -37,10 +38,6 @@ async function handleBrowse(): Promise<void> {
     await store.updateSetting('shellPath', path)
     detectedShell.value = null
   }
-}
-
-function handleShellChange(event: Event): void {
-  void store.updateSetting('shellPath', (event.target as HTMLInputElement).value)
 }
 
 function handleFontSizeChange(value: string): void {
@@ -79,19 +76,16 @@ async function handleLanguageChange(value: string): Promise<void> {
           <span class="settings-card__badge settings-card__badge--mono">{{ t('general.shellSection.badge') }}</span>
         </div>
 
-        <div class="settings-field" data-settings-field="shellPath">
-          <label class="form-field settings-field__main">
-            <span class="form-field__label">{{ t('general.shellSection.label') }}</span>
-            <input
-              class="form-field__input settings-item__path-input settings-item__path-input--mono"
-              type="text"
-              :value="store.shellPath"
-              :placeholder="t('general.shellSection.placeholder')"
-              @change="handleShellChange"
-            />
-          </label>
-          <button class="btn-ghost settings-item__browse" type="button" @click="handleBrowse">{{ t('general.shellSection.browse') }}</button>
-        </div>
+        <GlassPathField
+          data-settings-field="shellPath"
+          :label="t('general.shellSection.label')"
+          :model-value="store.shellPath"
+          :placeholder="t('general.shellSection.placeholder')"
+          mono
+          :browse-label="t('general.shellSection.browse')"
+          @update:model-value="store.updateSetting('shellPath', $event)"
+          @browse="handleBrowse"
+        />
 
         <p v-if="detecting" class="settings-item__hint">{{ t('general.shellSection.detecting') }}</p>
         <p v-else-if="detectedShell && !store.shellPath" class="settings-item__hint settings-item__hint--success">

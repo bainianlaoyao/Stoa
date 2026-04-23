@@ -3,6 +3,7 @@ import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseModal from '../primitives/BaseModal.vue'
 import GlassFormField from '../primitives/GlassFormField.vue'
+import GlassPathField from '../primitives/GlassPathField.vue'
 import { useWorkspaceStore } from '@renderer/stores/workspaces'
 
 const props = defineProps<{
@@ -55,19 +56,15 @@ watch(() => props.show, (isVisible) => {
       placeholder="my-project"
       @update:model-value="draftName = $event"
     />
-    <label class="grid gap-1.5">
-      <span class="text-[11px] font-semibold text-muted uppercase tracking-[0.08em]">{{ t('newProject.pathLabel') }}</span>
-      <div class="flex gap-2">
-        <input
-          class="bg-surface-solid border border-line rounded-lg px-2.5 py-2 font-inherit font-mono text-text-strong outline-none w-full focus:border-accent focus:ring-2 focus:ring-accent/12 placeholder:text-subtle"
-          :value="draftPath"
-          :placeholder="t('newProject.pathPlaceholder')"
-          readonly
-          @click="browseProjectPath"
-        />
-        <button class="btn-ghost min-h-[38px]" type="button" @click="browseProjectPath">{{ t('newProject.browse') }}</button>
-      </div>
-    </label>
+    <GlassPathField
+      :label="t('newProject.pathLabel')"
+      :model-value="draftPath"
+      :placeholder="t('newProject.pathPlaceholder')"
+      mono
+      readonly
+      :browse-label="t('newProject.browse')"
+      @browse="browseProjectPath"
+    />
     <div v-if="store.lastError" class="text-xs text-error bg-error/8 rounded-md px-3 py-2 mt-2">{{ store.lastError }}</div>
     <div class="flex justify-end gap-2 mt-5">
       <button class="btn-ghost" @click="emit('update:show', false)">{{ t('newProject.cancel') }}</button>

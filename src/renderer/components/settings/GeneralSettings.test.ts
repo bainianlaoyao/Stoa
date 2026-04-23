@@ -79,7 +79,7 @@ describe('GeneralSettings', () => {
       global: { plugins: [createPinia()] },
       attachTo: document.body
     })
-    const browseBtn = wrapper.find('.settings-item__browse')
+    const browseBtn = wrapper.find('[data-settings-field="shellPath"] .btn-ghost')
     expect(browseBtn.exists()).toBe(true)
     expect(browseBtn.text()).toBe('Browse')
   })
@@ -109,7 +109,7 @@ describe('GeneralSettings', () => {
       attachTo: document.body
     })
 
-    const browseBtn = wrapper.find('.settings-item__browse')
+    const browseBtn = wrapper.find('[data-settings-field="shellPath"] .btn-ghost')
     await browseBtn.trigger('click')
     await nextTick()
     await nextTick()

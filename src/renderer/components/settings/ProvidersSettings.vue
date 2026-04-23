@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { reactive, ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { Switch } from '@headlessui/vue'
 import { listProviderDescriptors } from '@shared/provider-descriptors'
 import { useSettingsStore } from '@renderer/stores/settings'
+import GlassPathField from '../primitives/GlassPathField.vue'
 
 const { t } = useI18n()
 const store = useSettingsStore()
@@ -44,11 +46,8 @@ function isClaudeCodeProvider(providerId: string): boolean {
   return providerId === 'claude-code'
 }
 
-function handleClaudeDangerouslySkipPermissionsChange(event: Event): void {
-  void store.updateSetting(
-    'claudeDangerouslySkipPermissions',
-    (event.target as HTMLInputElement).checked
-  )
+function handleClaudeDangerouslySkipPermissionsChange(value: boolean): void {
+  void store.updateSetting('claudeDangerouslySkipPermissions', value)
 }
 </script>
 
@@ -81,19 +80,16 @@ function handleClaudeDangerouslySkipPermissionsChange(event: Event): void {
           </span>
         </div>
 
-        <div class="settings-field" :data-settings-field="`provider-${provider.id}`">
-          <label class="form-field settings-field__main">
-            <span class="form-field__label">{{ t('providers.executablePath') }}</span>
-            <input
-              class="form-field__input settings-item__path-input settings-item__path-input--mono"
-              type="text"
-              :value="store.providers[provider.id] ?? ''"
-              :placeholder="getStatus(provider.id) === 'missing' ? t('providers.placeholderMissing') : t('providers.autoDetected')"
-              @change="store.updateSetting('providers', { ...store.providers, [provider.id]: ($event.target as HTMLInputElement).value })"
-            />
-          </label>
-          <button class="btn-ghost settings-item__browse" type="button" @click="browseProvider(provider.id)">{{ t('providers.browse') }}</button>
-        </div>
+        <GlassPathField
+          :data-settings-field="`provider-${provider.id}`"
+          :label="t('providers.executablePath')"
+          :model-value="store.providers[provider.id] ?? ''"
+          :placeholder="getStatus(provider.id) === 'missing' ? t('providers.placeholderMissing') : t('providers.autoDetected')"
+          mono
+          :browse-label="t('providers.browse')"
+          @update:model-value="store.updateSetting('providers', { ...store.providers, [provider.id]: $event })"
+          @browse="browseProvider(provider.id)"
+        />
 
         <p v-if="detecting" class="settings-item__hint">{{ t('providers.detecting') }}</p>
         <p v-else-if="getStatus(provider.id) === 'detected'" class="settings-item__hint settings-item__hint--success">{{ t('providers.autoDetected') }}</p>
@@ -105,25 +101,22 @@ function handleClaudeDangerouslySkipPermissionsChange(event: Event): void {
           class="settings-toggle"
           data-settings-field="provider-claude-code-dangerously-skip-permissions"
         >
-          <label class="settings-toggle__label">
+          <div class="settings-toggle__label">
             <span class="settings-toggle__copy">
               <span class="settings-toggle__title">Skip Claude permission prompts</span>
               <span class="settings-toggle__description">
                 Append <code>--dangerously-skip-permissions</code> when starting or resuming Claude sessions.
               </span>
             </span>
-            <span class="settings-toggle__control">
-              <input
-                class="settings-toggle__input"
-                type="checkbox"
-                :checked="store.claudeDangerouslySkipPermissions"
-                @change="handleClaudeDangerouslySkipPermissionsChange"
-              />
-              <span class="settings-toggle__track" aria-hidden="true">
-                <span class="settings-toggle__thumb" />
-              </span>
-            </span>
-          </label>
+            <Switch
+              :model-value="store.claudeDangerouslySkipPermissions"
+              class="settings-toggle__switch"
+              :class="{ 'settings-toggle__switch--active': store.claudeDangerouslySkipPermissions }"
+              @update:model-value="handleClaudeDangerouslySkipPermissionsChange"
+            >
+              <span class="settings-toggle__thumb" />
+            </Switch>
+          </div>
         </div>
       </section>
     </div>
@@ -255,7 +248,6 @@ function handleClaudeDangerouslySkipPermissionsChange(event: Event): void {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  cursor: pointer;
 }
 
 .settings-toggle__copy {
@@ -280,20 +272,7 @@ function handleClaudeDangerouslySkipPermissionsChange(event: Event): void {
   font-family: var(--font-mono);
 }
 
-.settings-toggle__control {
-  position: relative;
-  flex: 0 0 auto;
-}
-
-.settings-toggle__input {
-  position: absolute;
-  inset: 0;
-  margin: 0;
-  opacity: 0;
-  cursor: pointer;
-}
-
-.settings-toggle__track {
+.settings-toggle__switch {
   display: inline-flex;
   width: 52px;
   height: 30px;
@@ -301,7 +280,18 @@ function handleClaudeDangerouslySkipPermissionsChange(event: Event): void {
   border-radius: 999px;
   background: var(--color-black-soft);
   box-shadow: inset 0 0 0 1px var(--color-black-soft);
+  cursor: pointer;
   transition: background 160ms ease;
+  flex: 0 0 auto;
+}
+
+.settings-toggle__switch--active {
+  background: var(--color-accent);
+}
+
+.settings-toggle__switch:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
 }
 
 .settings-toggle__thumb {
@@ -309,21 +299,11 @@ function handleClaudeDangerouslySkipPermissionsChange(event: Event): void {
   height: 24px;
   border-radius: 999px;
   background: var(--color-text-strong);
-  transform: translateX(0);
   transition: transform 160ms ease;
 }
 
-.settings-toggle__input:checked + .settings-toggle__track {
-  background: var(--color-accent);
-}
-
-.settings-toggle__input:checked + .settings-toggle__track .settings-toggle__thumb {
+.settings-toggle__switch--active .settings-toggle__thumb {
   transform: translateX(22px);
-}
-
-.settings-toggle__input:focus-visible + .settings-toggle__track {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
 }
 
 @media (max-width: 980px) {

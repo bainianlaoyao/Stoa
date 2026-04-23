@@ -245,7 +245,8 @@ describe('E2E: Main Process Config Guard', () => {
         'listArchivedSessions',
         'minimizeWindow',
         'maximizeWindow',
-        'closeWindow'
+        'closeWindow',
+        'isWindowMaximized'
       ]
 
       for (const method of knownInvokeMethods) {
