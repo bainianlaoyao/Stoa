@@ -374,6 +374,7 @@ export class ProjectSessionManager {
     for (const project of persistedProjects) {
       const projectSessions = byProject.get(project.project_id) ?? []
       const data: PersistedProjectSessions = {
+        version: 4,
         project_id: project.project_id,
         sessions: projectSessions
       }

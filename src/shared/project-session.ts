@@ -142,6 +142,7 @@ export interface RendererApi {
   getTerminalReplay: (sessionId: string) => Promise<string>
   sendSessionInput: (sessionId: string, data: string) => Promise<void>
   sendSessionResize: (sessionId: string, cols: number, rows: number) => Promise<void>
+  archiveSession: (sessionId: string) => Promise<void>
   onTerminalData: (callback: (chunk: TerminalDataChunk) => void) => () => void
   onSessionEvent: (callback: (event: SessionStatusEvent) => void) => () => void
   getSettings: () => Promise<AppSettings>

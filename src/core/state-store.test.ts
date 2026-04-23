@@ -1,7 +1,8 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { afterEach, describe, expect, test } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
+  createAtomicTempFilePath,
   DEFAULT_GLOBAL_STATE,
   readGlobalState,
   writeGlobalState,
@@ -62,6 +63,14 @@ describe('state-store', () => {
     const raw = JSON.parse(await readFile(globalStatePath, 'utf-8')) as PersistedGlobalStateV3
     expect(raw.active_project_id).toBe('project_alpha')
     expect(raw.version).toBe(3)
+  })
+
+  test('uses distinct temp files for concurrent atomic global state writes in the same millisecond', async () => {
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1713916800000)
+    const basePath = 'D:/tmp/global.json'
+
+    expect(createAtomicTempFilePath(basePath)).not.toBe(createAtomicTempFilePath(basePath))
+    nowSpy.mockRestore()
   })
 
   test('reads and writes per-project sessions', async () => {

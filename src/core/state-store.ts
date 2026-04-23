@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { access, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { homedir } from 'node:os'
@@ -37,6 +38,10 @@ export function getGlobalStateFilePath(): string {
 
 export function getProjectSessionsFilePath(projectPath: string): string {
   return join(projectPath, '.stoa', 'sessions.json')
+}
+
+export function createAtomicTempFilePath(filePath: string): string {
+  return `${filePath}.${process.pid}.${Date.now()}.${randomUUID()}.tmp`
 }
 
 async function fileExists(filePath: string): Promise<boolean> {
@@ -99,7 +104,7 @@ async function readProjectSessionsFile(filePath: string): Promise<PersistedProje
 
 async function writeJsonAtomically(filePath: string, payload: unknown): Promise<void> {
   await mkdir(dirname(filePath), { recursive: true })
-  const tempFilePath = `${filePath}.${process.pid}.${Date.now()}.tmp`
+  const tempFilePath = createAtomicTempFilePath(filePath)
   try {
     await writeFile(tempFilePath, JSON.stringify(payload, null, 2), 'utf-8')
     await rename(tempFilePath, filePath)
