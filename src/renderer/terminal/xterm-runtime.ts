@@ -80,12 +80,12 @@ export function createTerminalRuntime(
   const terminal = new Terminal({
     fontFamily: fontFamily || resolveTerminalFontFamily(),
     fontSize,
-    lineHeight: 1.5,
+    lineHeight: 1,
     theme: {
-      background: 'var(--terminal-bg)',
-      foreground: 'var(--terminal-text)',
-      cursor: 'var(--terminal-text)',
-      cursorAccent: 'var(--terminal-bg)',
+      background: '#0a0b0d',
+      foreground: '#e2e8f0',
+      cursor: '#e2e8f0',
+      cursorAccent: '#0a0b0d',
       selectionBackground: 'rgba(226, 232, 240, 0.2)',
       black: '#0a0b0d',
       red: '#ef4444',

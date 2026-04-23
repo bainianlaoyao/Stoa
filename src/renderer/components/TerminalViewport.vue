@@ -134,11 +134,12 @@ function setupTerminal() {
     pendingOutput.push(data)
   }
 
-  nextTick(() => {
+  nextTick(async () => {
     if (!isActiveMount()) {
       return
     }
 
+    await (document.fonts?.ready ?? Promise.resolve())
     localFitAddon.fit()
     const cols = localTerminal.cols
     const rows = localTerminal.rows
@@ -227,7 +228,7 @@ onBeforeUnmount(disposeTerminal)
   <section class="terminal-viewport">
     <template v-if="project && session">
       <div v-if="isLiveTerminal" class="terminal-viewport__xterm">
-        <div class="terminal-viewport__xterm-shell">
+        <div class="terminal-viewport__shell">
           <div class="terminal-viewport__xterm-mount" ref="terminalContainer" />
         </div>
       </div>
@@ -287,27 +288,38 @@ onBeforeUnmount(disposeTerminal)
 .terminal-viewport__xterm {
   height: 100%;
   width: 100%;
-  border-radius: var(--radius-sm);
-  background: var(--terminal-bg);
-  overflow: hidden;
+  min-height: 0;
 }
 
-.terminal-viewport__xterm-shell {
+.terminal-viewport__shell {
   height: 100%;
   width: 100%;
   min-height: 0;
-  padding: var(--terminal-shell-padding);
+  padding: var(--terminal-shell-gap);
+  border-radius: var(--radius-md);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.01)),
+    var(--terminal-bg);
+  border: 1px solid var(--terminal-border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  overflow: hidden;
 }
 
 .terminal-viewport__xterm-mount {
   height: 100%;
   width: 100%;
   min-height: 0;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
 }
 
 .terminal-viewport__xterm-mount :deep(.xterm) {
   height: 100%;
-  padding: var(--terminal-content-padding);
+  width: 100%;
+}
+
+.terminal-viewport__xterm-mount :deep(.xterm-viewport) {
+  background-color: var(--terminal-bg) !important;
 }
 
 .terminal-viewport__xterm-mount :deep(.xterm-viewport) {

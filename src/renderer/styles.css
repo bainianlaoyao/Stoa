@@ -35,8 +35,7 @@
   --terminal-bg: #0a0b0d;
   --terminal-text: #e2e8f0;
   --terminal-border: rgba(255, 255, 255, 0.06);
-  --terminal-shell-padding: 16px;
-  --terminal-content-padding: 10px;
+  --terminal-shell-gap: clamp(10px, 1.4vw, 18px);
   --black-soft: rgba(0, 0, 0, 0.04);
   --black-faint: rgba(0, 0, 0, 0.02);
   --white-strong: rgba(255, 255, 255, 0.9);

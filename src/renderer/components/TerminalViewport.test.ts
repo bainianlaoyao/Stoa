@@ -171,7 +171,7 @@ describe('TerminalViewport', () => {
     expect(wrapper.find('.terminal-viewport__xterm').exists()).toBe(false)
   })
 
-  test('mounts xterm shell and inner mount when session is running', async () => {
+  test('mounts the running xterm surface inside a visual shell when session is running', async () => {
     const { default: TerminalViewport } = await import('./TerminalViewport.vue')
     const wrapper = mount(TerminalViewport, {
       props: { project: baseProject, session: baseSession },
@@ -179,19 +179,22 @@ describe('TerminalViewport', () => {
     await flushTerminal()
 
     expect(wrapper.find('.terminal-viewport__xterm').exists()).toBe(true)
-    expect(wrapper.find('.terminal-viewport__xterm-shell').exists()).toBe(true)
+    expect(wrapper.find('.terminal-viewport__shell').exists()).toBe(true)
     expect(wrapper.find('.terminal-viewport__xterm-mount').exists()).toBe(true)
+    expect(wrapper.find('.terminal-viewport__xterm-shell').exists()).toBe(false)
     expect(wrapper.find('.terminal-viewport__overlay').exists()).toBe(false)
   })
 
-  test('running terminal structure keeps the xterm mount inside the padded shell container', async () => {
+  test('running terminal structure keeps the xterm mount inside the visual shell wrapper', async () => {
     const { default: TerminalViewport } = await import('./TerminalViewport.vue')
     const wrapper = mount(TerminalViewport, {
       props: { project: baseProject, session: baseSession },
     })
     await flushTerminal()
 
-    const shell = wrapper.find('.terminal-viewport__xterm-shell')
+    const xtermSurface = wrapper.find('.terminal-viewport__xterm')
+    expect(xtermSurface.exists()).toBe(true)
+    const shell = xtermSurface.find('.terminal-viewport__shell')
     expect(shell.exists()).toBe(true)
     expect(shell.find('.terminal-viewport__xterm-mount').exists()).toBe(true)
   })
@@ -359,7 +362,7 @@ describe('TerminalViewport', () => {
     expect(instance?.writes).toContain('live after failure')
   })
 
-  test('calls sendSessionResize after fit', async () => {
+  test('calls sendSessionResize after fit even when the Font Loading API is unavailable', async () => {
     const { default: TerminalViewport } = await import('./TerminalViewport.vue')
     mount(TerminalViewport, {
       props: { project: baseProject, session: baseSession },

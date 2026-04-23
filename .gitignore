@@ -6,3 +6,5 @@ dist/
 .worktrees/
 *.png
 tmp/
+.claude
+.superpowers

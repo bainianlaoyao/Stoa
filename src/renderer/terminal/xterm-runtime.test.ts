@@ -126,6 +126,17 @@ describe('createTerminalRuntime', () => {
     expect(terminal.options.fontSize).toBe(18)
   })
 
+  test('uses lineHeight 1.0 to keep terminal cells pixel-aligned', async () => {
+    const { createTerminalRuntime } = await import('./xterm-runtime')
+
+    const runtime = createTerminalRuntime('linux', vi.fn(), true, 14)
+    const terminal = runtime.terminal as unknown as {
+      options: Record<string, unknown>
+    }
+
+    expect(terminal.options.lineHeight).toBe(1)
+  })
+
   test('resolves the mono font token before passing fontFamily into xterm', async () => {
     const getComputedStyleMock = vi
       .spyOn(window, 'getComputedStyle')
