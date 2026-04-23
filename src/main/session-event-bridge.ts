@@ -54,6 +54,10 @@ export class SessionEventBridge {
     return secret
   }
 
+  debugSnapshotSessionSecrets(): Record<string, string> {
+    return Object.fromEntries(this.sessionSecrets)
+  }
+
   async stop(): Promise<void> {
     await this.server?.stop()
     this.server = null

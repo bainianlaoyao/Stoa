@@ -36,13 +36,13 @@ onUnmounted(() => {
 <template>
   <Teleport to="body">
     <Transition name="modal">
-      <div v-if="show" class="fixed inset-0 bg-black/45 z-50 flex items-center justify-center" @click.self="onClose">
-        <div class="bg-surface-solid border border-line rounded-[18px] shadow-premium max-w-[360px] w-full p-5" role="dialog" aria-modal="true" :aria-labelledby="titleId">
+      <div v-if="show" class="fixed inset-0 bg-black/45 z-50 flex items-center justify-center" data-testid="modal-overlay" @click.self="onClose">
+        <div class="bg-surface-solid border border-line rounded-[18px] shadow-premium max-w-[360px] w-full p-5" role="dialog" aria-modal="true" :aria-labelledby="titleId" data-testid="modal-panel">
           <div class="flex items-center justify-between mb-4">
-            <h3 :id="titleId" class="text-[15px] font-semibold text-text-strong">{{ title }}</h3>
-            <button class="bg-transparent text-muted w-6 h-6 rounded-lg border-none cursor-pointer flex items-center justify-center text-base leading-none hover:bg-black-soft hover:text-text-strong" @click="onClose">✕</button>
+            <h3 :id="titleId" class="text-[15px] font-semibold text-text-strong" data-testid="modal-title">{{ title }}</h3>
+            <button class="bg-transparent text-muted w-6 h-6 rounded-lg border-none cursor-pointer flex items-center justify-center text-base leading-none hover:bg-black-soft hover:text-text-strong" data-testid="modal-close" @click="onClose">✕</button>
           </div>
-          <div class="grid gap-4">
+          <div class="grid gap-4" data-testid="modal-body">
             <slot />
           </div>
         </div>

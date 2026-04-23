@@ -1,19 +1,37 @@
 import { mkdir } from 'node:fs/promises'
-import { expect, type Locator, type Page } from '@playwright/test'
+import { expect, type ElectronApplication, type Locator, type Page } from '@playwright/test'
 import type { SessionType } from '@shared/project-session'
+import { getProviderDescriptorBySessionType } from '@shared/provider-descriptors'
+import { queueNextFolderPick } from '../fixtures/electron-app'
 
-export async function createProject(page: Page, options: { name: string; path: string }): Promise<Locator> {
+type ElectronPageTarget = {
+  page: Page
+  electronApp: ElectronApplication
+}
+
+function resolveElectronPageTarget(target: Page | ElectronPageTarget): ElectronPageTarget {
+  if ('page' in target && 'electronApp' in target) {
+    return target
+  }
+
+  throw new Error('createProject requires the launched Electron app so the folder picker can be controlled in E2E mode.')
+}
+
+export async function createProject(target: Page | ElectronPageTarget, options: { name: string; path: string }): Promise<Locator> {
+  const { page, electronApp } = resolveElectronPageTarget(target)
   await mkdir(options.path, { recursive: true })
+  await queueNextFolderPick(electronApp, options.path)
 
   await page.getByRole('button', { name: 'New Project' }).click()
 
   const dialog = page.getByRole('dialog', { name: '新建项目' })
   await expect(dialog).toBeVisible()
   await dialog.getByLabel('项目名称').fill(options.name)
-  await dialog.getByLabel('项目路径').fill(options.path)
+  await dialog.getByRole('button', { name: 'Browse' }).click()
+  await expect(dialog.getByLabel('项目路径')).toHaveValue(options.path)
   await dialog.getByRole('button', { name: '创建' }).click()
 
-  const projectRow = page.locator('.route-project').filter({ hasText: options.name }).first()
+  const projectRow = page.locator('.route-item--parent').filter({ hasText: options.name }).first()
   await expect(projectRow).toBeVisible()
   return projectRow
 }
@@ -21,20 +39,32 @@ export async function createProject(page: Page, options: { name: string; path: s
 export async function createSession(
   page: Page,
   projectRow: Locator,
-  options: { title: string; type: SessionType }
-): Promise<Locator> {
-  await projectRow.getByRole('button', { name: /Add session to / }).click()
+  options: { type: SessionType }
+): Promise<{ row: Locator; title: string }> {
+  const projectName = (await projectRow.locator('.route-name').textContent())?.trim()
+  if (!projectName) {
+    throw new Error('Unable to resolve project name before creating a session.')
+  }
 
-  const dialog = page.getByRole('dialog', { name: '新建会话' })
-  await expect(dialog).toBeVisible()
-  await dialog.getByLabel('会话标题').fill(options.title)
-  await dialog.getByLabel('会话类型').selectOption(options.type)
-  await dialog.getByRole('button', { name: '创建' }).click()
+  const existingSessions = await page.locator('.route-item.child').count()
+  const descriptor = getProviderDescriptorBySessionType(options.type)
+  const sessionTitle = options.type === 'shell'
+    ? `shell-${existingSessions + 1}`
+    : `${descriptor.titlePrefix}-${projectName}`
+
+  await page.getByRole('button', { name: `Add session to ${projectName}` }).click()
+
+  const providerGroup = page.getByRole('group', { name: 'Session providers' })
+  await expect(providerGroup).toBeVisible()
+  await providerGroup.getByRole('button', { name: `Create ${descriptor.displayName} session` }).click()
 
   // Temporary structural fallback per rollout plan: session rows still rely on route-item markup.
-  const sessionRow = projectRow.locator('.route-item.child').filter({ hasText: options.title }).first()
+  const sessionRow = page.locator('.route-item.child').filter({ hasText: sessionTitle }).first()
   await expect(sessionRow).toBeVisible()
-  return sessionRow
+  return {
+    row: sessionRow,
+    title: sessionTitle
+  }
 }
 
 export async function focusTerminalInput(page: Page): Promise<Locator> {

@@ -159,20 +159,20 @@ async function openRadialMenu(wrapper: ReturnType<typeof mountPanel>) {
 
 describe('WorkspaceHierarchyPanel', () => {
   describe('render', () => {
-    it('renders .workspace-hierarchy-panel aside element', () => {
+    it('renders workspace-hierarchy-panel aside element', () => {
       const wrapper = mountPanel()
-      expect(wrapper.find('.workspace-hierarchy-panel').exists()).toBe(true)
-      expect(wrapper.find('.workspace-hierarchy-panel').element.tagName).toBe('ASIDE')
+      expect(wrapper.find('[data-testid="workspace-hierarchy-panel"]').exists()).toBe(true)
+      expect(wrapper.find('[data-testid="workspace-hierarchy-panel"]').element.tagName).toBe('ASIDE')
     })
 
-    it('renders .route-body container', () => {
+    it('renders route-body container', () => {
       const wrapper = mountPanel()
-      expect(wrapper.find('.route-body').exists()).toBe(true)
+      expect(wrapper.find('[data-testid="route-body"]').exists()).toBe(true)
     })
 
-    it('renders "New Project" button in .route-actions', () => {
+    it('renders "New Project" button in route-actions', () => {
       const wrapper = mountPanel()
-      const btn = wrapper.find('.route-actions .route-action')
+      const btn = wrapper.find('[data-testid="route-actions"] .route-action')
       expect(btn.exists()).toBe(true)
       expect(btn.text()).toContain('New Project')
     })

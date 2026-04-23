@@ -6,9 +6,11 @@ test.describe('Electron smoke sentinel', () => {
     const app = await launchElectronApp()
 
     try {
-      await expect(app.page.locator('.app-shell')).toBeVisible()
-      await expect(app.page.locator('[data-surface="command"]')).toBeVisible()
-      await expect(app.page.locator('[data-activity-item]')).toHaveCount(4)
+      await expect(app.page.getByRole('region', { name: 'Application viewport' })).toBeVisible()
+      await expect(app.page.getByRole('region', { name: 'Command surface' })).toBeVisible()
+      await expect(app.page.getByRole('button', { name: 'Command panel' })).toBeVisible()
+      await expect(app.page.getByRole('button', { name: 'Archive' })).toBeVisible()
+      await expect(app.page.getByRole('button', { name: 'Settings' })).toBeVisible()
     } finally {
       const { stateDir } = app
       await app.close()

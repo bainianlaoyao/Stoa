@@ -23,27 +23,37 @@ Only direct user instruction can override it.
 
 不允许写任何兼容性代码, 做任何兼容性迁移行为. 我们处于原型开发阶段.所有改进做breaking change.
 
-## Quality Gate — E2E Tests Must Pass
+## Quality Gate — Test Pipeline Must Pass
 
-No implementation is considered complete until `npx vitest run` passes with **zero unexpected failures**.
+No implementation is considered complete until the repository test pipeline passes on the current branch.
 
 ### Mandatory Test Commands
 
 ```bash
-# Run the full test suite (must be executed after any code change)
+# Regenerate deterministic generated tests
+npm run test:generate
+
+# Run the repository quality gate
 npx vitest run
+
+# Run real Electron Playwright journeys
+npm run test:e2e
+
+# Verify declared behavior assets are covered
+npm run test:behavior-coverage
 ```
 
 ### Quality Compliance Rules
 
 1. **All tests must pass.** If a test fails, the implementation is not done. Fix the code, not the test.
-2. **The sandbox: false guard test is a known intentional failure** tracking a real production bug (`tests/e2e/main-config-guard.test.ts`). This is the ONLY acceptable failing test. Once the bug is fixed, this test must pass too.
-3. **Do not delete or skip failing tests** to make the suite green. Fix the underlying code.
+2. **Generated tests are part of the source of truth.** Run `npm run test:generate` before verification and do not hand-edit files under `tests/generated/`.
+3. **Do not delete or skip failing tests** to make the suite green. Fix the underlying code, contract, topology, or behavior asset.
 4. **Do not use `as any`, `@ts-ignore`, or `@ts-expect-error`** in any test file.
+5. **Treat behavior coverage as a gate, not a report.** If critical behavior assets are declared but not verified/hardened as required, the work is incomplete.
 
 ### Test Architecture
 
-The test suite is organized in three tiers. Every tier must pass independently:
+The test suite is organized in four layers. Every layer must pass independently:
 
 #### Tier 1: Unit Tests (`src/**/*.test.ts`)
 
@@ -76,7 +86,18 @@ Full pipeline tests using real file system, real HTTP requests, real Pinia store
 - `tests/e2e/app-bridge-guard.test.ts` — App.vue behavior when window.vibecoding is undefined/partially defined/null responses
 - `tests/e2e/main-config-guard.test.ts` — Static analysis: sandbox:false presence, IPC channel registration completeness, preload type contract
 
-#### Tier 3: Config Guard Tests (static analysis)
+#### Tier 3: Generated Contract and Journey Assets (`testing/**/*.test.ts`, `tests/generated/**/*.spec.ts`)
+
+These files define and validate the AI-first testing layer:
+
+- `testing/contracts/*.test.ts` — Contract DSL invariants and generated metadata checks
+- `testing/behavior/*.test.ts` — Behavior graph declarations and risk/coverage budget validation
+- `testing/topology/*.test.ts` — Stable `data-testid` topology contracts
+- `testing/journeys/*.test.ts` — Journey declarations that map behaviors to executable paths
+- `testing/generators/*.test.ts` — Deterministic generator and behavior coverage logic
+- `tests/generated/playwright/*.generated.spec.ts` — Generated real Playwright journeys; never edit by hand
+
+#### Tier 4: Config Guard Tests (static analysis)
 
 Source-code text analysis that catches configuration drift. These tests read source files as strings and verify structural correctness — they catch bugs that runtime tests miss because the runtime never loads Electron.
 
@@ -92,4 +113,26 @@ Source-code text analysis that catches configuration drift. These tests read sou
 - **New IPC channel** → Add round-trip test in `tests/e2e/ipc-bridge.test.ts` AND registration guard in `tests/e2e/main-config-guard.test.ts`
 - **New provider** → Add tests in `tests/e2e/provider-integration.test.ts`
 - **New store action/computed** → Add tests in `tests/e2e/frontend-store-projection.test.ts`
-- **Run `npx vitest run`** → Verify zero unexpected failures before declaring done
+- **New user-visible behavior or interruption** → Add or update assets in `testing/behavior/`, `testing/topology/`, and `testing/journeys/`
+- **New generated Playwright path** → Regenerate via `npm run test:generate`; do not manually author files under `tests/generated/`
+- **Run `npm run test:generate`** → Verify generated output is deterministic
+- **Run `npx vitest run`** → Verify unit, component, integration, static, and generator tests pass
+- **Run `npm run test:e2e`** → Verify real Electron journeys, including generated journeys, pass
+- **Run `npm run test:behavior-coverage`** → Verify behavior coverage budgets remain satisfied
+
+## Current Test Workflow
+
+The current repository workflow is:
+
+1. Update implementation and, when behavior changes, update `testing/behavior`, `testing/topology`, and `testing/journeys`.
+2. Run `npm run test:generate` to regenerate deterministic Playwright artifacts.
+3. Run `npm run typecheck`.
+4. Run `npx vitest run`.
+5. Run `npm run test:e2e`.
+6. Run `npm run test:behavior-coverage`.
+
+For one-shot verification, use:
+
+```bash
+npm run test:all
+```

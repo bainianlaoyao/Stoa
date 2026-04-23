@@ -18,20 +18,18 @@ export const meta = defineGeneratedTestMeta({
 
 test('journey.session.restore.base', async () => {
   const app = await launchElectronApp()
-  const sessionTitle = 'Generated Restore Shell'
 
   try {
-    const projectRow = await createProject(app.page, {
+    const projectRow = await createProject(app, {
       name: 'generated-restore-project',
       path: join(app.stateDir, 'generated-restore-project')
     })
 
-    await createSession(app.page, projectRow, {
-      title: sessionTitle,
+    const session = await createSession(app.page, projectRow, {
       type: 'shell'
     })
 
-    await app.page.getByRole('button', { name: `Archive ${sessionTitle}` }).click()
+    await app.page.getByRole('button', { name: `Archive ${session.title}` }).click()
     await app.page.getByRole('button', { name: 'Archive' }).click()
 
     const root = app.page.getByTestId('surface.archive')

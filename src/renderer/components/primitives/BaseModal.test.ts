@@ -13,65 +13,65 @@ describe('BaseModal', () => {
   })
 
   describe('render', () => {
-    it('renders .modal-overlay when show=true', () => {
+    it('renders modal overlay when show=true', () => {
       mount(BaseModal, {
         props: { show: true, title: 'Test' },
         attachTo: document.body
       })
-      expect(document.body.querySelector('.modal-overlay')).toBeTruthy()
+      expect(document.body.querySelector('[data-testid="modal-overlay"]')).toBeTruthy()
     })
 
-    it('does NOT render .modal-overlay when show=false', () => {
+    it('does NOT render modal overlay when show=false', () => {
       mount(BaseModal, {
         props: { show: false, title: 'Test' },
         attachTo: document.body
       })
-      expect(document.body.querySelector('.modal-overlay')).toBeFalsy()
+      expect(document.body.querySelector('[data-testid="modal-overlay"]')).toBeFalsy()
     })
 
-    it('renders .modal-panel with role="dialog"', () => {
+    it('renders modal panel with role="dialog"', () => {
       mount(BaseModal, {
         props: { show: true, title: 'Test' },
         attachTo: document.body
       })
-      const panel = document.body.querySelector('.modal-panel')
+      const panel = document.body.querySelector('[data-testid="modal-panel"]')
       expect(panel).toBeTruthy()
       expect(panel!.getAttribute('role')).toBe('dialog')
     })
 
-    it('renders aria-modal="true" on .modal-panel', () => {
+    it('renders aria-modal="true" on modal panel', () => {
       mount(BaseModal, {
         props: { show: true, title: 'Test' },
         attachTo: document.body
       })
-      const panel = document.body.querySelector('.modal-panel')
+      const panel = document.body.querySelector('[data-testid="modal-panel"]')
       expect(panel!.getAttribute('aria-modal')).toBe('true')
     })
 
-    it('renders title text in .modal-panel__title', () => {
+    it('renders title text in modal title', () => {
       mount(BaseModal, {
         props: { show: true, title: 'My Modal Title' },
         attachTo: document.body
       })
-      const title = document.body.querySelector('.modal-panel__title')
+      const title = document.body.querySelector('[data-testid="modal-title"]')
       expect(title!.textContent).toBe('My Modal Title')
     })
 
-    it('renders close button .modal-panel__close', () => {
+    it('renders close button', () => {
       mount(BaseModal, {
         props: { show: true, title: 'Test' },
         attachTo: document.body
       })
-      expect(document.body.querySelector('.modal-panel__close')).toBeTruthy()
+      expect(document.body.querySelector('[data-testid="modal-close"]')).toBeTruthy()
     })
 
-    it('renders slot content in .modal-panel__body', () => {
+    it('renders slot content in modal body', () => {
       mount(BaseModal, {
         props: { show: true, title: 'Test' },
         slots: { default: '<p class="slot-content">Hello</p>' },
         attachTo: document.body
       })
-      const body = document.body.querySelector('.modal-panel__body')
+      const body = document.body.querySelector('[data-testid="modal-body"]')
       expect(body!.querySelector('.slot-content')).toBeTruthy()
       expect(body!.textContent).toContain('Hello')
     })
@@ -83,42 +83,42 @@ describe('BaseModal', () => {
         props: { show: true, title: 'Test' },
         attachTo: document.body
       })
-      const panel = document.body.querySelector('.modal-panel')!
-      const titleEl = document.body.querySelector('.modal-panel__title')!
+      const panel = document.body.querySelector('[data-testid="modal-panel"]')!
+      const titleEl = document.body.querySelector('[data-testid="modal-title"]')!
       const labelledBy = panel.getAttribute('aria-labelledby')
       expect(labelledBy).toBe(titleEl.getAttribute('id'))
     })
   })
 
   describe('close behavior', () => {
-    it('clicking .modal-panel__close emits update:show with false', async () => {
+    it('clicking close button emits update:show with false', async () => {
       const wrapper = mount(BaseModal, {
         props: { show: true, title: 'Test' },
         attachTo: document.body
       })
-      const closeBtn = document.body.querySelector('.modal-panel__close') as HTMLElement
+      const closeBtn = document.body.querySelector('[data-testid="modal-close"]') as HTMLElement
       closeBtn.click()
       expect(wrapper.emitted('update:show')).toBeTruthy()
       expect(wrapper.emitted('update:show')![0]).toEqual([false])
     })
 
-    it('clicking .modal-overlay background (self) emits update:show with false', async () => {
+    it('clicking overlay background (self) emits update:show with false', async () => {
       const wrapper = mount(BaseModal, {
         props: { show: true, title: 'Test' },
         attachTo: document.body
       })
-      const overlay = document.body.querySelector('.modal-overlay') as HTMLElement
+      const overlay = document.body.querySelector('[data-testid="modal-overlay"]') as HTMLElement
       overlay.click()
       expect(wrapper.emitted('update:show')).toBeTruthy()
       expect(wrapper.emitted('update:show')![0]).toEqual([false])
     })
 
-    it('clicking .modal-panel content does NOT emit update:show', async () => {
+    it('clicking panel content does NOT emit update:show', async () => {
       const wrapper = mount(BaseModal, {
         props: { show: true, title: 'Test' },
         attachTo: document.body
       })
-      const panel = document.body.querySelector('.modal-panel') as HTMLElement
+      const panel = document.body.querySelector('[data-testid="modal-panel"]') as HTMLElement
       panel.click()
       expect(wrapper.emitted('update:show')).toBeFalsy()
     })

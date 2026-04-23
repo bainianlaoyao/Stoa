@@ -13,14 +13,14 @@ function mountBar(props: { activeSurface?: AppSurface } = {}) {
 }
 
 describe('GlobalActivityBar', () => {
-  it('renders .activity-bar nav element', () => {
+  it('renders activity-bar nav element', () => {
     const wrapper = mountBar()
-    expect(wrapper.find('nav.activity-bar').exists()).toBe(true)
+    expect(wrapper.find('nav[data-testid="activity-bar"]').exists()).toBe(true)
   })
 
-  it('renders brand "V" in .activity-bar__brand', () => {
+  it('renders brand "V" in activity-brand', () => {
     const wrapper = mountBar()
-    expect(wrapper.find('.activity-bar__brand').text()).toBe('V')
+    expect(wrapper.find('[data-testid="activity-brand"]').text()).toBe('V')
   })
 
   it('renders 3 activity items with correct data-activity-item values', () => {
@@ -31,16 +31,16 @@ describe('GlobalActivityBar', () => {
     expect(ids).toEqual(['command', 'archive', 'settings'])
   })
 
-  it('active item has .activity-bar__item--active class', () => {
+  it('active item has data-active="true"', () => {
     const wrapper = mountBar({ activeSurface: 'settings' })
     const activeItem = wrapper.find('[data-activity-item="settings"]')
-    expect(activeItem.classes()).toContain('activity-bar__item--active')
+    expect(activeItem.attributes('data-active')).toBe('true')
   })
 
-  it('inactive items do NOT have --active class (when command is active)', () => {
+  it('inactive items do NOT have data-active="true" (when command is active)', () => {
     const wrapper = mountBar({ activeSurface: 'command' })
     const settingsItem = wrapper.find('[data-activity-item="settings"]')
-    expect(settingsItem.classes()).not.toContain('activity-bar__item--active')
+    expect(settingsItem.attributes('data-active')).toBe('false')
   })
 
   it('clicking an item emits select with correct surface id', async () => {
@@ -61,8 +61,8 @@ describe('GlobalActivityBar', () => {
 
   it('renders command in top cluster and archive above settings in bottom cluster', () => {
     const wrapper = mountBar()
-    const topCluster = wrapper.find('.activity-bar__cluster--top')
-    const bottomCluster = wrapper.find('.activity-bar__cluster--bottom')
+    const topCluster = wrapper.find('[data-testid="activity-cluster-top"]')
+    const bottomCluster = wrapper.find('[data-testid="activity-cluster-bottom"]')
     expect(topCluster.find('[data-activity-item="command"]').exists()).toBe(true)
     expect(bottomCluster.find('[data-activity-item="archive"]').exists()).toBe(true)
     expect(bottomCluster.find('[data-activity-item="settings"]').exists()).toBe(true)

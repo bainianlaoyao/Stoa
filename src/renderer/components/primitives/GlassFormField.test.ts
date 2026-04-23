@@ -5,33 +5,33 @@ import GlassFormField from './GlassFormField.vue'
 
 describe('GlassFormField', () => {
   describe('text input (default)', () => {
-    it('renders .form-field label', () => {
+    it('renders form-field label', () => {
       const wrapper = mount(GlassFormField, {
         props: { label: 'Name', modelValue: '' }
       })
-      expect(wrapper.find('.form-field').exists()).toBe(true)
-      expect(wrapper.find('label.form-field').exists()).toBe(true)
+      expect(wrapper.find('[data-testid="form-field"]').exists()).toBe(true)
+      expect(wrapper.find('label[data-testid="form-field"]').exists()).toBe(true)
     })
 
-    it('renders .form-field__input when type is not select', () => {
+    it('renders form input when type is not select', () => {
       const wrapper = mount(GlassFormField, {
         props: { label: 'Name', modelValue: '' }
       })
-      expect(wrapper.find('.form-field__input').exists()).toBe(true)
+      expect(wrapper.find('[data-testid="form-input"]').exists()).toBe(true)
     })
 
-    it('does NOT render .form-field__select when type is not select', () => {
+    it('does NOT render form select when type is not select', () => {
       const wrapper = mount(GlassFormField, {
         props: { label: 'Name', modelValue: '' }
       })
-      expect(wrapper.find('.form-field__select').exists()).toBe(false)
+      expect(wrapper.find('[data-testid="form-select"]').exists()).toBe(false)
     })
 
     it('input value matches modelValue prop', () => {
       const wrapper = mount(GlassFormField, {
         props: { label: 'Name', modelValue: 'hello' }
       })
-      const input = wrapper.find('.form-field__input')
+      const input = wrapper.find('[data-testid="form-input"]')
       expect((input.element as HTMLInputElement).value).toBe('hello')
     })
 
@@ -39,7 +39,7 @@ describe('GlassFormField', () => {
       const wrapper = mount(GlassFormField, {
         props: { label: 'Name', modelValue: '', placeholder: 'Enter name' }
       })
-      const input = wrapper.find('.form-field__input')
+      const input = wrapper.find('[data-testid="form-input"]')
       expect((input.element as HTMLInputElement).placeholder).toBe('Enter name')
     })
 
@@ -47,7 +47,7 @@ describe('GlassFormField', () => {
       const wrapper = mount(GlassFormField, {
         props: { label: 'Name', modelValue: '' }
       })
-      const input = wrapper.find('.form-field__input')
+      const input = wrapper.find('[data-testid="form-input"]')
       await input.setValue('typed text')
       expect(wrapper.emitted('update:modelValue')).toBeTruthy()
       expect(wrapper.emitted('update:modelValue')![0]).toEqual(['typed text'])
@@ -60,18 +60,18 @@ describe('GlassFormField', () => {
       { value: 'b', label: 'Option B' }
     ]
 
-    it('renders .form-field__select when type=select', () => {
+    it('renders form select when type=select', () => {
       const wrapper = mount(GlassFormField, {
         props: { label: 'Pick', modelValue: 'a', type: 'select', options }
       })
-      expect(wrapper.find('.form-field__select').exists()).toBe(true)
+      expect(wrapper.find('[data-testid="form-select"]').exists()).toBe(true)
     })
 
-    it('does NOT render .form-field__input when type=select', () => {
+    it('does NOT render form input when type=select', () => {
       const wrapper = mount(GlassFormField, {
         props: { label: 'Pick', modelValue: 'a', type: 'select', options }
       })
-      expect(wrapper.find('.form-field__input').exists()).toBe(false)
+      expect(wrapper.find('[data-testid="form-input"]').exists()).toBe(false)
     })
 
     it('renders option elements from options prop', () => {
@@ -90,7 +90,7 @@ describe('GlassFormField', () => {
       const wrapper = mount(GlassFormField, {
         props: { label: 'Pick', modelValue: 'a', type: 'select', options }
       })
-      const select = wrapper.find('.form-field__select')
+      const select = wrapper.find('[data-testid="form-select"]')
       await select.setValue('b')
       expect(wrapper.emitted('update:modelValue')).toBeTruthy()
       expect(wrapper.emitted('update:modelValue')![0]).toEqual(['b'])
@@ -100,7 +100,7 @@ describe('GlassFormField', () => {
       const wrapper = mount(GlassFormField, {
         props: { label: 'Pick', modelValue: 'b', type: 'select', options }
       })
-      const select = wrapper.find('.form-field__select')
+      const select = wrapper.find('[data-testid="form-select"]')
       expect((select.element as HTMLSelectElement).value).toBe('b')
     })
   })
@@ -110,7 +110,7 @@ describe('GlassFormField', () => {
       const wrapper = mount(GlassFormField, {
         props: { label: 'Pick', modelValue: '', type: 'select', options: [] }
       })
-      expect(wrapper.find('.form-field__select').exists()).toBe(true)
+      expect(wrapper.find('[data-testid="form-select"]').exists()).toBe(true)
       expect(wrapper.findAll('option')).toHaveLength(0)
     })
 
@@ -118,15 +118,15 @@ describe('GlassFormField', () => {
       const wrapper = mount(GlassFormField, {
         props: { label: 'Name', modelValue: '' }
       })
-      expect(wrapper.find('.form-field__input').exists()).toBe(true)
-      expect(wrapper.find('.form-field__select').exists()).toBe(false)
+      expect(wrapper.find('[data-testid="form-input"]').exists()).toBe(true)
+      expect(wrapper.find('[data-testid="form-select"]').exists()).toBe(false)
     })
 
     it('renders correctly without placeholder prop', () => {
       const wrapper = mount(GlassFormField, {
         props: { label: 'Name', modelValue: '' }
       })
-      const input = wrapper.find('.form-field__input')
+      const input = wrapper.find('[data-testid="form-input"]')
       expect((input.element as HTMLInputElement).placeholder).toBe('')
     })
   })

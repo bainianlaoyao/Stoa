@@ -72,10 +72,10 @@ describe('CommandSurface', () => {
       }
     })
 
-    expect(wrapper.find('.command-panel').exists()).toBe(true)
-    expect(wrapper.find('.command-body').exists()).toBe(true)
-    expect(wrapper.find('.command-layout').exists()).toBe(true)
-    expect(wrapper.find('.workspace-hierarchy-panel').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="command-panel"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="command-body"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="command-layout"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="workspace-hierarchy-panel"]').exists()).toBe(true)
     expect(wrapper.find('.terminal-viewport').exists()).toBe(true)
   })
 

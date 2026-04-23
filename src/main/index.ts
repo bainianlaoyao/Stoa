@@ -18,6 +18,45 @@ let ptyHost: PtyHost | null = null
 let runtimeController: SessionRuntimeController | null = null
 let sessionEventBridge: SessionEventBridge | null = null
 let isQuittingAfterBridgeStop = false
+const pendingE2EPickFolders: Array<string | null> = []
+const isE2EMode = process.env.VIBECODING_E2E === '1'
+const e2eGlobalStatePath = process.env.VIBECODING_STATE_DIR
+  ? join(process.env.VIBECODING_STATE_DIR, 'global.json')
+  : undefined
+
+interface MainE2EDebugState {
+  webhookPort: number | null
+  sessionSecrets: Record<string, string>
+  snapshot: ReturnType<ProjectSessionManager['snapshot']> | null
+}
+
+interface MainE2EDebugApi {
+  getDebugState: () => MainE2EDebugState
+  queueDialogPickFolder: (path: string | null) => void
+}
+
+declare global {
+  var __VIBECODING_MAIN_E2E__: MainE2EDebugApi | undefined
+}
+
+function installMainE2EDebugApi(): void {
+  if (!isE2EMode) {
+    return
+  }
+
+  globalThis.__VIBECODING_MAIN_E2E__ = {
+    getDebugState() {
+      return {
+        webhookPort: projectSessionManager?.snapshot().terminalWebhookPort ?? null,
+        sessionSecrets: sessionEventBridge?.debugSnapshotSessionSecrets() ?? {},
+        snapshot: projectSessionManager?.snapshot() ?? null
+      }
+    },
+    queueDialogPickFolder(path) {
+      pendingE2EPickFolders.push(path)
+    }
+  }
+}
 
 async function stopSessionEventBridge(): Promise<void> {
   const activeBridge = sessionEventBridge
@@ -51,7 +90,8 @@ function createMainWindow(): BrowserWindow {
 
 app.whenReady().then(async () => {
   projectSessionManager = await ProjectSessionManager.create({
-    webhookPort: null
+    webhookPort: null,
+    globalStatePath: e2eGlobalStatePath
   })
 
   ptyHost = new PtyHost()
@@ -62,6 +102,7 @@ app.whenReady().then(async () => {
   )
   sessionEventBridge = new SessionEventBridge(projectSessionManager, runtimeController)
   const webhookPort = await sessionEventBridge.start()
+  installMainE2EDebugApi()
 
   async function resolveRuntimePaths(sessionType: CreateSessionRequest['type']): Promise<{
     shellPath: string | null
@@ -181,6 +222,10 @@ app.whenReady().then(async () => {
   })
 
   ipcMain.handle(IPC_CHANNELS.dialogPickFolder, async (_event, options?: { title?: string }) => {
+    if (isE2EMode) {
+      return pendingE2EPickFolders.shift() ?? null
+    }
+
     if (!mainWindow) return null
     const result = await dialog.showOpenDialog(mainWindow, {
       properties: ['openDirectory'],

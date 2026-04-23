@@ -154,10 +154,10 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <aside class="min-h-0 rounded-[10px] overflow-hidden bg-white/40 border border-black/6" aria-label="Workspace hierarchy">
-    <div class="min-h-0 overflow-auto p-2.5 grid gap-3 align-content-start">
-      <div class="grid gap-1">
-        <button class="flex items-center justify-between gap-2 px-2.5 py-2 border border-black/[0.03] rounded-lg bg-surface-solid text-text-strong shadow-[0_1px_3px_rgba(0,0,0,0.02)] cursor-pointer transition-colors duration-200 hover:bg-[#f8f9fb] focus-visible:bg-[#f8f9fb] focus-visible:outline-none" type="button" @click="showNewProject = true">
+  <aside class="min-h-0 rounded-[10px] overflow-hidden bg-white/40 border border-black/6" data-testid="workspace-hierarchy-panel" aria-label="Workspace hierarchy">
+    <div class="min-h-0 overflow-auto p-2.5 grid gap-3 align-content-start" data-testid="route-body">
+      <div class="grid gap-1" data-testid="route-actions">
+        <button class="route-action flex items-center justify-between gap-2 px-2.5 py-2 border border-black/[0.03] rounded-lg bg-surface-solid text-text-strong shadow-[0_1px_3px_rgba(0,0,0,0.02)] cursor-pointer transition-colors duration-200 hover:bg-[#f8f9fb] focus-visible:bg-[#f8f9fb] focus-visible:outline-none" type="button" @click="showNewProject = true">
           <span class="text-xs font-semibold tracking-[0.05em]">New Project</span>
           <span class="w-[18px] h-[18px] grid place-items-center rounded-full bg-canvas text-text-strong text-xs">+</span>
         </button>
@@ -166,7 +166,7 @@ onBeforeUnmount(() => {
       <div class="grid gap-1">
         <div class="group-label">Projects</div>
 
-        <div v-for="project in hierarchy" :key="project.id" class="grid gap-1">
+        <div v-for="project in hierarchy" :key="project.id" class="route-project grid gap-1">
           <div
             class="grid grid-cols-[minmax(0,1fr)_auto] gap-2 items-center"
             @contextmenu="onProjectRowContextmenu($event, project.id)"

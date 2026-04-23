@@ -63,6 +63,32 @@ async function waitForProcessExit(processHandle: ChildProcess | null | undefined
   await new Promise((resolve) => setTimeout(resolve, 500))
 }
 
+async function closeElectronAppWithTimeout(
+  electronApp: ElectronApplication,
+  processHandle: ChildProcess | null | undefined,
+  timeoutMs = 5_000
+): Promise<void> {
+  let timeoutHandle: ReturnType<typeof setTimeout> | null = null
+
+  try {
+    await Promise.race([
+      electronApp.close(),
+      new Promise<never>((_, reject) => {
+        timeoutHandle = setTimeout(() => {
+          reject(new Error(`Timed out closing Electron app after ${timeoutMs}ms`))
+        }, timeoutMs)
+      })
+    ])
+  } catch {
+    processHandle?.kill('SIGKILL')
+  } finally {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle)
+    }
+    await waitForProcessExit(processHandle)
+  }
+}
+
 export async function launchElectronApp(options: LaunchOptions = {}): Promise<LaunchedElectronApp> {
   const stateDir = options.stateDir ?? await createStateDir()
   const entryPath = ensureElectronMainEntrypoint()
@@ -78,8 +104,8 @@ export async function launchElectronApp(options: LaunchOptions = {}): Promise<La
   })
 
   const page = await electronApp.firstWindow()
-  await page.waitForSelector('.app-shell', { timeout: 15_000 })
-  await expect(page.locator('[data-surface="command"]')).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Application viewport' })).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByRole('region', { name: 'Command surface' })).toBeVisible()
 
   return {
     electronApp,
@@ -87,12 +113,7 @@ export async function launchElectronApp(options: LaunchOptions = {}): Promise<La
     stateDir,
     async close() {
       const processHandle = electronApp.process()
-      try {
-        await electronApp.close()
-      } catch {
-        processHandle?.kill('SIGKILL')
-        await waitForProcessExit(processHandle)
-      }
+      await closeElectronAppWithTimeout(electronApp, processHandle)
     },
     async kill() {
       const processHandle = electronApp.process()
@@ -107,10 +128,7 @@ export async function launchElectronApp(options: LaunchOptions = {}): Promise<La
     },
     async relaunch() {
       const processHandle = electronApp.process()
-      await electronApp.close().catch(() => {
-        processHandle?.kill('SIGKILL')
-      })
-      await waitForProcessExit(processHandle)
+      await closeElectronAppWithTimeout(electronApp, processHandle)
       return await launchElectronApp({ stateDir, env: options.env })
     },
   }
@@ -154,6 +172,15 @@ export async function getMainE2EDebugState(electronApp: ElectronApplication): Pr
   return await electronApp.evaluate(async () => {
     return globalThis.__VIBECODING_MAIN_E2E__?.getDebugState() ?? null
   })
+}
+
+export async function queueNextFolderPick(
+  electronApp: ElectronApplication,
+  path: string | null
+): Promise<void> {
+  await electronApp.evaluate(async (_electron, nextPath) => {
+    globalThis.__VIBECODING_MAIN_E2E__?.queueDialogPickFolder(nextPath)
+  }, path)
 }
 
 export async function postWebhookEvent(options: {

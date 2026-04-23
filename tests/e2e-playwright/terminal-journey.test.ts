@@ -26,16 +26,15 @@ test.describe('Electron terminal journeys', () => {
     const app = await launchElectronApp()
 
     try {
-      const projectRow = await createProject(app.page, {
+      const projectRow = await createProject(app, {
         name: 'terminal-io-project',
         path: join(app.stateDir, 'terminal-io-project')
       })
-      await createSession(app.page, projectRow, {
-        title: 'Shell IO',
+      const session = await createSession(app.page, projectRow, {
         type: 'shell'
       })
 
-      await waitForSessionStatus(app, 'Shell IO', 'running')
+      await waitForSessionStatus(app, session.title, 'running')
       await waitForTerminalDebugHook(app.page)
       await expect(app.page.getByRole('region', { name: 'Terminal surface' })).toBeVisible()
       await expect(app.page.getByRole('region', { name: 'Terminal empty state' })).toHaveCount(0)
@@ -56,24 +55,22 @@ test.describe('Electron terminal journeys', () => {
     const app = await launchElectronApp()
 
     try {
-      const projectRow = await createProject(app.page, {
+      const projectRow = await createProject(app, {
         name: 'terminal-isolation-project',
         path: join(app.stateDir, 'terminal-isolation-project')
       })
-      const sessionARow = await createSession(app.page, projectRow, {
-        title: 'Shell A',
+      const sessionA = await createSession(app.page, projectRow, {
         type: 'shell'
       })
-      const sessionBRow = await createSession(app.page, projectRow, {
-        title: 'Shell B',
+      const sessionB = await createSession(app.page, projectRow, {
         type: 'shell'
       })
 
-      await waitForSessionStatus(app, 'Shell A', 'running')
-      await waitForSessionStatus(app, 'Shell B', 'running')
+      await waitForSessionStatus(app, sessionA.title, 'running')
+      await waitForSessionStatus(app, sessionB.title, 'running')
 
-      await sessionARow.click()
-      await expect(sessionARow).toHaveAttribute('aria-current', 'true')
+      await sessionA.row.click()
+      await expect(sessionA.row).toHaveAttribute('aria-current', 'true')
       await waitForTerminalDebugHook(app.page)
       await runTerminalCommand(app.page, 'Write-Output "__PLAYWRIGHT_A__"')
       await waitForTerminalBufferText(app.page, '__PLAYWRIGHT_A__')
@@ -81,8 +78,8 @@ test.describe('Electron terminal journeys', () => {
       const bufferA = await readTerminalBuffer(app.page)
       expect(bufferA).toContain('__PLAYWRIGHT_A__')
 
-      await sessionBRow.click()
-      await expect(sessionBRow).toHaveAttribute('aria-current', 'true')
+      await sessionB.row.click()
+      await expect(sessionB.row).toHaveAttribute('aria-current', 'true')
       await waitForTerminalDebugHook(app.page)
 
       const bufferBInitial = await readTerminalBuffer(app.page)
@@ -95,8 +92,8 @@ test.describe('Electron terminal journeys', () => {
       expect(bufferB).toContain('__PLAYWRIGHT_B__')
       expect(bufferB).not.toContain('__PLAYWRIGHT_A__')
 
-      await sessionARow.click()
-      await expect(sessionARow).toHaveAttribute('aria-current', 'true')
+      await sessionA.row.click()
+      await expect(sessionA.row).toHaveAttribute('aria-current', 'true')
       await waitForTerminalDebugHook(app.page)
 
       const bufferAReturn = await readTerminalBuffer(app.page)
@@ -113,16 +110,15 @@ test.describe('Electron terminal journeys', () => {
     const app = await launchElectronApp()
 
     try {
-      const projectRow = await createProject(app.page, {
+      const projectRow = await createProject(app, {
         name: 'terminal-visual-project',
         path: join(app.stateDir, 'terminal-visual-project')
       })
-      await createSession(app.page, projectRow, {
-        title: 'Shell Visual',
+      const session = await createSession(app.page, projectRow, {
         type: 'shell'
       })
 
-      await waitForSessionStatus(app, 'Shell Visual', 'running')
+      await waitForSessionStatus(app, session.title, 'running')
       await waitForTerminalDebugHook(app.page)
       await runTerminalCommand(app.page, 'Write-Output "__PLAYWRIGHT_VISUAL__"')
       await waitForTerminalBufferText(app.page, '__PLAYWRIGHT_VISUAL__')

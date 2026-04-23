@@ -20,9 +20,9 @@ const bottomItems: Array<{ id: AppSurface; label: string; title: string }> = [
 </script>
 
 <template>
-  <nav class="grid grid-rows-[auto_auto_1fr_auto] py-5 pb-4 bg-transparent" aria-label="Global activity">
-    <div class="w-6 h-6 mx-auto mb-6 grid place-items-center rounded-lg bg-text-strong text-surface-solid text-xs font-bold tracking-wide shadow-soft">V</div>
-    <div class="grid gap-3">
+  <nav class="grid grid-rows-[auto_auto_1fr_auto] py-5 pb-4 bg-transparent" data-testid="activity-bar" aria-label="Global activity">
+    <div data-testid="activity-brand" class="w-6 h-6 mx-auto mb-6 grid place-items-center rounded-lg bg-text-strong text-surface-solid text-xs font-bold tracking-wide shadow-soft">V</div>
+    <div data-testid="activity-cluster-top" class="grid gap-3">
       <button
         v-for="item in topItems"
         :key="item.id"
@@ -39,7 +39,7 @@ const bottomItems: Array<{ id: AppSurface; label: string; title: string }> = [
         <span>{{ item.label }}</span>
       </button>
     </div>
-    <div class="grid gap-3 self-end">
+    <div data-testid="activity-cluster-bottom" class="grid gap-3 self-end">
       <button
         v-for="item in bottomItems"
         :key="item.id"

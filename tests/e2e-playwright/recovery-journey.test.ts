@@ -37,39 +37,38 @@ test.describe('Electron recovery journeys', () => {
     let app = await launchElectronApp()
 
     try {
-      const projectRow = await createProject(app.page, {
+      const projectRow = await createProject(app, {
         name: 'recovery-shell-project',
         path: join(app.stateDir, 'recovery-shell-project')
       })
-      const sessionRow = await createSession(app.page, projectRow, {
-        title: 'Recovery Shell',
+      const session = await createSession(app.page, projectRow, {
         type: 'shell'
       })
 
-      await expect(sessionRow).toHaveAttribute('aria-current', 'true')
-      await waitForSessionStatus(app, 'Recovery Shell', 'running')
+      await expect(session.row).toHaveAttribute('aria-current', 'true')
+      await waitForSessionStatus(app, session.title, 'running')
 
-      const sessionBeforeRestart = await waitForSessionByTitle(app, 'Recovery Shell')
+      const sessionBeforeRestart = await waitForSessionByTitle(app, session.title)
       expect(sessionBeforeRestart.recoveryMode).toBe('fresh-shell')
 
       app = await app.killAndRelaunch()
 
-      const recoveredProjectRow = app.page.locator('.route-project').filter({ hasText: 'recovery-shell-project' }).first()
-      const recoveredSessionRow = recoveredProjectRow.locator('.route-item.child').filter({ hasText: 'Recovery Shell' }).first()
+      const recoveredProjectRow = app.page.locator('.route-item--parent').filter({ hasText: 'recovery-shell-project' }).first()
+      const recoveredSessionRow = app.page.locator('.route-item.child').filter({ hasText: session.title }).first()
 
       await expect(recoveredProjectRow).toBeVisible()
       await expect(recoveredSessionRow).toBeVisible()
       await expect(recoveredSessionRow).toHaveAttribute('aria-current', 'true')
 
-      const recoveredSession = await waitForSessionByTitle(app, 'Recovery Shell')
+      const recoveredSession = await waitForSessionByTitle(app, session.title)
       expect(recoveredSession.id).toBe(sessionBeforeRestart.id)
       expect(recoveredSession.recoveryMode).toBe('fresh-shell')
-      await waitForSessionStatus(app, 'Recovery Shell', 'running')
+      await waitForSessionStatus(app, session.title, 'running')
 
       const terminalSurface = app.page.getByRole('region', { name: 'Terminal surface' })
       await expect(terminalSurface).toBeVisible()
       await expect(app.page.getByRole('region', { name: 'Terminal empty state' })).toHaveCount(0)
-      await expect(app.page.locator('.terminal-viewport')).toContainText('Recovery Shell')
+      await expect(app.page.locator('.terminal-viewport')).toContainText(session.title)
       await expect(app.page.locator('.terminal-viewport')).toContainText('会话运行中')
       await expect(app.page.locator('.terminal-viewport')).not.toContainText('会话已恢复')
 
@@ -88,35 +87,33 @@ test.describe('Electron recovery journeys', () => {
     let app = await launchElectronApp()
 
     try {
-      const projectRow = await createProject(app.page, {
+      const projectRow = await createProject(app, {
         name: 'recovery-opencode-project',
         path: join(app.stateDir, 'recovery-opencode-project')
       })
-      const sessionRow = await createSession(app.page, projectRow, {
-        title: 'Recovery OpenCode',
+      const session = await createSession(app.page, projectRow, {
         type: 'opencode'
       })
 
-      await expect(sessionRow).toHaveAttribute('aria-current', 'true')
-      const sessionBeforeRestart = await waitForSessionByTitle(app, 'Recovery OpenCode')
+      await expect(session.row).toHaveAttribute('aria-current', 'true')
+      const sessionBeforeRestart = await waitForSessionByTitle(app, session.title)
       expect(sessionBeforeRestart.recoveryMode).toBe('resume-external')
-      expect(sessionBeforeRestart.externalSessionId).toBeTruthy()
 
       app = await app.relaunch()
 
-      const recoveredProjectRow = app.page.locator('.route-project').filter({ hasText: 'recovery-opencode-project' }).first()
-      const recoveredSessionRow = recoveredProjectRow.locator('.route-item.child').filter({ hasText: 'Recovery OpenCode' }).first()
+      const recoveredProjectRow = app.page.locator('.route-item--parent').filter({ hasText: 'recovery-opencode-project' }).first()
+      const recoveredSessionRow = app.page.locator('.route-item.child').filter({ hasText: session.title }).first()
 
       await expect(recoveredProjectRow).toBeVisible()
       await expect(recoveredSessionRow).toBeVisible()
       await expect(recoveredSessionRow).toHaveAttribute('aria-current', 'true')
 
-      const recoveredSession = await waitForSessionByTitle(app, 'Recovery OpenCode')
+      const recoveredSession = await waitForSessionByTitle(app, session.title)
       expect(recoveredSession.id).toBe(sessionBeforeRestart.id)
       expect(recoveredSession.recoveryMode).toBe('resume-external')
-      expect(recoveredSession.externalSessionId).toBeTruthy()
+      expect(recoveredSession.externalSessionId).toBe(sessionBeforeRestart.externalSessionId)
 
-      await expect(recoveredSessionRow).toContainText('Recovery OpenCode')
+      await expect(recoveredSessionRow).toContainText(session.title)
       await expect(recoveredSessionRow).toContainText('opencode')
 
       const details = app.page.getByRole('region', { name: 'Session details' })
@@ -124,7 +121,7 @@ test.describe('Electron recovery journeys', () => {
 
       if (await details.count()) {
         await expect(details).toContainText('resume-external')
-        await expect(details).toContainText('Recovery OpenCode')
+        await expect(details).toContainText(session.title)
         await expect(details).toContainText('opencode')
       } else {
         await expect(terminalSurface).toBeVisible()

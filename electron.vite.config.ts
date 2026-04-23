@@ -1,6 +1,7 @@
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import vue from '@vitejs/plugin-vue'
 import tailwindcss from '@tailwindcss/vite'
+import VueI18nPlugin from '@intlify/unplugin-vue-i18n/vite'
 import { resolve } from 'node:path'
 
 export default defineConfig({
@@ -39,6 +40,12 @@ export default defineConfig({
         '@extensions': resolve('src/extensions')
       }
     },
-    plugins: [vue(), tailwindcss()]
+    plugins: [
+      vue(),
+      tailwindcss(),
+      VueI18nPlugin({
+        include: [resolve('src/renderer/i18n/**')]
+      })
+    ]
   }
 })

@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Frosted Glass — Transient Surfaces Only</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════
+   Tokens — faithful copy from styles.css
+   ═══════════════════════════════════════════ */
+:root {
+  --canvas: #f4f5f8;
+  --surface: rgba(255, 255, 255, 0.75);
+  --surface-solid: #ffffff;
+  --surface-soft: rgba(255, 255, 255, 0.42);
+  --line: rgba(0, 0, 0, 0.06);
+  --line-strong: rgba(0, 0, 0, 0.1);
+  --text-strong: #111418;
+  --text: #373c44;
+  --muted: #808792;
+  --subtle: #a6acb5;
+  --accent: #0055ff;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --error: #ef4444;
+  --black-soft: rgba(0, 0, 0, 0.04);
+  --black-faint: rgba(0, 0, 0, 0.02);
+  --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
+  --radius-lg: 18px;
+  --radius-md: 12px;
+  --radius-sm: 8px;
+  --font-size-caption: 11px;
+  --font-size-meta: 12px;
+  --font-size-body-sm: 13px;
+  --font-size-body: 14px;
+  --font-size-title-sm: 15px;
+  --font-size-title: 18px;
+  --shadow-premium: 0 24px 48px -12px rgba(0, 0, 0, 0.08), 0 8px 16px -4px rgba(0, 0, 0, 0.03), 0 1px 2px rgba(0, 0, 0, 0.02);
+  --shadow-soft: 0 2px 8px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
+  --shadow-card: 0 2px 6px rgba(0, 0, 0, 0.02), 0 1px 2px rgba(0, 0, 0, 0.02);
+
+  /* Glass — single recipe for all transient surfaces */
+  --shadow-glass:
+    0 12px 32px -4px rgba(0, 0, 0, 0.08),
+    0 4px 12px rgba(0, 0, 0, 0.03),
+    inset 0 1px 0 rgba(255, 255, 255, 0.85);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; }
+
+body {
+  font-family: var(--font-ui);
+  font-size: var(--font-size-body);
+  color: var(--text);
+  line-height: 1.5;
+  min-height: 100vh;
+  background:
+    radial-gradient(at 0% 0%, #ffffff 0%, transparent 45%),
+    radial-gradient(at 100% 0%, #e8edf7 0%, transparent 48%),
+    radial-gradient(at 100% 100%, #ffffff 0%, transparent 45%),
+    var(--canvas);
+}
+
+button { font: inherit; }
+code { font-family: var(--font-mono); }
+
+/* ═══════════════════════════════════════════
+   Glass — single recipe
+   ═══════════════════════════════════════════ */
+.glass {
+  background: linear-gradient(180deg, rgba(255,255,255,0.85), rgba(255,255,255,0.72));
+  backdrop-filter: blur(24px) saturate(120%);
+  -webkit-backdrop-filter: blur(24px) saturate(120%);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  box-shadow: var(--shadow-glass);
+  transition: background 0.25s ease, border-color 0.25s ease;
+}
+
+.glass:hover {
+  background: linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.80));
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+/* Lighter variant for radial track */
+.glass--light {
+  background: linear-gradient(180deg, rgba(255,255,255,0.60), rgba(255,255,255,0.42));
+  backdrop-filter: blur(20px) saturate(120%);
+  -webkit-backdrop-filter: blur(20px) saturate(120%);
+  border: 1px solid rgba(255, 255, 255, 0.30);
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.03),
+    inset 0 1px 0 rgba(255, 255, 255, 0.60);
+}
+
+/* ═══════════════════════════════════════════
+   Page
+   ═══════════════════════════════════════════ */
+.page {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 44px 28px 72px;
+}
+
+.hero { margin-bottom: 48px; }
+.hero__label {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(0, 85, 255, 0.07);
+  color: var(--accent);
+  font-size: var(--font-size-caption);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+.hero__title {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--text-strong);
+  margin-bottom: 6px;
+}
+.hero__sub {
+  font-size: var(--font-size-body);
+  color: var(--muted);
+  max-width: 480px;
+}
+.hero__rule {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  background: rgba(0,0,0,0.03);
+  font-size: var(--font-size-body-sm);
+  color: var(--text);
+}
+.hero__rule strong {
+  color: var(--text-strong);
+}
+
+.section { margin-bottom: 40px; }
+.section__head { margin-bottom: 16px; }
+.section__title {
+  font-size: var(--font-size-title);
+  font-weight: 600;
+  color: var(--text-strong);
+  letter-spacing: -0.01em;
+}
+.section__desc {
+  font-size: var(--font-size-body-sm);
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.chip {
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+}
+.chip--glass { background: rgba(0,85,255,0.06); color: var(--accent); }
+.chip--solid { background: rgba(0,0,0,0.04); color: var(--muted); }
+
+/* ═══════════════════════════════════════════
+   App Shell (all solid — always there)
+   ═══════════════════════════════════════════ */
+.shell {
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  border: 1px solid rgba(0,0,0,0.04);
+  box-shadow: var(--shadow-premium), inset 0 1px 0 rgba(255,255,255,0.9);
+  background: var(--surface);
+  backdrop-filter: blur(40px) saturate(120%);
+  -webkit-backdrop-filter: blur(40px) saturate(120%);
+  min-height: 380px;
+}
+
+/* Activity bar */
+.activity-bar {
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  padding: 20px 0 16px;
+  background: transparent;
+}
+.activity-bar__brand {
+  width: 24px; height: 24px;
+  margin: 0 auto 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--text-strong);
+  color: var(--surface-solid);
+  font-size: var(--font-size-meta);
+  font-weight: 700;
+  box-shadow: var(--shadow-soft);
+}
+.activity-bar__cluster {
+  display: grid;
+  gap: 12px;
+}
+.activity-bar__cluster--bottom { align-self: end; }
+.activity-bar__item {
+  position: relative;
+  width: 36px; height: 36px;
+  margin: 0 auto;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+}
+.activity-bar__item:hover { color: var(--text-strong); background: var(--black-soft); }
+.activity-bar__item--active {
+  color: var(--text-strong);
+  background: var(--surface-solid);
+  box-shadow: var(--shadow-soft);
+}
+
+/* Viewport interior */
+.viewport {
+  display: grid;
+  grid-template-columns: 1fr;
+  margin: 12px 12px 12px 0;
+  min-height: 0;
+}
+.viewport__body {
+  padding: 10px;
+  display: grid;
+  gap: 10px;
+  min-height: 0;
+}
+.viewport__layout {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 10px;
+  min-height: 0;
+}
+
+/* Sidebar (solid) */
+.sidebar {
+  min-height: 0;
+  border-radius: 10px;
+  overflow: hidden;
+  background: rgba(255,255,255,0.4);
+  border: 1px solid rgba(0,0,0,0.06);
+  padding: 10px;
+  display: grid;
+  gap: 4px;
+  align-content: start;
+}
+.nav-label {
+  font-size: var(--font-size-caption);
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+  padding-left: 4px;
+}
+.nav-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid rgba(0,0,0,0.03);
+  border-radius: var(--radius-sm);
+  background: var(--surface-solid);
+  color: var(--text-strong);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+  cursor: pointer;
+  font-size: var(--font-size-meta);
+  font-weight: 600;
+}
+.nav-action__icon {
+  width: 18px; height: 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--canvas);
+  font-size: 12px;
+}
+
+.nav-row {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-body-sm);
+  color: var(--muted);
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+.nav-row:hover { background: rgba(255,255,255,0.5); color: var(--text-strong); }
+.nav-row--active {
+  background: var(--surface-solid);
+  border-color: rgba(0,0,0,0.04);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-card);
+}
+.nav-row--child { grid-column: 1 / -1; padding-left: 24px; grid-template-columns: 8px minmax(0, 1fr); }
+.nav-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--subtle);
+}
+.nav-dot--run { background: var(--success); box-shadow: 0 0 0 2px rgba(16,185,129,0.15); }
+.nav-dot--warn { background: var(--warning); }
+.nav-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.nav-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-weight: 600;
+  font-size: var(--font-size-body-sm);
+}
+.nav-meta {
+  color: var(--muted);
+  font-size: var(--font-size-caption);
+  font-family: var(--font-mono);
+}
+
+/* Terminal (solid, dark) */
+.terminal {
+  min-height: 0;
+  border-radius: 10px;
+  border: 1px solid rgba(0,0,0,0.1);
+  background: #0a0b0d;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
+  padding: 16px 20px;
+  color: #e2e8f0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.7;
+}
+.terminal__prompt { color: #6ee7b7; }
+
+/* ═══════════════════════════════════════════
+   Modal (GLASS — transient)
+   ═══════════════════════════════════════════ */
+.modal-frame {
+  position: relative;
+  height: 340px;
+  border-radius: var(--radius-lg);
+  /* Simulate the real app surface underneath */
+  background: var(--surface);
+  border: 1px solid rgba(0,0,0,0.04);
+  overflow: hidden;
+}
+.modal-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.18);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.modal-panel {
+  width: 340px;
+  padding: 22px;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(180deg, rgba(255,255,255,0.85), rgba(255,255,255,0.72));
+  backdrop-filter: blur(24px) saturate(120%);
+  -webkit-backdrop-filter: blur(24px) saturate(120%);
+  border: 1px solid rgba(0,0,0,0.06);
+  box-shadow:
+    0 20px 48px -12px rgba(0,0,0,0.10),
+    0 8px 16px -4px rgba(0,0,0,0.04),
+    inset 0 1px 0 rgba(255,255,255,0.85);
+}
+.modal-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.modal-panel__title {
+  font-size: var(--font-size-title-sm);
+  font-weight: 600;
+  color: var(--text-strong);
+}
+.modal-panel__close {
+  width: 24px; height: 24px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 14px;
+  display: grid;
+  place-items: center;
+}
+.modal-panel__close:hover { background: var(--black-soft); color: var(--text-strong); }
+.modal-panel__body { display: grid; gap: 10px; }
+.modal-input {
+  background: var(--surface-solid);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  font: inherit;
+  font-size: var(--font-size-body-sm);
+  color: var(--text-strong);
+  outline: none;
+}
+.modal-input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(0,85,255,0.12); }
+.modal-input::placeholder { color: var(--subtle); }
+.modal-panel__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
+.btn {
+  padding: 7px 14px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-body-sm);
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: opacity 0.2s;
+}
+.btn:hover { opacity: 0.85; }
+.btn--primary { background: var(--text-strong); color: #fff; }
+.btn--ghost { background: transparent; color: var(--muted); border: 1px solid var(--line); }
+
+/* ═══════════════════════════════════════════
+   Floating Card (GLASS — transient)
+   ═══════════════════════════════════════════ */
+.float-frame {
+  position: relative;
+  height: 200px;
+  border-radius: var(--radius-lg);
+  /* Solid surface underneath */
+  background: var(--surface);
+  border: 1px solid rgba(0,0,0,0.04);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.float-trigger {
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-solid);
+  border: 1px solid var(--line);
+  font: inherit;
+  font-size: var(--font-size-body-sm);
+  font-weight: 600;
+  color: var(--text-strong);
+  cursor: pointer;
+  box-shadow: var(--shadow-soft);
+}
+.floating-card {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px;
+  border-radius: var(--radius-md);
+  background: linear-gradient(180deg, rgba(255,255,255,0.85), rgba(255,255,255,0.72));
+  backdrop-filter: blur(24px) saturate(120%);
+  -webkit-backdrop-filter: blur(24px) saturate(120%);
+  border: 1px solid rgba(0,0,0,0.06);
+  box-shadow:
+    0 12px 32px -4px rgba(0,0,0,0.08),
+    0 4px 12px rgba(0,0,0,0.03),
+    inset 0 1px 0 rgba(255,255,255,0.85);
+  display: flex;
+  gap: 4px;
+}
+.float-cell {
+  width: 46px; height: 46px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.float-cell:hover { background: rgba(0,0,0,0.04); }
+.provider-icon {
+  width: 26px; height: 26px;
+  border-radius: 7px;
+}
+.pi--blue { background: linear-gradient(135deg, #60a5fa, #3b82f6); }
+.pi--green { background: linear-gradient(135deg, #34d399, #10b981); }
+.pi--purple { background: linear-gradient(135deg, #a78bfa, #8b5cf6); }
+.pi--amber { background: linear-gradient(135deg, #fbbf24, #f59e0b); }
+.pi--rose { background: linear-gradient(135deg, #fb7185, #f43f5e); }
+
+/* ═══════════════════════════════════════════
+   Radial Menu (GLASS — transient)
+   ═══════════════════════════════════════════ */
+.radial-frame {
+  position: relative;
+  height: 260px;
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  border: 1px solid rgba(0,0,0,0.04);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.radial-center {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: var(--surface-solid);
+  border: 1px solid var(--line);
+  display: grid;
+  place-items: center;
+  font-size: 16px;
+  color: var(--text-strong);
+  z-index: 2;
+  box-shadow: var(--shadow-soft);
+}
+.radial-track {
+  position: absolute;
+  width: 170px; height: 170px;
+  left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: linear-gradient(180deg, rgba(255,255,255,0.60), rgba(255,255,255,0.42));
+  backdrop-filter: blur(20px) saturate(120%);
+  -webkit-backdrop-filter: blur(20px) saturate(120%);
+  border: 1px solid rgba(255,255,255,0.30);
+  box-shadow:
+    0 4px 12px rgba(0,0,0,0.03),
+    inset 0 1px 0 rgba(255,255,255,0.60);
+}
+.radial-btn {
+  position: absolute;
+  width: 34px; height: 34px;
+  border-radius: var(--radius-sm);
+  display: grid;
+  place-items: center;
+  background: linear-gradient(180deg, rgba(255,255,255,0.80), rgba(255,255,255,0.65));
+  backdrop-filter: blur(24px) saturate(120%);
+  -webkit-backdrop-filter: blur(24px) saturate(120%);
+  border: 1px solid rgba(0,0,0,0.05);
+  box-shadow:
+    0 12px 32px -4px rgba(0,0,0,0.08),
+    0 4px 12px rgba(0,0,0,0.03),
+    inset 0 1px 0 rgba(255,255,255,0.85);
+  cursor: pointer;
+  transition: background 0.25s ease;
+}
+.radial-btn:hover {
+  background: linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.80));
+}
+.radial-btn__icon {
+  width: 18px; height: 18px;
+  border-radius: 5px;
+}
+
+/* ═══════════════════════════════════════════
+   Layout helpers
+   ═══════════════════════════════════════════ */
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+.footer {
+  margin-top: 52px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+  font-size: var(--font-size-caption);
+  color: var(--subtle);
+  display: flex;
+  justify-content: space-between;
+}
+
+@media (max-width: 780px) {
+  .page { padding: 32px 14px 60px; }
+  .two-col { grid-template-columns: 1fr; }
+  .viewport__layout { grid-template-columns: 1fr; }
+  .shell { grid-template-columns: 48px 1fr; }
+}
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <!-- Hero -->
+  <header class="hero">
+    <span class="hero__label">Design Spec</span>
+    <h1 class="hero__title">Frosted Glass</h1>
+    <p class="hero__sub">Only transient surfaces use glass. Everything permanent stays solid and crisp.</p>
+    <div class="hero__rule">
+      <strong>Solid</strong> = always there &nbsp;·&nbsp; <strong>Glass</strong> = appears &amp; disappears
+    </div>
+  </header>
+
+  <!-- ─── App Shell (all solid) ─── -->
+  <section class="section">
+    <div class="section__head">
+      <h2 class="section__title">App Shell — All Solid</h2>
+      <p class="section__desc">Viewport, sidebar, terminal. Always visible. Opaque backgrounds, crisp borders.</p>
+      <div class="chips">
+        <span class="chip chip--solid">viewport — solid</span>
+        <span class="chip chip--solid">sidebar — solid</span>
+        <span class="chip chip--solid">terminal — solid</span>
+      </div>
+    </div>
+    <div class="shell">
+      <nav class="activity-bar">
+        <div class="activity-bar__brand">V</div>
+        <div class="activity-bar__cluster activity-bar__cluster--top">
+          <button class="activity-bar__item activity-bar__item--active" title="Command">
+            <span>⌘</span>
+          </button>
+        </div>
+        <div class="activity-bar__cluster activity-bar__cluster--bottom">
+          <button class="activity-bar__item" title="Archive"><span>Ar</span></button>
+          <button class="activity-bar__item" title="Settings"><span>⚙</span></button>
+        </div>
+      </nav>
+
+      <section class="viewport">
+        <div class="viewport__body">
+          <div class="viewport__layout">
+            <div class="sidebar">
+              <button class="nav-action" type="button">
+                <span class="nav-action__label">New Project</span>
+                <span class="nav-action__icon">+</span>
+              </button>
+              <div class="nav-label">Projects</div>
+              <div class="nav-row nav-row--active">
+                <div class="nav-dot nav-dot--run"></div>
+                <div class="nav-copy">
+                  <span class="nav-name">ultra-simple-panel</span>
+                </div>
+              </div>
+              <div class="nav-row nav-row--child">
+                <div class="nav-dot nav-dot--run"></div>
+                <div class="nav-copy">
+                  <span class="nav-name">shell-1</span>
+                  <span class="nav-meta">shell</span>
+                </div>
+              </div>
+              <div class="nav-row nav-row--child">
+                <div class="nav-dot nav-dot--warn"></div>
+                <div class="nav-copy">
+                  <span class="nav-name">claude-main</span>
+                  <span class="nav-meta">claude</span>
+                </div>
+              </div>
+              <div class="nav-row">
+                <div class="nav-dot"></div>
+                <div class="nav-copy">
+                  <span class="nav-name">my-dashboard</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="terminal">
+              <span class="terminal__prompt">$</span> npm run dev<br><br>
+              VITE v7.1.7 ready in 142ms<br><br>
+              ➜ Local: http://localhost:5173/<br>
+              ➜ press h + enter to show help
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </section>
+
+  <!-- ─── Modal (GLASS) ─── -->
+  <section class="section">
+    <div class="section__head">
+      <h2 class="section__title">Modal — Glass</h2>
+      <p class="section__desc">Appears over overlay, disappears on close. Only the panel itself is glass; inputs inside stay solid.</p>
+      <div class="chips">
+        <span class="chip chip--glass">.modal-panel → glass</span>
+        <span class="chip chip--solid">inputs → solid</span>
+      </div>
+    </div>
+    <div class="modal-frame">
+      <div class="modal-overlay">
+        <div class="modal-panel">
+          <div class="modal-panel__header">
+            <h3 class="modal-panel__title">New Project</h3>
+            <button class="modal-panel__close">&#x2715;</button>
+          </div>
+          <div class="modal-panel__body">
+            <input class="modal-input" placeholder="Project name" value="my-app">
+            <input class="modal-input" placeholder="Working directory" value="/home/dev/my-app">
+            <div class="modal-panel__footer">
+              <button class="btn btn--ghost">Cancel</button>
+              <button class="btn btn--primary">Create</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── Two-col: Floating Card + Radial Menu ─── -->
+  <div class="two-col">
+
+    <!-- Floating Card (GLASS) -->
+    <section class="section" style="margin-bottom:0">
+      <div class="section__head">
+        <h2 class="section__title">Floating Card — Glass</h2>
+        <p class="section__desc">Popover. Click to show, click away to dismiss.</p>
+        <div class="chips">
+          <span class="chip chip--glass">.provider-floating-card → glass</span>
+        </div>
+      </div>
+      <div class="float-frame">
+        <button class="float-trigger">+ Add session</button>
+        <div class="floating-card">
+          <div class="float-cell"><div class="provider-icon pi--blue"></div></div>
+          <div class="float-cell"><div class="provider-icon pi--green"></div></div>
+          <div class="float-cell"><div class="provider-icon pi--purple"></div></div>
+          <div class="float-cell"><div class="provider-icon pi--amber"></div></div>
+          <div class="float-cell"><div class="provider-icon pi--rose"></div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Radial Menu (GLASS) -->
+    <section class="section" style="margin-bottom:0">
+      <div class="section__head">
+        <h2 class="section__title">Radial Menu — Glass</h2>
+        <p class="section__desc">Long-press to show, release to dismiss. Track is lighter than items.</p>
+        <div class="chips">
+          <span class="chip chip--glass">.radial-menu__track → glass-light</span>
+          <span class="chip chip--glass">.radial-menu__item → glass</span>
+        </div>
+      </div>
+      <div class="radial-frame">
+        <div class="radial-track"></div>
+        <div class="radial-center">+</div>
+        <div class="radial-btn" style="left:calc(50% - 17px);top:calc(50% - 100px)">
+          <div class="radial-btn__icon pi--blue"></div>
+        </div>
+        <div class="radial-btn" style="left:calc(50% + 50px);top:calc(50% - 68px)">
+          <div class="radial-btn__icon pi--green"></div>
+        </div>
+        <div class="radial-btn" style="left:calc(50% + 68px);top:calc(50% - 17px)">
+          <div class="radial-btn__icon pi--purple"></div>
+        </div>
+        <div class="radial-btn" style="left:calc(50% + 50px);top:calc(50% + 50px)">
+          <div class="radial-btn__icon pi--amber"></div>
+        </div>
+        <div class="radial-btn" style="left:calc(50% - 17px);top:calc(50% + 66px)">
+          <div class="radial-btn__icon pi--rose"></div>
+        </div>
+        <div class="radial-btn" style="left:calc(50% - 84px);top:calc(50% - 17px)">
+          <div class="radial-btn__icon pi--blue"></div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <footer class="footer">
+    <span>Frosted Glass — transient surfaces only</span>
+    <span>Solid = permanent · Glass = temporary</span>
+  </footer>
+
+</div>
+</body>
+</html>
