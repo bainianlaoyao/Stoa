@@ -77,3 +77,77 @@ const tabs: Array<{ id: SettingsTab; label: string; summary: string; iconPaths: 
     </button>
   </nav>
 </template>
+
+<style scoped>
+.settings-tab-bar {
+  display: grid;
+  gap: 8px;
+}
+
+.settings-tab-bar__item {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-muted);
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.settings-tab-bar__item:hover,
+.settings-tab-bar__item:focus-visible {
+  background: var(--color-black-soft);
+  color: var(--color-text-strong);
+  outline: none;
+}
+
+.settings-tab-bar__item--active {
+  background: var(--color-surface-solid);
+  border-color: var(--color-line);
+  color: var(--color-text-strong);
+}
+
+.settings-tab-bar__icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--color-black-faint);
+}
+
+.settings-tab-bar__item--active .settings-tab-bar__icon {
+  background: var(--color-black-soft);
+  color: var(--color-accent);
+}
+
+.settings-tab-bar__icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.settings-tab-bar__copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.settings-tab-bar__label {
+  color: currentColor;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.settings-tab-bar__summary {
+  margin: 0;
+  color: var(--color-muted);
+  line-height: 1.5;
+  font-size: var(--text-meta);
+}
+</style>

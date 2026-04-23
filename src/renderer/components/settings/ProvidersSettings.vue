@@ -90,3 +90,123 @@ function getStatus(providerId: string): 'detected' | 'custom' | 'missing' {
     </div>
   </div>
 </template>
+
+<style scoped>
+.settings-panel__header {
+  display: grid;
+  gap: 8px;
+}
+
+.settings-panel__title {
+  margin: 0;
+  color: var(--color-text-strong);
+  font-family: var(--font-ui);
+  font-size: var(--text-title);
+  font-weight: 600;
+}
+
+.settings-panel__description {
+  margin: 0;
+  color: var(--color-muted);
+  line-height: 1.5;
+  max-width: 640px;
+  font-size: var(--text-body);
+}
+
+.settings-section {
+  display: grid;
+  gap: 14px;
+}
+
+.settings-card__header {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  align-items: start;
+}
+
+.settings-card__title {
+  margin: 0;
+  color: var(--color-text-strong);
+  font-family: var(--font-ui);
+  font-size: var(--text-title-sm);
+  font-weight: 600;
+}
+
+.settings-card__description {
+  margin: 0;
+  color: var(--color-muted);
+  line-height: 1.5;
+  margin-top: 4px;
+  font-size: var(--text-body-sm);
+}
+
+.settings-card__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: var(--color-black-faint);
+  color: var(--color-muted);
+  font-size: var(--text-caption);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.settings-card__badge--detected {
+  background: var(--shadow-success-ring);
+  color: var(--color-success);
+}
+
+.settings-card__badge--custom {
+  background: var(--color-black-soft);
+  color: var(--color-accent);
+}
+
+.settings-card__badge--missing {
+  background: var(--color-black-faint);
+  color: var(--color-attention);
+}
+
+.settings-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.settings-field__main {
+  min-width: 0;
+}
+
+.settings-item__path-input--mono {
+  font-family: var(--font-mono);
+}
+
+.settings-item__browse {
+  min-height: 38px;
+}
+
+.settings-item__hint {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
+.settings-item__hint--success {
+  color: var(--color-success);
+}
+
+.settings-item__hint--warning {
+  color: var(--color-attention);
+}
+
+@media (max-width: 980px) {
+  .settings-field {
+    grid-template-columns: 1fr;
+  }
+}
+</style>

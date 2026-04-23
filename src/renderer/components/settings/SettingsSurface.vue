@@ -55,3 +55,126 @@ const activeTabMeta = computed(() => tabMeta.find((tab) => tab.id === activeTab.
     </div>
   </section>
 </template>
+
+<style scoped>
+.settings-surface {
+  display: grid;
+  gap: 18px;
+  min-height: 100%;
+  padding: 22px;
+  align-content: start;
+}
+
+.settings-surface__hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 240px;
+  gap: 16px;
+  align-items: end;
+  padding: 20px 22px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+  backdrop-filter: blur(40px) saturate(120%);
+  -webkit-backdrop-filter: blur(40px) saturate(120%);
+}
+
+.settings-surface__title {
+  margin: 0;
+  color: var(--color-text-strong);
+  font-family: var(--font-ui);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.settings-surface__lede {
+  margin: 0;
+  color: var(--color-muted);
+  line-height: 1.5;
+}
+
+.settings-surface__hero-meta {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  padding: 16px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-solid);
+}
+
+.settings-surface__hero-label {
+  color: var(--color-subtle);
+  font-size: var(--text-caption);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.settings-surface__hero-value {
+  color: var(--color-text-strong);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.settings-surface__hero-summary {
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
+.settings-surface__shell {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 16px;
+  min-height: 0;
+}
+
+.settings-surface__nav-panel {
+  display: grid;
+  gap: 18px;
+  align-content: start;
+  padding: 18px;
+  min-height: 0;
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  backdrop-filter: blur(40px) saturate(120%);
+  -webkit-backdrop-filter: blur(40px) saturate(120%);
+}
+
+.settings-surface__nav-label {
+  color: var(--color-subtle);
+  font-size: var(--text-caption);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.settings-surface__nav-text {
+  margin: 0;
+  color: var(--color-muted);
+  line-height: 1.5;
+}
+
+.settings-surface__content-panel {
+  overflow: auto;
+  min-height: 0;
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  backdrop-filter: blur(40px) saturate(120%);
+  -webkit-backdrop-filter: blur(40px) saturate(120%);
+}
+
+@media (max-width: 980px) {
+  .settings-surface__hero,
+  .settings-surface__shell {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-surface {
+    padding: 16px;
+  }
+}
+</style>
