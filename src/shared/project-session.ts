@@ -149,7 +149,11 @@ export interface RendererApi {
   pickFile: (options?: { title?: string; filters?: Array<{ name: string; extensions: string[] }> }) => Promise<string | null>
   detectShell: () => Promise<string | null>
   detectProvider: (providerId: string) => Promise<string | null>
-  archiveSession: (sessionId: string) => Promise<void>
+  minimizeWindow: () => Promise<void>
+  maximizeWindow: () => Promise<void>
+  closeWindow: () => Promise<void>
+  isWindowMaximized: () => Promise<boolean>
+  onWindowMaximizeChange: (callback: (maximized: boolean) => void) => () => void
   restoreSession: (sessionId: string) => Promise<void>
   listArchivedSessions: () => Promise<SessionSummary[]>
 }

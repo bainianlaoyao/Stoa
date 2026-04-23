@@ -69,6 +69,23 @@ const api: RendererApi = {
   },
   async detectProvider(providerId: string) {
     return ipcRenderer.invoke('settings:detect-provider', providerId) as Promise<string | null>
+  },
+  async minimizeWindow() {
+    return ipcRenderer.invoke('window:minimize')
+  },
+  async maximizeWindow() {
+    return ipcRenderer.invoke('window:maximize')
+  },
+  async closeWindow() {
+    return ipcRenderer.invoke('window:close')
+  },
+  async isWindowMaximized() {
+    return ipcRenderer.invoke('window:is-maximized') as Promise<boolean>
+  },
+  onWindowMaximizeChange(callback: (maximized: boolean) => void) {
+    const handler = (_event: Electron.IpcRendererEvent, maximized: boolean) => callback(maximized)
+    ipcRenderer.on('window:maximize-changed', handler)
+    return () => ipcRenderer.removeListener('window:maximize-changed', handler)
   }
 }
 

@@ -18,4 +18,9 @@ export const IPC_CHANNELS = {
   dialogPickFile: 'dialog:pick-file',
   settingsDetectShell: 'settings:detect-shell',
   settingsDetectProvider: 'settings:detect-provider',
+  windowMinimize: 'window:minimize',
+  windowMaximize: 'window:maximize',
+  windowClose: 'window:close',
+  windowIsMaximized: 'window:is-maximized',
+  windowMaximizeChanged: 'window:maximize-changed',
 } as const

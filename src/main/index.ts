@@ -1,4 +1,4 @@
-import { BrowserWindow, dialog, app, ipcMain } from 'electron'
+import { BrowserWindow, Menu, dialog, app, ipcMain } from 'electron'
 import { join } from 'node:path'
 import { IPC_CHANNELS } from '@core/ipc-channels'
 import { ProjectSessionManager } from '@core/project-session-manager'
@@ -78,7 +78,8 @@ function createMainWindow(): BrowserWindow {
     height: 900,
     minWidth: 1100,
     minHeight: 720,
-    backgroundColor: '#0b1020',
+    frame: false,
+    backgroundColor: '#f4f5f8',
     webPreferences: {
       preload: join(__dirname, '../preload/index.mjs'),
       contextIsolation: true,
@@ -86,6 +87,9 @@ function createMainWindow(): BrowserWindow {
       sandbox: false
     }
   })
+
+  Menu.setApplicationMenu(null)
+  window.setMenuBarVisibility(false)
 
   if (process.env.ELECTRON_RENDERER_URL) {
     void window.loadURL(process.env.ELECTRON_RENDERER_URL)
@@ -265,6 +269,26 @@ async function resolveRuntimePaths(sessionType: CreateSessionRequest['type']): P
     return detectProvider(descriptor?.executableName ?? providerId, projectSessionManager?.getSettings().shellPath ?? null)
   })
 
+  ipcMain.handle(IPC_CHANNELS.windowMinimize, () => {
+    mainWindow?.minimize()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.windowMaximize, () => {
+    if (mainWindow?.isMaximized()) {
+      mainWindow.unmaximize()
+    } else {
+      mainWindow?.maximize()
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.windowClose, () => {
+    mainWindow?.close()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.windowIsMaximized, () => {
+    return mainWindow?.isMaximized() ?? false
+  })
+
   ipcMain.handle(IPC_CHANNELS.sessionArchive, async (_event, sessionId: string) => {
     if (!projectSessionManager || !ptyHost) return
     ptyHost.kill(sessionId)
@@ -297,6 +321,13 @@ async function resolveRuntimePaths(sessionType: CreateSessionRequest['type']): P
   })
 
   mainWindow = createMainWindow()
+
+  mainWindow.on('maximize', () => {
+    mainWindow?.webContents.send('window:maximize-changed', true)
+  })
+  mainWindow.on('unmaximize', () => {
+    mainWindow?.webContents.send('window:maximize-changed', false)
+  })
 
   for (const plan of projectSessionManager.buildBootstrapRecoveryPlan()) {
     void launchTrackedSessionRuntime({
