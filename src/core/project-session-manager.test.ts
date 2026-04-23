@@ -400,7 +400,7 @@ describe('ProjectSessionManager', () => {
       expect(manager.snapshot().activeSessionId).toBeNull()
     })
 
-    test('restoreSession sets archived=false', async () => {
+    test('restoreSession sets archived=false and makes the restored session active', async () => {
       const globalStatePath = await createTempGlobalStatePath()
       const projectDir = await createTempProjectDir()
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
@@ -412,6 +412,8 @@ describe('ProjectSessionManager', () => {
 
       const updated = manager.snapshot().sessions.find(s => s.id === session.id)!
       expect(updated.archived).toBe(false)
+      expect(manager.snapshot().activeProjectId).toBe(project.id)
+      expect(manager.snapshot().activeSessionId).toBe(session.id)
     })
 
     test('getArchivedSessions returns only archived sessions', async () => {

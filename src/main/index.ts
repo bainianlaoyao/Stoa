@@ -9,6 +9,7 @@ import { getProvider } from '@extensions/providers'
 import { getProviderDescriptorByProviderId, getProviderDescriptorBySessionType } from '@shared/provider-descriptors'
 import { SessionRuntimeController } from './session-runtime-controller'
 import { SessionEventBridge } from './session-event-bridge'
+import { launchTrackedSessionRuntime } from './launch-tracked-session-runtime'
 import type { CreateProjectRequest, CreateSessionRequest } from '@shared/project-session'
 
 let mainWindow: BrowserWindow | null = null
@@ -214,7 +215,24 @@ app.whenReady().then(async () => {
   })
 
   ipcMain.handle(IPC_CHANNELS.sessionRestore, async (_event, sessionId: string) => {
-    await projectSessionManager?.restoreSession(sessionId)
+    if (!projectSessionManager || !ptyHost || !runtimeController || !sessionEventBridge) {
+      return
+    }
+
+    await projectSessionManager.restoreSession(sessionId)
+
+    void launchTrackedSessionRuntime({
+      sessionId,
+      manager: projectSessionManager,
+      webhookPort,
+      ptyHost,
+      runtimeController,
+      sessionEventBridge,
+      resolveRuntimePaths
+    }).catch((err: unknown) => {
+      console.error(`[session-restore] Failed to restore session ${sessionId}:`, err)
+      void runtimeController?.markSessionExited(sessionId, `恢复失败: ${err instanceof Error ? err.message : String(err)}`)
+    })
   })
 
   ipcMain.handle(IPC_CHANNELS.sessionListArchived, async () => {
@@ -224,37 +242,18 @@ app.whenReady().then(async () => {
   mainWindow = createMainWindow()
 
   for (const plan of projectSessionManager.buildBootstrapRecoveryPlan()) {
-    const snapshot = projectSessionManager.snapshot()
-    const session = snapshot.sessions.find(s => s.id === plan.sessionId)
-    const project = session ? snapshot.projects.find(p => p.id === session.projectId) : undefined
-    if (!session || !project) continue
-    if (session.archived) continue
-
-    const descriptor = getProviderDescriptorBySessionType(session.type)
-    const provider = getProvider(descriptor.providerId)
-    const sessionSecret = sessionEventBridge.issueSessionSecret(session.id)
-    const { shellPath, providerPath } = await resolveRuntimePaths(session.type)
-
-    void startSessionRuntime({
-      session: {
-        id: session.id,
-        projectId: session.projectId,
-        path: project.path,
-        title: session.title,
-        type: session.type,
-        status: session.status,
-        externalSessionId: session.externalSessionId,
-        sessionSecret
-      },
+    void launchTrackedSessionRuntime({
+      sessionId: plan.sessionId,
+      manager: projectSessionManager,
       webhookPort,
-      provider,
       ptyHost,
-      manager: runtimeController,
-      shellPath,
-      providerPath
+      runtimeController,
+      sessionEventBridge,
+      resolveRuntimePaths
     }).catch((err: unknown) => {
-      console.error(`[bootstrap-recovery] Failed to recover session ${session.id}:`, err)
-      void runtimeController?.markSessionExited(session.id, `恢复失败: ${err instanceof Error ? err.message : String(err)}`)
+      const sessionId = plan.sessionId
+      console.error(`[bootstrap-recovery] Failed to recover session ${sessionId}:`, err)
+      void runtimeController?.markSessionExited(sessionId, `恢复失败: ${err instanceof Error ? err.message : String(err)}`)
     })
   }
 

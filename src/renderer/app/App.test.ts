@@ -290,7 +290,7 @@ describe('App (root)', () => {
       expect(store.lastError).toBe('archive failed')
     })
 
-    it('restoreSession event updates store and calls window.stoa.restoreSession', async () => {
+    it('restoreSession event updates store, re-selects the session, and calls window.stoa.restoreSession', async () => {
       const hydratedState: BootstrapState = {
         activeProjectId: 'p1',
         activeSessionId: null,
@@ -310,6 +310,8 @@ describe('App (root)', () => {
       const store = useWorkspaceStore(pinia)
       expect(window.stoa.restoreSession).toHaveBeenCalledWith('s1')
       expect(store.sessions[0].archived).toBe(false)
+      expect(store.activeProjectId).toBe('p1')
+      expect(store.activeSessionId).toBe('s1')
       expect(store.projectHierarchy[0]!.archivedSessions).toHaveLength(0)
       expect(store.projectHierarchy[0]!.sessions[0]!.id).toBe('s1')
     })
@@ -336,6 +338,7 @@ describe('App (root)', () => {
 
       const store = useWorkspaceStore(pinia)
       expect(store.sessions[0].archived).toBe(true)
+      expect(store.activeSessionId).toBeNull()
       expect(store.lastError).toBe('restore failed')
     })
   })

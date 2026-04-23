@@ -72,6 +72,7 @@ async function handleArchiveSession(sessionId: string): Promise<void> {
 
 async function handleRestoreSession(sessionId: string): Promise<void> {
   workspaceStore.restoreSession(sessionId)
+  workspaceStore.setActiveSession(sessionId)
   try {
     await window.stoa.restoreSession(sessionId)
   } catch (err) {

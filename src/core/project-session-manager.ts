@@ -280,6 +280,8 @@ export class ProjectSessionManager {
     const session = this.state.sessions.find(s => s.id === sessionId)
     if (!session) return
     session.archived = false
+    this.state.activeProjectId = session.projectId
+    this.state.activeSessionId = session.id
     session.updatedAt = new Date().toISOString()
     await this.persist()
   }
