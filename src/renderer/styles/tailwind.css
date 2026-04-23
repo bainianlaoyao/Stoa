@@ -1,1 +1,102 @@
 @import 'tailwindcss';
+
+@theme {
+  /* Color tokens — using original --var names for backward compat */
+  --color-canvas: #f4f5f8;
+  --color-surface: rgba(255, 255, 255, 0.75);
+  --color-surface-solid: #ffffff;
+  --color-surface-soft: rgba(255, 255, 255, 0.42);
+  --color-line: rgba(0, 0, 0, 0.06);
+  --color-line-strong: rgba(0, 0, 0, 0.1);
+  --color-text-strong: #111418;
+  --color-text: #373c44;
+  --color-muted: #808792;
+  --color-subtle: #a6acb5;
+  --color-accent: #0055ff;
+  --color-success: #10b981;
+  --color-warning: #f59e0b;
+  --color-attention: #d97706;
+  --color-confirm: #7c3aed;
+  --color-error: #ef4444;
+  --color-terminal-bg: #0a0b0d;
+  --color-terminal-text: #e2e8f0;
+  --color-terminal-border: rgba(255, 255, 255, 0.06);
+  --color-black-soft: rgba(0, 0, 0, 0.04);
+  --color-black-faint: rgba(0, 0, 0, 0.02);
+  --color-white-strong: rgba(255, 255, 255, 0.9);
+  --color-white-soft: rgba(255, 255, 255, 0.56);
+  --color-white-faint: rgba(255, 255, 255, 0.42);
+
+  /* Radius tokens */
+  --radius-lg: 18px;
+  --radius-md: 12px;
+  --radius-sm: 8px;
+
+  /* Shadow tokens */
+  --shadow-soft: 0 2px 8px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
+  --shadow-card: 0 2px 6px rgba(0, 0, 0, 0.02), 0 1px 2px rgba(0, 0, 0, 0.02);
+  --shadow-premium: 0 24px 48px -12px rgba(0, 0, 0, 0.08), 0 8px 16px -4px rgba(0, 0, 0, 0.03), 0 1px 2px rgba(0, 0, 0, 0.02);
+  --shadow-success-ring: 0 0 0 2px rgba(16, 185, 129, 0.16);
+
+  /* Font tokens */
+  --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
+
+  /* Font size tokens */
+  --text-caption: 11px;
+  --text-meta: 12px;
+  --text-body-sm: 13px;
+  --text-body: 14px;
+  --text-title-sm: 15px;
+  --text-title: 18px;
+
+  /* Spacing tokens */
+  --terminal-shell-gap: clamp(10px, 1.4vw, 18px);
+}
+
+/* ── Font faces ── */
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('../assets/fonts/JetBrainsMono[wght].woff2') format('woff2-variations');
+  font-weight: 100 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Cascadia Mono';
+  src: url('../assets/fonts/CascadiaMono.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ── Base layer ── */
+
+@layer base {
+  :root {
+    color-scheme: light;
+    font-family: var(--font-ui);
+    font-size: var(--text-body);
+    background: var(--color-canvas);
+    color: var(--color-text);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    line-height: 1.5;
+    background:
+      radial-gradient(at 0% 0%, #ffffff 0%, transparent 45%),
+      radial-gradient(at 100% 0%, #e8edf7 0%, transparent 48%),
+      radial-gradient(at 100% 100%, #ffffff 0%, transparent 45%),
+      var(--color-canvas);
+  }
+
+  button { font: inherit; }
+  code { font-family: var(--font-mono); }
+  #app { min-height: 100vh; }
+}
