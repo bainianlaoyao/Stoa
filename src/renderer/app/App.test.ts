@@ -167,7 +167,7 @@ describe('App (root)', () => {
       wrapper = await mountApp(pinia)
       await flush()
 
-      expect(window.stoa.getUpdateState).toHaveBeenCalledOnce()
+      expect(window.stoa.getUpdateState).toHaveBeenCalledTimes(2)
       expect(useUpdateStore(pinia).state.availableVersion).toBe('0.2.0')
     })
 
@@ -195,6 +195,25 @@ describe('App (root)', () => {
       listener?.(createUpdateState({ phase: 'downloaded', downloadedVersion: '0.2.0' }))
       await flush()
 
+      expect(useUpdateStore(pinia).state.phase).toBe('downloaded')
+      expect(useUpdateStore(pinia).state.downloadedVersion).toBe('0.2.0')
+    })
+
+    it('re-reads update state after subscribing so startup cannot miss a single-fire transition', async () => {
+      const getUpdateState = vi
+        .fn()
+        .mockResolvedValueOnce(createUpdateState({ phase: 'idle' }))
+        .mockResolvedValueOnce(createUpdateState({ phase: 'downloaded', downloadedVersion: '0.2.0' }))
+
+      setupStoa({
+        getUpdateState,
+        onUpdateState: vi.fn().mockReturnValue(() => {})
+      })
+
+      wrapper = await mountApp(pinia)
+      await flush()
+
+      expect(getUpdateState).toHaveBeenCalledTimes(2)
       expect(useUpdateStore(pinia).state.phase).toBe('downloaded')
       expect(useUpdateStore(pinia).state.downloadedVersion).toBe('0.2.0')
     })

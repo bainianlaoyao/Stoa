@@ -92,22 +92,23 @@ let unsubscribeSessionEvent: (() => void) | null = null
 let unsubscribeUpdateState: (() => void) | null = null
 
 onMounted(async () => {
+  unsubscribeUpdateState = window.stoa.onUpdateState((state) => {
+    updateStore.applyState(state)
+  })
+
   const bootstrapState = await window.stoa.getBootstrapState()
   workspaceStore.hydrate(bootstrapState)
   await Promise.all([
     settingsStore.loadSettings(),
     updateStore.refresh()
   ])
+  await updateStore.refresh()
 
   unsubscribeSessionEvent = window.stoa?.onSessionEvent?.((event: SessionStatusEvent) => {
     workspaceStore.updateSession(event.sessionId, {
       status: event.status,
       summary: event.summary
     })
-  })
-
-  unsubscribeUpdateState = window.stoa.onUpdateState((state) => {
-    updateStore.applyState(state)
   })
 })
 
