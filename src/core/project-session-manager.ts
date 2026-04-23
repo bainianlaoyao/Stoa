@@ -124,10 +124,12 @@ export class ProjectSessionManager {
   private state: BootstrapState
   private readonly globalStatePath?: string
   private settings: AppSettings
+  private readonly persistDisabled: boolean
 
-  private constructor(initialState: BootstrapState, globalStatePath?: string, persistedSettings?: AppSettings) {
+  private constructor(initialState: BootstrapState, globalStatePath?: string, persistedSettings?: AppSettings, persistDisabled = false) {
     this.state = structuredCloneState(initialState)
     this.globalStatePath = globalStatePath
+    this.persistDisabled = persistDisabled
     this.settings = persistedSettings
       ? {
           ...DEFAULT_SETTINGS,
@@ -165,7 +167,7 @@ export class ProjectSessionManager {
       terminalWebhookPort: null,
       projects: [],
       sessions: []
-    }, undefined, { ...DEFAULT_SETTINGS })
+    }, undefined, { ...DEFAULT_SETTINGS }, true)
   }
 
   snapshot(): BootstrapState {
@@ -348,6 +350,8 @@ export class ProjectSessionManager {
   }
 
   private async persist(): Promise<void> {
+    if (this.persistDisabled) return
+
     const globalState: PersistedGlobalStateV3 =
       this.state.projects.length === 0
         ? { ...structuredClone(DEFAULT_GLOBAL_STATE), settings: this.settings }
