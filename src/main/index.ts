@@ -1,5 +1,6 @@
 import { BrowserWindow, Menu, dialog, app, ipcMain } from 'electron'
 import { join } from 'node:path'
+import { autoUpdater } from 'electron-updater'
 import { IPC_CHANNELS } from '@core/ipc-channels'
 import { ProjectSessionManager } from '@core/project-session-manager'
 import { PtyHost } from '@core/pty-host'
@@ -10,13 +11,16 @@ import { getProviderDescriptorByProviderId, getProviderDescriptorBySessionType }
 import { SessionRuntimeController } from './session-runtime-controller'
 import { SessionEventBridge } from './session-event-bridge'
 import { launchTrackedSessionRuntime } from './launch-tracked-session-runtime'
+import { UpdateService } from './update-service'
 import type { CreateProjectRequest, CreateSessionRequest } from '@shared/project-session'
+import type { UpdateState } from '@shared/update-state'
 
 let mainWindow: BrowserWindow | null = null
 let projectSessionManager: ProjectSessionManager | null = null
 let ptyHost: PtyHost | null = null
 let runtimeController: SessionRuntimeController | null = null
 let sessionEventBridge: SessionEventBridge | null = null
+let updateService: UpdateService | null = null
 let isQuittingAfterBridgeStop = false
 const pendingE2EPickFolders: Array<string | null> = []
 const isE2EMode = process.env.VIBECODING_E2E === '1'
@@ -72,6 +76,35 @@ async function stopSessionEventBridge(): Promise<void> {
   await activeBridge?.stop()
 }
 
+async function prepareForQuitAndInstall(): Promise<void> {
+  if (isQuittingAfterBridgeStop) {
+    return
+  }
+
+  isQuittingAfterBridgeStop = true
+  await stopSessionEventBridge()
+}
+
+function createDisabledUpdateState(): UpdateState {
+  return {
+    phase: 'disabled',
+    currentVersion: app.getVersion(),
+    availableVersion: null,
+    downloadedVersion: null,
+    downloadProgressPercent: null,
+    lastCheckedAt: null,
+    message: 'Updates are only available in packaged builds.',
+    requiresSessionWarning: false
+  }
+}
+
+function pushUpdateState(state: UpdateState): void {
+  const win = mainWindow
+  if (win && !win.isDestroyed()) {
+    win.webContents.send(IPC_CHANNELS.updateState, state)
+  }
+}
+
 function createMainWindow(): BrowserWindow {
   const window = new BrowserWindow({
     width: 1440,
@@ -113,6 +146,30 @@ app.whenReady().then(async () => {
     () => mainWindow
   )
   sessionEventBridge = new SessionEventBridge(projectSessionManager, runtimeController)
+  updateService = new UpdateService({
+    app,
+    updater: autoUpdater,
+    sessionManager: projectSessionManager,
+    showSessionWarningDialog: async () => {
+      const options = {
+        type: 'warning' as const,
+        buttons: ['Install and Quit Sessions', 'Cancel'],
+        defaultId: 1,
+        cancelId: 1,
+        title: 'Install Update',
+        message: 'Installing the update will close active sessions.',
+        detail: 'Continue only if you are ready to stop running sessions and install the downloaded update.'
+      }
+
+      const result = mainWindow && !mainWindow.isDestroyed()
+        ? await dialog.showMessageBox(mainWindow, options)
+        : await dialog.showMessageBox(options)
+
+      return result.response === 0
+    },
+    prepareToInstall: prepareForQuitAndInstall,
+    onStateChange: pushUpdateState
+  })
   const webhookPort = await sessionEventBridge.start()
   installMainE2EDebugApi()
 
@@ -320,7 +377,28 @@ async function resolveRuntimePaths(sessionType: CreateSessionRequest['type']): P
     return projectSessionManager?.getArchivedSessions() ?? []
   })
 
+  ipcMain.handle(IPC_CHANNELS.updateGetState, async () => {
+    return updateService?.getState() ?? createDisabledUpdateState()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.updateCheck, async () => {
+    return updateService?.checkForUpdates() ?? createDisabledUpdateState()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.updateDownload, async () => {
+    return updateService?.downloadUpdate() ?? createDisabledUpdateState()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.updateQuitAndInstall, async () => {
+    await updateService?.quitAndInstall()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.updateDismiss, async () => {
+    await updateService?.dismiss()
+  })
+
   mainWindow = createMainWindow()
+  pushUpdateState(await (updateService?.getState() ?? Promise.resolve(createDisabledUpdateState())))
 
   mainWindow.on('maximize', () => {
     mainWindow?.webContents.send('window:maximize-changed', true)
@@ -358,9 +436,8 @@ app.on('before-quit', async (event) => {
   }
 
   event.preventDefault()
-  isQuittingAfterBridgeStop = true
   try {
-    await stopSessionEventBridge()
+    await prepareForQuitAndInstall()
   } finally {
     app.quit()
   }

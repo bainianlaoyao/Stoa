@@ -163,7 +163,12 @@ describe('E2E: Main Process Config Guard', () => {
         ['pickFolder', 'dialogPickFolder'],
         ['pickFile', 'dialogPickFile'],
         ['detectShell', 'settingsDetectShell'],
-        ['detectProvider', 'settingsDetectProvider']
+        ['detectProvider', 'settingsDetectProvider'],
+        ['getUpdateState', 'updateGetState'],
+        ['checkForUpdates', 'updateCheck'],
+        ['downloadUpdate', 'updateDownload'],
+        ['quitAndInstallUpdate', 'updateQuitAndInstall'],
+        ['dismissUpdate', 'updateDismiss']
       ])
 
       for (const method of rendererApiMethods) {
@@ -198,7 +203,7 @@ describe('E2E: Main Process Config Guard', () => {
       const matches = mainSource.match(handlePattern)
 
       expect(matches, 'Expected ipcMain.handle calls to reference IPC_CHANNELS.xxx').not.toBeNull()
-      expect(matches!.length).toBeGreaterThanOrEqual(13)
+      expect(matches!.length).toBeGreaterThanOrEqual(18)
     })
 
     it('IPC handler for project:create calls createProject', () => {
@@ -220,6 +225,20 @@ describe('E2E: Main Process Config Guard', () => {
       const match = mainSource.match(handlerPattern)
       expect(match, 'Could not find handler for projectBootstrap').not.toBeNull()
       expect(match![1]).toMatch(/snapshot/)
+    })
+
+    it('main/index.ts registers all update invoke handlers', () => {
+      const requiredUpdateHandlers = [
+        'updateGetState',
+        'updateCheck',
+        'updateDownload',
+        'updateQuitAndInstall',
+        'updateDismiss'
+      ]
+
+      for (const channel of requiredUpdateHandlers) {
+        expect(mainSource).toMatch(new RegExp(`ipcMain\\.handle\\(\\s*IPC_CHANNELS\\.${channel}\\b`))
+      }
     })
   })
 
@@ -325,6 +344,10 @@ describe('E2E: Main Process Config Guard', () => {
 
     it('preload registers listener for update:state channel', () => {
       expect(preloadSource).toMatch(/ipcRenderer\.on\(\s*['"]update:state['"]/)
+    })
+
+    it('main process uses webContents.send for update state', () => {
+      expect(mainSource).toMatch(/webContents\.send\(\s*IPC_CHANNELS\.updateState/)
     })
 
     it('main process uses webContents.send for terminal data', () => {
