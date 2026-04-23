@@ -8,3 +8,4 @@ dist/
 tmp/
 .claude
 .superpowers
+release/
