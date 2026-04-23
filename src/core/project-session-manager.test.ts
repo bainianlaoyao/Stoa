@@ -1,5 +1,6 @@
 import { join } from 'node:path'
-import { afterEach, describe, expect, test } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
+import * as stateStore from './state-store'
 import { readProjectSessions } from './state-store'
 import { ProjectSessionManager } from './project-session-manager'
 import { createTestTempDir } from '../../testing/test-temp'
@@ -70,6 +71,91 @@ describe('ProjectSessionManager', () => {
     })
 
     expect(reloaded.getSettings().claudeDangerouslySkipPermissions).toBe(true)
+  })
+
+  test('persists project session files before global state so global.json is the commit marker', async () => {
+    const globalStatePath = await createTempGlobalStatePath()
+    const projectDir = await createTempProjectDir()
+    const callOrder: string[] = []
+    const originalWriteProjectSessions = stateStore.writeProjectSessions
+    const originalWriteGlobalState = stateStore.writeGlobalState
+    const writeProjectSessionsSpy = vi
+      .spyOn(stateStore, 'writeProjectSessions')
+      .mockImplementation(async (...args) => {
+        callOrder.push('project')
+        return await originalWriteProjectSessions(...args)
+      })
+    const writeGlobalStateSpy = vi
+      .spyOn(stateStore, 'writeGlobalState')
+      .mockImplementation(async (...args) => {
+        callOrder.push('global')
+        return await originalWriteGlobalState(...args)
+      })
+
+    try {
+      const manager = await ProjectSessionManager.create({
+        webhookPort: null,
+        globalStatePath
+      })
+      const project = await manager.createProject({
+        path: projectDir,
+        name: 'alpha',
+        defaultSessionType: 'shell'
+      })
+
+      callOrder.length = 0
+      writeProjectSessionsSpy.mockClear()
+      writeGlobalStateSpy.mockClear()
+
+      await manager.createSession({
+        projectId: project.id,
+        type: 'shell',
+        title: 'Alpha shell'
+      })
+
+      expect(writeProjectSessionsSpy).toHaveBeenCalledOnce()
+      expect(writeGlobalStateSpy).toHaveBeenCalledOnce()
+      expect(callOrder).toEqual(['project', 'global'])
+    } finally {
+      writeProjectSessionsSpy.mockRestore()
+      writeGlobalStateSpy.mockRestore()
+    }
+  })
+
+  test('clears dangling active project references during bootstrap', async () => {
+    const globalStatePath = await createTempGlobalStatePath()
+    const projectDir = await createTempProjectDir()
+    const now = new Date().toISOString()
+
+    await stateStore.writeGlobalState({
+      version: 3,
+      active_project_id: 'project_missing',
+      active_session_id: null,
+      projects: [
+        {
+          project_id: 'project_real',
+          name: 'alpha',
+          path: projectDir,
+          default_session_type: 'shell',
+          created_at: now,
+          updated_at: now
+        }
+      ]
+    }, globalStatePath)
+    await stateStore.writeProjectSessions(projectDir, {
+      version: 4,
+      project_id: 'project_real',
+      sessions: []
+    })
+
+    const manager = await ProjectSessionManager.create({
+      webhookPort: null,
+      globalStatePath
+    })
+
+    expect(manager.snapshot().projects).toHaveLength(1)
+    expect(manager.snapshot().activeProjectId).toBeNull()
+    expect(manager.snapshot().activeSessionId).toBeNull()
   })
 
   test('rejects orphan sessions and enforces unique project paths', async () => {

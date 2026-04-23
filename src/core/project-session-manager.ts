@@ -120,6 +120,26 @@ const NON_REGRESSIBLE_RUNNING_STATUSES = new Set<SessionStatus>([
   'exited'
 ])
 
+function resolveActiveProjectId(projects: ProjectSummary[], activeProjectId: string | null): string | null {
+  if (!activeProjectId) {
+    return null
+  }
+
+  return projects.some((project) => project.id === activeProjectId)
+    ? activeProjectId
+    : null
+}
+
+function resolveActiveSessionId(sessions: SessionSummary[], activeSessionId: string | null): string | null {
+  if (!activeSessionId) {
+    return null
+  }
+
+  return sessions.some((session) => session.id === activeSessionId)
+    ? activeSessionId
+    : null
+}
+
 export class ProjectSessionManager {
   private state: BootstrapState
   private readonly globalStatePath?: string
@@ -145,10 +165,12 @@ export class ProjectSessionManager {
     const projects = persistedGlobal.projects.map(toProjectSummary)
     const allSessions = await readAllProjectSessions(persistedGlobal.projects)
     const sessions = allSessions.map(toSessionSummary)
+    const activeProjectId = resolveActiveProjectId(projects, persistedGlobal.active_project_id)
+    const activeSessionId = resolveActiveSessionId(sessions, persistedGlobal.active_session_id)
 
     const initialState: BootstrapState = {
-      activeProjectId: persistedGlobal.active_project_id,
-      activeSessionId: persistedGlobal.active_session_id,
+      activeProjectId,
+      activeSessionId,
       terminalWebhookPort: options.webhookPort,
       projects,
       sessions
@@ -349,18 +371,6 @@ export class ProjectSessionManager {
   }
 
   private async persist(): Promise<void> {
-    const globalState: PersistedGlobalStateV3 =
-      this.state.projects.length === 0
-        ? { ...structuredClone(DEFAULT_GLOBAL_STATE), settings: this.settings }
-        : {
-            version: 3,
-            active_project_id: this.state.activeProjectId,
-            active_session_id: this.state.activeSessionId,
-            projects: this.state.projects.map(toPersistedProject),
-            settings: this.settings
-          }
-    await writeGlobalState(globalState, this.globalStatePath)
-
     const persistedProjects = this.state.projects.map(toPersistedProject)
     const persistedSessions = this.state.sessions.map(toPersistedSession)
 
@@ -380,5 +390,17 @@ export class ProjectSessionManager {
       }
       await writeProjectSessions(project.path, data)
     }
+
+    const globalState: PersistedGlobalStateV3 =
+      persistedProjects.length === 0
+        ? { ...structuredClone(DEFAULT_GLOBAL_STATE), settings: this.settings }
+        : {
+            version: 3,
+            active_project_id: this.state.activeProjectId,
+            active_session_id: this.state.activeSessionId,
+            projects: persistedProjects,
+            settings: this.settings
+          }
+    await writeGlobalState(globalState, this.globalStatePath)
   }
 }
