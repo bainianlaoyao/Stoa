@@ -559,64 +559,6 @@ h2 {
   font-size: 11px;
 }
 
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.45);
-  z-index: 50;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.modal-panel {
-  background: var(--surface-solid);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-premium);
-  max-width: 360px;
-  width: 100%;
-  padding: 20px;
-}
-
-.modal-panel__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 16px;
-}
-
-.modal-panel__title {
-  font-size: var(--font-size-title-sm);
-  font-weight: 600;
-  color: var(--text-strong);
-}
-
-.modal-panel__close {
-  background: transparent;
-  color: var(--muted);
-  width: 24px;
-  height: 24px;
-  border-radius: var(--radius-sm);
-  border: none;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  line-height: 1;
-}
-
-.modal-panel__close:hover {
-  background: var(--black-soft);
-  color: var(--text-strong);
-}
-
-.modal-panel__body {
-  display: grid;
-  gap: 16px;
-}
-
 .modal-panel__footer {
   display: flex;
   justify-content: flex-end;
@@ -714,16 +656,6 @@ h2 {
 .button-ghost:hover {
   background: var(--black-soft);
   color: var(--text-strong);
-}
-
-.modal-enter-active,
-.modal-leave-active {
-  transition: opacity 0.2s ease;
-}
-
-.modal-enter-from,
-.modal-leave-to {
-  opacity: 0;
 }
 
 /* ─── Provider Quick-Create: Floating Card ─── */
