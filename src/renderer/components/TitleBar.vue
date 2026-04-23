@@ -30,12 +30,12 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="flex items-center h-9 shrink-0 select-none border-b border-line" style="-webkit-app-region: drag;">
+  <div class="flex items-center h-[54px] shrink-0 select-none border-b border-line" style="-webkit-app-region: drag;">
     <!-- Brand -->
     <div class="w-14 flex items-center justify-center" style="-webkit-app-region: no-drag;">
-      <div class="w-6 h-6 grid place-items-center rounded-lg bg-text-strong text-surface-solid text-xs font-bold tracking-wide shadow-soft">S</div>
+      <div class="w-8 h-8 grid place-items-center rounded-lg bg-text-strong text-surface-solid text-sm font-bold tracking-wide shadow-soft">S</div>
     </div>
-    <span class="text-[13px] font-semibold tracking-tight text-text-strong">stoa</span>
+    <span class="text-[14px] font-semibold tracking-tight text-text-strong">Stoa</span>
 
     <!-- Spacer (draggable) -->
 
