@@ -27,7 +27,13 @@ describe('NewProjectModal', () => {
       sendSessionResize: vi.fn(),
       onTerminalData: vi.fn().mockReturnValue(() => {}),
       onSessionEvent: vi.fn().mockReturnValue(() => {}),
-      getSettings: vi.fn().mockResolvedValue({ shellPath: '', terminalFontSize: 14, providers: {} }),
+      getSettings: vi.fn().mockResolvedValue({
+        shellPath: '',
+        terminalFontSize: 14,
+        terminalFontFamily: 'JetBrains Mono',
+        providers: {},
+        claudeDangerouslySkipPermissions: false
+      }),
       setSetting: vi.fn(),
       pickFolder: vi.fn().mockResolvedValue(null),
       pickFile: vi.fn().mockResolvedValue(null),
@@ -73,7 +79,7 @@ describe('NewProjectModal', () => {
       })
       const btn = document.body.querySelector('.btn-primary')
       expect(btn).toBeTruthy()
-      expect(btn!.textContent).toContain('创建')
+      expect(btn!.textContent).toContain('Create')
     })
 
     it('renders 取消 button in footer', () => {
@@ -83,7 +89,7 @@ describe('NewProjectModal', () => {
       })
       const btn = document.body.querySelector('.flex.justify-end .btn-ghost')
       expect(btn).toBeTruthy()
-      expect(btn!.textContent).toContain('取消')
+      expect(btn!.textContent).toContain('Cancel')
     })
   })
 

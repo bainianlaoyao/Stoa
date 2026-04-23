@@ -50,7 +50,13 @@ describe('AppShell', () => {
       sendSessionResize: vi.fn().mockResolvedValue(undefined),
       onTerminalData: vi.fn().mockReturnValue(() => {}),
       onSessionEvent: vi.fn().mockReturnValue(() => {}),
-      getSettings: vi.fn().mockResolvedValue({ shellPath: '', terminalFontSize: 14, providers: {} }),
+      getSettings: vi.fn().mockResolvedValue({
+        shellPath: '',
+        terminalFontSize: 14,
+        terminalFontFamily: 'JetBrains Mono',
+        providers: {},
+        claudeDangerouslySkipPermissions: false
+      }),
       setSetting: vi.fn().mockResolvedValue(undefined),
       pickFolder: vi.fn().mockResolvedValue(null),
       pickFile: vi.fn().mockResolvedValue(null),
@@ -143,7 +149,7 @@ describe('AppShell', () => {
     expect(wrapper.get('[data-surface="archive"][aria-label="Archive surface"]')).toBeTruthy()
     expect(wrapper.get('button[aria-label="Archive"]').attributes('aria-current')).toBe('true')
     expect(wrapper.find('[data-surface="command"][aria-label="Command surface"]').exists()).toBe(false)
-    expect(wrapper.text()).toContain('已归档会话')
+    expect(wrapper.text()).toContain('Archived sessions')
   })
 
   it('switches to a named settings surface when the settings activity is selected', async () => {
@@ -163,6 +169,41 @@ describe('AppShell', () => {
     expect(wrapper.get('[data-surface="settings"][aria-label="Settings surface"]')).toBeTruthy()
     expect(wrapper.get('button[aria-label="Settings"]').attributes('aria-current')).toBe('true')
     expect(wrapper.find('[data-surface="command"][aria-label="Command surface"]').exists()).toBe(false)
+  })
+
+  it('keeps activity icons rendered while switching surfaces', async () => {
+    const wrapper = mount(AppShell, {
+      global: { plugins: [createPinia()] },
+      props: {
+        hierarchy: [],
+        activeProjectId: null,
+        activeSessionId: null,
+        activeProject: null,
+        activeSession: null
+      }
+    })
+
+    const expectStableIcons = () => {
+      const items = wrapper.findAll('[data-activity-item]')
+      const icons = wrapper.findAll('[data-activity-icon]')
+
+      expect(items).toHaveLength(3)
+      expect(icons).toHaveLength(3)
+      expect(wrapper.get('[data-activity-item="command"]').find('[data-activity-icon]').exists()).toBe(true)
+      expect(wrapper.get('[data-activity-item="archive"]').find('[data-activity-icon]').exists()).toBe(true)
+      expect(wrapper.get('[data-activity-item="settings"]').find('[data-activity-icon]').exists()).toBe(true)
+    }
+
+    expectStableIcons()
+
+    await wrapper.get('button[aria-label="Settings"]').trigger('click')
+    expectStableIcons()
+
+    await wrapper.get('button[aria-label="Archive"]').trigger('click')
+    expectStableIcons()
+
+    await wrapper.get('button[aria-label="Command panel"]').trigger('click')
+    expectStableIcons()
   })
 
   it('forwards restoreSession from archive surface', async () => {

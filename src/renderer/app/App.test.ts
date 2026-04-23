@@ -57,7 +57,13 @@ function setupStoa(overrides?: Partial<typeof window.stoa>) {
     sendSessionResize: vi.fn().mockResolvedValue(undefined),
     onTerminalData: vi.fn().mockReturnValue(() => {}),
     onSessionEvent: vi.fn().mockReturnValue(() => {}),
-    getSettings: vi.fn().mockResolvedValue({ shellPath: '', terminalFontSize: 14, providers: {} }),
+    getSettings: vi.fn().mockResolvedValue({
+      shellPath: '',
+      terminalFontSize: 14,
+      terminalFontFamily: 'JetBrains Mono',
+      providers: {},
+      claudeDangerouslySkipPermissions: false
+    }),
     setSetting: vi.fn().mockResolvedValue(undefined),
     pickFolder: vi.fn().mockResolvedValue(null),
     pickFile: vi.fn().mockResolvedValue(null),

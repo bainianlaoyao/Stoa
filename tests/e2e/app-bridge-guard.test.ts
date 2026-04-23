@@ -59,7 +59,13 @@ function setupStoa(overrides?: Partial<typeof window.stoa>): void {
     setActiveProject: vi.fn().mockResolvedValue(undefined),
     setActiveSession: vi.fn().mockResolvedValue(undefined),
     getTerminalReplay: vi.fn().mockResolvedValue(''),
-    getSettings: vi.fn().mockResolvedValue({ shellPath: '', terminalFontSize: 14, providers: {} }),
+    getSettings: vi.fn().mockResolvedValue({
+      shellPath: '',
+      terminalFontSize: 14,
+      terminalFontFamily: 'JetBrains Mono',
+      providers: {},
+      claudeDangerouslySkipPermissions: false
+    }),
     listArchivedSessions: vi.fn().mockResolvedValue([]),
     ...overrides
   }

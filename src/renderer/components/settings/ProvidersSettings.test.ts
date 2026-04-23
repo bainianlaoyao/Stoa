@@ -3,6 +3,7 @@ import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { nextTick } from 'vue'
+import { createI18n } from 'vue-i18n'
 import ProvidersSettings from './ProvidersSettings.vue'
 import type { RendererApi } from '@shared/project-session'
 
@@ -21,7 +22,13 @@ function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
     sendSessionResize: vi.fn().mockResolvedValue(undefined),
     onTerminalData: vi.fn().mockReturnValue(() => {}),
     onSessionEvent: vi.fn().mockReturnValue(() => {}),
-    getSettings: vi.fn().mockResolvedValue({ shellPath: '', terminalFontSize: 14, providers: {} }),
+    getSettings: vi.fn().mockResolvedValue({
+      shellPath: '',
+      terminalFontSize: 14,
+      terminalFontFamily: 'JetBrains Mono',
+      providers: {},
+      claudeDangerouslySkipPermissions: false
+    }),
     setSetting: vi.fn().mockResolvedValue(undefined),
     pickFolder: vi.fn().mockResolvedValue(null),
     pickFile: vi.fn().mockResolvedValue(null),
@@ -37,6 +44,38 @@ function setupVibecodingMock(overrides: Partial<RendererApi> = {}): void {
   }
 }
 
+function createTestI18n() {
+  return createI18n({
+    legacy: false,
+    locale: 'en',
+    messages: {
+      en: {
+        providers: {
+          eyebrow: 'Providers',
+          title: 'Provider runtime paths',
+          description: 'Keep executable discovery predictable so provider-backed sessions can start without extra repair work.',
+          cardDescription: 'Set an explicit executable path or let Stoa use the local detected runtime.',
+          executablePath: 'Executable path',
+          placeholderMissing: 'not found',
+          autoDetected: 'Auto-detected',
+          browse: 'Browse',
+          detecting: 'Detecting...',
+          customPath: 'Custom path',
+          notFound: 'Not found — click Browse to locate',
+          selectExecutable: 'Select {provider} executable'
+        }
+      }
+    }
+  })
+}
+
+function mountProvidersSettings() {
+  return mount(ProvidersSettings, {
+    global: { plugins: [createPinia(), createTestI18n()] },
+    attachTo: document.body
+  })
+}
+
 describe('ProvidersSettings', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -48,30 +87,21 @@ describe('ProvidersSettings', () => {
   })
 
   it('renders provider entries for OpenCode Codex and Claude Code', () => {
-    const wrapper = mount(ProvidersSettings, {
-      global: { plugins: [createPinia()] },
-      attachTo: document.body
-    })
+    const wrapper = mountProvidersSettings()
     expect(wrapper.find('[data-settings-field="provider-opencode"]').exists()).toBe(true)
     expect(wrapper.find('[data-settings-field="provider-codex"]').exists()).toBe(true)
     expect(wrapper.find('[data-settings-field="provider-claude-code"]').exists()).toBe(true)
   })
 
   it('renders provider section heading and status badge', () => {
-    const wrapper = mount(ProvidersSettings, {
-      global: { plugins: [createPinia()] },
-      attachTo: document.body
-    })
+    const wrapper = mountProvidersSettings()
 
     expect(wrapper.find('.settings-panel__title').text()).toBe('Provider runtime paths')
     expect(wrapper.find('.settings-card__badge').exists()).toBe(true)
   })
 
   it('renders Browse button for each provider', () => {
-    const wrapper = mount(ProvidersSettings, {
-      global: { plugins: [createPinia()] },
-      attachTo: document.body
-    })
+    const wrapper = mountProvidersSettings()
     const browseButtons = wrapper.findAll('.settings-item__browse')
     expect(browseButtons.length).toBeGreaterThanOrEqual(1)
     expect(browseButtons[0].text()).toBe('Browse')
@@ -80,10 +110,7 @@ describe('ProvidersSettings', () => {
   it('shows "Detecting..." hint on mount', () => {
     setupVibecodingMock({ detectProvider: vi.fn().mockReturnValue(new Promise(() => {})) })
 
-    const wrapper = mount(ProvidersSettings, {
-      global: { plugins: [createPinia()] },
-      attachTo: document.body
-    })
+    const wrapper = mountProvidersSettings()
     const hint = wrapper.find('.settings-item__hint')
     expect(hint.exists()).toBe(true)
     expect(hint.text()).toBe('Detecting...')
@@ -93,10 +120,7 @@ describe('ProvidersSettings', () => {
     const pickFileMock = vi.fn().mockResolvedValue('/usr/local/bin/opencode')
     setupVibecodingMock({ pickFile: pickFileMock })
 
-    const wrapper = mount(ProvidersSettings, {
-      global: { plugins: [createPinia()] },
-      attachTo: document.body
-    })
+    const wrapper = mountProvidersSettings()
 
     await nextTick()
 
@@ -105,5 +129,21 @@ describe('ProvidersSettings', () => {
     await nextTick()
 
     expect(pickFileMock).toHaveBeenCalled()
+  })
+
+  it('toggles claude dangerously-skip-permissions setting', async () => {
+    const setSettingMock = vi.fn().mockResolvedValue(undefined)
+    setupVibecodingMock({ setSetting: setSettingMock })
+
+    const wrapper = mountProvidersSettings()
+
+    await nextTick()
+
+    const toggle = wrapper.find('[data-settings-field="provider-claude-code-dangerously-skip-permissions"] input[type="checkbox"]')
+    expect(toggle.exists()).toBe(true)
+
+    await toggle.setValue(true)
+
+    expect(setSettingMock).toHaveBeenCalledWith('claudeDangerouslySkipPermissions', true)
   })
 })

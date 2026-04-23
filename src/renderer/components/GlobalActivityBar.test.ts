@@ -31,6 +31,15 @@ describe('GlobalActivityBar', () => {
     expect(ids).toEqual(['command', 'archive', 'settings'])
   })
 
+  it('renders one stable svg icon for each activity item', () => {
+    const wrapper = mountBar()
+
+    expect(wrapper.findAll('[data-activity-icon]')).toHaveLength(3)
+    expect(wrapper.get('[data-activity-item="command"]').find('[data-activity-icon]').exists()).toBe(true)
+    expect(wrapper.get('[data-activity-item="archive"]').find('[data-activity-icon]').exists()).toBe(true)
+    expect(wrapper.get('[data-activity-item="settings"]').find('[data-activity-icon]').exists()).toBe(true)
+  })
+
   it('active item has data-active="true"', () => {
     const wrapper = mountBar({ activeSurface: 'settings' })
     const activeItem = wrapper.find('[data-activity-item="settings"]')

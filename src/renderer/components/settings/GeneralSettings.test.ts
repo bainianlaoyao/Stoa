@@ -21,7 +21,13 @@ function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
     sendSessionResize: vi.fn().mockResolvedValue(undefined),
     onTerminalData: vi.fn().mockReturnValue(() => {}),
     onSessionEvent: vi.fn().mockReturnValue(() => {}),
-    getSettings: vi.fn().mockResolvedValue({ shellPath: '', terminalFontSize: 14, terminalFontFamily: 'JetBrains Mono', providers: {} }),
+    getSettings: vi.fn().mockResolvedValue({
+      shellPath: '',
+      terminalFontSize: 14,
+      terminalFontFamily: 'JetBrains Mono',
+      providers: {},
+      claudeDangerouslySkipPermissions: false
+    }),
     setSetting: vi.fn().mockResolvedValue(undefined),
     pickFolder: vi.fn().mockResolvedValue(null),
     pickFile: vi.fn().mockResolvedValue(null),
@@ -108,7 +114,7 @@ describe('GeneralSettings', () => {
     await nextTick()
     await nextTick()
 
-    expect(pickFileMock).toHaveBeenCalledWith({ title: 'Select shell executable' })
+    expect(pickFileMock).toHaveBeenCalledWith({ title: 'Shell executable' })
     expect(setSettingMock).toHaveBeenCalledWith('shellPath', '/usr/bin/zsh')
   })
 
