@@ -1,9 +1,6 @@
-// @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
-import { createPinia, setActivePinia, type Pinia } from 'pinia'
-import AboutSettings from './AboutSettings.vue'
-import { useUpdateStore } from '@renderer/stores/update'
+import { createPinia, setActivePinia } from 'pinia'
+import { useUpdateStore } from './update'
 import type { RendererApi } from '@shared/project-session'
 import type { UpdateState } from '@shared/update-state'
 
@@ -70,84 +67,71 @@ function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
   }
 }
 
-describe('AboutSettings', () => {
-  let pinia: Pinia
-
+describe('useUpdateStore', () => {
   beforeEach(() => {
-    pinia = createPinia()
-    setActivePinia(pinia)
+    setActivePinia(createPinia())
     window.stoa = createStoaMock()
   })
 
-  it('renders app name "Stoa"', () => {
-    const wrapper = mount(AboutSettings, {
-      global: { plugins: [pinia] }
-    })
-    expect(wrapper.find('.settings-about__name').text()).toBe('Stoa')
-  })
-
-  it('renders version "v0.1.0"', () => {
+  it('applies pushed state and exposes prompt visibility for available updates', () => {
     const store = useUpdateStore()
-    store.applyState(createUpdateState({ currentVersion: '0.1.0' }))
-    const wrapper = mount(AboutSettings, {
-      global: { plugins: [pinia] }
-    })
-    expect(wrapper.find('.settings-about__version').text()).toBe('v0.1.0')
+
+    store.applyState(createUpdateState({ phase: 'available', availableVersion: '0.2.0', message: 'Update 0.2.0 is available.' }))
+
+    expect(store.state.phase).toBe('available')
+    expect(store.state.availableVersion).toBe('0.2.0')
+    expect(store.shouldShowPrompt).toBe(true)
   })
 
-  it('renders tech stack text', () => {
-    const wrapper = mount(AboutSettings, {
-      global: { plugins: [pinia] }
-    })
-    expect(wrapper.find('.settings-about__stack').text()).toBe('Electron · Vue 3 · node-pty')
-  })
-
-  it('renders the about hero summary', () => {
-    const wrapper = mount(AboutSettings, {
-      global: { plugins: [pinia] }
-    })
-    expect(wrapper.find('.settings-about__summary').text()).toContain('Multi-session workspace console')
-  })
-
-  it('renders 3 links with target="_blank"', () => {
-    const wrapper = mount(AboutSettings, {
-      global: { plugins: [pinia] }
-    })
-    const links = wrapper.findAll('.settings-about__link')
-    expect(links).toHaveLength(3)
-    for (const link of links) {
-      expect(link.attributes('target')).toBe('_blank')
-    }
-  })
-
-  it('shows the current update status from the store', () => {
+  it('dismisses the current prompt until the update identity changes', () => {
     const store = useUpdateStore()
-    store.applyState(createUpdateState({
-      phase: 'available',
-      currentVersion: '0.1.0',
-      availableVersion: '0.2.0',
-      message: 'Update 0.2.0 is available.'
-    }))
 
-    const wrapper = mount(AboutSettings, {
-      global: { plugins: [pinia] }
-    })
+    store.applyState(createUpdateState({ phase: 'available', availableVersion: '0.2.0' }))
+    store.dismissPrompt()
 
-    expect(wrapper.text()).toContain('Update available')
-    expect(wrapper.text()).toContain('Update 0.2.0 is available.')
-    expect(wrapper.text()).toContain('Latest version: 0.2.0')
+    expect(store.shouldShowPrompt).toBe(false)
+
+    store.applyState(createUpdateState({ phase: 'available', availableVersion: '0.2.0' }))
+    expect(store.shouldShowPrompt).toBe(false)
+
+    store.applyState(createUpdateState({ phase: 'downloaded', downloadedVersion: '0.2.0' }))
+    expect(store.shouldShowPrompt).toBe(true)
   })
 
-  it('clicking check for updates calls the update store bridge action', async () => {
-    const checkForUpdates = vi.fn().mockResolvedValue(createUpdateState({ phase: 'checking' }))
-    window.stoa = createStoaMock({ checkForUpdates })
-
-    const wrapper = mount(AboutSettings, {
-      global: { plugins: [pinia] }
+  it('refreshes state from the update bridge', async () => {
+    const updateState = createUpdateState({ phase: 'downloaded', downloadedVersion: '0.2.0' })
+    window.stoa = createStoaMock({
+      getUpdateState: vi.fn().mockResolvedValue(updateState)
     })
+    const store = useUpdateStore()
 
-    await wrapper.get('[data-settings-action="check-updates"]').trigger('click')
+    await store.refresh()
 
-    expect(checkForUpdates).toHaveBeenCalledOnce()
+    expect(window.stoa.getUpdateState).toHaveBeenCalledOnce()
+    expect(store.state.downloadedVersion).toBe('0.2.0')
+  })
+
+  it('checks for updates and stores the returned state', async () => {
+    const checkedState = createUpdateState({ phase: 'available', availableVersion: '0.2.0' })
+    window.stoa = createStoaMock({
+      checkForUpdates: vi.fn().mockResolvedValue(checkedState)
+    })
+    const store = useUpdateStore()
+
+    await store.checkForUpdates()
+
+    expect(window.stoa.checkForUpdates).toHaveBeenCalledOnce()
+    expect(store.state.phase).toBe('available')
+    expect(store.shouldShowPrompt).toBe(true)
+  })
+
+  it('dismisses through the update bridge and hides the prompt locally', async () => {
+    const store = useUpdateStore()
+    store.applyState(createUpdateState({ phase: 'downloaded', downloadedVersion: '0.2.0' }))
+
+    await store.dismissUpdate()
+
+    expect(window.stoa.dismissUpdate).toHaveBeenCalledOnce()
+    expect(store.shouldShowPrompt).toBe(false)
   })
 })
