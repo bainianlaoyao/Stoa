@@ -17,5 +17,14 @@ describe('playwright skeleton generator', () => {
     expect(generated).toContain("test('journey.session.restore.base'")
     expect(generated).toContain("page.getByTestId('surface.archive')")
     expect(generated).toContain("page.getByTestId('archive.session.restore')")
+    expect(generated).toContain('await expect(root).toBeVisible()')
+    expect(generated).toContain('await restoreButton.click()')
+    expect(generated).toContain('await expect(sessionRow).toHaveCount(0)')
+    expect(generated.indexOf('await expect(root).toBeVisible()')).toBeLessThan(
+      generated.indexOf('await restoreButton.click()')
+    )
+    expect(generated.indexOf('await restoreButton.click()')).toBeLessThan(
+      generated.indexOf('await expect(sessionRow).toHaveCount(0)')
+    )
   })
 })

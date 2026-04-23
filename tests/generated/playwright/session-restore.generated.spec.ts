@@ -20,5 +20,6 @@ test('journey.session.restore.base', async ({ page }) => {
 
   await expect(root).toBeVisible()
   await expect(restoreButton).toBeVisible()
+  await restoreButton.click()
   await expect(sessionRow).toHaveCount(0)
 })
