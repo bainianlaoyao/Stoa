@@ -25,6 +25,7 @@ The current repository already has the core pieces needed to graduate into a rel
 - there is no `electron-updater` integration in the main process
 - there is no renderer-facing update UX
 - `src/core/state-store.ts` performs direct overwrite writes instead of atomic replacement
+- project session persistence in `<project>/.stoa/sessions.json` currently has no top-level schema version field
 - About UI currently hardcodes the app version in `src/renderer/components/settings/AboutSettings.vue`
 
 The existing persistence boundary is already favorable for safe upgrades:
@@ -119,7 +120,8 @@ Trigger:
 
 Responsibilities:
 
-- install dependencies
+- enable Corepack and use the repository-pinned `pnpm` toolchain
+- install dependencies with frozen lockfile semantics
 - run `npm run test:generate`
 - run `npm run typecheck`
 - run `npx vitest run`
@@ -147,7 +149,8 @@ Runtime:
 Responsibilities:
 
 - validate tag/version consistency
-- install dependencies
+- enable Corepack and use the repository-pinned `pnpm` toolchain
+- install dependencies with frozen lockfile semantics
 - rerun the full repository quality gate
 - build the Windows NSIS installer
 - publish GitHub Release assets
@@ -163,6 +166,14 @@ Release publication rules:
 - the workflow is the only supported path for formal release asset publication
 - developers do not hand-upload installer files for formal releases
 - a failed quality gate means no release is published
+- the release workflow must create a published, non-draft GitHub Release discoverable by the updater
+- `electron-builder` configuration or equivalent release publication logic must set the GitHub release type accordingly
+
+Package-manager rule:
+
+- workflows must honor `package.json.packageManager` and `pnpm-lock.yaml`
+- release automation does not use floating npm install behavior
+- reproducible installs are a release requirement, not an optimization
 
 ## Update Runtime Architecture
 
@@ -180,6 +191,12 @@ Introduce a dedicated `UpdateService` responsible for:
 
 This service should be created after `app.whenReady()` and after primary application services are initialized. Update checks should be slightly delayed so the app can finish window bootstrap and state recovery first.
 
+Updater configuration rules:
+
+- automatic download is disabled by default
+- update download starts only after the user explicitly confirms
+- the service uses explicit `downloadUpdate()` semantics rather than relying on implicit updater defaults
+
 Recommended behavior:
 
 - perform an automatic check shortly after startup
@@ -188,6 +205,26 @@ Recommended behavior:
 - when a download completes, wait for explicit confirmation before restart/install
 
 This matches the chosen user experience: polite prompt, explicit confirmation, no silent takeover.
+
+Development and test behavior:
+
+- when `app.isPackaged` is `false`, update checks are disabled by default
+- unpackaged development and Playwright E2E runs must not depend on live updater traffic
+- if future unpackaged updater testing is required, it must use an explicit development update configuration rather than piggyback on normal E2E runs
+
+## Session-Safe Install Behavior
+
+This repository runs live PTY-backed shell sessions and recovers non-archived sessions on startup. That means update install can interrupt active runtime state even if persisted files are protected.
+
+Therefore update UX must include a session-safety contract:
+
+- before `quitAndInstall`, the app checks whether any non-archived session is still active, restorable, or running
+- if live sessions exist, the install confirmation explicitly warns that the app will terminate local shells and interrupt active session runtime
+- the default action in this warning state is `Later`, not immediate install
+- the user must perform a second explicit confirmation before install proceeds while sessions are active
+- no background silent install is allowed
+
+This keeps file safety and runtime safety separate and visible.
 
 ## IPC Surface For Updates
 
@@ -273,9 +310,32 @@ The repository explicitly rejects compatibility migrations during prototype stag
 
 This is a deliberate breaking-change contract, not an implementation omission.
 
+Because project session persistence currently lacks a top-level version field, this design also requires a schema boundary change for `<project>/.stoa/sessions.json`:
+
+- project session files gain an explicit top-level schema version
+- legacy unversioned project session files are treated as unsupported persisted state
+- unsupported legacy files are backed up before reset
+- no migration path is provided
+
+Without this change, the design could only enforce unsupported-schema rejection for `global.json`, which would leave project session state outside the safety contract.
+
 ### 4. Install boundary
 
 User state, logs, and recovery artifacts must remain outside the install directory. The installer may replace application binaries, but it must never own user state files.
+
+### 5. Multi-file consistency
+
+This repository persists state across more than one file, so per-file atomic replacement is not enough by itself.
+
+The persistence contract must also define cross-file consistency rules:
+
+- project session files are written before `global.json`
+- `global.json` is treated as the final commit marker for active-project and active-session references
+- on bootstrap, active references are validated against the loaded session set
+- dangling `active_project_id` or `active_session_id` values are cleared rather than trusted
+- orphaned or unsupported project-session files are ignored or isolated according to the schema rules above
+
+This prevents crashes or update-triggered restarts from leaving the app in a logically inconsistent state even when each individual file write is atomic.
 
 ## Logging And Diagnostics
 
@@ -342,6 +402,24 @@ Add integration coverage for:
 
 Add or extend packaging verification so CI confirms the release build emits the expected Windows updater artifacts, not only base Electron outputs.
 
+The current `scripts/verify-packaging-baseline.mjs` only validates build outputs under `out/`. This design requires a release-artifact verification step that explicitly asserts the presence of Windows updater artifacts in the release output, including:
+
+- the NSIS installer
+- `latest.yml`
+- updater blockmap artifacts when emitted
+- any other updater metadata required by the chosen Electron updater path
+
+Green CI without these artifact assertions is not considered sufficient.
+
+In addition, because this repository treats packaged `node-pty` runtime as a high-risk area, release verification must include at least one Windows packaged smoke path that:
+
+- launches the packaged app
+- confirms the app boots successfully
+- creates or restores a session through the packaged runtime path
+- verifies PTY input/output still works in the packaged build
+
+Artifact presence alone is not enough to declare the formal release channel healthy.
+
 ## Documentation Requirements
 
 Implementation must also add an operator-facing runbook under `docs/operations/`.
@@ -364,15 +442,17 @@ Expected implementation areas:
 - `electron-builder.yml`
   - switch formal Windows packaging to NSIS and configure GitHub publishing
 - `.github/workflows/ci.yml`
-  - add or align cloud verification workflow with repository quality gate
+  - add or align cloud verification workflow with repository quality gate and pinned `pnpm` install behavior
 - `.github/workflows/release.yml`
-  - add tagged formal release workflow
+  - add tagged formal release workflow with pinned `pnpm` install behavior
 - `src/main/`
-  - add update service and wire it into app lifecycle
+  - add update service, session-aware install warnings, and wire them into app lifecycle
 - `src/preload/index.ts`
   - expose typed update API to renderer
 - `src/shared/`
   - add update-state contracts shared by main/preload/renderer
+- `src/shared/project-session.ts`
+  - add explicit schema versioning for project session persistence
 - `src/renderer/components/settings/AboutSettings.vue`
   - replace hardcoded version and add update status/actions
 - `src/renderer/components/`
@@ -421,6 +501,9 @@ This design is satisfied when all of the following are true:
 - an installed app can detect a newer GitHub Release and present an in-app confirmation flow
 - the app downloads the update only after user confirmation
 - the app installs the update only after user confirmation to restart
+- if active sessions exist, the install confirmation explicitly warns about session interruption before proceeding
 - upgrading the app does not overwrite user data files
 - corrupted persisted state is backed up before reset
 - unsupported persisted schema versions are backed up and rejected explicitly rather than migrated silently
+- release workflows use the repository-pinned `pnpm` toolchain with frozen lockfile behavior
+- packaging verification asserts Windows updater artifacts rather than only raw build outputs
