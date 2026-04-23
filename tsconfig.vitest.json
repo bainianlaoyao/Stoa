@@ -10,6 +10,7 @@
     "src/**/*.d.ts",
     "src/shared/**/*.ts",
     "src/renderer/**/*.ts",
-    "src/renderer/**/*.vue"
+    "src/renderer/**/*.vue",
+    "testing/**/*.ts"
   ]
 }
