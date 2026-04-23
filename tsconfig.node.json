@@ -11,6 +11,7 @@
     "src/preload/**/*.ts",
     "src/core/**/*.ts",
     "src/extensions/providers/**/*.ts",
-    "src/shared/**/*.ts"
+    "src/shared/**/*.ts",
+    "tests/e2e/helpers.ts"
   ]
 }
