@@ -175,4 +175,48 @@ describe('UpdateService', () => {
     expect(prepareToInstall).toHaveBeenCalledTimes(1)
     expect(updater.quitAndInstall).toHaveBeenCalledTimes(1)
   })
+
+  test('publishState refreshes requiresSessionWarning from live session state', async () => {
+    const updater = new FakeUpdater()
+    const onStateChange = vi.fn()
+    const sessions: BootstrapState['sessions'] = []
+    const service = new UpdateService({
+      app: {
+        isPackaged: true,
+        getVersion: () => '1.2.3'
+      },
+      updater,
+      sessionManager: {
+        snapshot: () => createSnapshot({ sessions })
+      },
+      showSessionWarningDialog: async () => true,
+      onStateChange
+    })
+
+    updater.emit('update-downloaded', { version: '1.3.0' })
+    sessions.push({
+      id: 'session-1',
+      projectId: 'project-1',
+      type: 'shell',
+      status: 'running',
+      title: 'Shell',
+      summary: 'Running',
+      recoveryMode: 'fresh-shell',
+      externalSessionId: null,
+      createdAt: '2026-04-24T00:00:00.000Z',
+      updatedAt: '2026-04-24T00:00:00.000Z',
+      lastActivatedAt: '2026-04-24T00:00:00.000Z',
+      archived: false
+    })
+
+    const published = service.publishState()
+
+    expect(published.requiresSessionWarning).toBe(true)
+    expect(onStateChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        phase: 'downloaded',
+        requiresSessionWarning: true
+      })
+    )
+  })
 })

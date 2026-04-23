@@ -350,6 +350,10 @@ describe('E2E: Main Process Config Guard', () => {
       expect(mainSource).toMatch(/webContents\.send\(\s*IPC_CHANNELS\.updateState/)
     })
 
+    it('activate path resends the latest update state after recreating the window', () => {
+      expect(mainSource).toMatch(/app\.on\('activate'[\s\S]*mainWindow\s*=\s*createMainWindow\(\)[\s\S]*(syncUpdateStateToWindow|pushUpdateState)/)
+    })
+
     it('main process uses webContents.send for terminal data', () => {
       expect(controllerSource).toMatch(/webContents\.send\(\s*IPC_CHANNELS\.terminalData/)
     })

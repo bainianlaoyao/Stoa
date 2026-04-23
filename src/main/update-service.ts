@@ -195,6 +195,12 @@ export class UpdateService {
     this.setState({ message: null })
   }
 
+  publishState(): UpdateState {
+    const snapshot = this.snapshotState()
+    this.options.onStateChange?.(snapshot)
+    return snapshot
+  }
+
   private bindUpdaterEvents(): void {
     this.options.updater.on('update-available', (payload) => {
       const version = extractVersion(payload)
@@ -267,8 +273,6 @@ export class UpdateService {
       ...next
     }
 
-    const snapshot = this.snapshotState()
-    this.options.onStateChange?.(snapshot)
-    return snapshot
+    return this.publishState()
   }
 }

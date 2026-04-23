@@ -105,6 +105,15 @@ function pushUpdateState(state: UpdateState): void {
   }
 }
 
+async function syncUpdateStateToWindow(): Promise<void> {
+  if (updateService) {
+    updateService.publishState()
+    return
+  }
+
+  pushUpdateState(createDisabledUpdateState())
+}
+
 function createMainWindow(): BrowserWindow {
   const window = new BrowserWindow({
     width: 1440,
@@ -143,7 +152,10 @@ app.whenReady().then(async () => {
 
   runtimeController = new SessionRuntimeController(
     projectSessionManager,
-    () => mainWindow
+    () => mainWindow,
+    () => {
+      void syncUpdateStateToWindow()
+    }
   )
   sessionEventBridge = new SessionEventBridge(projectSessionManager, runtimeController)
   updateService = new UpdateService({
@@ -220,6 +232,7 @@ async function resolveRuntimePaths(sessionType: CreateSessionRequest['type']): P
 
   ipcMain.handle(IPC_CHANNELS.sessionCreate, async (_event, payload: CreateSessionRequest) => {
     const session = await projectSessionManager?.createSession(payload)
+    await syncUpdateStateToWindow()
     if (!session || !projectSessionManager || !ptyHost || !runtimeController || !sessionEventBridge) {
       console.log(`[session-create] Aborted: session=${!!session} manager=${!!projectSessionManager} pty=${!!ptyHost} ctrl=${!!runtimeController} bridge=${!!sessionEventBridge}`)
       return null
@@ -350,6 +363,7 @@ async function resolveRuntimePaths(sessionType: CreateSessionRequest['type']): P
     if (!projectSessionManager || !ptyHost) return
     ptyHost.kill(sessionId)
     await projectSessionManager.archiveSession(sessionId)
+    await syncUpdateStateToWindow()
   })
 
   ipcMain.handle(IPC_CHANNELS.sessionRestore, async (_event, sessionId: string) => {
@@ -358,6 +372,7 @@ async function resolveRuntimePaths(sessionType: CreateSessionRequest['type']): P
     }
 
     await projectSessionManager.restoreSession(sessionId)
+    await syncUpdateStateToWindow()
 
     void launchTrackedSessionRuntime({
       sessionId,
@@ -398,7 +413,7 @@ async function resolveRuntimePaths(sessionType: CreateSessionRequest['type']): P
   })
 
   mainWindow = createMainWindow()
-  pushUpdateState(await (updateService?.getState() ?? Promise.resolve(createDisabledUpdateState())))
+  await syncUpdateStateToWindow()
 
   mainWindow.on('maximize', () => {
     mainWindow?.webContents.send('window:maximize-changed', true)
@@ -426,6 +441,7 @@ async function resolveRuntimePaths(sessionType: CreateSessionRequest['type']): P
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       mainWindow = createMainWindow()
+      void syncUpdateStateToWindow()
     }
   })
 })
