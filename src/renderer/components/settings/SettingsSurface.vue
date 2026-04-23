@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, type Component } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { TabGroup, TabPanels, TabPanel } from '@headlessui/vue'
 import SettingsTabBar from './SettingsTabBar.vue'
 import type { SettingsTab } from './SettingsTabBar.vue'
 import GeneralSettings from './GeneralSettings.vue'
@@ -24,6 +25,10 @@ const tabComponents: Record<SettingsTab, Component> = {
 }
 
 const activeTabMeta = computed(() => tabMeta.value.find((tab) => tab.id === activeTab.value) ?? tabMeta.value[0])
+
+function onTabSelect(tab: SettingsTab) {
+  activeTab.value = tab
+}
 </script>
 
 <template>
@@ -44,17 +49,29 @@ const activeTabMeta = computed(() => tabMeta.value.find((tab) => tab.id === acti
     </header>
 
     <div class="settings-surface__shell">
-      <aside class="settings-surface__nav-panel" aria-label="Settings sections">
-        <div class="settings-surface__nav-copy">
-          <span class="settings-surface__nav-label">{{ t('settings.navLabel') }}</span>
-          <p class="settings-surface__nav-text">{{ t('settings.navText') }}</p>
-        </div>
-        <SettingsTabBar :active-tab="activeTab" @select="activeTab = $event" />
-      </aside>
+      <TabGroup>
+        <aside class="settings-surface__nav-panel" aria-label="Settings sections">
+          <div class="settings-surface__nav-copy">
+            <span class="settings-surface__nav-label">{{ t('settings.navLabel') }}</span>
+            <p class="settings-surface__nav-text">{{ t('settings.navText') }}</p>
+          </div>
+          <SettingsTabBar :active-tab="activeTab" @select="onTabSelect" />
+        </aside>
 
-      <div class="settings-surface__content-panel">
-        <component :is="tabComponents[activeTab]" />
-      </div>
+        <div class="settings-surface__content-panel">
+          <TabPanels>
+            <TabPanel>
+              <GeneralSettings />
+            </TabPanel>
+            <TabPanel>
+              <ProvidersSettings />
+            </TabPanel>
+            <TabPanel>
+              <AboutSettings />
+            </TabPanel>
+          </TabPanels>
+        </div>
+      </TabGroup>
     </div>
   </section>
 </template>

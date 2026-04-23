@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { TabList, Tab } from '@headlessui/vue'
+
 export type SettingsTab = 'general' | 'providers' | 'about'
 
 defineProps<{
@@ -41,41 +43,46 @@ const tabs: Array<{ id: SettingsTab; label: string; summary: string; iconPaths: 
     ]
   }
 ]
+
+function onTabClick(tabId: SettingsTab) {
+  emit('select', tabId)
+}
 </script>
 
 <template>
-  <nav class="settings-tab-bar" role="tablist" aria-label="Settings navigation">
-    <button
+  <TabList class="settings-tab-bar">
+    <Tab
       v-for="tab in tabs"
       :key="tab.id"
-      class="settings-tab-bar__item"
-      :class="{ 'settings-tab-bar__item--active': tab.id === activeTab }"
-      :aria-selected="tab.id === activeTab"
-      :aria-controls="`settings-panel-${tab.id}`"
-      :data-settings-tab="tab.id"
-      role="tab"
-      type="button"
-      @click="emit('select', tab.id)"
+      as="template"
     >
-      <span class="settings-tab-bar__icon" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none" focusable="false">
-          <path
-            v-for="path in tab.iconPaths"
-            :key="path"
-            :d="path"
-            stroke="currentColor"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            stroke-width="1.5"
-          />
-        </svg>
-      </span>
-      <span class="settings-tab-bar__copy">
-        <span class="settings-tab-bar__label">{{ tab.label }}</span>
-        <span class="settings-tab-bar__summary">{{ tab.summary }}</span>
-      </span>
-    </button>
-  </nav>
+      <button
+        class="settings-tab-bar__item"
+        :class="{ 'settings-tab-bar__item--active': tab.id === activeTab }"
+        :data-settings-tab="tab.id"
+        type="button"
+        @click="onTabClick(tab.id)"
+      >
+        <span class="settings-tab-bar__icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" focusable="false">
+            <path
+              v-for="path in tab.iconPaths"
+              :key="path"
+              :d="path"
+              stroke="currentColor"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="1.5"
+            />
+          </svg>
+        </span>
+        <span class="settings-tab-bar__copy">
+          <span class="settings-tab-bar__label">{{ tab.label }}</span>
+          <span class="settings-tab-bar__summary">{{ tab.summary }}</span>
+        </span>
+      </button>
+    </Tab>
+  </TabList>
 </template>
 
 <style scoped>
