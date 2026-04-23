@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  assertNonEmptyList,
   defineBehavior,
   defineGeneratedTestMeta,
   defineJourney,
@@ -7,6 +8,10 @@ import {
 } from './testing-contracts'
 
 describe('testing contracts', () => {
+  it('rejects blank values in exported non-empty lists', () => {
+    expect(() => assertNonEmptyList(['   '], 'List values')).toThrow('List values must not contain empty values')
+  })
+
   it('preserves a valid behavior contract', () => {
     const behavior = defineBehavior({
       id: 'session.restore',
@@ -92,6 +97,27 @@ describe('testing contracts', () => {
     ).toThrow('Behavior session.restore expected effects must not contain empty values')
   })
 
+  it('rejects behavior interruptions with blank values', () => {
+    expect(() =>
+      defineBehavior({
+        id: 'session.restore',
+        actor: 'user',
+        goal: 'restore an archived session',
+        entities: ['session'],
+        usageModes: ['recovery_workflow'],
+        preconditions: ['session.archived'],
+        action: 'archive.restoreSession',
+        expects: ['archive.sessionRemoved'],
+        invalidPreconditions: ['session.notArchived'],
+        interruptions: ['   '],
+        recovery: ['noDuplicateSession'],
+        observationLayers: ['ui'],
+        risk: 'high',
+        coverageBudget: 'critical'
+      })
+    ).toThrow('Behavior session.restore interruptions must not contain empty values')
+  })
+
   it('preserves topology test ids', () => {
     const topology = defineTopology({
       surface: 'archive',
@@ -123,6 +149,17 @@ describe('testing contracts', () => {
         testIds: {}
       })
     ).toThrow('Topology archive must declare at least one test id')
+  })
+
+  it('rejects blank topology test id values', () => {
+    expect(() =>
+      defineTopology({
+        surface: 'archive',
+        testIds: {
+          root: '   '
+        }
+      })
+    ).toThrow('Topology archive test ids must not contain empty values')
   })
 
   it('preserves journey linkage and generated metadata', () => {
