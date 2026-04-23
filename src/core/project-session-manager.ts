@@ -140,6 +140,27 @@ function resolveActiveSessionId(sessions: SessionSummary[], activeSessionId: str
     : null
 }
 
+function resolveBootstrapActiveState(
+  projects: ProjectSummary[],
+  sessions: SessionSummary[],
+  activeProjectId: string | null,
+  activeSessionId: string | null
+): Pick<BootstrapState, 'activeProjectId' | 'activeSessionId'> {
+  const resolvedActiveSessionId = resolveActiveSessionId(sessions, activeSessionId)
+  if (resolvedActiveSessionId) {
+    const activeSession = sessions.find((session) => session.id === resolvedActiveSessionId)
+    return {
+      activeProjectId: activeSession?.projectId ?? null,
+      activeSessionId: resolvedActiveSessionId
+    }
+  }
+
+  return {
+    activeProjectId: resolveActiveProjectId(projects, activeProjectId),
+    activeSessionId: null
+  }
+}
+
 export class ProjectSessionManager {
   private state: BootstrapState
   private readonly globalStatePath?: string
@@ -165,12 +186,16 @@ export class ProjectSessionManager {
     const projects = persistedGlobal.projects.map(toProjectSummary)
     const allSessions = await readAllProjectSessions(persistedGlobal.projects)
     const sessions = allSessions.map(toSessionSummary)
-    const activeProjectId = resolveActiveProjectId(projects, persistedGlobal.active_project_id)
-    const activeSessionId = resolveActiveSessionId(sessions, persistedGlobal.active_session_id)
+    const activeState = resolveBootstrapActiveState(
+      projects,
+      sessions,
+      persistedGlobal.active_project_id,
+      persistedGlobal.active_session_id
+    )
 
     const initialState: BootstrapState = {
-      activeProjectId,
-      activeSessionId,
+      activeProjectId: activeState.activeProjectId,
+      activeSessionId: activeState.activeSessionId,
       terminalWebhookPort: options.webhookPort,
       projects,
       sessions
