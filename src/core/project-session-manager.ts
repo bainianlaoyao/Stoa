@@ -253,7 +253,7 @@ export class ProjectSessionManager {
       return
     }
 
-    await this.applySessionEvent(sessionId, 'running', '会话运行中', externalSessionId)
+    await this.applySessionEvent(sessionId, 'running', 'Session running', externalSessionId)
   }
 
   async markSessionExited(sessionId: string, summary: string): Promise<void> {
@@ -313,7 +313,7 @@ export class ProjectSessionManager {
       type: request.type,
       status: 'bootstrapping',
       title: request.title,
-      summary: '等待会话启动',
+      summary: 'Waiting for session to start',
       recoveryMode: createSessionRecoveryMode(request.type),
       externalSessionId: createSessionExternalId(request.type, request.externalSessionId),
       createdAt: now,

@@ -259,7 +259,7 @@ describe('E2E: webhook runtime integration', () => {
 
     expect(persistedSession).toBeDefined()
     expect(persistedSession!.last_known_status).toBe('bootstrapping')
-    expect(persistedSession!.last_summary).toBe('等待会话启动')
+    expect(persistedSession!.last_summary).toBe('Waiting for session to start')
     expect(persistedSession!.external_session_id).toBeNull()
   })
 

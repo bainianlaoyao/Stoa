@@ -37,7 +37,7 @@ export class SessionRuntimeController implements SessionRuntimeManager {
     this.pushSessionEvent(
       sessionId,
       session?.status ?? 'running',
-      session?.summary ?? '会话运行中'
+      session?.summary ?? 'Session running'
     )
   }
 

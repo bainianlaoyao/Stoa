@@ -109,7 +109,7 @@ export async function startSessionRuntime(options: StartSessionRuntimeOptions): 
     },
     (exitCode) => {
       console.log(`[session-runtime] Process exited for ${session.id} with code ${exitCode}`)
-      void manager.markSessionExited(session.id, `${session.type} 已退出 (${exitCode})`)
+      void manager.markSessionExited(session.id, `${session.type} exited (${exitCode})`)
     }
   )
 

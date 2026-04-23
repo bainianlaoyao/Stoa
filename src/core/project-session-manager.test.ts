@@ -44,7 +44,7 @@ describe('ProjectSessionManager', () => {
 
     const fresh = manager.snapshot()
     expect(fresh.projects[0]?.name).toBe('alpha')
-    expect(fresh.sessions[0]?.summary).toBe('等待会话启动')
+    expect(fresh.sessions[0]?.summary).toBe('Waiting for session to start')
     expect(fresh.activeProjectId).toBe(project.id)
     expect(fresh.activeSessionId).toBe(fresh.sessions[0]?.id ?? null)
   })
@@ -288,7 +288,7 @@ describe('ProjectSessionManager', () => {
       const updated = manager.snapshot().sessions.find(s => s.id === session.id)!
       expect(updated.status).toBe('running')
       expect(updated.externalSessionId).toBeNull()
-      expect(updated.summary).toBe('会话运行中')
+      expect(updated.summary).toBe('Session running')
     })
 
     test('markSessionRunning does not invent a session id for shell sessions', async () => {
@@ -325,11 +325,11 @@ describe('ProjectSessionManager', () => {
       const project = await manager.createProject({ path: projectDir, name: 'test' })
       const session = await manager.createSession({ projectId: project.id, type: 'shell', title: 'S1' })
 
-      await manager.markSessionExited(session.id, 'shell 已退出 (0)')
+      await manager.markSessionExited(session.id, 'shell exited (0)')
 
       const updated = manager.snapshot().sessions.find(s => s.id === session.id)!
       expect(updated.status).toBe('exited')
-      expect(updated.summary).toBe('shell 已退出 (0)')
+      expect(updated.summary).toBe('shell exited (0)')
     })
 
     test('lifecycle methods are no-ops for unknown session IDs', async () => {

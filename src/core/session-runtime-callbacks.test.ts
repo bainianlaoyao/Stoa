@@ -130,7 +130,7 @@ describe('session runtime callbacks and defaults', () => {
       onExit(0)
 
       expect(markSessionExited).toHaveBeenCalledOnce()
-      expect(markSessionExited).toHaveBeenCalledWith('session_op_1', 'opencode 已退出 (0)')
+      expect(markSessionExited).toHaveBeenCalledWith('session_op_1', 'opencode exited (0)')
     })
 
     test('onExit with non-zero code includes the code', async () => {
@@ -153,7 +153,7 @@ describe('session runtime callbacks and defaults', () => {
       const onExit = ptyHost.onExit!
       onExit(137)
 
-      expect(markSessionExited).toHaveBeenCalledWith('session_op_1', 'opencode 已退出 (137)')
+      expect(markSessionExited).toHaveBeenCalledWith('session_op_1', 'opencode exited (137)')
     })
   })
 

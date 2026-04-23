@@ -23,7 +23,7 @@ function onClose() {
 
 <template>
   <TransitionRoot :show="show" as="template">
-    <Dialog as="div" class="relative z-50" data-testid="modal-root" @close="onClose">
+    <Dialog as="div" class="fixed inset-0 z-50 overflow-y-auto" data-testid="modal-root" @close="onClose">
       <TransitionChild
         as="template"
         enter="transition-opacity duration-200 ease-out"
@@ -36,8 +36,7 @@ function onClose() {
         <div class="fixed inset-0 bg-black/45" data-testid="modal-overlay" aria-hidden="true" @click="onClose" />
       </TransitionChild>
 
-      <div class="fixed inset-0 overflow-y-auto">
-        <div class="flex min-h-full items-center justify-center p-4" @click.self="onClose">
+      <div class="relative z-10 flex min-h-full items-center justify-center p-4" @click.self="onClose">
           <TransitionChild
             as="template"
             enter="transition duration-200 ease-out"
@@ -61,7 +60,6 @@ function onClose() {
             </DialogPanel>
           </TransitionChild>
         </div>
-      </div>
     </Dialog>
   </TransitionRoot>
 </template>

@@ -185,7 +185,7 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
 
       snapshot = manager.snapshot()
       expect(snapshot.sessions.find(s => s.id === session.id)!.status).toBe('exited')
-      expect(snapshot.sessions.find(s => s.id === session.id)!.summary).toMatch(/已退出/)
+      expect(snapshot.sessions.find(s => s.id === session.id)!.summary).toMatch(/exited/)
     })
 
     test('captures terminal data from real process output', async () => {
@@ -274,7 +274,7 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
 
       const diskExited = await readProjectSessions(workspaceDir)
       expect(diskExited.sessions[0]!.last_known_status).toBe('exited')
-      expect(diskExited.sessions[0]!.last_summary).toMatch(/已退出/)
+      expect(diskExited.sessions[0]!.last_summary).toMatch(/exited/)
     })
   })
 
@@ -382,7 +382,7 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
       expect(snapshot.projects).toHaveLength(1)
       expect(snapshot.sessions).toHaveLength(1)
       expect(snapshot.sessions[0]!.status).toBe('exited')
-      expect(snapshot.sessions[0]!.summary).toMatch(/已退出/)
+      expect(snapshot.sessions[0]!.summary).toMatch(/exited/)
       expect(snapshot.sessions[0]!.id).toBe(session.id)
       expect(snapshot.sessions[0]!.externalSessionId).toBeNull()
     })

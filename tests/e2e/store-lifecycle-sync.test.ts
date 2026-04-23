@@ -65,7 +65,7 @@ function createStoreCapturingManager(delegate: ProjectSessionManager): StoreCapt
     },
     async markSessionRunning(sessionId: string, externalSessionId: string | null) {
       await delegate.markSessionRunning(sessionId, externalSessionId)
-      events.push({ sessionId, status: 'running', summary: '会话运行中' })
+      events.push({ sessionId, status: 'running', summary: 'Session running' })
     },
     async markSessionExited(sessionId: string, summary: string) {
       await delegate.markSessionExited(sessionId, summary)
@@ -134,7 +134,7 @@ describe('E2E: Store Lifecycle Synchronization', () => {
 
       const storeSession = store.sessions.find(s => s.id === session.id)!
       expect(storeSession.status).toBe('running')
-      expect(storeSession.summary).toContain('会话运行中')
+      expect(storeSession.summary).toContain('Session running')
       expect(store.activeSession!.status).toBe('running')
 
       await waitForExit(capturing.exitSignal)

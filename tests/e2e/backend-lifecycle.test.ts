@@ -404,7 +404,7 @@ describe('E2E: Backend Full User Lifecycle', () => {
 
       const snap2 = manager.snapshot()
       expect(snap2.projects[0]!.name).toBe('test_workspace')
-      expect(snap2.sessions[0]!.summary).toBe('等待会话启动')
+      expect(snap2.sessions[0]!.summary).toBe('Waiting for session to start')
     })
 
     test('destroying and recreating manager restores all projects', async () => {
@@ -923,7 +923,7 @@ describe('E2E: Backend Full User Lifecycle', () => {
       expect(mock.methodNames()).toContain('markSessionExited')
       const exitLog = mock.log.find(e => e.method === 'markSessionExited')
       expect(exitLog!.args[0]).toBe('session_shell_1')
-      expect(exitLog!.args[1]).toMatch(/退出/)
+      expect(exitLog!.args[1]).toMatch(/exited/)
     })
   })
 

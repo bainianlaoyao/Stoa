@@ -92,7 +92,7 @@ describe('SessionRuntimeController', () => {
     expect(sent[0]!.data).toEqual({
       sessionId: session.id,
       status: 'running',
-      summary: '会话运行中'
+      summary: 'Session running'
     })
   })
 
@@ -102,14 +102,14 @@ describe('SessionRuntimeController', () => {
     const session = await manager.createSession({ projectId: project.id, type: 'shell', title: 'S1' })
 
     const controller = new SessionRuntimeController(manager, () => win)
-    await controller.markSessionExited(session.id, 'shell 已退出 (0)')
+    await controller.markSessionExited(session.id, 'shell exited (0)')
 
     expect(manager.snapshot().sessions[0]!.status).toBe('exited')
     expect(sent).toHaveLength(1)
     expect(sent[0]!.data).toEqual({
       sessionId: session.id,
       status: 'exited',
-      summary: 'shell 已退出 (0)'
+      summary: 'shell exited (0)'
     })
   })
 

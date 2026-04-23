@@ -23,7 +23,7 @@ test.describe('Electron smoke sentinel', () => {
 
     try {
       await expect(app.page.locator('.terminal-empty-state')).toBeVisible()
-      await expect(app.page.locator('.terminal-empty-state')).toContainText('没有可显示的会话')
+      await expect(app.page.locator('.terminal-empty-state')).toContainText('No session to display')
     } finally {
       const { stateDir } = app
       await app.close()

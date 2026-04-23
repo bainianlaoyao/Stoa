@@ -24,12 +24,12 @@ export async function createProject(target: Page | ElectronPageTarget, options: 
 
   await page.getByRole('button', { name: 'New Project' }).click()
 
-  const dialog = page.getByRole('dialog', { name: '新建项目' })
+  const dialog = page.getByRole('dialog', { name: 'New project' })
   await expect(dialog).toBeVisible()
-  await dialog.getByLabel('项目名称').fill(options.name)
+  await dialog.getByLabel('Project name').fill(options.name)
   await dialog.getByRole('button', { name: 'Browse' }).click()
-  await expect(dialog.getByLabel('项目路径')).toHaveValue(options.path)
-  await dialog.getByRole('button', { name: '创建' }).click()
+  await expect(dialog.getByLabel('Project path')).toHaveValue(options.path)
+  await dialog.getByRole('button', { name: 'Create' }).click()
 
   const projectRow = page.locator('.route-item--parent').filter({ hasText: options.name }).first()
   await expect(projectRow).toBeVisible()
