@@ -1,10 +1,10 @@
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { readFile, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterEach, describe, expect, test } from 'vitest'
 import { getProvider, listProviders } from '@extensions/providers'
 import type { ProviderCommandContext } from '@shared/project-session'
 import type { ProviderRuntimeTarget } from '@extensions/providers'
+import { createTestTempDir } from '../../testing/test-temp'
 
 const tempDirs: string[] = []
 
@@ -15,7 +15,7 @@ afterEach(async () => {
 })
 
 async function createTempDir(prefix: string): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), prefix))
+  const dir = await createTestTempDir(prefix)
   tempDirs.push(dir)
   return dir
 }

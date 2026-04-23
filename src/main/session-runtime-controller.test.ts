@@ -1,21 +1,21 @@
-import { mkdtemp, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { describe, test, expect, beforeEach, afterEach } from 'vitest'
 import { SessionRuntimeController } from './session-runtime-controller'
 import { IPC_CHANNELS } from '@core/ipc-channels'
 import { ProjectSessionManager } from '@core/project-session-manager'
+import { createTestTempDir } from '../../testing/test-temp'
 
 const tempDirs: string[] = []
 
 async function createTestWorkspace(name: string): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), name))
+  const dir = await createTestTempDir(name)
   tempDirs.push(dir)
   return dir
 }
 
 async function createTestGlobalStatePath(): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), 'stoa-controller-state-'))
+  const dir = await createTestTempDir('stoa-controller-state-')
   tempDirs.push(dir)
   return join(dir, 'global.json')
 }

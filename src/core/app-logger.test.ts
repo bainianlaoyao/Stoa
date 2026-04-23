@@ -1,13 +1,13 @@
-import { mkdtemp, readFile } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { tmpdir } from 'node:os'
 import { afterEach, describe, expect, test } from 'vitest'
 import { writeAppLog } from './app-logger'
+import { createTestTempDir } from '../../testing/test-temp'
 
 const tempDirs: string[] = []
 
 async function createTempLogPath(): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), 'stoa-app-logger-'))
+  const dir = await createTestTempDir('stoa-app-logger-')
   tempDirs.push(dir)
   return join(dir, 'app.log')
 }

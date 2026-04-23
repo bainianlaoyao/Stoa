@@ -12,6 +12,7 @@
     "src/core/**/*.ts",
     "src/extensions/providers/**/*.ts",
     "src/shared/**/*.ts",
+    "testing/**/*.ts",
     "tests/e2e/helpers.ts"
   ]
 }

@@ -1,14 +1,14 @@
-import { access, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { access, mkdir, rm, writeFile } from 'node:fs/promises'
 import { constants } from 'node:fs'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, test } from 'vitest'
 import { ensureElectronMainEntrypoint, resolveElectronMainEntrypoint } from './electron-app'
+import { createTestTempDir } from '../../../testing/test-temp'
 
 const tempDirs: string[] = []
 
 async function createTempWorkspace(): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), 'stoa-electron-entry-'))
+  const dir = await createTestTempDir('stoa-electron-entry-')
   tempDirs.push(dir)
   return dir
 }

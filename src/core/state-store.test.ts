@@ -1,5 +1,4 @@
-import { mkdtemp, readFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterEach, describe, expect, test } from 'vitest'
 import {
@@ -10,17 +9,18 @@ import {
   writeProjectSessions
 } from './state-store'
 import type { PersistedGlobalStateV3, PersistedProjectSessions } from '@shared/project-session'
+import { createTestTempDir } from '../../testing/test-temp'
 
 const tempDirs: string[] = []
 
 async function createTempGlobalStatePath(): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), 'stoa-state-store-'))
+  const dir = await createTestTempDir('stoa-state-store-')
   tempDirs.push(dir)
   return join(dir, 'global.json')
 }
 
 async function createTempProjectDir(): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), 'stoa-project-'))
+  const dir = await createTestTempDir('stoa-project-')
   tempDirs.push(dir)
   return dir
 }

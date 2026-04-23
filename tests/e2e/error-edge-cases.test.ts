@@ -1,10 +1,10 @@
-import { mkdtemp, rm, unlink, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { rm, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterEach, describe, expect, test } from 'vitest'
 import { ProjectSessionManager } from '@core/project-session-manager'
 import { readGlobalState, readProjectSessions } from '@core/state-store'
 import type { PersistedGlobalStateV3 } from '@shared/project-session'
+import { createTestTempDir } from '../../testing/test-temp'
 
 const tempDirs: string[] = []
 
@@ -15,7 +15,7 @@ afterEach(async () => {
 })
 
 async function createTempDir(prefix: string): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), prefix))
+  const dir = await createTestTempDir(prefix)
   tempDirs.push(dir)
   return dir
 }
