@@ -3,6 +3,7 @@ import { ref, watch, onMounted, onBeforeUnmount, nextTick, computed } from 'vue'
 import '@xterm/xterm/css/xterm.css'
 import { createTerminalRuntime } from '@renderer/terminal/xterm-runtime'
 import { useSettingsStore } from '@renderer/stores/settings'
+import { useI18n } from 'vue-i18n'
 import type { FitAddon } from '@xterm/addon-fit'
 import type { Terminal } from '@xterm/xterm'
 import type { ProjectSummary, SessionStatus, SessionSummary, TerminalDataChunk } from '@shared/project-session'
@@ -15,6 +16,7 @@ const props = defineProps<{
 const terminalContainer = ref<HTMLDivElement>()
 const LIVE_TERMINAL_STATUSES = new Set<SessionStatus>(['running', 'awaiting_input'])
 const settingsStore = useSettingsStore()
+const { t } = useI18n()
 const isLiveTerminal = computed(() => {
   return props.session ? LIVE_TERMINAL_STATUSES.has(props.session.status) : false
 })
@@ -236,7 +238,7 @@ onBeforeUnmount(disposeTerminal)
       <div v-else class="terminal-viewport__overlay">
         <header class="terminal-viewport__header">
           <div>
-            <p class="terminal-viewport__eyebrow">Session details</p>
+            <p class="terminal-viewport__eyebrow">{{ t('terminal.details') }}</p>
             <h2>{{ session.title }}</h2>
           </div>
           <div class="terminal-viewport__meta">
@@ -249,20 +251,20 @@ onBeforeUnmount(disposeTerminal)
           <p>{{ session.summary }}</p>
           <dl class="terminal-viewport__field-list">
             <div>
-              <dt>Project</dt>
+              <dt>{{ t('terminal.project') }}</dt>
               <dd>{{ project.name }}</dd>
             </div>
             <div>
-              <dt>Path</dt>
+              <dt>{{ t('terminal.path') }}</dt>
               <dd><code>{{ project.path }}</code></dd>
             </div>
             <div>
-              <dt>Recovery</dt>
+              <dt>{{ t('terminal.recovery') }}</dt>
               <dd>{{ session.recoveryMode }}</dd>
             </div>
             <div>
-              <dt>External Session</dt>
-              <dd><code>{{ session.externalSessionId ?? 'not bound' }}</code></dd>
+              <dt>{{ t('terminal.externalSession') }}</dt>
+              <dd><code>{{ session.externalSessionId ?? t('terminal.notBound') }}</code></dd>
             </div>
           </dl>
         </div>
@@ -271,8 +273,8 @@ onBeforeUnmount(disposeTerminal)
 
     <template v-else>
       <section class="terminal-empty-state">
-        <h2>没有可显示的会话</h2>
-        <p>先创建项目，再在项目下创建会话。</p>
+        <h2>{{ t('terminal.emptyTitle') }}</h2>
+        <p>{{ t('terminal.emptyHint') }}</p>
       </section>
     </template>
   </section>
@@ -307,8 +309,8 @@ onBeforeUnmount(disposeTerminal)
   border-radius: var(--radius-md);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.01)),
-    var(--terminal-bg);
-  border: 1px solid var(--terminal-border);
+    var(--color-terminal-bg);
+  border: 1px solid var(--color-terminal-border);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
   overflow: hidden;
 }
@@ -327,7 +329,7 @@ onBeforeUnmount(disposeTerminal)
 }
 
 .terminal-viewport__xterm-mount :deep(.xterm-viewport) {
-  background-color: var(--terminal-bg) !important;
+  background-color: var(--color-terminal-bg) !important;
 }
 
 .terminal-viewport__xterm-mount :deep(.xterm-viewport) {
@@ -344,10 +346,10 @@ onBeforeUnmount(disposeTerminal)
   display: grid;
   gap: 16px;
   padding: 20px 24px;
-  border: 1px solid var(--terminal-border);
+  border: 1px solid var(--color-terminal-border);
   border-radius: var(--radius-md);
-  background: var(--terminal-bg);
-  color: var(--terminal-text);
+  background: var(--color-terminal-bg);
+  color: var(--color-terminal-text);
   min-height: 0;
   overflow: auto;
 }
@@ -360,7 +362,7 @@ onBeforeUnmount(disposeTerminal)
 }
 
 .terminal-viewport__header h2 {
-  color: var(--terminal-text);
+  color: var(--color-terminal-text);
   font-size: 15px;
   font-weight: 600;
 }
@@ -417,7 +419,7 @@ onBeforeUnmount(disposeTerminal)
   margin: 0;
   font-family: var(--font-mono);
   font-size: 12px;
-  color: var(--terminal-text);
+  color: var(--color-terminal-text);
 }
 
 .terminal-viewport__field-list code {

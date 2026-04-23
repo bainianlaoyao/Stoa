@@ -44,7 +44,7 @@ export default defineConfig({
       vue(),
       tailwindcss(),
       VueI18nPlugin({
-        include: [resolve('src/renderer/i18n/**')]
+        include: [resolve('src/renderer/i18n/en.ts'), resolve('src/renderer/i18n/zh-CN.ts')]
       })
     ]
   }

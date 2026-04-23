@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import BaseModal from '../primitives/BaseModal.vue'
 import GlassFormField from '../primitives/GlassFormField.vue'
 import { useWorkspaceStore } from '@renderer/stores/workspaces'
@@ -13,13 +14,14 @@ const emit = defineEmits<{
   create: [payload: { name: string; path: string }]
 }>()
 
+const { t } = useI18n()
 const store = useWorkspaceStore()
 
 const draftName = ref('')
 const draftPath = ref('')
 
 async function browseProjectPath() {
-  const path = await window.stoa.pickFolder({ title: '选择项目目录' })
+  const path = await window.stoa.pickFolder({ title: t('newProject.selectFolder') })
   if (path) {
     draftPath.value = path
     if (!draftName.value.trim()) {
@@ -46,30 +48,30 @@ watch(() => props.show, (isVisible) => {
 </script>
 
 <template>
-  <BaseModal :show="show" title="新建项目" @update:show="emit('update:show', $event)">
+  <BaseModal :show="show" :title="t('newProject.title')" @update:show="emit('update:show', $event)">
     <GlassFormField
-      label="项目名称"
+      :label="t('newProject.nameLabel')"
       :model-value="draftName"
       placeholder="my-project"
       @update:model-value="draftName = $event"
     />
     <label class="grid gap-1.5">
-      <span class="text-[11px] font-semibold text-muted uppercase tracking-[0.08em]">项目路径</span>
+      <span class="text-[11px] font-semibold text-muted uppercase tracking-[0.08em]">{{ t('newProject.pathLabel') }}</span>
       <div class="flex gap-2">
         <input
           class="bg-surface-solid border border-line rounded-lg px-2.5 py-2 font-inherit font-mono text-text-strong outline-none w-full focus:border-accent focus:ring-2 focus:ring-accent/12 placeholder:text-subtle"
           :value="draftPath"
-          placeholder="点击 Browse 选择文件夹"
+          :placeholder="t('newProject.pathPlaceholder')"
           readonly
           @click="browseProjectPath"
         />
-        <button class="btn-ghost min-h-[38px]" type="button" @click="browseProjectPath">Browse</button>
+        <button class="btn-ghost min-h-[38px]" type="button" @click="browseProjectPath">{{ t('newProject.browse') }}</button>
       </div>
     </label>
     <div v-if="store.lastError" class="text-xs text-error bg-error/8 rounded-md px-3 py-2 mt-2">{{ store.lastError }}</div>
     <div class="flex justify-end gap-2 mt-5">
-      <button class="btn-ghost" @click="emit('update:show', false)">取消</button>
-      <button class="btn-primary" @click="submit">创建</button>
+      <button class="btn-ghost" @click="emit('update:show', false)">{{ t('newProject.cancel') }}</button>
+      <button class="btn-primary" @click="submit">{{ t('newProject.create') }}</button>
     </div>
   </BaseModal>
 </template>

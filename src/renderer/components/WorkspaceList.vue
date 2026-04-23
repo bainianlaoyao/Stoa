@@ -1,7 +1,10 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import type { SessionType } from '@shared/project-session'
 import { listProviderDescriptors } from '@shared/provider-descriptors'
 import type { ProjectHierarchyNode } from '@renderer/stores/workspaces'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   hierarchy: ProjectHierarchyNode[]
@@ -53,14 +56,14 @@ const sessionTypeOptions = listProviderDescriptors().map((descriptor) => ({
 <template>
   <aside class="workspace-list">
     <header class="workspace-list__header">
-      <p class="workspace-list__eyebrow">Projects</p>
+      <p class="workspace-list__eyebrow">{{ t('workspace.eyebrow') }}</p>
       <h1 class="workspace-list__title">Stoa</h1>
-      <p class="workspace-list__description">Project → Session hierarchy with canonical state from the main process.</p>
+      <p class="workspace-list__description">{{ t('workspace.description') }}</p>
     </header>
 
     <section class="workspace-create-panel">
       <label class="workspace-create-panel__field">
-        <span>项目名称</span>
+        <span>{{ t('workspace.projectName') }}</span>
         <input
           :value="props.projectName"
           type="text"
@@ -68,19 +71,19 @@ const sessionTypeOptions = listProviderDescriptors().map((descriptor) => ({
         />
       </label>
       <label class="workspace-create-panel__field">
-        <span>项目路径</span>
+        <span>{{ t('workspace.projectPath') }}</span>
         <input
           :value="props.projectPath"
           type="text"
           @input="updateProjectPath"
         />
       </label>
-      <button class="workspace-create-panel__submit" type="button" @click="emit('createProject')">新建项目</button>
+      <button class="workspace-create-panel__submit" type="button" @click="emit('createProject')">{{ t('workspace.newProject') }}</button>
     </section>
 
     <section class="workspace-create-panel workspace-create-panel--session">
       <label class="workspace-create-panel__field">
-        <span>会话标题</span>
+        <span>{{ t('workspace.sessionTitle') }}</span>
         <input
           :value="props.sessionTitle"
           type="text"
@@ -88,7 +91,7 @@ const sessionTypeOptions = listProviderDescriptors().map((descriptor) => ({
         />
       </label>
       <label class="workspace-create-panel__field">
-        <span>会话类型</span>
+        <span>{{ t('workspace.sessionType') }}</span>
         <select
           :value="props.sessionType"
           @change="updateSessionType"

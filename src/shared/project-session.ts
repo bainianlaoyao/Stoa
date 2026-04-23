@@ -63,6 +63,8 @@ export interface AppSettings {
   terminalFontSize: number
   terminalFontFamily: string
   providers: Record<string, string>
+  claudeDangerouslySkipPermissions: boolean
+  locale: string
 }
 
 export const BUILTIN_FONT_FAMILIES = ['JetBrains Mono', 'Cascadia Mono'] as const
@@ -71,7 +73,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   shellPath: '',
   terminalFontSize: 14,
   terminalFontFamily: 'JetBrains Mono',
-  providers: {}
+  providers: {},
+  claudeDangerouslySkipPermissions: false,
+  locale: 'en'
 }
 
 export interface PersistedAppStateV2 {
@@ -174,6 +178,7 @@ export interface ProviderCommandContext {
   sessionSecret: string
   providerPort: number
   providerPath?: string | null
+  claudeDangerouslySkipPermissions?: boolean
   startedAt?: number
 }
 

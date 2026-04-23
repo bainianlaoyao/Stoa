@@ -1,10 +1,13 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import type { SessionSummary } from '@shared/project-session'
 
 interface ArchivedSessionEntry extends SessionSummary {
   projectName: string
   projectPath: string
 }
+
+const { t } = useI18n()
 
 defineProps<{
   archivedSessions: ArchivedSessionEntry[]
@@ -19,12 +22,12 @@ const emit = defineEmits<{
   <section class="archive-surface" data-surface="archive" data-testid="surface.archive" aria-label="Archive surface">
     <div class="archive-body">
       <header class="archive-header">
-        <p class="archive-eyebrow">Session Archive</p>
-        <h2 class="archive-title">已归档会话</h2>
-        <p class="archive-subtitle">集中恢复历史会话，命令面板只保留归档动作。</p>
+        <p class="archive-eyebrow">{{ t('archive.eyebrow') }}</p>
+        <h2 class="archive-title">{{ t('archive.title') }}</h2>
+        <p class="archive-subtitle">{{ t('archive.subtitle') }}</p>
       </header>
 
-      <p v-if="archivedSessions.length === 0" class="archive-empty">当前没有已归档的会话。</p>
+      <p v-if="archivedSessions.length === 0" class="archive-empty">{{ t('archive.empty') }}</p>
 
       <div v-else class="archive-list">
         <article
@@ -55,7 +58,7 @@ const emit = defineEmits<{
             data-testid="archive.session.restore"
             @click="emit('restoreSession', session.id)"
           >
-            恢复
+            {{ t('archive.restore') }}
           </button>
         </article>
       </div>

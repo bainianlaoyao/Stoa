@@ -13,6 +13,7 @@ export default defineConfig({
     }
   },
   test: {
+    setupFiles: ['./tests/i18n-setup.ts'],
     environment: 'happy-dom',
     pool: 'forks',
     exclude: [
