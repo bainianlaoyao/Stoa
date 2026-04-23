@@ -118,7 +118,7 @@ describe('ProviderRadialMenu', () => {
     expect(document.body.querySelector('[role="group"][aria-label="Session providers (radial)"]')).toBeFalsy()
   })
 
-  it('renders a Liquid Glass disk for provider selection', () => {
+  it('renders decorative ring track with class radial-menu__track and aria-hidden="true"', () => {
     mount(ProviderRadialMenu, {
       props: {
         visible: true,
@@ -128,27 +128,9 @@ describe('ProviderRadialMenu', () => {
       attachTo: document.body
     })
 
-    const disk = document.body.querySelector('.radial-menu__glass')
+    const track = document.body.querySelector('.radial-menu__track[aria-hidden="true"]')
 
-    expect(disk).toBeTruthy()
-    expect(document.body.querySelector('.radial-menu__track')).toBeFalsy()
-  })
-
-  it('renders the provider buttons inside the liquid glass disk', () => {
-    mount(ProviderRadialMenu, {
-      props: {
-        visible: true,
-        projectId: 'project_alpha',
-        center: { x: 120, y: 160 }
-      },
-      attachTo: document.body
-    })
-
-    const disk = document.body.querySelector('.radial-menu__glass')
-    const buttons = disk?.querySelectorAll('button')
-
-    expect(disk).toBeTruthy()
-    expect(buttons).toHaveLength(4)
+    expect(track).toBeTruthy()
   })
 
   it('ignores non-primary mouseup on provider buttons', () => {
@@ -192,12 +174,12 @@ describe('ProviderRadialMenu', () => {
     const shellButton = document.body.querySelector('button[aria-label="Create Shell session"]') as HTMLElement | null
 
     expect(openCodeButton?.style.left).toBe('0px')
-    expect(openCodeButton?.style.top).toBe('-48px')
-    expect(codexButton?.style.left).toBe('48px')
+    expect(openCodeButton?.style.top).toBe('-52px')
+    expect(codexButton?.style.left).toBe('52px')
     expect(codexButton?.style.top).toBe('0px')
     expect(claudeButton?.style.left).toBe('0px')
-    expect(claudeButton?.style.top).toBe('48px')
-    expect(shellButton?.style.left).toBe('-48px')
+    expect(claudeButton?.style.top).toBe('52px')
+    expect(shellButton?.style.left).toBe('-52px')
     expect(shellButton?.style.top).toBe('0px')
   })
 })
