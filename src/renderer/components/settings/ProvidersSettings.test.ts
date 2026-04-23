@@ -27,13 +27,52 @@ function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
       terminalFontSize: 14,
       terminalFontFamily: 'JetBrains Mono',
       providers: {},
-      claudeDangerouslySkipPermissions: false
+      claudeDangerouslySkipPermissions: false,
+      locale: 'en'
     }),
     setSetting: vi.fn().mockResolvedValue(undefined),
     pickFolder: vi.fn().mockResolvedValue(null),
     pickFile: vi.fn().mockResolvedValue(null),
     detectShell: vi.fn().mockResolvedValue(null),
     detectProvider: vi.fn().mockResolvedValue(null),
+    minimizeWindow: vi.fn().mockResolvedValue(undefined),
+    maximizeWindow: vi.fn().mockResolvedValue(undefined),
+    closeWindow: vi.fn().mockResolvedValue(undefined),
+    isWindowMaximized: vi.fn().mockResolvedValue(false),
+    onWindowMaximizeChange: vi.fn().mockReturnValue(() => {}),
+    getUpdateState: vi.fn().mockResolvedValue({
+      phase: 'idle',
+      currentVersion: '0.1.0',
+      availableVersion: null,
+      downloadedVersion: null,
+      downloadProgressPercent: null,
+      lastCheckedAt: null,
+      message: null,
+      requiresSessionWarning: false
+    }),
+    checkForUpdates: vi.fn().mockResolvedValue({
+      phase: 'up-to-date',
+      currentVersion: '0.1.0',
+      availableVersion: null,
+      downloadedVersion: null,
+      downloadProgressPercent: null,
+      lastCheckedAt: null,
+      message: 'You are up to date.',
+      requiresSessionWarning: false
+    }),
+    downloadUpdate: vi.fn().mockResolvedValue({
+      phase: 'downloaded',
+      currentVersion: '0.1.0',
+      availableVersion: '0.2.0',
+      downloadedVersion: '0.2.0',
+      downloadProgressPercent: 100,
+      lastCheckedAt: null,
+      message: 'Update 0.2.0 is ready to install.',
+      requiresSessionWarning: false
+    }),
+    quitAndInstallUpdate: vi.fn().mockResolvedValue(undefined),
+    dismissUpdate: vi.fn().mockResolvedValue(undefined),
+    onUpdateState: vi.fn().mockReturnValue(() => {}),
     ...overrides
   }
 }
