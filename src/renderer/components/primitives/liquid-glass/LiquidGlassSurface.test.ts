@@ -58,7 +58,7 @@ describe('liquid glass primitives', () => {
       }
     })
 
-    expect(wrapper.get('.liquid-glass-surface').exists()).toBe(true)
+    expect(wrapper.find('.liquid-glass-surface').exists()).toBe(true)
     expect(wrapper.get('.liquid-glass-surface__content .inside').text()).toBe('Create')
   })
 
