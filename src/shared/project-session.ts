@@ -1,4 +1,4 @@
-export type SessionType = 'shell' | 'opencode'
+export type SessionType = 'shell' | 'opencode' | 'codex' | 'claude-code'
 export type SessionRecoveryMode = 'fresh-shell' | 'resume-external'
 export type SessionStatus =
   | 'bootstrapping'
@@ -174,6 +174,7 @@ export interface ProviderCommandContext {
   sessionSecret: string
   providerPort: number
   providerPath?: string | null
+  startedAt?: number
 }
 
 export interface ProviderCommand {

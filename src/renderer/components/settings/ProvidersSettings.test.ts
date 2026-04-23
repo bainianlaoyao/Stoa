@@ -46,13 +46,14 @@ describe('ProvidersSettings', () => {
     document.body.innerHTML = ''
   })
 
-  it('renders OpenCode provider entry with correct data-settings-field attribute', () => {
+  it('renders provider entries for OpenCode Codex and Claude Code', () => {
     const wrapper = mount(ProvidersSettings, {
       global: { plugins: [createPinia()] },
       attachTo: document.body
     })
-    const providerInput = wrapper.find('[data-settings-field="provider-opencode"]')
-    expect(providerInput.exists()).toBe(true)
+    expect(wrapper.find('[data-settings-field="provider-opencode"]').exists()).toBe(true)
+    expect(wrapper.find('[data-settings-field="provider-codex"]').exists()).toBe(true)
+    expect(wrapper.find('[data-settings-field="provider-claude-code"]').exists()).toBe(true)
   })
 
   it('renders provider section heading and status badge', () => {

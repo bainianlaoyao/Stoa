@@ -45,6 +45,10 @@ describe('WorkspaceList', () => {
 
     expect(wrapper.text()).toContain('alpha')
     expect(wrapper.text()).toContain('Deploy')
+    expect(wrapper.text()).toContain('OpenCode')
+    expect(wrapper.text()).toContain('Codex')
+    expect(wrapper.text()).toContain('Claude Code')
+    expect(wrapper.text()).toContain('Shell')
 
     await wrapper.get('[data-project-create-session="project_alpha"]').trigger('click')
 

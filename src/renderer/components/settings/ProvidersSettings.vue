@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { reactive, ref, onMounted } from 'vue'
+import { listProviderDescriptors } from '@shared/provider-descriptors'
 import { useSettingsStore } from '@renderer/stores/settings'
 
 const store = useSettingsStore()
 
-const providerList = [
-  { id: 'opencode', label: 'OpenCode' }
-]
+const providerList = listProviderDescriptors()
+  .filter(provider => provider.providerId !== 'local-shell')
+  .map(provider => ({ id: provider.providerId, label: provider.displayName }))
 
 const detectedPaths = reactive<Record<string, string | null>>({})
 const detecting = ref(true)

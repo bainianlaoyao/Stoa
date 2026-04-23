@@ -142,6 +142,46 @@ describe('ProjectSessionManager', () => {
     expect(snapshot.sessions[0]?.title).toBe('Alpha opencode')
   })
 
+  test('seeds external session ids for claude-code sessions at creation time', async () => {
+    const manager = ProjectSessionManager.createForTest()
+    const project = await manager.createProject({
+      name: 'alpha',
+      path: 'D:/alpha',
+      defaultSessionType: 'shell'
+    })
+
+    const session = await manager.createSession({
+      projectId: project.id,
+      type: 'claude-code',
+      title: 'Claude alpha'
+    })
+
+    expect(session.recoveryMode).toBe('resume-external')
+    expect(session.externalSessionId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+    )
+  })
+
+  test('treats null claude-code externalSessionId as unset and still seeds a UUID', async () => {
+    const manager = ProjectSessionManager.createForTest()
+    const project = await manager.createProject({
+      name: 'alpha',
+      path: 'D:/alpha',
+      defaultSessionType: 'shell'
+    })
+
+    const session = await manager.createSession({
+      projectId: project.id,
+      type: 'claude-code',
+      title: 'Claude alpha',
+      externalSessionId: null
+    })
+
+    expect(session.externalSessionId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+    )
+  })
+
   test('relaunches shell sessions and resumes opencode sessions during bootstrap', async () => {
     const manager = ProjectSessionManager.createForTest()
     const project = await manager.createProject({
@@ -167,6 +207,35 @@ describe('ProjectSessionManager', () => {
     expect(outcomes).toEqual([
       { sessionId: shell.id, action: 'fresh-shell' },
       { sessionId: opencode.id, action: 'resume-external', externalSessionId: 'ext-123' }
+    ])
+  })
+
+  test('includes codex and claude-code sessions in bootstrap resume plans', async () => {
+    const manager = ProjectSessionManager.createForTest()
+    const project = await manager.createProject({
+      name: 'alpha',
+      path: 'D:/alpha',
+      defaultSessionType: 'shell'
+    })
+
+    const codex = await manager.createSession({
+      projectId: project.id,
+      type: 'codex',
+      title: 'Codex alpha'
+    })
+    const claude = await manager.createSession({
+      projectId: project.id,
+      type: 'claude-code',
+      title: 'Claude alpha'
+    })
+
+    expect(manager.buildBootstrapRecoveryPlan()).toEqual([
+      { sessionId: codex.id, action: 'resume-external', externalSessionId: null },
+      {
+        sessionId: claude.id,
+        action: 'resume-external',
+        externalSessionId: claude.externalSessionId
+      }
     ])
   })
 

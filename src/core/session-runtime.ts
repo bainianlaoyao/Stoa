@@ -1,4 +1,5 @@
-import type { ProviderCommand } from '@shared/project-session'
+import type { ProviderCommand, SessionStatus } from '@shared/project-session'
+import { getProviderDescriptorBySessionType } from '@shared/provider-descriptors'
 import type { ProviderDefinition, ProviderRuntimeTarget } from '@extensions/providers'
 import { wrapCommandForShell } from './shell-command'
 
@@ -24,8 +25,8 @@ export interface StartSessionRuntimeOptions {
     projectId: string
     path: string
     title: string
-    type: 'shell' | 'opencode'
-    status: string
+    type: 'shell' | 'opencode' | 'codex' | 'claude-code'
+    status: SessionStatus
     externalSessionId: string | null
     sessionSecret?: string | null
     providerPort?: number | null
@@ -44,12 +45,14 @@ function toProviderTarget(session: StartSessionRuntimeOptions['session']): Provi
     project_id: session.projectId,
     path: session.path,
     title: session.title,
-    type: session.type
+    type: session.type,
+    external_session_id: session.externalSessionId
   }
 }
 
 export async function startSessionRuntime(options: StartSessionRuntimeOptions): Promise<void> {
   const { session, webhookPort, provider, ptyHost, manager } = options
+  const descriptor = getProviderDescriptorBySessionType(session.type)
   const target = toProviderTarget(session)
   const sessionSecret = session.sessionSecret ?? ''
   const providerPort = session.providerPort ?? webhookPort + 1
@@ -57,7 +60,8 @@ export async function startSessionRuntime(options: StartSessionRuntimeOptions): 
     webhookPort,
     sessionSecret,
     providerPort,
-    providerPath: options.providerPath ?? null
+    providerPath: options.providerPath ?? null,
+    startedAt: Date.now()
   }
 
   console.log(`[session-runtime] installSidecar for ${session.id}`)
@@ -65,20 +69,31 @@ export async function startSessionRuntime(options: StartSessionRuntimeOptions): 
   console.log(`[session-runtime] installSidecar done for ${session.id}`)
 
   const canResume =
-    session.type === 'opencode'
+    descriptor.supportsResume
     && provider.supportsResume()
     && !!session.externalSessionId
+    && session.status !== 'bootstrapping'
     && session.status !== 'needs_confirmation'
+
+  const canFallbackResume =
+    descriptor.supportsResume
+    && provider.supportsResume()
+    && !session.externalSessionId
+    && session.status !== 'bootstrapping'
+    && session.status !== 'needs_confirmation'
+    && !!provider.buildFallbackResumeCommand
 
   const providerCommand = canResume
     ? await provider.buildResumeCommand(target, session.externalSessionId!, context)
-    : await provider.buildStartCommand(target, context)
+    : canFallbackResume
+      ? await provider.buildFallbackResumeCommand!(target, context) ?? await provider.buildStartCommand(target, context)
+      : await provider.buildStartCommand(target, context)
 
   const command =
-    session.type === 'opencode' && options.shellPath
+    descriptor.prefersShellWrap && options.shellPath
       ? wrapCommandForShell(options.shellPath, providerCommand)
       : providerCommand
-  const activeExternalSessionId = canResume ? session.externalSessionId : null
+  const activeExternalSessionId = session.externalSessionId
 
   console.log(`[session-runtime] markSessionStarting for ${session.id} (command: ${command.command} ${command.args.join(' ')})`)
   await manager.markSessionStarting(session.id, `正在启动 ${session.type}`, activeExternalSessionId)
@@ -97,6 +112,20 @@ export async function startSessionRuntime(options: StartSessionRuntimeOptions): 
   )
 
   console.log(`[session-runtime] markSessionRunning for ${session.id} (runtimeId: ${started.runtimeId})`)
-  await manager.markSessionRunning(session.id, activeExternalSessionId)
+  await manager.markSessionRunning(session.id, activeExternalSessionId ?? null)
+
+  if (!session.externalSessionId && provider.discoverExternalSessionIdAfterStart) {
+    void provider.discoverExternalSessionIdAfterStart(target, context)
+      .then(async (discoveredExternalSessionId) => {
+        if (!discoveredExternalSessionId) {
+          return
+        }
+        await manager.markSessionRunning(session.id, discoveredExternalSessionId)
+      })
+      .catch((error) => {
+        console.error(`[session-runtime] Failed external session discovery for ${session.id}:`, error)
+      })
+  }
+
   console.log(`[session-runtime] markSessionRunning done for ${session.id}`)
 }

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { SessionType } from '@shared/project-session'
+import { getProviderDescriptorBySessionType } from '@shared/provider-descriptors'
 import { PROVIDER_ICONS } from '@renderer/composables/provider-icons'
 
 const props = defineProps<{
@@ -16,7 +17,7 @@ const emit = defineEmits<{
 
 const providerButtons = computed(() => PROVIDER_ICONS.map((provider) => ({
   ...provider,
-  providerName: provider.type === 'opencode' ? 'OpenCode' : 'Shell'
+  providerName: getProviderDescriptorBySessionType(provider.type).displayName
 })))
 
 const cardStyle = computed(() => ({

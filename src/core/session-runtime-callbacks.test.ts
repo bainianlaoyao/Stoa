@@ -460,6 +460,35 @@ describe('session runtime callbacks and defaults', () => {
       expect(buildResumeCommand).not.toHaveBeenCalled()
     })
 
+    test('codex without externalSessionId can use fallback resume command after bootstrap', async () => {
+      const buildStartCommand = vi.fn(async () => ({
+        command: 'codex', args: [], cwd: 'D:/demo', env: {}
+      }))
+      const buildFallbackResumeCommand = vi.fn(async () => ({
+        command: 'codex', args: ['resume', '--last'], cwd: 'D:/demo', env: {}
+      }))
+      const provider = createProvider({
+        buildStartCommand,
+        buildFallbackResumeCommand
+      })
+
+      await startSessionRuntime({
+        session: createBaseSession({ type: 'codex', externalSessionId: null, status: 'running' }),
+        webhookPort: 43127,
+        provider,
+        ptyHost: { start: vi.fn(() => ({ runtimeId: 'session_op_1' })) } as never,
+        manager: {
+          markSessionStarting: vi.fn(async () => {}),
+          markSessionRunning: vi.fn(async () => {}),
+          markSessionExited: vi.fn(async () => {}),
+          appendTerminalData: vi.fn(async () => {})
+        } as never
+      })
+
+      expect(buildFallbackResumeCommand).toHaveBeenCalledOnce()
+      expect(buildStartCommand).not.toHaveBeenCalled()
+    })
+
     test('opencode with provider that does not support resume does not resume', async () => {
       const buildStartCommand = vi.fn(async () => ({
         command: 'opencode', args: [], cwd: 'D:/demo', env: {}
@@ -606,7 +635,8 @@ describe('session runtime callbacks and defaults', () => {
         project_id: 'project_abc',
         path: 'C:/workspace/app',
         title: 'My Session',
-        type: 'opencode'
+        type: 'opencode',
+        external_session_id: null
       })
     })
   })

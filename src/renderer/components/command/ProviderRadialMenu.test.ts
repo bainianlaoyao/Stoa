@@ -29,7 +29,7 @@ describe('ProviderRadialMenu', () => {
     expect(group).toBeTruthy()
   })
 
-  it('renders 2 buttons with correct aria-labels', () => {
+  it('renders 4 buttons with correct aria-labels', () => {
     mount(ProviderRadialMenu, {
       props: {
         visible: true,
@@ -42,9 +42,11 @@ describe('ProviderRadialMenu', () => {
     const buttons = Array.from(document.body.querySelectorAll('button'))
     const labels = buttons.map((button) => button.getAttribute('aria-label'))
 
-    expect(buttons).toHaveLength(2)
+    expect(buttons).toHaveLength(4)
     expect(labels).toEqual([
       'Create OpenCode session',
+      'Create Codex session',
+      'Create Claude Code session',
       'Create Shell session'
     ])
   })
@@ -65,6 +67,24 @@ describe('ProviderRadialMenu', () => {
     shellButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
 
     expect(wrapper.emitted('create')).toEqual([[{ type: 'shell' }]])
+  })
+
+  it('clicking Claude Code button emits create with { type: \'claude-code\' }', async () => {
+    const wrapper = mount(ProviderRadialMenu, {
+      props: {
+        visible: true,
+        projectId: 'project_alpha',
+        center: { x: 120, y: 160 }
+      },
+      attachTo: document.body
+    })
+
+    const claudeButton = document.body.querySelector('button[aria-label="Create Claude Code session"]')
+
+    expect(claudeButton).toBeTruthy()
+    claudeButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+
+    expect(wrapper.emitted('create')).toEqual([[{ type: 'claude-code' }]])
   })
 
   it('does not render when visible=false', () => {

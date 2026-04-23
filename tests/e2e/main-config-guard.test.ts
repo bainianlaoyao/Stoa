@@ -140,6 +140,12 @@ describe('E2E: Main Process Config Guard', () => {
     })
   })
 
+  describe('Provider routing guard', () => {
+    it('main/index.ts does not hardcode shell/opencode provider ternary routing anymore', () => {
+      expect(mainSource).not.toContain("session.type === 'shell' ? 'local-shell' : 'opencode'")
+    })
+  })
+
   describe('IPC handler registration completeness', () => {
     it('every RendererApi method has a corresponding ipcMain.handle registration', () => {
       const rendererApiMethods = extractRendererApiMethods(projectSessionSource)

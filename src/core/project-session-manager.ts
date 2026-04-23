@@ -14,6 +14,7 @@ import type {
   SessionType
 } from '@shared/project-session'
 import { DEFAULT_SETTINGS } from '@shared/project-session'
+import { getProviderDescriptorBySessionType } from '@shared/provider-descriptors'
 import {
   DEFAULT_GLOBAL_STATE,
   readGlobalState,
@@ -99,6 +100,16 @@ function toProjectSummary(project: PersistedProject): ProjectSummary {
 
 function createSessionRecoveryMode(type: SessionType) {
   return type === 'shell' ? 'fresh-shell' : 'resume-external'
+}
+
+function createSessionExternalId(type: SessionType, externalSessionId?: string | null): string | null {
+  if (externalSessionId !== undefined && externalSessionId !== null) {
+    return externalSessionId
+  }
+
+  return getProviderDescriptorBySessionType(type).seedsExternalSessionId
+    ? randomUUID()
+    : null
 }
 
 const NON_REGRESSIBLE_RUNNING_STATUSES = new Set<SessionStatus>([
@@ -292,7 +303,7 @@ export class ProjectSessionManager {
       title: request.title,
       summary: '等待会话启动',
       recoveryMode: createSessionRecoveryMode(request.type),
-      externalSessionId: request.externalSessionId ?? null,
+      externalSessionId: createSessionExternalId(request.type, request.externalSessionId),
       createdAt: now,
       updatedAt: now,
       lastActivatedAt: now,

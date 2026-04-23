@@ -6,6 +6,7 @@ import { PtyHost } from '@core/pty-host'
 import { detectShell, detectProvider } from '@core/settings-detector'
 import { startSessionRuntime } from '@core/session-runtime'
 import { getProvider } from '@extensions/providers'
+import { getProviderDescriptorByProviderId, getProviderDescriptorBySessionType } from '@shared/provider-descriptors'
 import { SessionRuntimeController } from './session-runtime-controller'
 import { SessionEventBridge } from './session-event-bridge'
 import type { CreateProjectRequest, CreateSessionRequest } from '@shared/project-session'
@@ -61,26 +62,27 @@ app.whenReady().then(async () => {
   sessionEventBridge = new SessionEventBridge(projectSessionManager, runtimeController)
   const webhookPort = await sessionEventBridge.start()
 
-  async function resolveRuntimePaths(sessionType: 'shell' | 'opencode'): Promise<{
+  async function resolveRuntimePaths(sessionType: CreateSessionRequest['type']): Promise<{
     shellPath: string | null
     providerPath: string | null
   }> {
+    const descriptor = getProviderDescriptorBySessionType(sessionType)
     const settings = projectSessionManager?.getSettings()
     const configuredShellPath = settings?.shellPath?.trim() ?? ''
     const shellPath = configuredShellPath.length > 0 ? configuredShellPath : await detectShell()
 
-    if (sessionType !== 'opencode') {
+    if (descriptor.providerId === 'local-shell') {
       return {
         shellPath,
         providerPath: null
       }
     }
 
-    const configuredProviderPath = settings?.providers.opencode?.trim() ?? ''
+    const configuredProviderPath = settings?.providers[descriptor.providerId]?.trim() ?? ''
     const providerPath =
       configuredProviderPath.length > 0
         ? configuredProviderPath
-        : await detectProvider('opencode', shellPath)
+        : await detectProvider(descriptor.executableName, shellPath)
 
     return {
       shellPath,
@@ -116,11 +118,11 @@ app.whenReady().then(async () => {
       return session
     }
 
-    const providerId = session.type === 'shell' ? 'local-shell' : 'opencode'
-    const provider = getProvider(providerId)
+    const descriptor = getProviderDescriptorBySessionType(session.type)
+    const provider = getProvider(descriptor.providerId)
     const sessionSecret = sessionEventBridge.issueSessionSecret(session.id)
     const { shellPath, providerPath } = await resolveRuntimePaths(session.type)
-    console.log(`[session-create] Starting ${providerId} session ${session.id} in ${project.path}`)
+    console.log(`[session-create] Starting ${descriptor.providerId} session ${session.id} in ${project.path}`)
 
     void startSessionRuntime({
       session: {
@@ -201,7 +203,8 @@ app.whenReady().then(async () => {
   })
 
   ipcMain.handle(IPC_CHANNELS.settingsDetectProvider, async (_event, providerId: string) => {
-    return detectProvider(providerId, projectSessionManager?.getSettings().shellPath ?? null)
+    const descriptor = getProviderDescriptorByProviderId(providerId)
+    return detectProvider(descriptor?.executableName ?? providerId, projectSessionManager?.getSettings().shellPath ?? null)
   })
 
   ipcMain.handle(IPC_CHANNELS.sessionArchive, async (_event, sessionId: string) => {
@@ -227,7 +230,8 @@ app.whenReady().then(async () => {
     if (!session || !project) continue
     if (session.archived) continue
 
-    const provider = getProvider(session.type === 'shell' ? 'local-shell' : 'opencode')
+    const descriptor = getProviderDescriptorBySessionType(session.type)
+    const provider = getProvider(descriptor.providerId)
     const sessionSecret = sessionEventBridge.issueSessionSecret(session.id)
     const { shellPath, providerPath } = await resolveRuntimePaths(session.type)
 

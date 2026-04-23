@@ -861,7 +861,7 @@ describe('E2E: Backend Full User Lifecycle', () => {
       expect(command.args[3]).toContain('opencode.ps1')
     })
 
-    test('fresh start clears stale externalSessionId during runtime transition', async () => {
+    test('fresh start preserves existing externalSessionId during runtime transition', async () => {
       const provider = getProvider('opencode')
       const pty = createMockPtyHost()
       const mock = createMockManager()
@@ -884,8 +884,8 @@ describe('E2E: Backend Full User Lifecycle', () => {
 
       const startingLog = mock.log.find(entry => entry.method === 'markSessionStarting')
       const runningLog = mock.log.find(entry => entry.method === 'markSessionRunning')
-      expect(startingLog?.args[2]).toBeNull()
-      expect(runningLog?.args[1]).toBeNull()
+      expect(startingLog?.args[2]).toBe('stale-ext')
+      expect(runningLog?.args[1]).toBe('stale-ext')
     })
 
     test('PTY exit callback triggers markSessionExited', async () => {

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import type { SessionType } from '@shared/project-session'
+import { getProviderDescriptorBySessionType } from '@shared/provider-descriptors'
 import type { ProjectHierarchyNode } from '@renderer/stores/workspaces'
 import NewProjectModal from './NewProjectModal.vue'
 import ProviderFloatingCard from './ProviderFloatingCard.vue'
@@ -35,12 +36,13 @@ let longPressActivated = false
 
 function generateTitle(projectId: string, type: SessionType): string {
   const project = props.hierarchy.find(p => p.id === projectId)
-  if (type === 'opencode') {
-    const projectName = project?.name ?? 'session'
-    return `opencode-${projectName}`
+  const descriptor = getProviderDescriptorBySessionType(type)
+  if (type === 'shell') {
+    const shellCount = project?.sessions.filter(s => s.type === 'shell').length ?? 0
+    return `shell-${shellCount + 1}`
   }
-  const shellCount = project?.sessions.filter(s => s.type === 'shell').length ?? 0
-  return `shell-${shellCount + 1}`
+  const projectName = project?.name ?? 'session'
+  return `${descriptor.titlePrefix}-${projectName}`
 }
 
 function handleFloatingCardCreate(payload: { type: SessionType }) {

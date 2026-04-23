@@ -42,12 +42,14 @@ function createContext(overrides: Partial<ProviderCommandContext> = {}): Provide
 
 describe('E2E: Provider Integration', () => {
   describe('Provider registry', () => {
-    test('listProviders returns both local-shell and opencode providers', () => {
+    test('listProviders returns local-shell opencode codex and claude-code providers', () => {
       const providers = listProviders()
       const ids = providers.map(p => p.providerId)
       expect(ids).toContain('local-shell')
       expect(ids).toContain('opencode')
-      expect(providers).toHaveLength(2)
+      expect(ids).toContain('codex')
+      expect(ids).toContain('claude-code')
+      expect(providers).toHaveLength(4)
     })
 
     test('getProvider returns local shell provider', () => {
@@ -58,6 +60,16 @@ describe('E2E: Provider Integration', () => {
     test('getProvider returns opencode provider', () => {
       const provider = getProvider('opencode')
       expect(provider.providerId).toBe('opencode')
+    })
+
+    test('getProvider returns codex provider', () => {
+      const provider = getProvider('codex')
+      expect(provider.providerId).toBe('codex')
+    })
+
+    test('getProvider returns claude-code provider', () => {
+      const provider = getProvider('claude-code')
+      expect(provider.providerId).toBe('claude-code')
     })
 
     test('getProvider falls back to local-shell for unknown provider', () => {
@@ -218,6 +230,85 @@ describe('E2E: Provider Integration', () => {
     test('supportsStructuredEvents() returns true', () => {
       const provider = getProvider('opencode')
       expect(provider.supportsStructuredEvents()).toBe(true)
+    })
+  })
+
+  describe('Codex provider', () => {
+    test('buildStartCommand keeps semantic command name when no provider path is configured', async () => {
+      const provider = getProvider('codex')
+      const target = createTarget({ type: 'codex' })
+      const context = createContext()
+
+      const command = await provider.buildStartCommand(target, context)
+
+      expect(command.command).toBe('codex')
+      expect(command.args).toEqual([])
+    })
+
+    test('buildResumeCommand resumes by external session id', async () => {
+      const provider = getProvider('codex')
+      const target = createTarget({ type: 'codex' })
+      const context = createContext()
+
+      const command = await provider.buildResumeCommand(target, '019c75d6-5db6-7c21-8d2f-f0602da4f64d', context)
+
+      expect(command.args).toEqual(['resume', '019c75d6-5db6-7c21-8d2f-f0602da4f64d'])
+    })
+
+    test('buildFallbackResumeCommand falls back to resume --last when external session id is unavailable', async () => {
+      const provider = getProvider('codex')
+      const target = createTarget({ type: 'codex' })
+      const context = createContext()
+
+      const command = await provider.buildFallbackResumeCommand?.(target, context)
+
+      expect(command?.args).toEqual(['resume', '--last'])
+    })
+
+    test('supportsStructuredEvents() returns false', () => {
+      const provider = getProvider('codex')
+      expect(provider.supportsStructuredEvents()).toBe(false)
+    })
+  })
+
+  describe('Claude Code provider', () => {
+    test('buildStartCommand seeds session id through --session-id', async () => {
+      const provider = getProvider('claude-code')
+      const target = createTarget({
+        type: 'claude-code',
+        external_session_id: '11111111-1111-1111-1111-111111111111'
+      })
+      const context = createContext()
+
+      const command = await provider.buildStartCommand(target, context)
+
+      expect(command.command).toBe('claude')
+      expect(command.args).toEqual(['--session-id', '11111111-1111-1111-1111-111111111111'])
+    })
+
+    test('buildStartCommand rejects missing external session ids', async () => {
+      const provider = getProvider('claude-code')
+      const target = createTarget({ type: 'claude-code' })
+      const context = createContext()
+
+      await expect(provider.buildStartCommand(target, context)).rejects.toThrow(
+        'claude-code sessions require an external_session_id'
+      )
+    })
+
+    test('buildResumeCommand resumes by external session id', async () => {
+      const provider = getProvider('claude-code')
+      const target = createTarget({ type: 'claude-code' })
+      const context = createContext()
+
+      const command = await provider.buildResumeCommand(target, '11111111-1111-1111-1111-111111111111', context)
+
+      expect(command.args).toEqual(['--resume', '11111111-1111-1111-1111-111111111111'])
+    })
+
+    test('supportsStructuredEvents() returns false', () => {
+      const provider = getProvider('claude-code')
+      expect(provider.supportsStructuredEvents()).toBe(false)
     })
   })
 

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { SessionType } from '@shared/project-session'
+import { getProviderDescriptorBySessionType } from '@shared/provider-descriptors'
 import { PROVIDER_ICONS } from '@renderer/composables/provider-icons'
 
 const RING_RADIUS = 52
@@ -17,11 +18,6 @@ const emit = defineEmits<{
   create: [payload: { type: SessionType }]
   close: []
 }>()
-
-const providerNames: Record<SessionType, string> = {
-  opencode: 'OpenCode',
-  shell: 'Shell'
-}
 
 const positionedProviders = computed(() => {
   const count = PROVIDER_ICONS.length
@@ -84,7 +80,7 @@ function createSession(type: SessionType) {
         :key="provider.type"
         type="button"
         class="radial-menu__item"
-        :aria-label="`Create ${providerNames[provider.type]} session`"
+        :aria-label="`Create ${getProviderDescriptorBySessionType(provider.type).displayName} session`"
         :style="provider.style"
         @click="createSession(provider.type)"
       >

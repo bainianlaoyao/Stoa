@@ -141,4 +141,21 @@ describe('settings detector', () => {
     )
     expect(result).toBe("/usr/local/bin/open'code")
   })
+
+  test('detects claude executable names without rewriting them to provider ids', async () => {
+    const { detectProvider } = await import('./settings-detector')
+    mockExecFile.mockImplementation((_file: string, _args: string[], callback: (err: Error | null, stdout: string) => void) => {
+      callback(null, '/usr/local/bin/claude\n')
+    })
+
+    const detectProviderWithShell = detectProvider as unknown as (providerId: string, shellPath?: string | null) => Promise<string | null>
+    const result = await detectProviderWithShell('claude', '/bin/zsh')
+
+    expect(mockExecFile).toHaveBeenCalledWith(
+      '/bin/zsh',
+      ['-lc', "command -v 'claude'"],
+      expect.any(Function)
+    )
+    expect(result).toBe('/usr/local/bin/claude')
+  })
 })

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { SessionType } from '@shared/project-session'
+import { listProviderDescriptors } from '@shared/provider-descriptors'
 import type { ProjectHierarchyNode } from '@renderer/stores/workspaces'
 
 const props = defineProps<{
@@ -42,6 +43,11 @@ function updateSessionTitle(event: Event): void {
 function updateSessionType(event: Event): void {
   emit('update:sessionType', (event.target as HTMLSelectElement).value as SessionType)
 }
+
+const sessionTypeOptions = listProviderDescriptors().map((descriptor) => ({
+  value: descriptor.sessionType,
+  label: descriptor.displayName
+}))
 </script>
 
 <template>
@@ -87,8 +93,13 @@ function updateSessionType(event: Event): void {
           :value="props.sessionType"
           @change="updateSessionType"
         >
-          <option value="shell">shell</option>
-          <option value="opencode">opencode</option>
+          <option
+            v-for="option in sessionTypeOptions"
+            :key="option.value"
+            :value="option.value"
+          >
+            {{ option.label }}
+          </option>
         </select>
       </label>
     </section>

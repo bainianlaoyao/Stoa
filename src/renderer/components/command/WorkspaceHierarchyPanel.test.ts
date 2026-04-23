@@ -12,6 +12,18 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
+const mockAddButtonRect = {
+  left: 24,
+  top: 36,
+  width: 24,
+  height: 24,
+  right: 48,
+  bottom: 60,
+  x: 24,
+  y: 36,
+  toJSON: () => ({})
+}
+
 function createHierarchy(): ProjectHierarchyNode[] {
   return [
     {
@@ -124,6 +136,25 @@ function mountPanel(overrides: { hierarchy?: ProjectHierarchyNode[]; activeProje
       activeSessionId: overrides.activeSessionId !== undefined ? overrides.activeSessionId : 'session_2'
     }
   })
+}
+
+async function openFloatingCard(wrapper: ReturnType<typeof mountPanel>) {
+  const addButton = wrapper.find('.route-add-session')
+  Object.defineProperty(addButton.element, 'getBoundingClientRect', {
+    value: () => mockAddButtonRect
+  })
+  await addButton.trigger('mousedown')
+  await addButton.trigger('mouseup')
+}
+
+async function openRadialMenu(wrapper: ReturnType<typeof mountPanel>) {
+  vi.useFakeTimers()
+  const addButton = wrapper.find('.route-add-session')
+  Object.defineProperty(addButton.element, 'getBoundingClientRect', {
+    value: () => mockAddButtonRect
+  })
+  await addButton.trigger('mousedown')
+  await vi.advanceTimersByTimeAsync(220)
 }
 
 describe('WorkspaceHierarchyPanel', () => {
@@ -351,14 +382,7 @@ describe('WorkspaceHierarchyPanel', () => {
 
     it('quick click on "+" opens floating card', async () => {
       const wrapper = mountPanel()
-      const addButton = wrapper.find('.route-add-session')
-
-      Object.defineProperty(addButton.element, 'getBoundingClientRect', {
-        value: () => ({ left: 24, top: 36, width: 24, height: 24, right: 48, bottom: 60, x: 24, y: 36, toJSON: () => ({}) })
-      })
-
-      await addButton.trigger('mousedown')
-      await addButton.trigger('mouseup')
+      await openFloatingCard(wrapper)
 
       const floatingCard = wrapper.findComponent(ProviderFloatingCard)
       const radialMenu = wrapper.findComponent(ProviderRadialMenu)
@@ -372,7 +396,7 @@ describe('WorkspaceHierarchyPanel', () => {
       const addButton = wrapper.find('.route-add-session')
 
       Object.defineProperty(addButton.element, 'getBoundingClientRect', {
-        value: () => ({ left: 24, top: 36, width: 24, height: 24, right: 48, bottom: 60, x: 24, y: 36, toJSON: () => ({}) })
+        value: () => mockAddButtonRect
       })
 
       await addButton.trigger('mousedown')
@@ -388,14 +412,7 @@ describe('WorkspaceHierarchyPanel', () => {
 
     it('clicking outside closes floating card opened by quick click', async () => {
       const wrapper = mountPanel()
-      const addButton = wrapper.find('.route-add-session')
-
-      Object.defineProperty(addButton.element, 'getBoundingClientRect', {
-        value: () => ({ left: 24, top: 36, width: 24, height: 24, right: 48, bottom: 60, x: 24, y: 36, toJSON: () => ({}) })
-      })
-
-      await addButton.trigger('mousedown')
-      await addButton.trigger('mouseup')
+      await openFloatingCard(wrapper)
 
       expect(wrapper.findComponent(ProviderFloatingCard).props('visible')).toBe(true)
 
@@ -407,12 +424,11 @@ describe('WorkspaceHierarchyPanel', () => {
 
     it('long press opens radial menu and closes it on mouseup', async () => {
       vi.useFakeTimers()
-
       const wrapper = mountPanel()
       const addButton = wrapper.find('.route-add-session')
 
       Object.defineProperty(addButton.element, 'getBoundingClientRect', {
-        value: () => ({ left: 24, top: 36, width: 24, height: 24, right: 48, bottom: 60, x: 24, y: 36, toJSON: () => ({}) })
+        value: () => mockAddButtonRect
       })
 
       await addButton.trigger('mousedown')
@@ -424,6 +440,28 @@ describe('WorkspaceHierarchyPanel', () => {
       await addButton.trigger('mouseup')
 
       expect(wrapper.findComponent(ProviderRadialMenu).props('visible')).toBe(false)
+    })
+
+    it('creating codex from floating card auto-generates codex project title', async () => {
+      const wrapper = mountPanel()
+      await openFloatingCard(wrapper)
+      await wrapper.findComponent(ProviderFloatingCard).vm.$emit('create', { type: 'codex' })
+      expect(wrapper.emitted('createSession')).toContainEqual([{
+        projectId: 'project_alpha',
+        type: 'codex',
+        title: 'codex-infra-control'
+      }])
+    })
+
+    it('creating claude-code from radial menu auto-generates claude project title', async () => {
+      const wrapper = mountPanel()
+      await openRadialMenu(wrapper)
+      await wrapper.findComponent(ProviderRadialMenu).vm.$emit('create', { type: 'claude-code' })
+      expect(wrapper.emitted('createSession')).toContainEqual([{
+        projectId: 'project_alpha',
+        type: 'claude-code',
+        title: 'claude-infra-control'
+      }])
     })
   })
 
