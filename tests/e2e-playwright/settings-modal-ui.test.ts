@@ -65,12 +65,11 @@ test.describe('Modal (BaseModal via NewProjectModal)', () => {
     try {
       await expect(app.page.getByRole('region', { name: 'Command surface' })).toBeVisible()
 
-      const newProjectBtn = app.page.locator('button', { hasText: 'New project' })
-      if (await newProjectBtn.isVisible()) {
-        await newProjectBtn.click()
-        await expect(app.page.locator('[data-testid="modal-panel"]')).toBeVisible()
-        await expect(app.page.locator('[data-testid="modal-title"]')).toContainText('New project')
-      }
+      const newProjectBtn = app.page.locator('button', { hasText: 'New Project' })
+      await expect(newProjectBtn).toBeVisible()
+      await newProjectBtn.click()
+      await expect(app.page.locator('[data-testid="modal-panel"]')).toBeVisible()
+      await expect(app.page.locator('[data-testid="modal-title"]')).toContainText('New project')
     } finally {
       const { stateDir } = app
       await app.close()
@@ -81,14 +80,12 @@ test.describe('Modal (BaseModal via NewProjectModal)', () => {
   test('modal has role="dialog" and aria-modal', async () => {
     const app = await launchElectronApp()
     try {
-      const newProjectBtn = app.page.locator('button', { hasText: 'New project' })
-      if (await newProjectBtn.isVisible()) {
-        await newProjectBtn.click()
-        const dialog = app.page.locator('[data-testid="modal-root"]')
-        await expect(dialog).toBeVisible()
-        await expect(dialog).toHaveAttribute('role', 'dialog')
-        await expect(dialog).toHaveAttribute('aria-modal', 'true')
-      }
+      const newProjectBtn = app.page.locator('button', { hasText: 'New Project' })
+      await newProjectBtn.click()
+      const dialog = app.page.locator('[data-testid="modal-root"]')
+      await expect(dialog).toBeVisible()
+      await expect(dialog).toHaveAttribute('role', 'dialog')
+      await expect(dialog).toHaveAttribute('aria-modal', 'true')
     } finally {
       const { stateDir } = app
       await app.close()
@@ -99,14 +96,12 @@ test.describe('Modal (BaseModal via NewProjectModal)', () => {
   test('close button closes the modal', async () => {
     const app = await launchElectronApp()
     try {
-      const newProjectBtn = app.page.locator('button', { hasText: 'New project' })
-      if (await newProjectBtn.isVisible()) {
-        await newProjectBtn.click()
-        await expect(app.page.locator('[data-testid="modal-panel"]')).toBeVisible()
+      const newProjectBtn = app.page.locator('button', { hasText: 'New Project' })
+      await newProjectBtn.click()
+      await expect(app.page.locator('[data-testid="modal-panel"]')).toBeVisible()
 
-        await app.page.locator('[data-testid="modal-close"]').click()
-        await expect(app.page.locator('[data-testid="modal-panel"]')).not.toBeVisible()
-      }
+      await app.page.locator('[data-testid="modal-close"]').click()
+      await expect(app.page.locator('[data-testid="modal-panel"]')).not.toBeVisible()
     } finally {
       const { stateDir } = app
       await app.close()
@@ -117,14 +112,12 @@ test.describe('Modal (BaseModal via NewProjectModal)', () => {
   test('Escape key closes the modal', async () => {
     const app = await launchElectronApp()
     try {
-      const newProjectBtn = app.page.locator('button', { hasText: 'New project' })
-      if (await newProjectBtn.isVisible()) {
-        await newProjectBtn.click()
-        await expect(app.page.locator('[data-testid="modal-panel"]')).toBeVisible()
+      const newProjectBtn = app.page.locator('button', { hasText: 'New Project' })
+      await newProjectBtn.click()
+      await expect(app.page.locator('[data-testid="modal-panel"]')).toBeVisible()
 
-        await app.page.keyboard.press('Escape')
-        await expect(app.page.locator('[data-testid="modal-panel"]')).not.toBeVisible()
-      }
+      await app.page.keyboard.press('Escape')
+      await expect(app.page.locator('[data-testid="modal-panel"]')).not.toBeVisible()
     } finally {
       const { stateDir } = app
       await app.close()
@@ -135,18 +128,16 @@ test.describe('Modal (BaseModal via NewProjectModal)', () => {
   test('aria-labelledby links title to dialog', async () => {
     const app = await launchElectronApp()
     try {
-      const newProjectBtn = app.page.locator('button', { hasText: 'New project' })
-      if (await newProjectBtn.isVisible()) {
-        await newProjectBtn.click()
-        const dialog = app.page.locator('[data-testid="modal-root"]')
-        await expect(dialog).toBeVisible()
+      const newProjectBtn = app.page.locator('button', { hasText: 'New Project' })
+      await newProjectBtn.click()
+      const dialog = app.page.locator('[data-testid="modal-root"]')
+      await expect(dialog).toBeVisible()
 
-        const labelledBy = await dialog.getAttribute('aria-labelledby')
-        expect(labelledBy).toBeTruthy()
+      const labelledBy = await dialog.getAttribute('aria-labelledby')
+      expect(labelledBy).toBeTruthy()
 
-        const titleId = await app.page.locator('[data-testid="modal-title"]').getAttribute('id')
-        expect(labelledBy).toBe(titleId)
-      }
+      const titleId = await app.page.locator('[data-testid="modal-title"]').getAttribute('id')
+      expect(labelledBy).toBe(titleId)
     } finally {
       const { stateDir } = app
       await app.close()
