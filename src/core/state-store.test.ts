@@ -80,7 +80,8 @@ describe('state-store', () => {
           created_at: '2026-04-19T00:00:00.000Z',
           updated_at: '2026-04-19T00:00:00.000Z',
           last_activated_at: '2026-04-19T00:00:00.000Z',
-          recovery_mode: 'fresh-shell'
+          recovery_mode: 'fresh-shell',
+          archived: false
         }
       ]
     }

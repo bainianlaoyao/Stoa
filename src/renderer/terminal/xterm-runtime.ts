@@ -4,6 +4,14 @@ import { WebLinksAddon } from '@xterm/addon-web-links'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { Terminal } from '@xterm/xterm'
 
+declare global {
+  interface Navigator {
+    userAgentData?: {
+      platform?: string
+    }
+  }
+}
+
 export interface XtermRuntime {
   terminal: Terminal
   fitAddon: FitAddon
