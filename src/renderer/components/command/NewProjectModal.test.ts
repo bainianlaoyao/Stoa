@@ -46,7 +46,7 @@ describe('NewProjectModal', () => {
         props: { show: true },
         attachTo: document.body
       })
-      expect(document.body.querySelector('.modal-overlay')).toBeTruthy()
+      expect(document.body.querySelector('[role="dialog"]')).toBeTruthy()
     })
 
     it('does NOT render when show=false', () => {
@@ -54,24 +54,24 @@ describe('NewProjectModal', () => {
         props: { show: false },
         attachTo: document.body
       })
-      expect(document.body.querySelector('.modal-overlay')).toBeFalsy()
+      expect(document.body.querySelector('[role="dialog"]')).toBeFalsy()
     })
 
-    it('renders two .form-field__input elements (name + path)', () => {
+    it('renders two input elements (name + path)', () => {
       mount(NewProjectModal, {
         props: { show: true },
         attachTo: document.body
       })
-      const inputs = document.body.querySelectorAll('.form-field__input')
+      const inputs = document.body.querySelectorAll('input[type="text"], input:not([type])')
       expect(inputs.length).toBe(2)
     })
 
-    it('renders 创建 button (.button-primary)', () => {
+    it('renders 创建 button (.btn-primary)', () => {
       mount(NewProjectModal, {
         props: { show: true },
         attachTo: document.body
       })
-      const btn = document.body.querySelector('.button-primary')
+      const btn = document.body.querySelector('.btn-primary')
       expect(btn).toBeTruthy()
       expect(btn!.textContent).toContain('创建')
     })
@@ -81,7 +81,7 @@ describe('NewProjectModal', () => {
         props: { show: true },
         attachTo: document.body
       })
-      const btn = document.body.querySelector('.modal-panel__footer .button-ghost')
+      const btn = document.body.querySelector('.flex.justify-end .btn-ghost')
       expect(btn).toBeTruthy()
       expect(btn!.textContent).toContain('取消')
     })
@@ -93,7 +93,7 @@ describe('NewProjectModal', () => {
         props: { show: true },
         attachTo: document.body
       })
-      ;(document.body.querySelector('.button-primary') as HTMLElement).click()
+      ;(document.body.querySelector('.btn-primary') as HTMLElement).click()
       expect(wrapper.emitted('create')).toBeFalsy()
     })
 
@@ -102,10 +102,10 @@ describe('NewProjectModal', () => {
         props: { show: true },
         attachTo: document.body
       })
-      const nameInput = document.body.querySelector('.form-field__input') as HTMLInputElement
+      const nameInput = document.body.querySelector('label:first-of-type input') as HTMLInputElement
       nameInput.value = 'my-project'
       nameInput.dispatchEvent(new Event('input'))
-      ;(document.body.querySelector('.button-primary') as HTMLElement).click()
+      ;(document.body.querySelector('.btn-primary') as HTMLElement).click()
       expect(wrapper.emitted('create')).toBeFalsy()
     })
 
@@ -115,16 +115,16 @@ describe('NewProjectModal', () => {
         props: { show: true },
         attachTo: document.body
       })
-      const browseBtn = document.body.querySelector('.settings-item__browse') as HTMLElement
+      const browseBtn = document.body.querySelector('.btn-ghost') as HTMLElement
       browseBtn.click()
       await nextTick()
 
-      const nameInput = document.body.querySelector('.form-field__input') as HTMLInputElement
+      const nameInput = document.body.querySelector('label input') as HTMLInputElement
       nameInput.value = ''
       nameInput.dispatchEvent(new Event('input'))
       await nextTick()
 
-      ;(document.body.querySelector('.button-primary') as HTMLElement).click()
+      ;(document.body.querySelector('.btn-primary') as HTMLElement).click()
       expect(wrapper.emitted('create')).toBeFalsy()
     })
 
@@ -134,16 +134,16 @@ describe('NewProjectModal', () => {
         props: { show: true },
         attachTo: document.body
       })
-      const browseBtn = document.body.querySelector('.settings-item__browse') as HTMLElement
+      const browseBtn = document.body.querySelector('.btn-ghost') as HTMLElement
       browseBtn.click()
       await nextTick()
 
-      const nameInput = document.body.querySelector('.form-field__input') as HTMLInputElement
+      const nameInput = document.body.querySelector('label input') as HTMLInputElement
       nameInput.value = '   '
       nameInput.dispatchEvent(new Event('input'))
       await nextTick()
 
-      ;(document.body.querySelector('.button-primary') as HTMLElement).click()
+      ;(document.body.querySelector('.btn-primary') as HTMLElement).click()
       expect(wrapper.emitted('create')).toBeFalsy()
     })
   })
@@ -155,16 +155,16 @@ describe('NewProjectModal', () => {
         props: { show: true },
         attachTo: document.body
       })
-      const nameInput = document.body.querySelector('.form-field__input') as HTMLInputElement
+      const nameInput = document.body.querySelector('label input') as HTMLInputElement
       nameInput.value = 'my-project'
       nameInput.dispatchEvent(new Event('input'))
       await nextTick()
 
-      const browseBtn = document.body.querySelector('.settings-item__browse') as HTMLElement
+      const browseBtn = document.body.querySelector('.btn-ghost') as HTMLElement
       browseBtn.click()
       await nextTick()
 
-      ;(document.body.querySelector('.button-primary') as HTMLElement).click()
+      ;(document.body.querySelector('.btn-primary') as HTMLElement).click()
       expect(wrapper.emitted('create')).toBeTruthy()
       expect(wrapper.emitted('create')![0]).toEqual([{ name: 'my-project', path: '/path/to/project' }])
     })
@@ -175,16 +175,16 @@ describe('NewProjectModal', () => {
         props: { show: true },
         attachTo: document.body
       })
-      const nameInput = document.body.querySelector('.form-field__input') as HTMLInputElement
+      const nameInput = document.body.querySelector('label input') as HTMLInputElement
       nameInput.value = '  my-project  '
       nameInput.dispatchEvent(new Event('input'))
       await nextTick()
 
-      const browseBtn = document.body.querySelector('.settings-item__browse') as HTMLElement
+      const browseBtn = document.body.querySelector('.btn-ghost') as HTMLElement
       browseBtn.click()
       await nextTick()
 
-      ;(document.body.querySelector('.button-primary') as HTMLElement).click()
+      ;(document.body.querySelector('.btn-primary') as HTMLElement).click()
       expect(wrapper.emitted('create')![0]).toEqual([{ name: 'my-project', path: '/path/to/project' }])
     })
 
@@ -194,16 +194,16 @@ describe('NewProjectModal', () => {
         props: { show: true },
         attachTo: document.body
       })
-      const nameInput = document.body.querySelector('.form-field__input') as HTMLInputElement
+      const nameInput = document.body.querySelector('label input') as HTMLInputElement
       nameInput.value = 'my-project'
       nameInput.dispatchEvent(new Event('input'))
       await nextTick()
 
-      const browseBtn = document.body.querySelector('.settings-item__browse') as HTMLElement
+      const browseBtn = document.body.querySelector('.btn-ghost') as HTMLElement
       browseBtn.click()
       await nextTick()
 
-      ;(document.body.querySelector('.button-primary') as HTMLElement).click()
+      ;(document.body.querySelector('.btn-primary') as HTMLElement).click()
       expect(wrapper.emitted('update:show')).toBeTruthy()
       expect(wrapper.emitted('update:show')![0]).toEqual([false])
     })
@@ -215,7 +215,7 @@ describe('NewProjectModal', () => {
         props: { show: true },
         attachTo: document.body
       })
-      ;(document.body.querySelector('.modal-panel__footer .button-ghost') as HTMLElement).click()
+      ;(document.body.querySelector('.flex.justify-end .btn-ghost') as HTMLElement).click()
       expect(wrapper.emitted('update:show')).toBeTruthy()
       expect(wrapper.emitted('update:show')![0]).toEqual([false])
     })
@@ -225,30 +225,30 @@ describe('NewProjectModal', () => {
         props: { show: true },
         attachTo: document.body
       })
-      ;(document.body.querySelector('.modal-panel__footer .button-ghost') as HTMLElement).click()
+      ;(document.body.querySelector('.flex.justify-end .btn-ghost') as HTMLElement).click()
       expect(wrapper.emitted('create')).toBeFalsy()
     })
   })
 
   describe('error handling', () => {
-    it('shows .modal-panel__error when store.lastError is set', () => {
+    it('shows error element when store.lastError is set', () => {
       const store = useWorkspaceStore()
       store.lastError = 'Creation failed'
       mount(NewProjectModal, {
         props: { show: true },
         attachTo: document.body
       })
-      const errorEl = document.body.querySelector('.modal-panel__error')
+      const errorEl = document.body.querySelector('.text-error')
       expect(errorEl).toBeTruthy()
       expect(errorEl!.textContent).toContain('Creation failed')
     })
 
-    it('does NOT show .modal-panel__error when store.lastError is null', () => {
+    it('does NOT show error element when store.lastError is null', () => {
       mount(NewProjectModal, {
         props: { show: true },
         attachTo: document.body
       })
-      expect(document.body.querySelector('.modal-panel__error')).toBeFalsy()
+      expect(document.body.querySelector('.text-error')).toBeFalsy()
     })
 
     it('submit clears previous error via store.clearError', async () => {
@@ -259,16 +259,16 @@ describe('NewProjectModal', () => {
         props: { show: true },
         attachTo: document.body
       })
-      const nameInput = document.body.querySelector('.form-field__input') as HTMLInputElement
+      const nameInput = document.body.querySelector('label input') as HTMLInputElement
       nameInput.value = 'my-project'
       nameInput.dispatchEvent(new Event('input'))
       await nextTick()
 
-      const browseBtn = document.body.querySelector('.settings-item__browse') as HTMLElement
+      const browseBtn = document.body.querySelector('.btn-ghost') as HTMLElement
       browseBtn.click()
       await nextTick()
 
-      ;(document.body.querySelector('.button-primary') as HTMLElement).click()
+      ;(document.body.querySelector('.btn-primary') as HTMLElement).click()
       expect(store.lastError).toBeNull()
     })
 
@@ -278,19 +278,19 @@ describe('NewProjectModal', () => {
         props: { show: true },
         attachTo: document.body
       })
-      const nameInput = document.body.querySelector('.form-field__input') as HTMLInputElement
+      const nameInput = document.body.querySelector('label input') as HTMLInputElement
       nameInput.value = 'my-project'
       nameInput.dispatchEvent(new Event('input'))
       await nextTick()
 
-      const browseBtn = document.body.querySelector('.settings-item__browse') as HTMLElement
+      const browseBtn = document.body.querySelector('.btn-ghost') as HTMLElement
       browseBtn.click()
       await nextTick()
 
       await wrapper.setProps({ show: false })
       await wrapper.setProps({ show: true })
       await nextTick()
-      const freshInputs = document.body.querySelectorAll('.form-field__input')
+      const freshInputs = document.body.querySelectorAll('label input')
       expect((freshInputs[0] as HTMLInputElement).value).toBe('')
       expect((freshInputs[1] as HTMLInputElement).value).toBe('')
     })

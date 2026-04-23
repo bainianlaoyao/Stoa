@@ -100,3 +100,38 @@
   code { font-family: var(--font-mono); }
   #app { min-height: 100vh; }
 }
+
+/* ── Shared utilities ── */
+
+@utility btn-primary {
+  background: var(--color-text-strong);
+  color: var(--color-surface-solid);
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 7px 14px;
+  font-size: var(--text-body-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    opacity: 0.85;
+  }
+}
+
+@utility btn-ghost {
+  background: transparent;
+  color: var(--color-muted);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  padding: 7px 14px;
+  font-size: var(--text-body-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: var(--color-black-soft);
+    color: var(--color-text-strong);
+  }
+}

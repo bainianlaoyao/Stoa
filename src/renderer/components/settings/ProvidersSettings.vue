@@ -79,7 +79,7 @@ function getStatus(providerId: string): 'detected' | 'custom' | 'missing' {
               @change="store.updateSetting('providers', { ...store.providers, [provider.id]: ($event.target as HTMLInputElement).value })"
             />
           </label>
-          <button class="button-ghost settings-item__browse" type="button" @click="browseProvider(provider.id)">Browse</button>
+          <button class="btn-ghost settings-item__browse" type="button" @click="browseProvider(provider.id)">Browse</button>
         </div>
 
         <p v-if="detecting" class="settings-item__hint">Detecting...</p>

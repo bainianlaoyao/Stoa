@@ -77,7 +77,7 @@ function handleFontFamilyChange(value: string): void {
               @change="handleShellChange"
             />
           </label>
-          <button class="button-ghost settings-item__browse" type="button" @click="handleBrowse">Browse</button>
+          <button class="btn-ghost settings-item__browse" type="button" @click="handleBrowse">Browse</button>
         </div>
 
         <p v-if="detecting" class="settings-item__hint">Detecting...</p>
