@@ -146,12 +146,15 @@ function resolveBootstrapActiveState(
   activeProjectId: string | null,
   activeSessionId: string | null
 ): Pick<BootstrapState, 'activeProjectId' | 'activeSessionId'> {
+  const projectIds = new Set(projects.map((project) => project.id))
   const resolvedActiveSessionId = resolveActiveSessionId(sessions, activeSessionId)
   if (resolvedActiveSessionId) {
     const activeSession = sessions.find((session) => session.id === resolvedActiveSessionId)
-    return {
-      activeProjectId: activeSession?.projectId ?? null,
-      activeSessionId: resolvedActiveSessionId
+    if (activeSession && projectIds.has(activeSession.projectId)) {
+      return {
+        activeProjectId: activeSession.projectId,
+        activeSessionId: resolvedActiveSessionId
+      }
     }
   }
 

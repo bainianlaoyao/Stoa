@@ -208,6 +208,56 @@ describe('ProjectSessionManager', () => {
     expect(manager.snapshot().activeSessionId).toBe('session_real')
   })
 
+  test('clears active session references when the active session belongs to a missing project', async () => {
+    const globalStatePath = await createTempGlobalStatePath()
+    const projectDir = await createTempProjectDir()
+    const now = new Date().toISOString()
+
+    await stateStore.writeGlobalState({
+      version: 3,
+      active_project_id: null,
+      active_session_id: 'session_real',
+      projects: [
+        {
+          project_id: 'project_real',
+          name: 'alpha',
+          path: projectDir,
+          default_session_type: 'shell',
+          created_at: now,
+          updated_at: now
+        }
+      ]
+    }, globalStatePath)
+    await stateStore.writeProjectSessions(projectDir, {
+      version: 4,
+      project_id: 'project_real',
+      sessions: [
+        {
+          session_id: 'session_real',
+          project_id: 'project_missing',
+          type: 'shell',
+          title: 'Orphan shell',
+          last_known_status: 'running',
+          last_summary: 'alive',
+          external_session_id: null,
+          created_at: now,
+          updated_at: now,
+          last_activated_at: now,
+          recovery_mode: 'fresh-shell',
+          archived: false
+        }
+      ]
+    })
+
+    const manager = await ProjectSessionManager.create({
+      webhookPort: null,
+      globalStatePath
+    })
+
+    expect(manager.snapshot().activeProjectId).toBeNull()
+    expect(manager.snapshot().activeSessionId).toBeNull()
+  })
+
   test('rejects orphan sessions and enforces unique project paths', async () => {
     const manager = ProjectSessionManager.createForTest()
 
