@@ -82,8 +82,9 @@ test.describe('Modal (BaseModal via NewProjectModal)', () => {
     try {
       const newProjectBtn = app.page.locator('button', { hasText: 'New Project' })
       await newProjectBtn.click()
+      // Verify the panel rendered (dialog root is 0-height due to fixed children)
+      await expect(app.page.locator('[data-testid="modal-panel"]')).toBeVisible()
       const dialog = app.page.locator('[data-testid="modal-root"]')
-      await expect(dialog).toBeVisible()
       await expect(dialog).toHaveAttribute('role', 'dialog')
       await expect(dialog).toHaveAttribute('aria-modal', 'true')
     } finally {
@@ -130,9 +131,9 @@ test.describe('Modal (BaseModal via NewProjectModal)', () => {
     try {
       const newProjectBtn = app.page.locator('button', { hasText: 'New Project' })
       await newProjectBtn.click()
-      const dialog = app.page.locator('[data-testid="modal-root"]')
-      await expect(dialog).toBeVisible()
+      await expect(app.page.locator('[data-testid="modal-panel"]')).toBeVisible()
 
+      const dialog = app.page.locator('[data-testid="modal-root"]')
       const labelledBy = await dialog.getAttribute('aria-labelledby')
       expect(labelledBy).toBeTruthy()
 
