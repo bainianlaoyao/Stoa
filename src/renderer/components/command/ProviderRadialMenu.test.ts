@@ -51,6 +51,22 @@ describe('ProviderRadialMenu', () => {
     ])
   })
 
+  it('renders product image assets for Codex and Claude Code, and svg icons for the others', () => {
+    mount(ProviderRadialMenu, {
+      props: {
+        visible: true,
+        projectId: 'project_alpha',
+        center: { x: 120, y: 160 }
+      },
+      attachTo: document.body
+    })
+
+    expect(document.body.querySelector('button[aria-label="Create Codex session"] img')).toBeTruthy()
+    expect(document.body.querySelector('button[aria-label="Create Claude Code session"] img')).toBeTruthy()
+    expect(document.body.querySelector('button[aria-label="Create OpenCode session"] svg')).toBeTruthy()
+    expect(document.body.querySelector('button[aria-label="Create Shell session"] svg')).toBeTruthy()
+  })
+
   it('clicking Shell button emits create with { type: \'shell\' }', async () => {
     const wrapper = mount(ProviderRadialMenu, {
       props: {

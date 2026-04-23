@@ -47,7 +47,15 @@ function emitCreate(type: SessionType) {
         :aria-label="`Create ${provider.providerName} session`"
         @click="emitCreate(provider.type)"
       >
+        <img
+          v-if="provider.kind === 'image'"
+          class="provider-icon-cell__image"
+          aria-hidden="true"
+          alt=""
+          :src="provider.src"
+        />
         <svg
+          v-else
           class="provider-icon-cell__icon"
           :viewBox="provider.viewBox"
           aria-hidden="true"
@@ -58,10 +66,3 @@ function emitCreate(type: SessionType) {
     </div>
   </Teleport>
 </template>
-
-<style scoped>
-.provider-icon-cell__icon {
-  width: 22px;
-  height: 22px;
-}
-</style>

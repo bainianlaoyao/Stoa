@@ -5,7 +5,7 @@ import { getProviderDescriptorBySessionType } from '@shared/provider-descriptors
 import { PROVIDER_ICONS } from '@renderer/composables/provider-icons'
 
 const RING_RADIUS = 52
-const ITEM_SIZE = 40
+const ITEM_SIZE = 20
 const TRACK_SIZE = RING_RADIUS * 2
 
 const props = defineProps<{
@@ -84,7 +84,16 @@ function createSession(type: SessionType) {
         :style="provider.style"
         @click="createSession(provider.type)"
       >
+        <img
+          v-if="provider.kind === 'image'"
+          class="radial-menu__item-image"
+          aria-hidden="true"
+          :style="iconStyle"
+          alt=""
+          :src="provider.src"
+        />
         <svg
+          v-else
           class="radial-menu__item-icon"
           :viewBox="provider.viewBox"
           aria-hidden="true"

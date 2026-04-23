@@ -1170,14 +1170,12 @@ h2 {
   }
 }
 
-.provider-icon-cell__icon {
-  display: grid;
-  place-items: center;
-}
-
-.provider-icon-cell__icon :deep(svg) {
+.provider-icon-cell__icon,
+.provider-icon-cell__image {
   width: 22px;
   height: 22px;
+  display: block;
+  object-fit: contain;
 }
 
 /* ─── Provider Quick-Create: Radial Menu ─── */
@@ -1223,14 +1221,12 @@ h2 {
   box-shadow: var(--shadow-card);
 }
 
-.radial-menu__item-icon {
-  display: grid;
-  place-items: center;
-}
-
-.radial-menu__item-icon :deep(svg) {
+.radial-menu__item-icon,
+.radial-menu__item-image {
   width: 20px;
   height: 20px;
+  display: block;
+  object-fit: contain;
 }
 
 /* ─── + Button Improvement ─── */
