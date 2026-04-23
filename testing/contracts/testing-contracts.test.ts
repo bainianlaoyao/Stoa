@@ -50,6 +50,48 @@ describe('testing contracts', () => {
     ).toThrow('Behavior session.restore must declare at least one expected effect')
   })
 
+  it('rejects behavior lists with blank entity values', () => {
+    expect(() =>
+      defineBehavior({
+        id: 'session.restore',
+        actor: 'user',
+        goal: 'restore an archived session',
+        entities: ['   '],
+        usageModes: ['recovery_workflow'],
+        preconditions: ['session.archived'],
+        action: 'archive.restoreSession',
+        expects: ['archive.sessionRemoved'],
+        invalidPreconditions: ['session.notArchived'],
+        interruptions: ['duplicateAction'],
+        recovery: ['noDuplicateSession'],
+        observationLayers: ['ui'],
+        risk: 'high',
+        coverageBudget: 'critical'
+      })
+    ).toThrow('Behavior session.restore entities must not contain empty values')
+  })
+
+  it('rejects behavior lists with blank expected effect values', () => {
+    expect(() =>
+      defineBehavior({
+        id: 'session.restore',
+        actor: 'user',
+        goal: 'restore an archived session',
+        entities: ['session'],
+        usageModes: ['recovery_workflow'],
+        preconditions: ['session.archived'],
+        action: 'archive.restoreSession',
+        expects: [''],
+        invalidPreconditions: ['session.notArchived'],
+        interruptions: ['duplicateAction'],
+        recovery: ['noDuplicateSession'],
+        observationLayers: ['ui'],
+        risk: 'high',
+        coverageBudget: 'critical'
+      })
+    ).toThrow('Behavior session.restore expected effects must not contain empty values')
+  })
+
   it('preserves topology test ids', () => {
     const topology = defineTopology({
       surface: 'archive',
@@ -72,6 +114,15 @@ describe('testing contracts', () => {
         }
       })
     ).toThrow('Topology archive has duplicate test id surface.archive')
+  })
+
+  it('rejects topology without test ids', () => {
+    expect(() =>
+      defineTopology({
+        surface: 'archive',
+        testIds: {}
+      })
+    ).toThrow('Topology archive must declare at least one test id')
   })
 
   it('preserves journey linkage and generated metadata', () => {
