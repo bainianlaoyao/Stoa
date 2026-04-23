@@ -22,6 +22,7 @@ function onClose() {
 </script>
 
 <template>
+  <Teleport to="body">
   <TransitionRoot :show="show" as="template">
     <Dialog class="base-modal" data-testid="modal-root" @close="onClose">
       <div class="base-modal__container" data-testid="modal-overlay" @click.self="onClose">
@@ -46,6 +47,7 @@ function onClose() {
       </div>
     </Dialog>
   </TransitionRoot>
+  </Teleport>
 </template>
 
 <style scoped>
