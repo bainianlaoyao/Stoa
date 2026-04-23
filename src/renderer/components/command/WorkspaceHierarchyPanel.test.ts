@@ -442,6 +442,39 @@ describe('WorkspaceHierarchyPanel', () => {
       expect(wrapper.findComponent(ProviderRadialMenu).props('visible')).toBe(false)
     })
 
+    it('releasing on a radial item after long press creates a session', async () => {
+      vi.useFakeTimers()
+      const wrapper = mountPanel()
+
+      await openRadialMenu(wrapper)
+
+      const codexButton = document.body.querySelector('button[aria-label="Create Codex session"]')
+      expect(codexButton).toBeTruthy()
+
+      codexButton?.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.emitted('createSession')).toContainEqual([{
+        projectId: 'project_alpha',
+        type: 'codex',
+        title: 'codex-infra-control'
+      }])
+      expect(wrapper.findComponent(ProviderRadialMenu).props('visible')).toBe(false)
+    })
+
+    it('releasing outside after long press closes radial menu', async () => {
+      vi.useFakeTimers()
+      const wrapper = mountPanel()
+
+      await openRadialMenu(wrapper)
+      expect(wrapper.findComponent(ProviderRadialMenu).props('visible')).toBe(true)
+
+      document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.findComponent(ProviderRadialMenu).props('visible')).toBe(false)
+    })
+
     it('creating codex from floating card auto-generates codex project title', async () => {
       const wrapper = mountPanel()
       await openFloatingCard(wrapper)

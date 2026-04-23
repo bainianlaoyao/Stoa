@@ -80,7 +80,7 @@ function onAddButtonMouseDown(event: MouseEvent, projectId: string) {
     longPressActivated = true
     floatingCardVisible.value = false
     radialMenuVisible.value = true
-  }, 200)
+  }, 100)
 }
 
 function onAddButtonMouseUp() {
@@ -133,12 +133,23 @@ function handleDocumentMouseDown(event: MouseEvent) {
   floatingCardVisible.value = false
 }
 
+function handleDocumentMouseUp() {
+  if (!radialMenuVisible.value) {
+    return
+  }
+
+  radialMenuVisible.value = false
+  longPressActivated = false
+}
+
 onMounted(() => {
   document.addEventListener('mousedown', handleDocumentMouseDown)
+  document.addEventListener('mouseup', handleDocumentMouseUp)
 })
 
 onBeforeUnmount(() => {
   document.removeEventListener('mousedown', handleDocumentMouseDown)
+  document.removeEventListener('mouseup', handleDocumentMouseUp)
 })
 </script>
 

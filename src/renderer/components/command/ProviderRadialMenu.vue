@@ -19,14 +19,18 @@ const emit = defineEmits<{
   close: []
 }>()
 
+function snapToPixel(value: number) {
+  return Math.round(value)
+}
+
 const positionedProviders = computed(() => {
   const count = PROVIDER_ICONS.length
 
   return PROVIDER_ICONS.map((provider, index) => {
     const angle = (index * 360 / count) - 90
     const radians = angle * Math.PI / 180
-    const x = Math.cos(radians) * RING_RADIUS
-    const y = Math.sin(radians) * RING_RADIUS
+    const x = snapToPixel(Math.cos(radians) * RING_RADIUS)
+    const y = snapToPixel(Math.sin(radians) * RING_RADIUS)
 
     return {
       ...provider,
@@ -40,8 +44,8 @@ const positionedProviders = computed(() => {
 })
 
 const menuStyle = computed(() => ({
-  left: `${props.center.x}px`,
-  top: `${props.center.y}px`
+  left: `${snapToPixel(props.center.x)}px`,
+  top: `${snapToPixel(props.center.y)}px`
 }))
 
 const trackStyle = computed(() => ({
@@ -54,6 +58,21 @@ const trackStyle = computed(() => ({
 const iconStyle = {
   width: `${ITEM_SIZE}px`,
   height: `${ITEM_SIZE}px`
+}
+
+function onItemClick(event: MouseEvent, type: SessionType) {
+  // Keyboard activation dispatches click without a preceding mouseup.
+  if (event.detail === 0) {
+    createSession(type)
+  }
+}
+
+function onItemMouseUp(event: MouseEvent, type: SessionType) {
+  if (event.button !== 0) {
+    return
+  }
+
+  createSession(type)
 }
 
 function createSession(type: SessionType) {
@@ -82,7 +101,8 @@ function createSession(type: SessionType) {
         class="radial-menu__item"
         :aria-label="`Create ${getProviderDescriptorBySessionType(provider.type).displayName} session`"
         :style="provider.style"
-        @click="createSession(provider.type)"
+        @mouseup="onItemMouseUp($event, provider.type)"
+        @click="onItemClick($event, provider.type)"
       >
         <img
           class="radial-menu__item-image"

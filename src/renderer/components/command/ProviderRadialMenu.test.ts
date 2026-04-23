@@ -68,7 +68,7 @@ describe('ProviderRadialMenu', () => {
     expect(document.body.querySelector('button svg')).toBeFalsy()
   })
 
-  it('clicking Shell button emits create with { type: \'shell\' }', async () => {
+  it('dragging onto Shell and releasing primary button emits create with { type: \'shell\' }', async () => {
     const wrapper = mount(ProviderRadialMenu, {
       props: {
         visible: true,
@@ -81,12 +81,13 @@ describe('ProviderRadialMenu', () => {
     const shellButton = document.body.querySelector('button[aria-label="Create Shell session"]')
 
     expect(shellButton).toBeTruthy()
-    shellButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }))
+    shellButton?.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 }))
 
     expect(wrapper.emitted('create')).toEqual([[{ type: 'shell' }]])
   })
 
-  it('clicking Claude Code button emits create with { type: \'claude-code\' }', async () => {
+  it('keyboard click on Claude Code emits create with { type: \'claude-code\' }', async () => {
     const wrapper = mount(ProviderRadialMenu, {
       props: {
         visible: true,
@@ -130,5 +131,55 @@ describe('ProviderRadialMenu', () => {
     const track = document.body.querySelector('.radial-menu__track[aria-hidden="true"]')
 
     expect(track).toBeTruthy()
+  })
+
+  it('ignores non-primary mouseup on provider buttons', () => {
+    const wrapper = mount(ProviderRadialMenu, {
+      props: {
+        visible: true,
+        projectId: 'project_alpha',
+        center: { x: 120, y: 160 }
+      },
+      attachTo: document.body
+    })
+
+    const codexButton = document.body.querySelector('button[aria-label="Create Codex session"]')
+
+    expect(codexButton).toBeTruthy()
+    codexButton?.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 1 }))
+    codexButton?.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 2 }))
+
+    expect(wrapper.emitted('create')).toBeFalsy()
+    expect(wrapper.emitted('close')).toBeFalsy()
+  })
+
+  it('snaps menu and item positions to whole pixels to keep icons crisp', () => {
+    mount(ProviderRadialMenu, {
+      props: {
+        visible: true,
+        projectId: 'project_alpha',
+        center: { x: 120.5, y: 160.5 }
+      },
+      attachTo: document.body
+    })
+
+    const group = document.body.querySelector('[role="group"][aria-label="Session providers (radial)"]') as HTMLElement | null
+    expect(group).toBeTruthy()
+    expect(group?.style.left).toBe('121px')
+    expect(group?.style.top).toBe('161px')
+
+    const openCodeButton = document.body.querySelector('button[aria-label="Create OpenCode session"]') as HTMLElement | null
+    const codexButton = document.body.querySelector('button[aria-label="Create Codex session"]') as HTMLElement | null
+    const claudeButton = document.body.querySelector('button[aria-label="Create Claude Code session"]') as HTMLElement | null
+    const shellButton = document.body.querySelector('button[aria-label="Create Shell session"]') as HTMLElement | null
+
+    expect(openCodeButton?.style.left).toBe('0px')
+    expect(openCodeButton?.style.top).toBe('-52px')
+    expect(codexButton?.style.left).toBe('52px')
+    expect(codexButton?.style.top).toBe('0px')
+    expect(claudeButton?.style.left).toBe('0px')
+    expect(claudeButton?.style.top).toBe('52px')
+    expect(shellButton?.style.left).toBe('-52px')
+    expect(shellButton?.style.top).toBe('0px')
   })
 })
