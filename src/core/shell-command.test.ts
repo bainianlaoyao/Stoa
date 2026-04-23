@@ -5,7 +5,7 @@ import { wrapCommandForShell } from './shell-command'
 function createCommand(overrides: Partial<ProviderCommand> = {}): ProviderCommand {
   return {
     command: 'opencode',
-    args: ['--pure'],
+    args: [],
     cwd: 'D:/demo',
     env: { PATH: 'x' },
     ...overrides
@@ -22,13 +22,13 @@ describe('shell command wrapper', () => {
     expect(wrapped.args).not.toContain('-NoProfile')
     expect(wrapped.args).toContain('-Command')
     expect(wrapped.args.at(-1)).toContain('opencode')
-    expect(wrapped.args.at(-1)).toContain('--pure')
+    expect(wrapped.args.at(-1)).not.toContain('--pure')
   })
 
   test('wraps command for POSIX shells with -lc exec', () => {
     const wrapped = wrapCommandForShell(
       '/bin/bash',
-      createCommand({ args: ['--pure', '--session', 'ext-123'], cwd: '/tmp/demo' })
+      createCommand({ args: ['--session', 'ext-123'], cwd: '/tmp/demo' })
     )
 
     expect(wrapped.command).toBe('/bin/bash')
@@ -42,7 +42,7 @@ describe('shell command wrapper', () => {
   test('wraps command for cmd shells with /d /s /c', () => {
     const wrapped = wrapCommandForShell(
       'C:\\Windows\\System32\\cmd.exe',
-      createCommand({ command: 'opencode', args: ['--pure', '--session', 'ext-123'] })
+      createCommand({ command: 'opencode', args: ['--session', 'ext-123'] })
     )
 
     expect(wrapped.command).toBe('C:\\Windows\\System32\\cmd.exe')
@@ -71,7 +71,7 @@ describe('shell command wrapper', () => {
       'C:\\Windows\\System32\\cmd.exe',
       createCommand({
         command: 'C:\\Users\\test\\AppData\\Roaming\\npm\\opencode.ps1',
-        args: ['--pure']
+        args: []
       })
     )
 

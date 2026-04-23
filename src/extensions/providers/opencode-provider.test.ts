@@ -18,7 +18,7 @@ describe('opencode provider', () => {
     })
 
     expect(command.command).toBe('opencode')
-    expect(command.args).toEqual(['--pure'])
+    expect(command.args).toEqual([])
     expect(command.cwd).toBe('D:/demo')
     expect(command.env.STOA_SESSION_ID).toBe('session_demo_001')
     expect(command.env.STOA_SESSION_SECRET).toBe('secret-1')
@@ -40,7 +40,7 @@ describe('opencode provider', () => {
     })
 
     expect(command.command).toBe('opencode')
-    expect(command.args).toEqual(['--pure', '--session', 'external-123'])
+    expect(command.args).toEqual(['--session', 'external-123'])
   })
 
   test('uses configured provider path when provided in context', async () => {
@@ -60,6 +60,6 @@ describe('opencode provider', () => {
     })
 
     expect(command.command).toBe('C:\\Users\\30280\\AppData\\Roaming\\npm\\opencode.ps1')
-    expect(command.args).toEqual(['--pure'])
+    expect(command.args).toEqual([])
   })
 })

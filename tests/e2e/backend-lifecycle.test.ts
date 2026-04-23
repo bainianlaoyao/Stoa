@@ -775,7 +775,7 @@ describe('E2E: Backend Full User Lifecycle', () => {
       })
 
       const command = pty.lastCall()!.command
-      expect(command.args).toEqual(['--pure'])
+      expect(command.args).toEqual([])
       expect(command.args).not.toContain('--session')
     })
 
@@ -801,7 +801,7 @@ describe('E2E: Backend Full User Lifecycle', () => {
       })
 
       const command = pty.lastCall()!.command
-      expect(command.args).toEqual(['--pure', '--session', 'ext-123'])
+      expect(command.args).toEqual(['--session', 'ext-123'])
     })
 
     test('opencode session launches through configured user shell when shellPath is provided', async () => {
@@ -942,7 +942,7 @@ describe('E2E: Backend Full User Lifecycle', () => {
       expect(command.cwd).toBe('D:/demo')
     })
 
-    test('opencode provider: buildStartCommand uses pure tui mode', async () => {
+    test('opencode provider: buildStartCommand preserves manual shell semantics', async () => {
       const provider = getProvider('opencode')
       const command = await provider.buildStartCommand(
         { session_id: 's1', project_id: 'p1', path: 'D:/demo', title: 'test', type: 'opencode' },
@@ -950,7 +950,7 @@ describe('E2E: Backend Full User Lifecycle', () => {
       )
 
       expect(command.command).toBe('opencode')
-      expect(command.args).toEqual(['--pure'])
+      expect(command.args).toEqual([])
     })
 
     test('opencode provider: buildStartCommand uses configured provider path when available', async () => {
@@ -966,7 +966,7 @@ describe('E2E: Backend Full User Lifecycle', () => {
       )
 
       expect(command.command).toBe('C:/Users/test/AppData/Roaming/npm/opencode.ps1')
-      expect(command.args).toEqual(['--pure'])
+      expect(command.args).toEqual([])
     })
 
     test('opencode provider: buildResumeCommand includes --session flag', async () => {
@@ -977,7 +977,7 @@ describe('E2E: Backend Full User Lifecycle', () => {
         { webhookPort: 43127, sessionSecret: 'secret', providerPort: 43128 }
       )
 
-      expect(command.args).toEqual(['--pure', '--session', 'ext-session-42'])
+      expect(command.args).toEqual(['--session', 'ext-session-42'])
     })
 
     test('opencode provider: installSidecar writes plugin file to disk', async () => {

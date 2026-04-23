@@ -50,10 +50,10 @@ export function createOpenCodeProvider(): ProviderDefinition {
       return true
     },
     async buildStartCommand(target, context) {
-      return createCommand(target, context, ['--pure'])
+      return createCommand(target, context, [])
     },
     async buildResumeCommand(target, externalSessionId, context) {
-      return createCommand(target, context, ['--pure', '--session', externalSessionId])
+      return createCommand(target, context, ['--session', externalSessionId])
     },
     resolveSessionId(event: CanonicalSessionEvent) {
       return event.session_id ?? null

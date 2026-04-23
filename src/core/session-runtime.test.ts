@@ -10,7 +10,7 @@ function createProvider(overrides: Partial<ProviderDefinition> = {}): ProviderDe
     async buildStartCommand(session, context) {
       return {
         command: 'opencode',
-        args: ['--pure'],
+        args: [],
         cwd: session.path,
         env: { VIBECODING_SESSION_ID: session.session_id }
       }
@@ -18,7 +18,7 @@ function createProvider(overrides: Partial<ProviderDefinition> = {}): ProviderDe
     async buildResumeCommand(session, externalSessionId, context) {
       return {
         command: 'opencode',
-        args: ['--pure', '--session', externalSessionId],
+        args: ['--session', externalSessionId],
         cwd: session.path,
         env: { VIBECODING_SESSION_ID: session.session_id }
       }
@@ -37,7 +37,7 @@ describe('session runtime', () => {
       async buildStartCommand(session) {
         return {
           command: 'opencode',
-          args: ['--pure'],
+          args: [],
           cwd: session.path,
           env: { TEST_ENV: '1' }
         }
@@ -130,7 +130,7 @@ describe('session runtime', () => {
   test('uses provider-built resume command when recoverable external session metadata exists', async () => {
     const buildResumeCommand = vi.fn(async () => ({
       command: 'opencode',
-      args: ['--pure', '--session', 'ext-123'],
+      args: ['--session', 'ext-123'],
       cwd: 'D:/demo',
       env: { TEST_ENV: '1' }
     }))
@@ -167,11 +167,11 @@ describe('session runtime', () => {
     expect(buildResumeCommand).toHaveBeenCalledOnce()
     expect(start).toHaveBeenCalledWith(
       'session_op_1',
-      expect.objectContaining({
-        command: 'opencode',
-        args: ['--pure', '--session', 'ext-123'],
-        cwd: 'D:/demo'
-      }),
+        expect.objectContaining({
+          command: 'opencode',
+          args: ['--session', 'ext-123'],
+          cwd: 'D:/demo'
+        }),
       expect.any(Function),
       expect.any(Function)
     )
@@ -181,7 +181,7 @@ describe('session runtime', () => {
   test('falls back to provider start command and leaves externalSessionId null when no resumable external session is available', async () => {
     const buildStartCommand = vi.fn(async () => ({
       command: 'opencode',
-      args: ['--pure'],
+      args: [],
       cwd: 'D:/demo',
       env: { TEST_ENV: '1' }
     }))
@@ -215,11 +215,11 @@ describe('session runtime', () => {
     expect(buildStartCommand).toHaveBeenCalledOnce()
     expect(start).toHaveBeenCalledWith(
       'session_op_1',
-      expect.objectContaining({
-        command: 'opencode',
-        args: ['--pure'],
-        cwd: 'D:/demo'
-      }),
+        expect.objectContaining({
+          command: 'opencode',
+          args: [],
+          cwd: 'D:/demo'
+        }),
       expect.any(Function),
       expect.any(Function)
     )

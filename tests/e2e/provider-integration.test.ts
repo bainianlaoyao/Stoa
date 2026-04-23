@@ -141,7 +141,7 @@ describe('E2E: Provider Integration', () => {
       const command = await provider.buildStartCommand(target, context)
 
       expect(command.command).toBe('opencode')
-      expect(command.args).toEqual(['--pure'])
+      expect(command.args).toEqual([])
     })
 
     test('buildStartCommand uses configured provider path when provided', async () => {
@@ -155,17 +155,17 @@ describe('E2E: Provider Integration', () => {
       const command = await provider.buildStartCommand(target, context)
 
       expect(command.command).toBe('C:/Users/test/AppData/Roaming/npm/opencode.ps1')
-      expect(command.args).toEqual(['--pure'])
+      expect(command.args).toEqual([])
     })
 
-    test('buildStartCommand uses pure tui mode', async () => {
+    test('buildStartCommand does not force pure mode', async () => {
       const provider = getProvider('opencode')
       const target = createTarget({ type: 'opencode' })
       const context = createContext({ providerPort: 44000 })
 
       const command = await provider.buildStartCommand(target, context)
 
-      expect(command.args).toEqual(['--pure'])
+      expect(command.args).toEqual([])
     })
 
     test('buildStartCommand sets STOA_* environment variables', async () => {
@@ -197,17 +197,17 @@ describe('E2E: Provider Integration', () => {
 
       const command = await provider.buildResumeCommand(target, 'ext-session-42', context)
 
-      expect(command.args).toEqual(['--pure', '--session', 'ext-session-42'])
+      expect(command.args).toEqual(['--session', 'ext-session-42'])
     })
 
-    test('buildResumeCommand uses pure tui mode plus resume session id', async () => {
+    test('buildResumeCommand only adds the resume session id', async () => {
       const provider = getProvider('opencode')
       const target = createTarget({ type: 'opencode' })
       const context = createContext({ providerPort: 44000 })
 
       const command = await provider.buildResumeCommand(target, 'ext-1', context)
 
-      expect(command.args).toEqual(['--pure', '--session', 'ext-1'])
+      expect(command.args).toEqual(['--session', 'ext-1'])
     })
 
     test('supportsResume() returns true', () => {
