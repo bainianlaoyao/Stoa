@@ -243,6 +243,11 @@ describe('E2E: Main Process Config Guard', () => {
         'archiveSession',
         'restoreSession',
         'listArchivedSessions',
+        'getUpdateState',
+        'checkForUpdates',
+        'downloadUpdate',
+        'quitAndInstallUpdate',
+        'dismissUpdate',
         'minimizeWindow',
         'maximizeWindow',
         'closeWindow',
@@ -284,12 +289,28 @@ describe('E2E: Main Process Config Guard', () => {
       expect(invMap.get('archiveSession')).toBe('session:archive')
       expect(invMap.get('restoreSession')).toBe('session:restore')
       expect(invMap.get('listArchivedSessions')).toBe('session:list-archived')
+      expect(invMap.get('getUpdateState')).toBe('update:get-state')
+      expect(invMap.get('checkForUpdates')).toBe('update:check')
+      expect(invMap.get('downloadUpdate')).toBe('update:download')
+      expect(invMap.get('quitAndInstallUpdate')).toBe('update:quit-and-install')
+      expect(invMap.get('dismissUpdate')).toBe('update:dismiss')
     })
 
     it('window.stoa type declaration exists in shared/index.d.ts', () => {
       expect(sharedTypesSource).toMatch(/stoa/)
       expect(sharedTypesSource).toMatch(/RendererApi/)
       expect(sharedTypesSource).toMatch(/declare\s+global/)
+    })
+
+    it('IPC_CHANNELS defines update bridge constants with expected channel names', () => {
+      const constants = extractChannelConstants(channelsSource)
+
+      expect(constants.get('updateGetState')).toBe('update:get-state')
+      expect(constants.get('updateCheck')).toBe('update:check')
+      expect(constants.get('updateDownload')).toBe('update:download')
+      expect(constants.get('updateQuitAndInstall')).toBe('update:quit-and-install')
+      expect(constants.get('updateDismiss')).toBe('update:dismiss')
+      expect(constants.get('updateState')).toBe('update:state')
     })
   })
 
@@ -300,6 +321,10 @@ describe('E2E: Main Process Config Guard', () => {
 
     it('preload registers listener for session:event channel', () => {
       expect(preloadSource).toMatch(/ipcRenderer\.on\(\s*['"]session:event['"]/)
+    })
+
+    it('preload registers listener for update:state channel', () => {
+      expect(preloadSource).toMatch(/ipcRenderer\.on\(\s*['"]update:state['"]/)
     })
 
     it('main process uses webContents.send for terminal data', () => {

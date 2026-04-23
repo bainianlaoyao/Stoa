@@ -1,3 +1,5 @@
+import type { UpdateState } from './update-state'
+
 export type SessionType = 'shell' | 'opencode' | 'codex' | 'claude-code'
 export type SessionRecoveryMode = 'fresh-shell' | 'resume-external'
 export type SessionStatus =
@@ -158,6 +160,12 @@ export interface RendererApi {
   onWindowMaximizeChange: (callback: (maximized: boolean) => void) => () => void
   restoreSession: (sessionId: string) => Promise<void>
   listArchivedSessions: () => Promise<SessionSummary[]>
+  getUpdateState: () => Promise<UpdateState>
+  checkForUpdates: () => Promise<UpdateState>
+  downloadUpdate: () => Promise<UpdateState>
+  quitAndInstallUpdate: () => Promise<void>
+  dismissUpdate: () => Promise<void>
+  onUpdateState: (callback: (state: UpdateState) => void) => () => void
 }
 
 export interface SessionEventPayload {

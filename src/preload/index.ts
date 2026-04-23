@@ -4,9 +4,10 @@ import type {
   CreateProjectRequest,
   CreateSessionRequest,
   RendererApi,
-  TerminalDataChunk,
-  SessionStatusEvent
+  SessionStatusEvent,
+  TerminalDataChunk
 } from '@shared/project-session'
+import type { UpdateState } from '@shared/update-state'
 
 const api: RendererApi = {
   async getBootstrapState() {
@@ -42,6 +43,21 @@ const api: RendererApi = {
   async listArchivedSessions() {
     return ipcRenderer.invoke('session:list-archived')
   },
+  async getUpdateState() {
+    return ipcRenderer.invoke('update:get-state') as Promise<UpdateState>
+  },
+  async checkForUpdates() {
+    return ipcRenderer.invoke('update:check') as Promise<UpdateState>
+  },
+  async downloadUpdate() {
+    return ipcRenderer.invoke('update:download') as Promise<UpdateState>
+  },
+  async quitAndInstallUpdate() {
+    return ipcRenderer.invoke('update:quit-and-install')
+  },
+  async dismissUpdate() {
+    return ipcRenderer.invoke('update:dismiss')
+  },
   onTerminalData(callback: (chunk: TerminalDataChunk) => void) {
     const handler = (_event: Electron.IpcRendererEvent, chunk: TerminalDataChunk) => callback(chunk)
     ipcRenderer.on('terminal:data', handler)
@@ -51,6 +67,11 @@ const api: RendererApi = {
     const handler = (_event: Electron.IpcRendererEvent, event: SessionStatusEvent) => callback(event)
     ipcRenderer.on('session:event', handler)
     return () => ipcRenderer.removeListener('session:event', handler)
+  },
+  onUpdateState(callback: (state: UpdateState) => void) {
+    const handler = (_event: Electron.IpcRendererEvent, state: UpdateState) => callback(state)
+    ipcRenderer.on('update:state', handler)
+    return () => ipcRenderer.removeListener('update:state', handler)
   },
   async getSettings() {
     return ipcRenderer.invoke('settings:get') as Promise<AppSettings>
