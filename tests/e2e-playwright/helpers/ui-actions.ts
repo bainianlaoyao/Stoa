@@ -68,15 +68,13 @@ export async function createSession(
 }
 
 export async function focusTerminalInput(page: Page): Promise<Locator> {
-  const terminalSurface = page.getByRole('region', { name: 'Terminal surface' })
-  await page.waitForFunction(() => {
-    return Boolean(window.__VIBECODING_TERMINAL_DEBUG__?.getActiveBufferText)
-  })
-  await expect(terminalSurface).toBeVisible({ timeout: 30_000 })
-  await terminalSurface.click()
+  const terminalViewport = page.locator('.terminal-viewport').first()
+  await expect(terminalViewport).toBeVisible({ timeout: 30_000 })
+  await expect(terminalViewport.locator('.terminal-viewport__xterm')).toBeVisible({ timeout: 30_000 })
+  await terminalViewport.click()
 
   // xterm renders a hidden helper textarea for keyboard input, so this is the documented structural fallback.
-  const helperTextarea = terminalSurface.locator('.xterm-helper-textarea').first()
+  const helperTextarea = terminalViewport.locator('.xterm-helper-textarea').first()
   await expect(helperTextarea).toBeAttached()
   await helperTextarea.focus()
   return helperTextarea

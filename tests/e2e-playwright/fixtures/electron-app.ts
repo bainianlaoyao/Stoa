@@ -1,10 +1,10 @@
 import { _electron as electron, expect, type ElectronApplication, type Page } from '@playwright/test'
 import type { ChildProcess } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { mkdtemp, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { BootstrapState, CanonicalSessionEvent } from '@shared/project-session'
+import { createTestTempDir } from '../../../testing/test-temp'
 
 export interface LaunchOptions {
   stateDir?: string
@@ -27,8 +27,15 @@ export interface MainE2EDebugState {
   snapshot: BootstrapState | null
 }
 
+interface MainE2EDebugApi {
+  getDebugState: () => MainE2EDebugState
+  queueDialogPickFolder: (path: string | null) => void
+  getTerminalReplay: (sessionId: string) => Promise<string>
+  appendTerminalData: (sessionId: string, data: string) => Promise<void>
+}
+
 export async function createStateDir(prefix = 'stoa-playwright-'): Promise<string> {
-  return await mkdtemp(join(tmpdir(), prefix))
+  return await createTestTempDir(prefix)
 }
 
 export function resolveElectronMainEntrypoint(cwd = process.cwd()): string {
@@ -149,28 +156,47 @@ export async function cleanupStateDir(stateDir: string): Promise<void> {
   }
 }
 
-export async function readTerminalBuffer(page: Page): Promise<string> {
-  return await page.evaluate(() => {
-    return window.__VIBECODING_TERMINAL_DEBUG__?.getActiveBufferText?.() ?? ''
-  })
+export async function readTerminalBuffer(
+  electronApp: ElectronApplication,
+  sessionId: string
+): Promise<string> {
+  return await electronApp.evaluate(async (_electron, targetSessionId) => {
+    const api = (globalThis as typeof globalThis & {
+      __VIBECODING_MAIN_E2E__?: MainE2EDebugApi
+    }).__VIBECODING_MAIN_E2E__
+    return await api?.getTerminalReplay(targetSessionId) ?? ''
+  }, sessionId)
 }
 
-export async function waitForTerminalDebugHook(page: Page): Promise<void> {
-  await page.waitForFunction(() => {
-    return Boolean(window.__VIBECODING_TERMINAL_DEBUG__?.getActiveBufferText)
-  })
+export async function appendTerminalData(
+  electronApp: ElectronApplication,
+  sessionId: string,
+  data: string
+): Promise<void> {
+  await electronApp.evaluate(async (_electron, payload) => {
+    const api = (globalThis as typeof globalThis & {
+      __VIBECODING_MAIN_E2E__?: MainE2EDebugApi
+    }).__VIBECODING_MAIN_E2E__
+    await api?.appendTerminalData(payload.sessionId, payload.data)
+  }, { sessionId, data })
 }
 
-export async function waitForTerminalBufferText(page: Page, text: string): Promise<void> {
-  await page.waitForFunction((expectedText) => {
-    const bufferText = window.__VIBECODING_TERMINAL_DEBUG__?.getActiveBufferText?.() ?? ''
-    return bufferText.includes(expectedText)
-  }, text)
+export async function waitForTerminalBufferText(
+  electronApp: ElectronApplication,
+  sessionId: string,
+  text: string
+): Promise<void> {
+  await expect.poll(async () => {
+    return await readTerminalBuffer(electronApp, sessionId)
+  }).toContain(text)
 }
 
 export async function getMainE2EDebugState(electronApp: ElectronApplication): Promise<MainE2EDebugState | null> {
   return await electronApp.evaluate(async () => {
-    return globalThis.__VIBECODING_MAIN_E2E__?.getDebugState() ?? null
+    const api = (globalThis as typeof globalThis & {
+      __VIBECODING_MAIN_E2E__?: MainE2EDebugApi
+    }).__VIBECODING_MAIN_E2E__
+    return api?.getDebugState() ?? null
   })
 }
 
@@ -179,7 +205,10 @@ export async function queueNextFolderPick(
   path: string | null
 ): Promise<void> {
   await electronApp.evaluate(async (_electron, nextPath) => {
-    globalThis.__VIBECODING_MAIN_E2E__?.queueDialogPickFolder(nextPath)
+    const api = (globalThis as typeof globalThis & {
+      __VIBECODING_MAIN_E2E__?: MainE2EDebugApi
+    }).__VIBECODING_MAIN_E2E__
+    api?.queueDialogPickFolder(nextPath)
   }, path)
 }
 

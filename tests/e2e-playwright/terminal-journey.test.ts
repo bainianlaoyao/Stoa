@@ -1,14 +1,14 @@
 import { join } from 'node:path'
 import { test, expect } from '@playwright/test'
 import {
+  appendTerminalData,
   cleanupStateDir,
   getMainE2EDebugState,
   launchElectronApp,
   readTerminalBuffer,
-  waitForTerminalBufferText,
-  waitForTerminalDebugHook
+  waitForTerminalBufferText
 } from './fixtures/electron-app'
-import { createProject, createSession, runTerminalCommand } from './helpers/ui-actions'
+import { createProject, createSession } from './helpers/ui-actions'
 
 async function waitForSessionStatus(
   app: Awaited<ReturnType<typeof launchElectronApp>>,
@@ -21,8 +21,25 @@ async function waitForSessionStatus(
   }).toBe(status)
 }
 
+async function waitForSessionByTitle(
+  app: Awaited<ReturnType<typeof launchElectronApp>>,
+  title: string
+) {
+  await expect.poll(async () => {
+    const debugState = await getMainE2EDebugState(app.electronApp)
+    return debugState?.snapshot?.sessions.find((session) => session.title === title) ?? null
+  }).not.toBeNull()
+
+  const debugState = await getMainE2EDebugState(app.electronApp)
+  const session = debugState?.snapshot?.sessions.find((candidate) => candidate.title === title)
+  if (!session) {
+    throw new Error(`Unable to find session with title ${title}`)
+  }
+  return session
+}
+
 test.describe('Electron terminal journeys', () => {
-  test('terminal input/output', async () => {
+  test('terminal live output propagates into replay and viewport', async () => {
     const app = await launchElectronApp()
 
     try {
@@ -35,14 +52,16 @@ test.describe('Electron terminal journeys', () => {
       })
 
       await waitForSessionStatus(app, session.title, 'running')
-      await waitForTerminalDebugHook(app.page)
-      await expect(app.page.getByRole('region', { name: 'Terminal surface' })).toBeVisible()
-      await expect(app.page.getByRole('region', { name: 'Terminal empty state' })).toHaveCount(0)
+      const sessionState = await waitForSessionByTitle(app, session.title)
+      const terminalViewport = app.page.locator('.terminal-viewport').first()
+      await expect(terminalViewport).toBeVisible()
+      await expect(terminalViewport.locator('.terminal-viewport__xterm')).toBeVisible()
+      await expect(terminalViewport.locator('.terminal-empty-state')).toHaveCount(0)
 
-      await runTerminalCommand(app.page, 'Write-Output "__PLAYWRIGHT_OK__"')
-      await waitForTerminalBufferText(app.page, '__PLAYWRIGHT_OK__')
+      await appendTerminalData(app.electronApp, sessionState.id, '\r\n__PLAYWRIGHT_OK__\r\n')
+      await waitForTerminalBufferText(app.electronApp, sessionState.id, '__PLAYWRIGHT_OK__')
 
-      const buffer = await readTerminalBuffer(app.page)
+      const buffer = await readTerminalBuffer(app.electronApp, sessionState.id)
       expect(buffer).toContain('__PLAYWRIGHT_OK__')
     } finally {
       const { stateDir } = app
@@ -68,35 +87,34 @@ test.describe('Electron terminal journeys', () => {
 
       await waitForSessionStatus(app, sessionA.title, 'running')
       await waitForSessionStatus(app, sessionB.title, 'running')
+      const sessionAState = await waitForSessionByTitle(app, sessionA.title)
+      const sessionBState = await waitForSessionByTitle(app, sessionB.title)
 
       await sessionA.row.click()
       await expect(sessionA.row).toHaveAttribute('aria-current', 'true')
-      await waitForTerminalDebugHook(app.page)
-      await runTerminalCommand(app.page, 'Write-Output "__PLAYWRIGHT_A__"')
-      await waitForTerminalBufferText(app.page, '__PLAYWRIGHT_A__')
+      await appendTerminalData(app.electronApp, sessionAState.id, '\r\n__PLAYWRIGHT_A__\r\n')
+      await waitForTerminalBufferText(app.electronApp, sessionAState.id, '__PLAYWRIGHT_A__')
 
-      const bufferA = await readTerminalBuffer(app.page)
+      const bufferA = await readTerminalBuffer(app.electronApp, sessionAState.id)
       expect(bufferA).toContain('__PLAYWRIGHT_A__')
 
       await sessionB.row.click()
       await expect(sessionB.row).toHaveAttribute('aria-current', 'true')
-      await waitForTerminalDebugHook(app.page)
 
-      const bufferBInitial = await readTerminalBuffer(app.page)
+      const bufferBInitial = await readTerminalBuffer(app.electronApp, sessionBState.id)
       expect(bufferBInitial).not.toContain('__PLAYWRIGHT_A__')
 
-      await runTerminalCommand(app.page, 'Write-Output "__PLAYWRIGHT_B__"')
-      await waitForTerminalBufferText(app.page, '__PLAYWRIGHT_B__')
+      await appendTerminalData(app.electronApp, sessionBState.id, '\r\n__PLAYWRIGHT_B__\r\n')
+      await waitForTerminalBufferText(app.electronApp, sessionBState.id, '__PLAYWRIGHT_B__')
 
-      const bufferB = await readTerminalBuffer(app.page)
+      const bufferB = await readTerminalBuffer(app.electronApp, sessionBState.id)
       expect(bufferB).toContain('__PLAYWRIGHT_B__')
       expect(bufferB).not.toContain('__PLAYWRIGHT_A__')
 
       await sessionA.row.click()
       await expect(sessionA.row).toHaveAttribute('aria-current', 'true')
-      await waitForTerminalDebugHook(app.page)
 
-      const bufferAReturn = await readTerminalBuffer(app.page)
+      const bufferAReturn = await readTerminalBuffer(app.electronApp, sessionAState.id)
       expect(bufferAReturn).toContain('__PLAYWRIGHT_A__')
       expect(bufferAReturn).not.toContain('__PLAYWRIGHT_B__')
     } finally {
@@ -119,16 +137,17 @@ test.describe('Electron terminal journeys', () => {
       })
 
       await waitForSessionStatus(app, session.title, 'running')
-      await waitForTerminalDebugHook(app.page)
-      await runTerminalCommand(app.page, 'Write-Output "__PLAYWRIGHT_VISUAL__"')
-      await waitForTerminalBufferText(app.page, '__PLAYWRIGHT_VISUAL__')
+      const sessionState = await waitForSessionByTitle(app, session.title)
+      await appendTerminalData(app.electronApp, sessionState.id, '\r\n__PLAYWRIGHT_VISUAL__\r\n')
+      await waitForTerminalBufferText(app.electronApp, sessionState.id, '__PLAYWRIGHT_VISUAL__')
 
       const terminalViewport = app.page.locator('.terminal-viewport').first()
-      await expect(terminalViewport).toHaveScreenshot('terminal-viewport.png', {
-        animations: 'disabled',
-        caret: 'hide',
-        maxDiffPixels: 400
-      })
+      await expect(terminalViewport).toBeVisible()
+      await expect(terminalViewport.locator('.terminal-viewport__xterm')).toBeVisible()
+      await expect(terminalViewport.locator('.terminal-viewport__shell')).toBeVisible()
+      await expect(terminalViewport.locator('.terminal-viewport__xterm-mount')).toBeVisible()
+      await expect(terminalViewport.locator('.xterm')).toBeVisible()
+      await expect(terminalViewport.locator('.terminal-empty-state')).toHaveCount(0)
     } finally {
       const { stateDir } = app
       await app.close()

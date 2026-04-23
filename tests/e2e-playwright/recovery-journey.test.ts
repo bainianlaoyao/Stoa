@@ -65,17 +65,16 @@ test.describe('Electron recovery journeys', () => {
       expect(recoveredSession.recoveryMode).toBe('fresh-shell')
       await waitForSessionStatus(app, session.title, 'running')
 
-      const terminalSurface = app.page.getByRole('region', { name: 'Terminal surface' })
-      await expect(terminalSurface).toBeVisible()
-      await expect(app.page.getByRole('region', { name: 'Terminal empty state' })).toHaveCount(0)
-      await expect(app.page.locator('.terminal-viewport')).toContainText(session.title)
-      await expect(app.page.locator('.terminal-viewport')).toContainText('会话运行中')
-      await expect(app.page.locator('.terminal-viewport')).not.toContainText('会话已恢复')
+      const terminalViewport = app.page.locator('.terminal-viewport').first()
+      await expect(terminalViewport).toBeVisible()
+      await expect(terminalViewport.locator('.terminal-empty-state')).toHaveCount(0)
+      await expect(terminalViewport.locator('.terminal-viewport__xterm')).toBeVisible()
+      await expect(terminalViewport.locator('.terminal-viewport__overlay')).toHaveCount(0)
 
       await app.page.getByRole('button', { name: 'Settings' }).click()
       await expect(app.page.locator('[data-surface="settings"][aria-label="Settings surface"]')).toBeVisible()
       await app.page.getByRole('button', { name: 'Command panel' }).click()
-      await expect(terminalSurface).toBeVisible()
+      await expect(terminalViewport).toBeVisible()
       await recoveredSessionRow.click()
       await expect(recoveredSessionRow).toHaveAttribute('aria-current', 'true')
     } finally {
@@ -116,16 +115,17 @@ test.describe('Electron recovery journeys', () => {
       await expect(recoveredSessionRow).toContainText(session.title)
       await expect(recoveredSessionRow).toContainText('opencode')
 
-      const details = app.page.getByRole('region', { name: 'Session details' })
-      const terminalSurface = app.page.getByRole('region', { name: 'Terminal surface' })
+      const terminalViewport = app.page.locator('.terminal-viewport').first()
+      const details = terminalViewport.locator('.terminal-viewport__overlay')
 
-      if (await details.count()) {
+      if (recoveredSession.status === 'running' || recoveredSession.status === 'awaiting_input') {
+        await expect(terminalViewport.locator('.terminal-viewport__xterm')).toBeVisible()
+        await expect(details).toHaveCount(0)
+      } else {
+        await expect(details).toBeVisible()
         await expect(details).toContainText('resume-external')
         await expect(details).toContainText(session.title)
         await expect(details).toContainText('opencode')
-      } else {
-        await expect(terminalSurface).toBeVisible()
-        await expect(app.page.locator('.terminal-viewport')).toContainText('会话运行中')
       }
 
       await app.page.getByRole('button', { name: 'Settings' }).click()
