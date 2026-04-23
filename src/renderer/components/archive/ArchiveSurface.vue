@@ -16,7 +16,7 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <section class="archive-surface" data-surface="archive" aria-label="Archive surface">
+  <section class="archive-surface" data-surface="archive" data-testid="surface.archive" aria-label="Archive surface">
     <div class="archive-body">
       <header class="archive-header">
         <p class="archive-eyebrow">Session Archive</p>
@@ -32,6 +32,7 @@ const emit = defineEmits<{
           :key="session.id"
           class="archive-card"
           :data-archive-session="session.id"
+          data-testid="archive.session.row"
         >
           <div class="archive-card__content">
             <div class="archive-card__head">
@@ -51,6 +52,7 @@ const emit = defineEmits<{
             class="archive-card__restore"
             type="button"
             :data-archive-restore="session.id"
+            data-testid="archive.session.restore"
             @click="emit('restoreSession', session.id)"
           >
             恢复
