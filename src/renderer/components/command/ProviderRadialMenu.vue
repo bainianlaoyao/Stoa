@@ -125,11 +125,14 @@ function createSession(type: SessionType) {
 
 .radial-menu__track {
   position: absolute;
-  border: 1px solid var(--color-line);
+  border: 1px solid rgba(255, 255, 255, 0.30);
   border-radius: 50%;
-  background: var(--color-surface-soft);
-  backdrop-filter: blur(40px) saturate(120%);
-  -webkit-backdrop-filter: blur(40px) saturate(120%);
+  background: linear-gradient(180deg, rgba(255,255,255,0.60), rgba(255,255,255,0.42));
+  backdrop-filter: blur(20px) saturate(120%);
+  -webkit-backdrop-filter: blur(20px) saturate(120%);
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.03),
+    inset 0 1px 0 rgba(255, 255, 255, 0.60);
 }
 
 .radial-menu__item {
@@ -139,11 +142,14 @@ function createSession(type: SessionType) {
   display: grid;
   place-items: center;
   border-radius: var(--radius-sm);
-  background: var(--color-surface);
-  backdrop-filter: blur(40px) saturate(120%);
-  -webkit-backdrop-filter: blur(40px) saturate(120%);
-  border: 1px solid var(--color-line);
-  box-shadow: var(--shadow-soft);
+  background: linear-gradient(180deg, rgba(255,255,255,0.80), rgba(255,255,255,0.65));
+  backdrop-filter: blur(24px) saturate(120%);
+  -webkit-backdrop-filter: blur(24px) saturate(120%);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  box-shadow:
+    0 12px 32px -4px rgba(0, 0, 0, 0.08),
+    0 4px 12px rgba(0, 0, 0, 0.03),
+    inset 0 1px 0 rgba(255, 255, 255, 0.85);
   cursor: pointer;
   pointer-events: auto;
   transition: all 0.2s ease;
@@ -153,9 +159,8 @@ function createSession(type: SessionType) {
 }
 
 .radial-menu__item:hover {
-  background: var(--color-surface-solid);
-  border-color: rgba(0, 0, 0, 0.04);
-  box-shadow: var(--shadow-card);
+  background: linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.80));
+  border-color: rgba(0, 0, 0, 0.07);
 }
 
 .radial-menu__item-image {

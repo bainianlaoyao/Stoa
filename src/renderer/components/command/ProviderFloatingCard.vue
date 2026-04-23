@@ -62,10 +62,15 @@ function emitCreate(type: SessionType) {
 .provider-floating-card {
   position: fixed;
   z-index: 100;
-  background: var(--color-surface-solid);
-  border: 1px solid var(--color-line);
+  background: linear-gradient(180deg, rgba(255,255,255,0.85), rgba(255,255,255,0.72));
+  backdrop-filter: blur(24px) saturate(120%);
+  -webkit-backdrop-filter: blur(24px) saturate(120%);
+  border: 1px solid rgba(0, 0, 0, 0.06);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-card);
+  box-shadow:
+    0 12px 32px -4px rgba(0, 0, 0, 0.08),
+    0 4px 12px rgba(0, 0, 0, 0.03),
+    inset 0 1px 0 rgba(255, 255, 255, 0.85);
   padding: 6px;
   display: flex;
   gap: 4px;
