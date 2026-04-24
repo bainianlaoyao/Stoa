@@ -517,7 +517,7 @@ describe('TerminalViewport', () => {
 
     expect(instances).toHaveLength(1)
     expect(wrapper.find('.terminal-viewport__xterm').exists()).toBe(true)
-    expect(wrapper.text()).toContain('needs_confirmation')
+    expect(wrapper.find('[data-testid="terminal-status-bar"]').exists()).toBe(false)
 
     await wrapper.setProps({
       session: {
@@ -530,7 +530,7 @@ describe('TerminalViewport', () => {
 
     expect(instances).toHaveLength(1)
     expect(wrapper.find('.terminal-viewport__xterm').exists()).toBe(true)
-    expect(wrapper.text()).toContain('exited')
+    expect(wrapper.find('[data-testid="terminal-status-bar"]').exists()).toBe(false)
   })
 
   test('uses terminalFontSize from settings store for the xterm instance', async () => {
