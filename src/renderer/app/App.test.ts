@@ -6,6 +6,7 @@ import { useWorkspaceStore } from '@renderer/stores/workspaces'
 import { useUpdateStore } from '@renderer/stores/update'
 import App from './App.vue'
 import type { BootstrapState, ProjectSummary, SessionSummary } from '@shared/project-session'
+import type { SessionPresenceSnapshot } from '@shared/observability'
 import type { UpdateState } from '@shared/update-state'
 
 const mockBootstrapState: BootstrapState = {
@@ -37,6 +38,31 @@ const mockCreatedSession: SessionSummary = {
   updatedAt: 'x',
   lastActivatedAt: 'x',
   archived: false
+}
+
+function createSessionPresenceSnapshot(
+  overrides: Partial<SessionPresenceSnapshot> = {}
+): SessionPresenceSnapshot {
+  return {
+    sessionId: 'session_1',
+    projectId: 'project_1',
+    providerId: 'claude-code',
+    providerLabel: 'Claude Code',
+    modelLabel: 'Sonnet',
+    phase: 'working',
+    canonicalStatus: 'running',
+    confidence: 'authoritative',
+    health: 'healthy',
+    blockingReason: null,
+    lastAssistantSnippet: null,
+    lastEventAt: '2026-04-24T08:00:00.000Z',
+    lastEvidenceType: null,
+    hasUnreadTurn: false,
+    recoveryPointerState: 'trusted',
+    sourceSequence: 1,
+    updatedAt: '2026-04-24T08:00:00.000Z',
+    ...overrides
+  }
 }
 
 function createUpdateState(overrides: Partial<UpdateState> = {}): UpdateState {
@@ -240,6 +266,66 @@ describe('App (root)', () => {
       expect(getUpdateState).toHaveBeenCalledTimes(2)
       expect(useUpdateStore(pinia).state.phase).toBe('downloaded')
       expect(useUpdateStore(pinia).state.downloadedVersion).toBe('0.2.0')
+    })
+
+    it('hydrates observability and applies pushed session presence snapshots on mount', async () => {
+      const sessionPresenceListeners: Array<(snapshot: SessionPresenceSnapshot) => void> = []
+      const hydratedState: BootstrapState = {
+        activeProjectId: 'project_1',
+        activeSessionId: 'session_1',
+        terminalWebhookPort: 0,
+        projects: [{ id: 'project_1', name: 'test', path: '/test', createdAt: 't', updatedAt: 't' }],
+        sessions: [{
+          id: 'session_1',
+          projectId: 'project_1',
+          type: 'claude-code',
+          status: 'running',
+          title: 'test session',
+          summary: 'running',
+          recoveryMode: 'resume-external',
+          externalSessionId: 'claude-session-1',
+          createdAt: 't',
+          updatedAt: 't',
+          lastActivatedAt: 't',
+          archived: false
+        }]
+      }
+
+      setupStoa({
+        getBootstrapState: vi.fn().mockResolvedValue(hydratedState),
+        getSessionPresence: vi.fn().mockResolvedValue(createSessionPresenceSnapshot({ sourceSequence: 2 })),
+        onSessionPresenceChanged: vi.fn().mockImplementation((listener: (snapshot: SessionPresenceSnapshot) => void) => {
+          sessionPresenceListeners.push(listener)
+          return () => {}
+        })
+      })
+
+      wrapper = await mountApp(pinia)
+      await flush()
+
+      const store = useWorkspaceStore(pinia)
+
+      expect(window.stoa.getSessionPresence).toHaveBeenCalledWith('session_1')
+      expect(window.stoa.onSessionPresenceChanged).toHaveBeenCalledOnce()
+      expect(store.activeSessionPresence?.sourceSequence).toBe(2)
+      expect(sessionPresenceListeners).toHaveLength(1)
+
+      const sessionPresenceListener = sessionPresenceListeners[0]
+      if (!sessionPresenceListener) {
+        throw new Error('Expected session presence listener to be registered')
+      }
+
+      sessionPresenceListener(createSessionPresenceSnapshot({
+        phase: 'blocked',
+        canonicalStatus: 'needs_confirmation',
+        blockingReason: 'permission',
+        sourceSequence: 3,
+        updatedAt: '2026-04-24T08:00:01.000Z'
+      }))
+      await flush()
+
+      expect(store.activeSessionPresence?.phase).toBe('blocked')
+      expect(store.activeSessionPresence?.blockingReason).toBe('permission')
     })
   })
 
@@ -582,6 +668,46 @@ describe('App (root)', () => {
       wrapper = undefined
 
       expect(unsubscribeUpdate).toHaveBeenCalledOnce()
+    })
+
+    it('unsubscribes observability listeners on unmount', async () => {
+      const unsubscribeSessionPresence = vi.fn()
+      const unsubscribeProjectObservability = vi.fn()
+      const unsubscribeAppObservability = vi.fn()
+      setupStoa({
+        getBootstrapState: vi.fn().mockResolvedValue({
+          activeProjectId: 'project_1',
+          activeSessionId: 'session_1',
+          terminalWebhookPort: 0,
+          projects: [{ id: 'project_1', name: 'test', path: '/test', createdAt: 't', updatedAt: 't' }],
+          sessions: [{
+            id: 'session_1',
+            projectId: 'project_1',
+            type: 'claude-code',
+            status: 'running',
+            title: 'test session',
+            summary: 'running',
+            recoveryMode: 'resume-external',
+            externalSessionId: 'claude-session-1',
+            createdAt: 't',
+            updatedAt: 't',
+            lastActivatedAt: 't',
+            archived: false
+          }]
+        }),
+        onSessionPresenceChanged: vi.fn().mockReturnValue(unsubscribeSessionPresence),
+        onProjectObservabilityChanged: vi.fn().mockReturnValue(unsubscribeProjectObservability),
+        onAppObservabilityChanged: vi.fn().mockReturnValue(unsubscribeAppObservability)
+      })
+
+      wrapper = await mountApp(pinia)
+      await flush()
+      wrapper.unmount()
+      wrapper = undefined
+
+      expect(unsubscribeSessionPresence).toHaveBeenCalledOnce()
+      expect(unsubscribeProjectObservability).toHaveBeenCalledOnce()
+      expect(unsubscribeAppObservability).toHaveBeenCalledOnce()
     })
   })
 })

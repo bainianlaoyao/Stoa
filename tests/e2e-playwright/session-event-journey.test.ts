@@ -276,7 +276,11 @@ test.describe('Electron push and webhook journeys', () => {
       })
 
       expect(response.status).toBe(202)
-      await expect(session.row.locator('[data-testid="session-status-dot"][data-status="needs_confirmation"]')).toBeVisible()
+      const statusDot = session.row.locator('[data-testid="session-status-dot"]')
+      await expect(statusDot).toHaveAttribute('data-status', 'needs_confirmation')
+      await expect(statusDot).toHaveAttribute('data-phase', 'blocked')
+      await expect(statusDot).toHaveAttribute('data-tone', 'warning')
+      await expect(app.page.getByTestId('terminal-status-bar')).toContainText('Blocked')
 
       const terminalViewport = app.page.getByTestId('terminal-viewport')
       await expect(terminalViewport.getByTestId('terminal-xterm')).toBeVisible()
