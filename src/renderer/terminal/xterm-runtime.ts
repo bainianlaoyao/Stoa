@@ -166,6 +166,13 @@ export function createTerminalRuntime(
   terminal.unicode.activeVersion = '11'
   terminal.loadAddon(webLinksAddon)
 
+  terminal.onSelectionChange(() => {
+    const text = terminal.getSelection()
+    if (text) {
+      navigator.clipboard.writeText(text).catch(() => {})
+    }
+  })
+
   let webglAddon: WebglAddon | null = null
   if (enableWebgl) {
     try {
