@@ -1,9 +1,22 @@
+import { mkdir, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import type { CanonicalSessionEvent, ProviderCommand, ProviderCommandContext } from '@shared/project-session'
 import type { ProviderDefinition, ProviderRuntimeTarget } from './index'
 
 function claudeCommand(context: ProviderCommandContext): string {
   const configuredPath = context.providerPath?.trim()
   return configuredPath && configuredPath.length > 0 ? configuredPath : 'claude'
+}
+
+function createProviderEnv(target: ProviderRuntimeTarget, context: ProviderCommandContext): Record<string, string> {
+  return {
+    ...process.env as Record<string, string>,
+    STOA_SESSION_ID: target.session_id,
+    STOA_PROJECT_ID: target.project_id,
+    STOA_SESSION_SECRET: context.sessionSecret,
+    STOA_WEBHOOK_PORT: String(context.webhookPort),
+    STOA_PROVIDER_PORT: String(context.providerPort)
+  }
 }
 
 function createCommand(target: ProviderRuntimeTarget, context: ProviderCommandContext, args: string[]): ProviderCommand {
@@ -13,8 +26,60 @@ function createCommand(target: ProviderRuntimeTarget, context: ProviderCommandCo
       ? [...args, '--dangerously-skip-permissions']
       : args,
     cwd: target.path,
-    env: process.env as Record<string, string>
+    env: createProviderEnv(target, context)
   }
+}
+
+async function writeSharedClaudeHooks(target: ProviderRuntimeTarget, context: ProviderCommandContext): Promise<void> {
+  const claudeDir = join(target.path, '.claude')
+  await mkdir(claudeDir, { recursive: true })
+
+  const settings = {
+    hooks: {
+      Stop: [{
+        matcher: '*',
+        hooks: [{
+          type: 'http',
+          url: `http://127.0.0.1:${context.webhookPort}/hooks/claude-code`,
+          headers: {
+            'x-stoa-session-id': '${STOA_SESSION_ID}',
+            'x-stoa-project-id': '${STOA_PROJECT_ID}',
+            'x-stoa-secret': '${STOA_SESSION_SECRET}'
+          },
+          allowedEnvVars: [
+            'STOA_SESSION_ID',
+            'STOA_PROJECT_ID',
+            'STOA_SESSION_SECRET'
+          ],
+          timeout: 5
+        }]
+      }],
+      PermissionRequest: [{
+        matcher: '*',
+        hooks: [{
+          type: 'http',
+          url: `http://127.0.0.1:${context.webhookPort}/hooks/claude-code`,
+          headers: {
+            'x-stoa-session-id': '${STOA_SESSION_ID}',
+            'x-stoa-project-id': '${STOA_PROJECT_ID}',
+            'x-stoa-secret': '${STOA_SESSION_SECRET}'
+          },
+          allowedEnvVars: [
+            'STOA_SESSION_ID',
+            'STOA_PROJECT_ID',
+            'STOA_SESSION_SECRET'
+          ],
+          timeout: 5
+        }]
+      }]
+    }
+  }
+
+  await writeFile(
+    join(claudeDir, 'settings.local.json'),
+    `${JSON.stringify(settings, null, 2)}\n`,
+    'utf-8'
+  )
 }
 
 function requireExternalSessionId(target: ProviderRuntimeTarget): string {
@@ -32,7 +97,7 @@ export function createClaudeCodeProvider(): ProviderDefinition {
       return true
     },
     supportsStructuredEvents() {
-      return false
+      return true
     },
     async buildStartCommand(target, context) {
       return createCommand(target, context, ['--session-id', requireExternalSessionId(target)])
@@ -43,7 +108,9 @@ export function createClaudeCodeProvider(): ProviderDefinition {
     resolveSessionId(_event: CanonicalSessionEvent) {
       return null
     },
-    async installSidecar() {},
+    async installSidecar(target, context) {
+      await writeSharedClaudeHooks(target, context)
+    },
     async discoverExternalSessionIdAfterStart(target) {
       return target.external_session_id ?? null
     }

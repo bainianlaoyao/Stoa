@@ -24,12 +24,12 @@ export async function createProject(target: Page | ElectronPageTarget, options: 
 
   await page.getByRole('button', { name: 'New Project' }).click()
 
-  const dialog = page.getByRole('dialog', { name: 'New project' })
+  const dialog = page.getByTestId('modal-panel')
   await expect(dialog).toBeVisible()
-  await dialog.getByLabel('Project name').fill(options.name)
-  await dialog.getByRole('button', { name: 'Browse' }).click()
-  await expect(dialog.getByLabel('Project path')).toHaveValue(options.path)
-  await dialog.getByRole('button', { name: 'Create' }).click()
+  await dialog.getByTestId('form-input').fill(options.name)
+  await dialog.getByTestId('path-field').getByRole('button').click()
+  await expect(dialog.locator('.glass-path-field__input')).toHaveValue(options.path)
+  await dialog.locator('.btn-primary').click()
 
   const projectRow = page.locator('.route-item--parent').filter({ hasText: options.name }).first()
   await expect(projectRow).toBeVisible()

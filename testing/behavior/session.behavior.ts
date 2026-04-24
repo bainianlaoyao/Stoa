@@ -22,3 +22,25 @@ export const sessionRestoreBehavior = defineBehavior({
   risk: 'high',
   coverageBudget: 'critical'
 })
+
+export const sessionTelemetryTurnCompleteBehavior = defineBehavior({
+  id: 'session.telemetry.turn-complete',
+  actor: 'system',
+  goal: 'project provider turn completion into the active session UI without collapsing the live terminal',
+  entities: ['project', 'session', 'provider-telemetry', 'renderer-status'],
+  usageModes: ['active_workflow'],
+  preconditions: ['project.exists', 'session.providerManaged', 'session.active'],
+  action: 'telemetry.turnComplete',
+  expects: [
+    'session.status=turn_complete',
+    'terminal.liveSessionPreserved',
+    'command.sessionStatusVisible',
+    'persisted.sessionStatusUpdated'
+  ],
+  invalidPreconditions: ['session.missing', 'webhook.invalidSecret'],
+  interruptions: ['provider.runningEvent.afterTurnComplete', 'app.relaunch.duringTelemetry'],
+  recovery: ['statusRemainsTurnComplete', 'externalSessionIdentityPreserved'],
+  observationLayers: ['ui', 'main-debug-state', 'persisted-state'],
+  risk: 'high',
+  coverageBudget: 'critical'
+})

@@ -68,6 +68,43 @@ async function postJson(
   })
 }
 
+async function postClaudeHook(
+  port: number,
+  body: unknown,
+  headers: Record<string, string> = {}
+): Promise<{ statusCode: number; body: string }> {
+  return await new Promise((resolve, reject) => {
+    const payload = JSON.stringify(body)
+    const req = request(
+      {
+        host: '127.0.0.1',
+        port,
+        path: '/hooks/claude-code',
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'content-length': Buffer.byteLength(payload),
+          ...headers
+        }
+      },
+      (response) => {
+        let data = ''
+        response.setEncoding('utf8')
+        response.on('data', (chunk) => {
+          data += chunk
+        })
+        response.on('end', () => {
+          resolve({ statusCode: response.statusCode ?? 0, body: data })
+        })
+      }
+    )
+
+    req.on('error', reject)
+    req.write(payload)
+    req.end()
+  })
+}
+
 async function getHealth(
   port: number
 ): Promise<{ statusCode: number; body: string }> {
@@ -370,6 +407,42 @@ describe('webhook event validation', () => {
       const { server } = createTestServer()
 
       await expect(server.stop()).resolves.toBeUndefined()
+    })
+  })
+
+  describe('Claude hook validation', () => {
+    test('rejects Claude hook posts without x-stoa-session-id', async () => {
+      const { server } = createTestServer()
+      const port = await server.start()
+
+      const response = await postClaudeHook(
+        port,
+        { hook_event_name: 'Stop' },
+        {
+          'x-stoa-project-id': 'project_1',
+          'x-stoa-secret': 'secret-1'
+        }
+      )
+
+      expect(response.statusCode).toBe(400)
+    })
+
+    test('rejects Claude hook posts without matching secret', async () => {
+      const { server } = createTestServer('secret-1')
+      const port = await server.start()
+
+      const response = await postClaudeHook(
+        port,
+        { hook_event_name: 'Stop' },
+        {
+          'x-stoa-session-id': 'session_test',
+          'x-stoa-project-id': 'project_1',
+          'x-stoa-secret': 'wrong-secret'
+        }
+      )
+
+      expect(response.statusCode).toBe(401)
+      expect(JSON.parse(response.body)).toEqual({ accepted: false, reason: 'invalid_secret' })
     })
   })
 })

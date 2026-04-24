@@ -265,9 +265,67 @@ describe('E2E: Provider Integration', () => {
       expect(command?.args).toEqual(['resume', '--last'])
     })
 
-    test('supportsStructuredEvents() returns false', () => {
+    test('supportsStructuredEvents() returns true', () => {
       const provider = getProvider('codex')
-      expect(provider.supportsStructuredEvents()).toBe(false)
+      expect(provider.supportsStructuredEvents()).toBe(true)
+    })
+
+    test('buildStartCommand sets STOA_* environment variables', async () => {
+      const provider = getProvider('codex')
+      const target = createTarget({
+        session_id: 'session_codex_1',
+        project_id: 'project_codex_1',
+        type: 'codex'
+      })
+      const context = createContext({
+        sessionSecret: 'codex-secret',
+        webhookPort: 47770,
+        providerPort: 47771
+      })
+
+      const command = await provider.buildStartCommand(target, context)
+
+      expect(command.env.STOA_SESSION_ID).toBe('session_codex_1')
+      expect(command.env.STOA_PROJECT_ID).toBe('project_codex_1')
+      expect(command.env.STOA_SESSION_SECRET).toBe('codex-secret')
+      expect(command.env.STOA_WEBHOOK_PORT).toBe('47770')
+      expect(command.env.STOA_PROVIDER_PORT).toBe('47771')
+    })
+
+    test('installSidecar writes shared config.toml and notify script', async () => {
+      const workspaceDir = await createTempDir('stoa-codex-sidecar-')
+      const provider = getProvider('codex')
+      const target = createTarget({ path: workspaceDir, type: 'codex' })
+      const context = createContext()
+
+      await provider.installSidecar(target, context)
+
+      const configPath = join(workspaceDir, '.codex', 'config.toml')
+      const notifyPath = join(workspaceDir, '.codex', 'notify-stoa.mjs')
+      await expect(stat(configPath)).resolves.toMatchObject({ isFile: expect.any(Function) })
+      await expect(stat(notifyPath)).resolves.toMatchObject({ isFile: expect.any(Function) })
+    })
+
+    test('shared notify script reads session identity from process.env instead of baking session ids', async () => {
+      const workspaceDir = await createTempDir('stoa-codex-env-sidecar-')
+      const provider = getProvider('codex')
+      const target = createTarget({
+        path: workspaceDir,
+        type: 'codex',
+        session_id: 'session_internal_codex',
+        project_id: 'project_internal_codex'
+      })
+
+      await provider.installSidecar(target, createContext({ webhookPort: 43127, sessionSecret: 'secret-codex' }))
+
+      const content = await readFile(join(workspaceDir, '.codex', 'notify-stoa.mjs'), 'utf8')
+      expect(content).toContain('process.env.STOA_SESSION_ID')
+      expect(content).toContain('process.env.STOA_PROJECT_ID')
+      expect(content).toContain('process.env.STOA_SESSION_SECRET')
+      expect(content).toContain('process.env.STOA_WEBHOOK_PORT')
+      expect(content).not.toContain('session_internal_codex')
+      expect(content).not.toContain('project_internal_codex')
+      expect(content).not.toContain('secret-codex')
     })
   })
 
@@ -306,9 +364,56 @@ describe('E2E: Provider Integration', () => {
       expect(command.args).toEqual(['--resume', '11111111-1111-1111-1111-111111111111'])
     })
 
-    test('supportsStructuredEvents() returns false', () => {
+    test('supportsStructuredEvents() returns true', () => {
       const provider = getProvider('claude-code')
-      expect(provider.supportsStructuredEvents()).toBe(false)
+      expect(provider.supportsStructuredEvents()).toBe(true)
+    })
+
+    test('buildStartCommand sets STOA_* environment variables', async () => {
+      const provider = getProvider('claude-code')
+      const target = createTarget({
+        type: 'claude-code',
+        session_id: 'session_claude_telemetry',
+        project_id: 'project_claude_telemetry',
+        external_session_id: 'external-telemetry'
+      })
+      const context = createContext({
+        sessionSecret: 'claude-secret',
+        webhookPort: 48880,
+        providerPort: 48881
+      })
+
+      const command = await provider.buildStartCommand(target, context)
+
+      expect(command.env.STOA_SESSION_ID).toBe('session_claude_telemetry')
+      expect(command.env.STOA_PROJECT_ID).toBe('project_claude_telemetry')
+      expect(command.env.STOA_SESSION_SECRET).toBe('claude-secret')
+      expect(command.env.STOA_WEBHOOK_PORT).toBe('48880')
+      expect(command.env.STOA_PROVIDER_PORT).toBe('48881')
+    })
+
+    test('installSidecar writes shared Claude hooks config', async () => {
+      const workspaceDir = await createTempDir('stoa-claude-sidecar-')
+      const provider = getProvider('claude-code')
+      const target = createTarget({
+        path: workspaceDir,
+        type: 'claude-code',
+        external_session_id: 'external-telemetry'
+      })
+
+      await provider.installSidecar(target, createContext({ webhookPort: 43127, sessionSecret: 'secret-claude' }))
+
+      const content = await readFile(join(workspaceDir, '.claude', 'settings.local.json'), 'utf8')
+      expect(content).toContain('http://127.0.0.1:43127/hooks/claude-code')
+      expect(content).toContain('x-stoa-session-id')
+      expect(content).toContain('x-stoa-project-id')
+      expect(content).toContain('x-stoa-secret')
+      expect(content).toContain('allowedEnvVars')
+      expect(content).toContain('STOA_SESSION_ID')
+      expect(content).toContain('STOA_PROJECT_ID')
+      expect(content).toContain('STOA_SESSION_SECRET')
+      expect(content).not.toContain('secret-claude')
+      expect(content).not.toContain(target.session_id)
     })
   })
 
@@ -363,10 +468,11 @@ describe('E2E: Provider Integration', () => {
       const pluginPath = join(workspaceDir, '.opencode', 'plugins', 'stoa-status.ts')
       const content = await readFile(pluginPath, 'utf-8')
       expect(content).toContain('x-stoa-secret')
-      expect(content).toContain('my-super-secret-key')
+      expect(content).toContain('process.env.STOA_SESSION_SECRET')
+      expect(content).not.toContain('my-super-secret-key')
     })
 
-    test('sidecar file references correct session_id and project_id', async () => {
+    test('shared sidecar plugin reads session identity from runtime env instead of baking ids', async () => {
       const workspaceDir = await createTempDir('stoa-e2e-sidecar-ids-')
       const provider = getProvider('opencode')
       const target = createTarget({
@@ -380,11 +486,15 @@ describe('E2E: Provider Integration', () => {
 
       const pluginPath = join(workspaceDir, '.opencode', 'plugins', 'stoa-status.ts')
       const content = await readFile(pluginPath, 'utf-8')
-      expect(content).toContain('session_test_s99')
-      expect(content).toContain('project_test_p99')
+      expect(content).toContain('process.env.STOA_SESSION_ID')
+      expect(content).toContain('process.env.STOA_PROJECT_ID')
+      expect(content).toContain('process.env.STOA_SESSION_SECRET')
+      expect(content).toContain('http://127.0.0.1:43127/events')
+      expect(content).not.toContain('session_test_s99')
+      expect(content).not.toContain('project_test_p99')
     })
 
-    test('sidecar plugin keeps internal session_id fixed and sends externalSessionId separately', async () => {
+    test('sidecar plugin emits only explicit state-changing statuses', async () => {
       const workspaceDir = await createTempDir('stoa-sidecar-provider-id-')
       const provider = getProvider('opencode')
 
@@ -398,12 +508,19 @@ describe('E2E: Provider Integration', () => {
       )
 
       const content = await readFile(join(workspaceDir, '.opencode', 'plugins', 'stoa-status.ts'), 'utf8')
-      expect(content).toContain("session_id: 'session_internal_1'")
+      expect(content).toContain("case 'session.idle'")
+      expect(content).toContain("status = 'turn_complete'")
+      expect(content).toContain("case 'permission.asked'")
+      expect(content).toContain("status = 'needs_confirmation'")
+      expect(content).toContain("case 'permission.replied'")
+      expect(content).toContain("status = 'running'")
+      expect(content).toContain("case 'session.error'")
+      expect(content).toContain("status = 'error'")
       expect(content).toContain('externalSessionId: event.properties?.sessionID ?? undefined')
-      expect(content).toContain("status: event.type === 'session.idle' ? 'awaiting_input' : 'running'")
+      expect(content).not.toContain("status: event.type === 'session.idle' ? 'awaiting_input' : 'running'")
     })
 
-    test('calling installSidecar twice overwrites the file', async () => {
+    test('calling installSidecar twice keeps a shared plugin without session-baked values', async () => {
       const workspaceDir = await createTempDir('stoa-e2e-sidecar-overwrite-')
       const provider = getProvider('opencode')
 
@@ -427,12 +544,16 @@ describe('E2E: Provider Integration', () => {
 
       const pluginPath = join(workspaceDir, '.opencode', 'plugins', 'stoa-status.ts')
       const content = await readFile(pluginPath, 'utf-8')
-      expect(content).toContain('session_v2')
-      expect(content).toContain('project_v2')
+      expect(content).toContain('process.env.STOA_SESSION_ID')
+      expect(content).toContain('process.env.STOA_PROJECT_ID')
       expect(content).toContain('127.0.0.1:22222')
-      expect(content).toContain('secret-v2')
+      expect(content).toContain('process.env.STOA_SESSION_SECRET')
       expect(content).not.toContain('session_v1')
+      expect(content).not.toContain('session_v2')
+      expect(content).not.toContain('project_v1')
+      expect(content).not.toContain('project_v2')
       expect(content).not.toContain('secret-v1')
+      expect(content).not.toContain('secret-v2')
     })
   })
 
@@ -478,6 +599,20 @@ describe('E2E: Provider Integration', () => {
 
       expect(process.env.STOA_SESSION_SECRET).toBe(beforeSecret)
       expect(process.env.STOA_WEBHOOK_PORT).toBe(beforePort)
+    })
+
+    test('codex provider extends process.env with STOA_ vars', async () => {
+      const provider = getProvider('codex')
+      const target = createTarget({ type: 'codex' })
+      const context = createContext()
+
+      const command = await provider.buildStartCommand(target, context)
+
+      expect(command.env.STOA_SESSION_ID).toBe(target.session_id)
+      expect(command.env.STOA_PROJECT_ID).toBe(target.project_id)
+      expect(command.env.STOA_SESSION_SECRET).toBe(context.sessionSecret)
+      expect(command.env.STOA_WEBHOOK_PORT).toBe(String(context.webhookPort))
+      expect(command.env.STOA_PROVIDER_PORT).toBe(String(context.providerPort))
     })
   })
 })

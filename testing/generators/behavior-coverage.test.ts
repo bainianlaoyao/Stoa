@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { sessionRestoreBehavior } from '../behavior/session.behavior'
+import {
+  sessionRestoreBehavior,
+  sessionTelemetryTurnCompleteBehavior
+} from '../behavior/session.behavior'
 import { defineGeneratedTestMeta } from '../contracts/testing-contracts'
 import { sessionRestoreJourney } from '../journeys/session-restore.journey'
+import { sessionTelemetryTurnCompleteJourney } from '../journeys/session-telemetry.journey'
 import { buildBehaviorCoverageReport } from './behavior-coverage'
 
 describe('behavior coverage report', () => {
@@ -66,5 +70,30 @@ describe('behavior coverage report', () => {
 
     expect(report.behaviors['session.restore']?.maturity).toBe('Hardened')
     expect(report.summary.hardened).toBe(1)
+  })
+
+  it('marks turn_complete telemetry as Hardened when canonical and hook coverage reach UI and persistence', () => {
+    const report = buildBehaviorCoverageReport({
+      behaviors: [sessionTelemetryTurnCompleteBehavior],
+      journeys: [sessionTelemetryTurnCompleteJourney],
+      generatedTests: [
+        defineGeneratedTestMeta({
+          id: 'journey.session.telemetry.turn-complete',
+          behaviorIds: ['session.telemetry.turn-complete'],
+          entities: ['session', 'provider-telemetry', 'renderer-status'],
+          statesCovered: ['session.turn_complete', 'session.externalSessionId'],
+          interruptionsCovered: ['provider.runningEvent.afterTurnComplete'],
+          observationLayers: ['ui', 'main-debug-state', 'persisted-state'],
+          riskBudget: 'critical',
+          regressionSources: ['claude.raw-hook', 'canonical.webhook']
+        })
+      ]
+    })
+
+    expect(report.behaviors['session.telemetry.turn-complete']?.maturity).toBe('Hardened')
+    expect(report.behaviors['session.telemetry.turn-complete']?.missingObservationLayers).toEqual([])
+    expect(report.behaviors['session.telemetry.turn-complete']?.missingInterruptions).toEqual([
+      'app.relaunch.duringTelemetry'
+    ])
   })
 })

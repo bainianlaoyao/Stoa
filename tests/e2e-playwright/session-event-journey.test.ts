@@ -6,6 +6,7 @@ import {
   cleanupStateDir,
   getMainE2EDebugState,
   launchElectronApp,
+  postClaudeHookEvent,
   postWebhookEvent
 } from './fixtures/electron-app'
 import { createProject, createSession } from './helpers/ui-actions'
@@ -117,6 +118,93 @@ test.describe('Electron push and webhook journeys', () => {
       }).toMatchObject({
         status: 'exited',
         summary: 'session.completed'
+      })
+    } finally {
+      const { stateDir } = app
+      await app.close()
+      await cleanupStateDir(stateDir)
+    }
+  })
+
+  test('turn_complete webhook projection', async () => {
+    const app = await launchElectronApp()
+
+    try {
+      const projectRow = await createProject(app, {
+        name: 'turn-complete-project',
+        path: join(app.stateDir, 'turn-complete-project')
+      })
+      const session = await createSession(app.page, projectRow, {
+        type: 'codex'
+      })
+
+      const debugState = await getMainE2EDebugState(app.electronApp)
+      const sessionState = debugState?.snapshot?.sessions.find(candidate => candidate.title === session.title)
+      const secret = sessionState ? debugState?.sessionSecrets[sessionState.id] : undefined
+
+      const response = await postWebhookEvent({
+        port: debugState!.webhookPort!,
+        secret: secret!,
+        event: createCanonicalEvent({
+          sessionId: sessionState!.id,
+          projectId: sessionState!.projectId,
+          status: 'turn_complete',
+          summary: 'Turn complete'
+        })
+      })
+
+      expect(response.status).toBe(202)
+      await expect(session.row.locator('.route-dot.turn_complete')).toBeVisible()
+
+      await expect.poll(async () => {
+        const nextDebugState = await getMainE2EDebugState(app.electronApp)
+        return nextDebugState?.snapshot?.sessions.find(candidate => candidate.id === sessionState!.id) ?? null
+      }).toMatchObject({
+        status: 'turn_complete',
+        summary: 'Turn complete'
+      })
+    } finally {
+      const { stateDir } = app
+      await app.close()
+      await cleanupStateDir(stateDir)
+    }
+  })
+
+  test('claude Stop hook updates UI through the raw hook route', async () => {
+    const app = await launchElectronApp()
+
+    try {
+      const projectRow = await createProject(app, {
+        name: 'claude-hook-project',
+        path: join(app.stateDir, 'claude-hook-project')
+      })
+      const session = await createSession(app.page, projectRow, {
+        type: 'claude-code'
+      })
+
+      const debugState = await getMainE2EDebugState(app.electronApp)
+      const sessionState = debugState?.snapshot?.sessions.find(candidate => candidate.title === session.title)
+      const secret = sessionState ? debugState?.sessionSecrets[sessionState.id] : undefined
+
+      const response = await postClaudeHookEvent({
+        port: debugState!.webhookPort!,
+        secret: secret!,
+        sessionId: sessionState!.id,
+        projectId: sessionState!.projectId,
+        body: {
+          hook_event_name: 'Stop'
+        }
+      })
+
+      expect(response.status).toBe(202)
+      await expect(session.row.locator('.route-dot.turn_complete')).toBeVisible()
+
+      await expect.poll(async () => {
+        const nextDebugState = await getMainE2EDebugState(app.electronApp)
+        return nextDebugState?.snapshot?.sessions.find(candidate => candidate.id === sessionState!.id) ?? null
+      }).toMatchObject({
+        status: 'turn_complete',
+        summary: 'Stop'
       })
     } finally {
       const { stateDir } = app

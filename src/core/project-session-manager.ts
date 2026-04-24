@@ -114,6 +114,7 @@ function createSessionExternalId(type: SessionType, externalSessionId?: string |
 }
 
 const NON_REGRESSIBLE_RUNNING_STATUSES = new Set<SessionStatus>([
+  'turn_complete',
   'awaiting_input',
   'degraded',
   'needs_confirmation',
