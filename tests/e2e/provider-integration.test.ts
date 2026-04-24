@@ -404,6 +404,7 @@ describe('E2E: Provider Integration', () => {
       await provider.installSidecar(target, createContext({ webhookPort: 43127, sessionSecret: 'secret-claude' }))
 
       const content = await readFile(join(workspaceDir, '.claude', 'settings.local.json'), 'utf8')
+      const settings = JSON.parse(content) as { hooks: Record<string, unknown> }
       expect(content).toContain('http://127.0.0.1:43127/hooks/claude-code')
       expect(content).toContain('x-stoa-session-id')
       expect(content).toContain('x-stoa-project-id')
@@ -412,6 +413,13 @@ describe('E2E: Provider Integration', () => {
       expect(content).toContain('STOA_SESSION_ID')
       expect(content).toContain('STOA_PROJECT_ID')
       expect(content).toContain('STOA_SESSION_SECRET')
+      expect(Object.keys(settings.hooks).sort()).toEqual([
+        'PermissionRequest',
+        'PreToolUse',
+        'Stop',
+        'StopFailure',
+        'UserPromptSubmit'
+      ])
       expect(content).not.toContain('secret-claude')
       expect(content).not.toContain(target.session_id)
     })

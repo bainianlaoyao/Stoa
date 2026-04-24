@@ -127,6 +127,7 @@ describe('claude-code provider', () => {
       })
 
       const content = await readFile(join(workspaceDir, '.claude', 'settings.local.json'), 'utf8')
+      const settings = JSON.parse(content) as { hooks: Record<string, unknown> }
       expect(content).toContain('http://127.0.0.1:43127/hooks/claude-code')
       expect(content).toContain('x-stoa-session-id')
       expect(content).toContain('x-stoa-project-id')
@@ -134,8 +135,13 @@ describe('claude-code provider', () => {
       expect(content).toContain('STOA_SESSION_ID')
       expect(content).toContain('STOA_PROJECT_ID')
       expect(content).toContain('STOA_SESSION_SECRET')
-      expect(content).toContain('"UserPromptSubmit"')
-      expect(content).toContain('"PreToolUse"')
+      expect(Object.keys(settings.hooks).sort()).toEqual([
+        'PermissionRequest',
+        'PreToolUse',
+        'Stop',
+        'StopFailure',
+        'UserPromptSubmit'
+      ])
       expect(content).not.toContain('session_claude_env')
       expect(content).not.toContain('secret-env')
     } finally {
