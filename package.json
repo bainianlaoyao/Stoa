@@ -21,7 +21,8 @@
     "test:e2e": "npm run build && playwright test",
     "test:behavior-coverage": "vitest run testing/generators/behavior-coverage.test.ts",
     "test:all": "npm run test:generate && npm run test && npm run test:e2e && npm run test:behavior-coverage",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "ci:local": "pnpm run test:generate && pnpm run typecheck && pnpm vitest run && pnpm run test:e2e && pnpm run test:behavior-coverage && pnpm run build && pnpm run package && pnpm run verify:packaging && pnpm run verify:release-smoke"
   },
   "dependencies": {
     "@headlessui/vue": "^1.7.23",
