@@ -1,74 +1,47 @@
-# Session State Model Redesign
+# Session 状态模型重构设计
 
-Date: 2026-04-24
+日期：2026-04-24
 
-## Problem
+## 背景与问题
 
-The current session status model uses one `SessionStatus` value to represent multiple independent facts:
+当前实现把一个 `SessionStatus` 同时用来表达多件不同的事：
 
-- Whether Stoa has created and launched the runtime process.
-- Whether the PTY/provider process is alive.
-- Whether an agent is actively processing a user turn.
-- Whether the provider is idle/ready for input.
-- Whether the provider is blocked on permission or confirmation.
-- What the UI should display in the hierarchy row.
+- Stoa 是否已经创建 session。
+- provider/PTY 进程是否已经启动并存活。
+- agent 是否正在处理一轮用户请求。
+- agent 是否已经完成当前轮、可以接收下一次输入。
+- agent 是否被权限、确认、错误阻塞。
+- 前端行项目应该显示 `Preparing`、`Ready`、`Running` 还是 `Blocked`。
 
-This made `running` ambiguous. `markSessionRunning()` currently means "PTY spawned successfully", but UI users read `Running` as "agent is working". That mismatch caused new sessions to start as `Running`, Claude ready/running/blocked transitions to regress, and renderer presence snapshots to drift from canonical session events.
+这导致 `running` 语义混乱。现在的 `markSessionRunning()` 实际含义是“PTY 进程 spawn 成功”，但用户看到 `Running` 会理解为“Claude/Codex/OpenCode 正在工作”。这就是新建会话一开始全部显示 Running、Claude ready/running/blocked 来回异常、前端 presence 卡在 Preparing 的根本原因。
 
-The correct model is not "find a better single status". The correct model is to separate lifecycle, turn state, and presentation.
+结论：不能继续给单个 `SessionStatus` 打补丁。必须拆成三层状态：
 
-## Goals
+- Runtime lifecycle：Stoa/PTY/provider 进程生命周期。
+- Agent turn state：agent 当前一轮任务状态。
+- UI presence：前端最终展示状态，必须纯派生。
 
-- A newly launched provider process must not imply the agent is working.
-- Claude Code must show `Ready -> Running -> Ready` from real hook events, and `Blocked` from real permission events.
-- Shell, Codex, OpenCode, and Claude Code must share one state architecture while allowing provider capability differences.
-- UI must consume a single derived presence object, not merge competing truth sources ad hoc.
-- Tests must prove behavior at every boundary: provider signal, core state reducer, IPC projection, renderer store, and Electron journey.
-- Breaking persistence/schema changes are allowed. No compatibility migration is required.
+## 目标
 
-## Non-Goals
+- provider 进程启动成功，不等于 agent 正在工作。
+- Claude Code 必须由真实 hook 驱动 `Ready -> Running -> Blocked -> Running -> Ready`。
+- Shell、Claude Code、OpenCode、Codex 共享同一套状态架构，但允许 provider 能力不同。
+- 前端只消费一个权威派生状态，不再同时维护多套 truth。
+- 所有状态全集、状态含义、合法转换和非法转换必须写清楚，并用测试锁住。
+- 当前处于原型阶段，允许 breaking change，不做兼容迁移。
 
-- No attempt to infer rich agent state from arbitrary terminal text.
-- No migration for existing prototype state files.
-- No terminal top bar or extra status chrome.
-- No compatibility layer preserving old `SessionStatus` semantics.
+## 非目标
 
-## Current Failure Modes
+- 不从任意 terminal 文本猜 agent 状态。
+- 不迁移旧 `.stoa` 状态文件。
+- 不添加 terminal 顶栏。
+- 不保留旧 `SessionStatus` 兼容层。
 
-### Runtime Alive Is Mislabelled as Agent Running
+## 三层状态模型
 
-Current flow:
+### 第一层：Runtime 状态全集
 
-```text
-createSession()
-  -> status = bootstrapping
-startSessionRuntime()
-  -> markSessionStarting()
-  -> ptyHost.start()
-  -> markSessionRunning()
-```
-
-`markSessionRunning()` fires immediately after spawn. This is only evidence that the runtime process exists. It is not evidence that Claude/Codex/OpenCode is processing a user request.
-
-### Canonical Status and Presence Drift
-
-Renderer hierarchy rows prefer `SessionPresenceSnapshot`. `SessionStatusEvent` updates `SessionSummary`, but presence can be missing or stale. This creates a second failure mode where the backend already moved from `bootstrapping` to `running` or `turn_complete`, while the row still renders a stale derived `Preparing` presence.
-
-### Provider Signals Have Different Meaning
-
-Claude hooks:
-
-- `UserPromptSubmit` means a user turn has begun.
-- `PreToolUse` means the agent is working.
-- `Stop` means the current turn is complete.
-- `PermissionRequest` means blocked.
-- `StopFailure` means turn error.
-
-None of those are equivalent to PTY runtime lifecycle. A state model that treats them all as direct replacements for `SessionStatus` is unstable.
-
-## Proposed Model
-
-Replace the single status truth with three explicit layers.
+Runtime 状态描述 Stoa 管理的进程生命周期，只能由 Stoa runtime 控制器更新。
 
 ```ts
 type SessionRuntimeState =
@@ -77,14 +50,53 @@ type SessionRuntimeState =
   | 'alive'
   | 'exited'
   | 'failed_to_start'
+```
 
+| Runtime 状态 | 含义 | 典型来源 |
+|---|---|---|
+| `created` | Session 记录已创建，但尚未开始启动 runtime。 | `createSession()` |
+| `starting` | 正在安装 sidecar、构建命令或准备 spawn PTY。 | `startSessionRuntime()` |
+| `alive` | PTY/provider 进程已成功 spawn，进程存活。 | `ptyHost.start()` 成功 |
+| `exited` | PTY/provider 进程已退出。 | PTY exit callback |
+| `failed_to_start` | runtime 在进入 alive 之前启动失败。 | install/build/spawn 抛错 |
+
+补充字段：
+
+```ts
+runtimeExitCode: number | null
+runtimeExitReason: 'clean' | 'failed' | null
+```
+
+`runtimeState = exited` 本身不说明成功还是失败，必须结合 exit metadata。干净退出显示 `Exited`，异常退出显示 `Failed`。
+
+### 第二层：Agent 状态全集
+
+Agent 状态描述 provider 内部 agent 当前 turn 状态，只能由 provider evidence 更新。
+
+```ts
 type SessionAgentState =
   | 'unknown'
   | 'idle'
   | 'working'
   | 'blocked'
   | 'error'
+```
 
+| Agent 状态 | 含义 | 典型来源 |
+|---|---|---|
+| `unknown` | 没有可靠 agent turn 证据。 | 新建 session、Shell、Codex 无 turn-start 证据时 |
+| `idle` | agent 当前轮已结束，可以接收下一步。 | Claude `Stop`、OpenCode `session.idle`、Codex turn complete |
+| `working` | agent 正在处理当前轮。 | Claude `UserPromptSubmit` / `PreToolUse` |
+| `blocked` | agent 等待权限、确认或用户介入。 | Claude `PermissionRequest`、OpenCode `permission.asked` |
+| `error` | 当前轮失败或 provider 报错。 | Claude `StopFailure`、OpenCode `session.error` |
+
+这里不设置长期 `complete` 状态。`complete` 是一个事件语义：某一轮完成。完成事件进入 reducer 后，稳定 agent 状态是 `idle`，UI presence 显示 `Ready`。如果 UI 想短暂展示 “Complete”，应该作为最近事件摘要或 toast，而不是长期 session 状态。
+
+### 第三层：UI Presence 状态全集
+
+UI Presence 是唯一给前端行项目展示的状态，必须由 runtime + agent + provider capability 纯派生，不能作为主 truth 持久化。
+
+```ts
 type SessionPresencePhase =
   | 'preparing'
   | 'ready'
@@ -92,7 +104,24 @@ type SessionPresencePhase =
   | 'blocked'
   | 'failed'
   | 'exited'
+```
 
+| UI 状态 | 展示文案 | 含义 |
+|---|---|---|
+| `preparing` | Preparing | Stoa 正在创建或启动 runtime。 |
+| `ready` | Ready | runtime 可用，agent 没在工作，或当前 turn 已完成。 |
+| `running` | Running | agent 正在处理任务；Shell 例外，进程 alive 即 Running。 |
+| `blocked` | Blocked | agent 等待权限/确认/用户介入。 |
+| `failed` | Failed | runtime 启动失败、异常退出，或 agent 报错。 |
+| `exited` | Exited | runtime 干净退出。 |
+
+注意：旧代码里 observability phase 曾叫 `working`。本次 breaking change 推荐统一改为 `running`，因为 UI 和用户语言都叫 Running。若实现阶段选择内部保留 `working`，必须在同一轮改动中清理所有 `running/working` 双命名歧义。
+
+## 事件意图全集
+
+只传 `agentState = working` 不够，因为 reducer 需要知道“为什么能转移”。例如 `blocked -> working` 只有在权限被解决后才合法，普通 stale `PreToolUse` 不应随便解除 blocked。因此所有状态 patch 必须带 intent。
+
+```ts
 type SessionStateIntent =
   | 'runtime.created'
   | 'runtime.starting'
@@ -109,34 +138,30 @@ type SessionStateIntent =
   | 'agent.recovered'
 ```
 
-### Layer Ownership
+每个 patch 还必须带单 session 单调递增序列：
 
-`SessionRuntimeState` is owned by Stoa runtime lifecycle:
+```ts
+interface SessionStatePatchEvent {
+  sessionId: string
+  sequence: number
+  occurredAt: string
+  intent: SessionStateIntent
+  providerEventType: string
+  runtimeState?: SessionRuntimeState
+  agentState?: SessionAgentState
+  runtimeExitCode?: number | null
+  runtimeExitReason?: 'clean' | 'failed' | null
+  blockingReason?: BlockingReason | null
+  summary: string
+  externalSessionId?: string | null
+}
+```
 
-- Session creation sets `created`.
-- Before provider command build/spawn sets `starting`.
-- PTY spawn success sets `alive`.
-- PTY clean exit sets `exited`.
-- PTY non-zero/crash exit sets `failed_to_start` if the process never reached `alive`, otherwise records a failed runtime exit while keeping runtime state `exited`.
-- install/build/spawn failure sets `failed_to_start`.
+没有 provider sequence 的事件，由 Stoa ingestion 时分配 per-session monotonic sequence，再进入 reducer。
 
-`SessionAgentState` is owned by provider evidence:
+## UI 派生规则
 
-- Claude `UserPromptSubmit` / `PreToolUse` sets `working`.
-- Claude `Stop` sets `idle`.
-- Claude `PermissionRequest` sets `blocked`.
-- Claude `StopFailure` sets `error`.
-- OpenCode `permission.replied` / active events set `working`.
-- OpenCode `session.idle` sets `idle`.
-- OpenCode `permission.asked` sets `blocked`.
-- Codex notify turn-complete sets `idle`; until richer start events exist, Codex remains `unknown` or provider-specific `working` only when a reliable event exists.
-- Shell has no agent state; it remains `unknown`.
-
-`SessionPresencePhase` is a pure derived value. It is not persisted as primary truth.
-
-## Derived Presence Rules
-
-Presence derivation must be centralized in one pure function:
+Presence phase 由一个纯函数集中计算：
 
 ```ts
 function derivePresencePhase(input: {
@@ -148,28 +173,136 @@ function derivePresencePhase(input: {
 }): SessionPresencePhase
 ```
 
-Rules, in priority order:
+优先级从上到下：
 
-```text
-runtimeState = failed_to_start              -> failed
-agentState = error                          -> failed
-runtimeState = exited + runtimeExit failed  -> failed
-runtimeState = exited + runtimeExit clean   -> exited
-agentState = blocked                        -> blocked
-agentState = working                        -> running
-agentState = idle                           -> ready
-runtimeState = created|starting             -> preparing
-runtimeState = alive + agent unknown        -> ready for agent providers, running for shell
-```
+| 条件 | UI Presence |
+|---|---|
+| `runtimeState = failed_to_start` | `failed` |
+| `agentState = error` | `failed` |
+| `runtimeState = exited` 且 `runtimeExitReason = failed` | `failed` |
+| `runtimeState = exited` 且 `runtimeExitReason = clean` | `exited` |
+| `agentState = blocked` | `blocked` |
+| `agentState = working` | `running` |
+| `agentState = idle` | `ready` |
+| `runtimeState = created 或 starting` | `preparing` |
+| `runtimeState = alive` 且 `agentState = unknown` 且 provider 是 Shell | `running` |
+| `runtimeState = alive` 且 `agentState = unknown` 且 provider 是 agent provider | `ready` |
 
-The `alive + unknown` rule is intentionally provider-specific:
+`activeSessionId` 不得参与 phase 派生。当前是否 active 只影响 unread/attention 元数据，不影响 session 本身状态。
 
-- `shell`: `running`, because process alive is the useful user-facing state.
-- `claude-code`, `opencode`, `codex`: `ready`, because process alive does not mean the agent is working.
+## 状态转换总览
 
-## Data Model
+### Runtime 合法转换
 
-Replace the current persisted session shape's single status field with explicit state fields:
+| 当前 Runtime | 事件 intent | 下一个 Runtime | 说明 |
+|---|---|---|---|
+| 无记录 | `runtime.created` | `created` | 创建 session。 |
+| `created` | `runtime.starting` | `starting` | 开始启动 runtime。 |
+| `starting` | `runtime.alive` | `alive` | PTY spawn 成功。 |
+| `created` / `starting` | `runtime.failed_to_start` | `failed_to_start` | 启动前失败。 |
+| `alive` | `runtime.exited_clean` | `exited` | 正常退出。 |
+| `alive` | `runtime.exited_failed` | `exited` | 异常退出，UI 派生为 Failed。 |
+| `exited` | `runtime.starting` | `starting` | 用户显式 restore/retry。 |
+| `failed_to_start` | `runtime.starting` | `starting` | 用户显式 retry。 |
+
+Runtime 非法或忽略转换：
+
+- 旧 sequence 的 runtime 事件忽略。
+- `exited` 后的旧 `alive` 忽略，除非来自更新 sequence 的 restore/retry。
+- `failed_to_start` 后的 provider agent 事件忽略，除非 runtime 已重新进入 `starting/alive`。
+
+### Agent 合法转换
+
+| 当前 Agent | 事件 intent | 下一个 Agent | 说明 |
+|---|---|---|---|
+| `unknown` | `agent.turn_started` | `working` | 收到用户 turn 开始证据。 |
+| `idle` | `agent.turn_started` | `working` | Ready -> Running。 |
+| `error` | `agent.turn_started` | `working` | 新 turn/重试恢复。 |
+| `unknown` | `agent.tool_started` | `working` | 工具调用是 working 证据。 |
+| `idle` | `agent.tool_started` | `working` | Ready -> Running。 |
+| `working` | `agent.tool_started` | `working` | 保持 Running，更新摘要/工具名。 |
+| `working` | `agent.turn_completed` | `idle` | Running -> Complete event -> Ready state。 |
+| `working` | `agent.permission_requested` | `blocked` | Running -> Blocked。 |
+| `idle` | `agent.permission_requested` | `blocked` | Ready -> Blocked，少见但合法。 |
+| `blocked` | `agent.permission_resolved` 且 approved/continued | `working` | Blocked -> Running。 |
+| `blocked` | `agent.permission_resolved` 且 denied/cancelled | `idle` 或 `error` | 取决于 provider 明确信号。 |
+| 任意非 `error` | `agent.turn_failed` | `error` | 当前 turn 失败。 |
+| `error` | `agent.recovered` | `idle` 或 `working` | 显式恢复事件。 |
+
+Agent 非法或忽略转换：
+
+- `blocked -> working` 不能由普通 `agent.tool_started` 随意触发，必须是明确的 permission resolved 或同一 turn 的 post-permission continuation。
+- `blocked -> idle` 不能由 stale `agent.turn_completed` 触发。
+- `error -> idle` 不能由 stale `agent.turn_completed` 触发。
+- `runtimeState = exited` 后的 agent 事件忽略，除非 session 已有更新 sequence 的 restart/resume。
+- sequence 小于等于 `lastStateSequence` 的 patch 忽略，除完全幂等重复外。
+
+### UI Presence 转换
+
+下面是用户实际看到的稳定转换。`Complete` 不是长期状态，而是 `Running -> Ready` 的事件说明。
+
+| 当前 UI | 触发事实 | 下一个 UI | 例子 |
+|---|---|---|---|
+| 无 | 创建 session | `Preparing` | 新建 Claude session。 |
+| `Preparing` | runtime alive，agent unknown，provider 是 Claude/OpenCode/Codex | `Ready` | Claude 进程已启动但尚未工作。 |
+| `Preparing` | runtime alive，provider 是 Shell | `Running` | Shell 进程就是用户工作对象。 |
+| `Ready` | `agent.turn_started` | `Running` | Claude `UserPromptSubmit`。 |
+| `Ready` | `agent.tool_started` | `Running` | Claude `PreToolUse`。 |
+| `Running` | `agent.permission_requested` | `Blocked` | Claude `PermissionRequest`。 |
+| `Blocked` | 权限 approved/continued | `Running` | OpenCode approved reply 或 Claude post-permission `PreToolUse`。 |
+| `Blocked` | 权限 denied/cancelled | `Ready` 或 `Failed` | 取决于 provider 结果。 |
+| `Running` | `agent.turn_completed` | `Ready` | Claude `Stop`。这就是用户说的 running -> complete -> ready，其中 complete 是事件，不是持久状态。 |
+| `Running` | `agent.turn_failed` | `Failed` | Claude `StopFailure`。 |
+| `Ready` | runtime clean exit | `Exited` | 用户关闭进程。 |
+| 任意非 Failed | runtime failed exit | `Failed` | provider crash。 |
+| `Failed` / `Exited` | 用户 restore/retry | `Preparing` | 恢复 session。 |
+
+## Provider 映射
+
+### Claude Code
+
+HTTP hook 注册：
+
+- `UserPromptSubmit` -> `intent = agent.turn_started`, `agentState = working`
+- `PreToolUse` -> `intent = agent.tool_started`, `agentState = working`
+- `Stop` -> `intent = agent.turn_completed`, `agentState = idle`
+- `PermissionRequest` -> `intent = agent.permission_requested`, `agentState = blocked`, `blockingReason = permission`
+- `StopFailure` -> `intent = agent.turn_failed`, `agentState = error`
+
+Claude HTTP hooks 不支持 `SessionStart`，所以不能通过当前 HTTP sidecar 注册它。
+
+Claude 没有专门的 HTTP permission accepted 事件。设计规定：如果当前 agent 是 `blocked`，且收到更新 sequence 的同一 turn 后续 `PreToolUse`，Stoa 将其视为 `agent.permission_resolved` + `agent.tool_started` 的组合证据，从而允许 `Blocked -> Running`。
+
+### OpenCode
+
+- `permission.asked` -> `intent = agent.permission_requested`, `agentState = blocked`
+- `permission.replied` 必须读取 reply payload：
+  - approved/continued -> `intent = agent.permission_resolved`, `agentState = working`
+  - denied/cancelled -> `intent = agent.permission_resolved`, `agentState = idle` 或 `error`
+- `session.idle` -> `intent = agent.turn_completed`, `agentState = idle`
+- `session.error` -> `intent = agent.turn_failed`, `agentState = error`
+- 只有可靠 active turn/tool 事件才能设置 `agentState = working`
+
+不能把所有 `permission.replied` 盲目映射成 Running。
+
+### Codex
+
+Codex 当前 turn-start 结构化证据较弱，因此：
+
+- runtime alive + agent unknown -> UI `Ready`
+- turn complete notify -> `intent = agent.turn_completed`, `agentState = idle`
+- error notify -> `intent = agent.turn_failed`, `agentState = error`
+- 未来接入可靠 turn-start / OTel / notify 事件后，才允许设置 `agentState = working`
+
+### Shell
+
+Shell 没有 agent 层：
+
+- `runtimeState = alive`
+- `agentState = unknown`
+- UI 派生为 `Running`
+
+## 数据模型
 
 ```ts
 interface SessionSummary {
@@ -193,7 +326,7 @@ interface SessionSummary {
 }
 ```
 
-Persistence:
+持久化字段采用 snake_case：
 
 ```ts
 interface PersistedSession {
@@ -217,62 +350,11 @@ interface PersistedSession {
 }
 ```
 
-Because this is prototype-stage breaking work, persisted state version should be bumped and old state can be rejected or reset rather than migrated.
+这是 breaking schema change。旧状态文件可以重置或拒绝读取，不做迁移。
 
-## Event Contract
+## Reducer 规则
 
-Replace `SessionStatusEvent` with a state patch event:
-
-```ts
-interface SessionStatePatchEvent {
-  sessionId: string
-  sequence: number
-  occurredAt: string
-  intent: SessionStateIntent
-  providerEventType: string
-  runtimeState?: SessionRuntimeState
-  agentState?: SessionAgentState
-  runtimeExitCode?: number | null
-  runtimeExitReason?: 'clean' | 'failed' | null
-  blockingReason?: BlockingReason | null
-  summary: string
-  externalSessionId?: string | null
-}
-```
-
-Canonical provider event payload should likewise become state-specific:
-
-```ts
-interface CanonicalSessionEventPayload {
-  sequence?: number
-  intent: SessionStateIntent
-  runtimeState?: SessionRuntimeState
-  agentState?: SessionAgentState
-  runtimeExitCode?: number | null
-  runtimeExitReason?: 'clean' | 'failed' | null
-  blockingReason?: BlockingReason | null
-  summary?: string
-  externalSessionId?: string | null
-  model?: string
-  snippet?: string
-  toolName?: string
-  error?: string
-}
-```
-
-Provider hooks must never emit `runtimeState` unless the provider evidence actually proves runtime lifecycle. Claude hook events emit only `agentState`.
-
-`intent` is mandatory because `agentState = working` is not enough evidence to decide a legal transition. For example:
-
-- `agent.permission_resolved` may replace `blocked` with `working`.
-- `agent.turn_started` may replace `error` with `working` as a new recovery turn.
-- A generic stale `agent.tool_started` must not replace `blocked` unless it is known to be the post-permission continuation.
-
-`sequence` is mandatory for Stoa-originated state patches. For provider events that do not supply a sequence, Stoa assigns a monotonic per-session sequence at ingestion time before reducing state.
-
-## Core Reducer
-
-Introduce one reducer in core and make all state writes go through it:
+所有状态写入必须经过一个 reducer：
 
 ```ts
 function reduceSessionState(
@@ -282,56 +364,29 @@ function reduceSessionState(
 ): SessionSummary
 ```
 
-Reducer rules:
+核心规则：
 
-- Runtime and agent states are independent fields.
-- Ignore any patch with `sequence <= session.lastStateSequence`, except idempotent repeats with the same intent and same state.
-- `runtimeState = exited` does not erase `agentState`; failed exits derive `Failed`, clean exits derive `Exited`.
-- `agent.turn_started` can replace `idle`, `unknown`, or `error` with `working`.
-- `agent.tool_started` can replace `idle`, `unknown`, or `working` with `working`.
-- `agent.turn_completed` can replace `working` with `idle`.
-- `agent.turn_completed` must not replace `blocked` or `error`.
-- `agent.permission_requested` can replace `working` or `idle` with `blocked`.
-- `agent.permission_resolved` can replace `blocked` with `working` only when provider payload proves approval/continuation; otherwise it must not set `working`.
-- `agent.turn_failed` sets `error`.
-- `agent.recovered` can replace `error` only when produced by an explicit retry/resume/new-turn signal.
-- Runtime `alive` must not set agent `working`.
-- Agent events after `runtimeState = exited` are ignored unless the session has a newer runtime `starting/alive` sequence from a restart/resume.
+- Runtime 和 Agent 是独立字段。
+- `runtime.alive` 只能更新 runtime，绝不能设置 agent 为 `working`。
+- `agent.turn_completed` 表示 complete 事件，最终稳定状态是 `agentState = idle`，UI 显示 `Ready`。
+- `agent.permission_requested` 设置 `blocked`。
+- `blocked -> working` 必须有 explicit unblock evidence。
+- `error -> idle/working` 必须有新 turn 或 explicit recovery evidence。
+- `runtime.exited` 不清空 agent 状态；最终 UI 由 exit metadata 和 agent error 优先级派生。
+- 旧 sequence patch 忽略。
 
-This reducer replaces ad hoc non-regression sets such as `NON_REGRESSIBLE_RUNNING_STATUSES`.
+## Runtime 控制器变更
 
-### Legal Transition Matrix
-
-| Current | Intent | Next | Notes |
-|---|---|---|---|
-| runtime `created` | `runtime.starting` | runtime `starting` | Before install/build/spawn. |
-| runtime `starting` | `runtime.alive` | runtime `alive` | PTY spawned. Agent unchanged. |
-| runtime `created/starting` | `runtime.failed_to_start` | runtime `failed_to_start` | Build/install/spawn failure. |
-| runtime `alive` | `runtime.exited_clean` | runtime `exited`, clean exit | UI derives `Exited` unless agent error is newer. |
-| runtime `alive` | `runtime.exited_failed` | runtime `exited`, failed exit | UI derives `Failed`. |
-| runtime `exited/failed_to_start` | `runtime.starting` | runtime `starting` | Explicit restore/retry only. |
-| agent `unknown/idle/error` | `agent.turn_started` | agent `working` | New user turn or equivalent recovery. |
-| agent `unknown/idle/working` | `agent.tool_started` | agent `working` | Does not unblock by itself. |
-| agent `working` | `agent.turn_completed` | agent `idle` | Ready. |
-| agent `working/idle` | `agent.permission_requested` | agent `blocked` | Permission block. |
-| agent `blocked` | `agent.permission_resolved` approved | agent `working` | Provider must prove approved/continued. |
-| agent `blocked` | `agent.permission_resolved` denied | agent `idle` or `error` | Provider-specific payload decides. |
-| any agent | `agent.turn_failed` | agent `error` | UI derives `Failed`. |
-| agent `error` | stale `agent.turn_completed` | unchanged | Prevents Stop after failure from hiding error. |
-| agent `blocked` | stale `agent.turn_completed` | unchanged | Prevents denied/blocked turns from showing Ready. |
-
-## Runtime Controller Changes
-
-Rename behavior to match semantics:
+旧方法名会误导，应改名：
 
 ```ts
 markSessionStarting(sessionId, summary, externalSessionId)
 markRuntimeAlive(sessionId, externalSessionId)
-markRuntimeExited(sessionId, summary)
+markRuntimeExited(sessionId, exitCode, summary)
 applyProviderStatePatch(event)
 ```
 
-Start flow becomes:
+启动流程：
 
 ```text
 createSession()
@@ -346,57 +401,11 @@ startSessionRuntime()
   -> markRuntimeAlive()
 ```
 
-`markRuntimeAlive()` updates only `runtimeState = alive`; it does not update `agentState`.
+`markRuntimeAlive()` 只设置 `runtimeState = alive`，不设置 `agentState = working`。
 
-For shell only, derived presence maps `alive + unknown -> running`.
+## Observability 与前端规则
 
-## Provider Mapping
-
-### Claude Code
-
-Sidecar registration:
-
-- `UserPromptSubmit`: `agentState = working`, summary `Claude turn started`
-- `PreToolUse`: `agentState = working`, intent `agent.tool_started`, summary `Claude using <tool>`
-- `Stop`: `agentState = idle`, intent `agent.turn_completed`, summary `Claude ready`
-- `PermissionRequest`: `agentState = blocked`, intent `agent.permission_requested`, summary `Claude needs permission`, blocking reason `permission`
-- `StopFailure`: `agentState = error`, intent `agent.turn_failed`, summary `Claude turn failed`
-
-`SessionStart` is not registered through HTTP because official Claude Code hooks do not support HTTP for that event.
-
-Claude does not expose a dedicated HTTP permission-accepted event. The first later `PreToolUse` for the same turn is treated as `agent.permission_resolved` followed by `agent.tool_started` only when the current agent state is `blocked` and the event sequence is newer than the blocking event. This is the explicit unblocking proof required by the reducer.
-
-### OpenCode
-
-Plugin mapping:
-
-- `permission.asked`: `agentState = blocked`, intent `agent.permission_requested`
-- `permission.replied`: inspect reply payload:
-  - approved/continued -> `agentState = working`, intent `agent.permission_resolved`
-  - denied/cancelled -> `agentState = idle` or `error`, intent `agent.permission_resolved`, based on provider payload
-- `session.idle`: `agentState = idle`
-- `session.error`: `agentState = error`
-- Active turn/tool events, if available and reliable: `agentState = working`
-
-### Codex
-
-Codex currently has weaker structured working-start evidence. Until an authoritative turn-start signal is implemented:
-
-- Runtime alive derives `ready`, not `running`.
-- Turn complete notification sets `agentState = idle`.
-- Errors set `agentState = error`.
-- Future richer notify/OTel events can set `agentState = working`.
-
-### Shell
-
-Shell has no agent layer:
-
-- `runtimeState = alive`, `agentState = unknown`
-- derived presence is `running`
-
-## Observability and UI
-
-`SessionPresenceSnapshot` should store derived fields plus the raw state pair:
+`SessionPresenceSnapshot` 是前端状态展示的权威输入：
 
 ```ts
 interface SessionPresenceSnapshot {
@@ -413,179 +422,123 @@ interface SessionPresenceSnapshot {
   health: ObservabilityHealth
   blockingReason: BlockingReason | null
   sourceSequence: number
-  ...
 }
 ```
 
-Renderer rules:
+前端规则：
 
-- Renderer does not decide runtime/agent state semantics.
-- Backend `SessionPresenceSnapshot` is the authoritative UI state once available.
-- Renderer fallback derivation from `SessionSummary` is allowed only when no backend snapshot exists for that session.
-- Renderer must compare `sourceSequence` before applying any presence snapshot or state patch.
-- Renderer must never overwrite a higher-sequence backend presence snapshot with lower-sequence fallback derivation.
-- Renderer store must not maintain a divergent presence truth. It stores the latest authoritative snapshot by `sessionId`; fallback is a computed read path, not persisted renderer truth.
-- Hierarchy rows render `SessionRowViewModel` only.
+- Backend `SessionPresenceSnapshot` 一旦存在，就是权威 UI 状态。
+- Renderer 只能在没有 backend snapshot 时，用 `SessionSummary` 通过同一个 shared projection 函数做 fallback。
+- Renderer 不得把 fallback 写成更高优先级 truth。
+- Renderer apply snapshot/patch 必须比较 `sourceSequence`。
+- Hierarchy row 只渲染 `SessionRowViewModel`，不在组件内重新解释状态。
 
-Active session focus is not an input to `derivePresencePhase`. It may affect unread/attention metadata, never the phase itself.
+## 用户可见行为
 
-Label mapping:
+### Claude Code
 
 ```text
-preparing -> Preparing
-ready     -> Ready
-running   -> Running
-blocked   -> Blocked
-failed    -> Failed
-exited    -> Exited
+新建 session              -> Preparing
+runtime alive             -> Ready
+UserPromptSubmit          -> Running
+PreToolUse                -> Running
+PermissionRequest         -> Blocked
+permission resolved       -> Running
+Stop                      -> Ready
+StopFailure               -> Failed
+clean process exit        -> Exited
+failed process exit       -> Failed
 ```
 
-## Expected User-Visible Behavior
-
-### Claude Code Fresh Session
+### OpenCode
 
 ```text
-create session             -> Preparing
-runtime alive              -> Ready
-UserPromptSubmit/PreToolUse -> Running
-PermissionRequest          -> Blocked
-permission accepted        -> Running
-Stop                       -> Ready
-process exit               -> Exited
+新建 session              -> Preparing
+runtime alive             -> Ready
+active turn evidence      -> Running
+permission.asked          -> Blocked
+permission.replied approve -> Running
+permission.replied deny   -> Ready 或 Failed
+session.idle              -> Ready
+session.error             -> Failed
 ```
 
-### OpenCode Fresh Session
+### Codex
 
 ```text
-create session             -> Preparing
-runtime alive              -> Ready
-permission.asked           -> Blocked
-permission.replied         -> Running
-session.idle               -> Ready
-process exit               -> Exited
+新建 session              -> Preparing
+runtime alive             -> Ready
+可靠 turn-start 证据       -> Running，未来接入后
+turn complete notify      -> Ready
+error notify              -> Failed
 ```
 
-### Shell Fresh Session
+### Shell
 
 ```text
-create session             -> Preparing
-runtime alive              -> Running
-process exit               -> Exited
+新建 session              -> Preparing
+runtime alive             -> Running
+clean process exit        -> Exited
+failed process exit       -> Failed
 ```
 
-### Codex Fresh Session
+## 测试策略
 
-```text
-create session             -> Preparing
-runtime alive              -> Ready
-turn-start evidence        -> Running, once implemented
-turn complete notification -> Ready
-process exit               -> Exited
-```
+### Unit
 
-## Testing Strategy
+- Runtime 全转换矩阵。
+- Agent 全转换矩阵。
+- `runtime.alive` 不会设置 `agentState = working`。
+- `blocked + stale turn_completed` 仍为 Blocked。
+- `error + stale turn_completed` 仍为 Failed。
+- `error + new turn_started` 可恢复 Running。
+- runtime exit 后旧 agent event 被忽略。
+- shell `alive + unknown` -> Running。
+- Claude/OpenCode/Codex `alive + unknown` -> Ready。
 
-### Unit Tests
+### Provider Adapter
 
-- Reducer tests for every legal transition.
-- Reducer tests proving runtime alive does not set agent working.
-- Projection tests for every `runtimeState + agentState + provider` combination.
-- Claude hook adapter tests mapping hooks to `agentState`.
-- OpenCode plugin mapping tests.
-- Session runtime tests proving spawn success calls `markRuntimeAlive`, not `agentState = working`.
-- Stale/out-of-order reducer tests:
-  - blocked then stale idle stays blocked
-  - error then stale stop/idle stays error
-  - error then new turn-start recovers to working
-  - agent event after runtime exit is ignored
-  - failed runtime exit derives failed
-  - clean runtime exit derives exited
+- Claude `UserPromptSubmit` -> turn started。
+- Claude `PreToolUse` -> tool started。
+- Claude `PermissionRequest` -> blocked。
+- Claude post-permission `PreToolUse` 可解除 blocked。
+- Claude `Stop` -> turn completed -> Ready。
+- Claude `StopFailure` -> Failed。
+- OpenCode `permission.replied` 必须区分 approve/deny。
 
-### Store and View Model Tests
+### Renderer
 
-- Renderer store applies `SessionStatePatchEvent` to both state fields.
-- Renderer row shows Claude `alive + unknown` as `Ready`.
-- Renderer row shows shell `alive + unknown` as `Running`.
-- Renderer row updates `Ready -> Running -> Blocked -> Ready` from state patch events.
-- Renderer tests for both arrival orders:
-  - presence before session patch
-  - session patch before presence
-  - lower-sequence fallback never overwrites higher-sequence backend presence
+- Backend snapshot 优先于 fallback。
+- 低 sequence fallback 不覆盖高 sequence snapshot。
+- session patch 先到、presence 后到，状态正确。
+- presence 先到、session patch 后到，状态正确。
+- row 展示 `Ready -> Running -> Blocked -> Running -> Ready`。
 
-### E2E Tests
+### E2E
 
-- New Claude session must not show `Running` immediately after runtime alive.
-- Simulated Claude `UserPromptSubmit` or `PreToolUse` moves row to `Running`.
-- Simulated Claude `Stop` moves row to `Ready`.
-- Simulated Claude `PermissionRequest` moves row to `Blocked`.
-- Shell session still shows `Running` after spawn.
-- Existing generated journeys should be updated to assert the new semantics.
+- 新建 Claude 不应仅因 runtime alive 显示 Running。
+- Claude hook `UserPromptSubmit` 或 `PreToolUse` 后显示 Running。
+- Claude hook `PermissionRequest` 后显示 Blocked。
+- Claude hook `Stop` 后显示 Ready。
+- Shell spawn 后仍显示 Running。
 
-## Implementation Plan Outline
+## 实现阶段
 
-1. Add shared state types and pure projection function.
-2. Add core reducer and reducer tests, including sequence and stale-event cases.
-3. Replace persisted status fields with `runtime_state`, `agent_state`, runtime exit metadata, blocking reason, and `last_state_sequence`.
-4. Replace manager methods with runtime-specific and provider-specific state patch methods.
-5. Update provider adapters to emit intentful agent patches.
-6. Update observability service/projection to include raw state pair, sequence, and derived phase.
-7. Update renderer store/view models to use backend presence as authoritative and fallback only when no snapshot exists.
-8. Update UI tests and E2E journeys.
-9. Remove old `SessionStatus` and old non-regression status code.
+1. 添加 shared types 和 `derivePresencePhase`。
+2. 添加 reducer 和全转换矩阵测试。
+3. breaking 修改持久化 schema。
+4. 改 runtime controller：`markRuntimeAlive` 不再影响 agent。
+5. 改 Claude/OpenCode/Codex provider adapter 输出 intentful patch。
+6. 改 observability service 输出权威 `SessionPresenceSnapshot`。
+7. 改 renderer store：backend snapshot 权威，fallback 只读派生。
+8. 改 UI/view model 测试与 E2E。
+9. 删除旧 `SessionStatus`、`markSessionRunning` 语义和非回退状态集合。
 
-## Implementation Phases
+## 验收标准
 
-Phase 1: Shared State and Projection
-
-- Add new types.
-- Add `derivePresencePhase`.
-- Test provider-specific `alive + unknown` behavior.
-
-Phase 2: Core Reducer and Persistence Break
-
-- Add reducer with intent and sequence.
-- Replace persistence schema.
-- Remove old single-status reducer paths.
-
-Phase 3: Runtime Lifecycle Wiring
-
-- Rename runtime manager methods.
-- Ensure spawn success only sets `runtimeState = alive`.
-- Capture runtime exit code/reason.
-
-Phase 4: Provider Adapter Wiring
-
-- Claude hooks emit agent intents.
-- OpenCode plugin emits approved/denied permission resolution when available.
-- Codex emits only evidence it can prove.
-
-Phase 5: Observability and IPC
-
-- Backend emits authoritative `SessionPresenceSnapshot`.
-- IPC sends state patch and/or presence snapshot with sequence.
-
-Phase 6: Renderer Consumption
-
-- Store applies snapshots by sequence.
-- Fallback derivation is computed only.
-- Hierarchy uses view models derived from authoritative snapshot or fallback.
-
-Phase 7: Journey and Behavior Assets
-
-- Update generated journeys and behavior coverage.
-- Add user-visible transition E2E tests.
-
-## Open Questions
-
-- Should Codex remain `Ready` after runtime alive until a reliable turn-start event exists, or should Codex be labelled `Unknown`? Recommendation: show `Ready` because it is less misleading than `Running`.
-- Should `failed_to_start` and `error` share the same UI label? Recommendation: both show `Failed`, but details should distinguish runtime start failure from provider turn error.
-- Should `blocked` preserve previous working/idle state? Recommendation: preserve in event payload/history, not in primary state. Primary `agentState = blocked` is enough for presence.
-- Should the UI phase enum use `running` or keep the existing `working` name? Recommendation: rename to `running` only if every old `working` usage is removed in the same breaking change; otherwise keep `working` internally and render label `Running`. The implementation plan must choose one and eliminate the other.
-
-## Acceptance Criteria
-
-- No provider except shell displays `Running` solely because PTY spawned.
-- Claude status is driven by real hook events after runtime launch.
-- The renderer has no stale `Preparing` state after a session state patch arrives.
-- State names are semantically unambiguous in code.
-- Tests fail if `markRuntimeAlive` or equivalent ever changes agent state to `working`.
+- 除 Shell 外，任何 provider 都不能仅因进程启动显示 Running。
+- Claude 的 Running/Blocked/Ready 全部由真实 hook 或明确 provider evidence 驱动。
+- `Blocked -> Running` 有明确 permission resolved 或 post-permission continuation 证据。
+- `Running -> Complete -> Ready` 中，Complete 是事件，稳定 UI 状态是 Ready。
+- 前端不会因为 stale fallback/presence 再次卡在 Preparing。
+- 测试能阻止 `runtime alive` 再次被误实现成 `agent working`。
