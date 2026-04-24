@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import type {
   AppObservabilitySnapshot,
+  ObservationEvent,
   ProjectObservabilitySnapshot,
   SessionPresenceSnapshot
 } from '@shared/observability'
@@ -46,6 +47,7 @@ function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
       projectsNeedingAttention: [],
       providerHealthSummary: {},
       lastGlobalEventAt: null,
+      sourceSequence: 0,
       updatedAt: '2026-04-24T08:00:00.000Z'
     }),
     listSessionObservationEvents: vi.fn().mockResolvedValue({ events: [], nextCursor: null }),
@@ -126,6 +128,7 @@ function sessionPresenceFixture(patch: Partial<SessionPresenceSnapshot> = {}): S
     lastEvidenceType: null,
     hasUnreadTurn: false,
     recoveryPointerState: 'trusted',
+    sourceSequence: 1,
     updatedAt: '2026-04-24T07:59:50.000Z',
     ...patch
   }
@@ -145,6 +148,7 @@ function projectObservabilityFixture(
     latestAttentionSessionId: null,
     latestAttentionReason: null,
     lastEventAt: '2026-04-24T07:59:50.000Z',
+    sourceSequence: 1,
     updatedAt: '2026-04-24T08:00:00.000Z',
     ...patch
   }
@@ -159,7 +163,31 @@ function appObservabilityFixture(patch: Partial<AppObservabilitySnapshot> = {}):
     projectsNeedingAttention: [],
     providerHealthSummary: {},
     lastGlobalEventAt: null,
+    sourceSequence: 1,
     updatedAt: '2026-04-24T08:00:00.000Z',
+    ...patch
+  }
+}
+
+function observationEventFixture(patch: Partial<ObservationEvent> = {}): ObservationEvent {
+  return {
+    eventId: 'event-1',
+    eventVersion: 1,
+    sequence: 2,
+    occurredAt: '2026-04-24T08:00:01.000Z',
+    ingestedAt: '2026-04-24T08:00:01.000Z',
+    scope: 'session',
+    projectId: 'project_alpha',
+    sessionId: 'session_op_1',
+    providerId: 'claude-code',
+    category: 'presence',
+    type: 'presence.turn_complete',
+    severity: 'info',
+    retention: 'operational',
+    source: 'provider-adapter',
+    correlationId: null,
+    dedupeKey: null,
+    payload: {},
     ...patch
   }
 }
@@ -646,12 +674,14 @@ describe('project/session renderer store', () => {
 
       const pushedSessionPresence = sessionPresenceFixture({
         updatedAt: '2026-04-24T08:00:10.000Z',
+        sourceSequence: 10,
         phase: 'blocked',
         blockingReason: 'permission',
         health: 'degraded'
       })
       const pushedProjectObservability = projectObservabilityFixture({
         updatedAt: '2026-04-24T08:00:10.000Z',
+        sourceSequence: 10,
         overallHealth: 'degraded',
         blockedSessionCount: 1,
         latestAttentionSessionId: 'session_op_1',
@@ -659,6 +689,7 @@ describe('project/session renderer store', () => {
       })
       const pushedAppObservability = appObservabilityFixture({
         updatedAt: '2026-04-24T08:00:10.000Z',
+        sourceSequence: 10,
         blockedProjectCount: 1,
         projectsNeedingAttention: ['project_alpha']
       })
@@ -667,15 +698,132 @@ describe('project/session renderer store', () => {
       projectListener?.(pushedProjectObservability)
       appListener?.(pushedAppObservability)
 
-      delayedSessionPresence.resolve(sessionPresenceFixture({ updatedAt: '2026-04-24T08:00:00.000Z' }))
-      delayedProjectObservability.resolve(projectObservabilityFixture({ updatedAt: '2026-04-24T08:00:00.000Z' }))
-      delayedAppObservability.resolve(appObservabilityFixture({ updatedAt: '2026-04-24T08:00:00.000Z' }))
+      delayedSessionPresence.resolve(sessionPresenceFixture({ updatedAt: '2026-04-24T08:00:00.000Z', sourceSequence: 9 }))
+      delayedProjectObservability.resolve(projectObservabilityFixture({ updatedAt: '2026-04-24T08:00:00.000Z', sourceSequence: 9 }))
+      delayedAppObservability.resolve(appObservabilityFixture({ updatedAt: '2026-04-24T08:00:00.000Z', sourceSequence: 9 }))
 
       await hydrationPromise
 
       expect(store.sessionPresenceById.session_op_1).toEqual(pushedSessionPresence)
       expect(store.projectObservabilityById.project_alpha).toEqual(pushedProjectObservability)
       expect(store.appObservability).toEqual(pushedAppObservability)
+    })
+
+    test('rejects stale pushed observability snapshots with lower source sequence', async () => {
+      let sessionListener: ((snapshot: SessionPresenceSnapshot) => void) | undefined
+      let projectListener: ((snapshot: ProjectObservabilitySnapshot) => void) | undefined
+      let appListener: ((snapshot: AppObservabilitySnapshot) => void) | undefined
+
+      window.stoa = createStoaMock({
+        onSessionPresenceChanged: vi.fn().mockImplementation((callback: (snapshot: SessionPresenceSnapshot) => void) => {
+          sessionListener = callback
+          return () => {}
+        }),
+        onProjectObservabilityChanged: vi.fn().mockImplementation((callback: (snapshot: ProjectObservabilitySnapshot) => void) => {
+          projectListener = callback
+          return () => {}
+        }),
+        onAppObservabilityChanged: vi.fn().mockImplementation((callback: (snapshot: AppObservabilitySnapshot) => void) => {
+          appListener = callback
+          return () => {}
+        })
+      })
+
+      const store = useWorkspaceStore()
+      const newerSession = sessionPresenceFixture({ sourceSequence: 10, phase: 'blocked', canonicalStatus: 'needs_confirmation' })
+      const newerProject = projectObservabilityFixture({ sourceSequence: 10, blockedSessionCount: 1 })
+      const newerApp = appObservabilityFixture({ sourceSequence: 10, blockedProjectCount: 1 })
+
+      store.hydrate({
+        activeProjectId: 'project_alpha',
+        activeSessionId: 'session_op_1',
+        terminalWebhookPort: 43127,
+        projects: [{ id: 'project_alpha', name: 'alpha', path: 'D:/alpha', createdAt: 'a', updatedAt: 'a' }],
+        sessions: [{
+          id: 'session_op_1',
+          projectId: 'project_alpha',
+          type: 'opencode',
+          status: 'running',
+          title: 'Deploy',
+          summary: 'running',
+          recoveryMode: 'resume-external',
+          externalSessionId: 'ext-1',
+          createdAt: 'a',
+          updatedAt: 'a',
+          lastActivatedAt: 'a',
+          archived: false
+        }]
+      })
+      await store.hydrateObservability()
+
+      sessionListener?.(newerSession)
+      projectListener?.(newerProject)
+      appListener?.(newerApp)
+      sessionListener?.(sessionPresenceFixture({ sourceSequence: 9, phase: 'working', canonicalStatus: 'running' }))
+      projectListener?.(projectObservabilityFixture({ sourceSequence: 9, blockedSessionCount: 0 }))
+      appListener?.(appObservabilityFixture({ sourceSequence: 9, blockedProjectCount: 0 }))
+
+      expect(store.sessionPresenceById.session_op_1).toEqual(newerSession)
+      expect(store.projectObservabilityById.project_alpha).toEqual(newerProject)
+      expect(store.appObservability).toEqual(newerApp)
+    })
+
+    test('backfills missed observability events after subscribing and refetches converged snapshots', async () => {
+      const refetchedSessionPresence = sessionPresenceFixture({
+        sourceSequence: 7,
+        phase: 'ready',
+        canonicalStatus: 'turn_complete'
+      })
+      const refetchedProjectObservability = projectObservabilityFixture({ sourceSequence: 7 })
+      const refetchedAppObservability = appObservabilityFixture({ sourceSequence: 7 })
+
+      window.stoa = createStoaMock({
+        getSessionPresence: vi.fn()
+          .mockResolvedValueOnce(sessionPresenceFixture({ sourceSequence: 3 }))
+          .mockResolvedValueOnce(refetchedSessionPresence),
+        getProjectObservability: vi.fn()
+          .mockResolvedValueOnce(projectObservabilityFixture({ sourceSequence: 3 }))
+          .mockResolvedValueOnce(refetchedProjectObservability),
+        getAppObservability: vi.fn()
+          .mockResolvedValueOnce(appObservabilityFixture({ sourceSequence: 3 }))
+          .mockResolvedValueOnce(refetchedAppObservability),
+        listSessionObservationEvents: vi.fn().mockResolvedValue({
+          events: [observationEventFixture({ sequence: 7 })],
+          nextCursor: null
+        })
+      })
+
+      const store = useWorkspaceStore()
+      store.hydrate({
+        activeProjectId: 'project_alpha',
+        activeSessionId: 'session_op_1',
+        terminalWebhookPort: 43127,
+        projects: [{ id: 'project_alpha', name: 'alpha', path: 'D:/alpha', createdAt: 'a', updatedAt: 'a' }],
+        sessions: [{
+          id: 'session_op_1',
+          projectId: 'project_alpha',
+          type: 'opencode',
+          status: 'running',
+          title: 'Deploy',
+          summary: 'running',
+          recoveryMode: 'resume-external',
+          externalSessionId: 'ext-1',
+          createdAt: 'a',
+          updatedAt: 'a',
+          lastActivatedAt: 'a',
+          archived: false
+        }]
+      })
+
+      await store.hydrateObservability()
+
+      expect(window.stoa.listSessionObservationEvents).toHaveBeenCalledWith('session_op_1', {
+        cursor: '3',
+        limit: 50
+      })
+      expect(store.sessionPresenceById.session_op_1).toEqual(refetchedSessionPresence)
+      expect(store.projectObservabilityById.project_alpha).toEqual(refetchedProjectObservability)
+      expect(store.appObservability).toEqual(refetchedAppObservability)
     })
   })
 })

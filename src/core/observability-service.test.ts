@@ -29,6 +29,7 @@ const session = (overrides: Partial<SessionSummary> = {}): SessionSummary => ({
 const event = (overrides: Partial<ObservationEvent> = {}): ObservationEvent => ({
   eventId: 'event-1',
   eventVersion: 1,
+  sequence: 0,
   occurredAt: '2026-01-01T00:00:01.000Z',
   ingestedAt: '2026-01-01T00:00:02.000Z',
   scope: 'session',
@@ -72,6 +73,7 @@ describe('ObservabilityService', () => {
       projectId: 'project-1',
       canonicalStatus: 'running',
       phase: 'working',
+      sourceSequence: 0,
       hasUnreadTurn: false,
       updatedAt: '2026-01-01T00:00:03.000Z'
     })
@@ -186,6 +188,40 @@ describe('ObservabilityService', () => {
     }
   )
 
+  it('carries latest accepted event sequence into snapshots and rejects stale presence events', () => {
+    const service = new ObservabilityService(new InMemoryObservationStore(), {
+      nowIso: nowValues(
+        '2026-01-01T00:00:03.000Z',
+        '2026-01-01T00:00:04.000Z',
+        '2026-01-01T00:00:05.000Z',
+        '2026-01-01T00:00:06.000Z'
+      )
+    })
+
+    service.registerSession(session({ status: 'running' }), 'session-1')
+    service.ingest(event({
+      eventId: 'ready-event',
+      sequence: 20,
+      type: 'presence.turn_complete',
+      occurredAt: '2026-01-01T00:00:10.000Z'
+    }))
+    service.ingest(event({
+      eventId: 'stale-running-event',
+      sequence: 10,
+      type: 'presence.running',
+      occurredAt: '2026-01-01T00:00:09.000Z'
+    }))
+
+    expect(service.getSessionPresence('session-1')).toMatchObject({
+      canonicalStatus: 'turn_complete',
+      phase: 'ready',
+      sourceSequence: 20,
+      lastEventAt: '2026-01-01T00:00:10.000Z'
+    })
+    expect(service.getProjectObservability('project-1')?.sourceSequence).toBe(20)
+    expect(service.getAppObservability().sourceSequence).toBe(20)
+  })
+
   it('assistant evidence snippet on inactive session creates an unread turn and preserves evidence across later presence events', () => {
     const service = new ObservabilityService(new InMemoryObservationStore(), {
       nowIso: nowValues(
@@ -279,7 +315,7 @@ describe('ObservabilityService', () => {
     expect(service.ingest({ ...duplicate, type: 'presence.error', payload: { snippet: 'Should not project.' } })).toBe(false)
 
     expect(service.getSessionPresence('session-1')).toEqual(afterFirstIngest)
-    expect(store.listSessionEvents('session-1', { limit: 10 }).events).toEqual([duplicate])
+    expect(store.listSessionEvents('session-1', { limit: 10 }).events).toEqual([{ ...duplicate, sequence: 1 }])
   })
 
   it('unknown session event is stored but does not create a presence snapshot', () => {
@@ -292,7 +328,7 @@ describe('ObservabilityService', () => {
     expect(service.ingest(unknownSessionEvent)).toBe(true)
 
     expect(service.getSessionPresence('missing-session')).toBeNull()
-    expect(store.listSessionEvents('missing-session', { limit: 10 }).events).toEqual([unknownSessionEvent])
+    expect(store.listSessionEvents('missing-session', { limit: 10 }).events).toEqual([{ ...unknownSessionEvent, sequence: 1 }])
   })
 
   it('syncSessions removes snapshots and evidence for archived or removed sessions', () => {

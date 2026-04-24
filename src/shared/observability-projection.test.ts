@@ -77,7 +77,8 @@ describe('observability projection', () => {
       modelLabel: 'Sonnet',
       lastAssistantSnippet: 'I finished the implementation.',
       lastEvidenceType: 'evidence.assistant_message',
-      lastEventAt: '2026-04-24T07:59:00.000Z'
+      lastEventAt: '2026-04-24T07:59:00.000Z',
+      sourceSequence: 42
     })
 
     expect(snapshot).toEqual({
@@ -96,6 +97,7 @@ describe('observability projection', () => {
       lastEvidenceType: 'evidence.assistant_message',
       hasUnreadTurn: false,
       recoveryPointerState: 'trusted',
+      sourceSequence: 42,
       updatedAt: NOW_ISO
     })
   })
@@ -204,6 +206,7 @@ describe('observability projection', () => {
       latestAttentionSessionId: 'failed',
       latestAttentionReason: 'provider-error',
       lastEventAt: NOW_ISO,
+      sourceSequence: 0,
       updatedAt: NOW_ISO
     })
   })
@@ -241,6 +244,7 @@ describe('observability projection', () => {
         'local-shell': 'degraded'
       },
       lastGlobalEventAt: NOW_ISO,
+      sourceSequence: 0,
       updatedAt: NOW_ISO
     })
   })

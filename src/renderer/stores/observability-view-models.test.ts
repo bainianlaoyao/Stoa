@@ -46,6 +46,7 @@ function presenceFixture(patch: Partial<SessionPresenceSnapshot> = {}): SessionP
     lastEvidenceType: 'evidence.assistant_message',
     hasUnreadTurn: false,
     recoveryPointerState: 'trusted',
+    sourceSequence: 1,
     updatedAt: '2026-04-24T07:59:50.000Z',
     ...patch
   }

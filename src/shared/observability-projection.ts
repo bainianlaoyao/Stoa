@@ -84,6 +84,7 @@ export function buildSessionPresenceSnapshot(
     lastAssistantSnippet?: string | null
     lastEvidenceType?: string | null
     lastEventAt?: string | null
+    sourceSequence?: number
   }
 ): SessionPresenceSnapshot {
   const descriptor = getProviderDescriptorBySessionType(session.type)
@@ -108,6 +109,7 @@ export function buildSessionPresenceSnapshot(
     lastEvidenceType: options.lastEvidenceType ?? null,
     hasUnreadTurn,
     recoveryPointerState: recoveryPointerStateForSession(session),
+    sourceSequence: options.sourceSequence ?? 0,
     updatedAt: options.nowIso
   }
 }
@@ -170,6 +172,7 @@ export function buildProjectObservabilitySnapshot(
     latestAttentionSessionId: attentionSession?.sessionId ?? null,
     latestAttentionReason: attentionSession ? attentionReasonForSession(attentionSession) : null,
     lastEventAt: latestTimestamp(sessions.map((session) => session.lastEventAt)),
+    sourceSequence: maxSourceSequence(sessions),
     updatedAt: nowIso
   }
 }
@@ -189,8 +192,13 @@ export function buildAppObservabilitySnapshot(
       .map((project) => project.projectId),
     providerHealthSummary: buildProviderHealthSummary(sessionSnapshots),
     lastGlobalEventAt: latestTimestamp(projects.map((project) => project.lastEventAt).filter((value) => value !== null)),
+    sourceSequence: Math.max(maxSourceSequence(projects), maxSourceSequence(sessionSnapshots)),
     updatedAt: nowIso
   }
+}
+
+function maxSourceSequence(values: Array<{ sourceSequence: number }>): number {
+  return values.reduce((max, value) => Math.max(max, value.sourceSequence), 0)
 }
 
 function healthForPhase(phase: SessionPresencePhase): ObservabilityHealth {

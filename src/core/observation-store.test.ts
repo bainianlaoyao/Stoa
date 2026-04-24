@@ -5,6 +5,7 @@ import { InMemoryObservationStore } from './observation-store'
 const baseEvent = (overrides: Partial<ObservationEvent> = {}): ObservationEvent => ({
   eventId: 'event-1',
   eventVersion: 1,
+  sequence: 0,
   occurredAt: '2026-01-01T00:00:00.000Z',
   ingestedAt: '2026-01-01T00:00:01.000Z',
   scope: 'session',
@@ -23,7 +24,7 @@ const baseEvent = (overrides: Partial<ObservationEvent> = {}): ObservationEvent 
 })
 
 describe('InMemoryObservationStore', () => {
-  it('appends and lists events by session', () => {
+  it('appends events with monotonic sequence and lists events by session', () => {
     const store = new InMemoryObservationStore()
     const sessionEvent = baseEvent({ eventId: 'session-event' })
     const otherSessionEvent = baseEvent({ eventId: 'other-session-event', sessionId: 'session-2' })
@@ -32,9 +33,10 @@ describe('InMemoryObservationStore', () => {
     expect(store.append(otherSessionEvent)).toBe(true)
 
     expect(store.listSessionEvents('session-1', { limit: 10 })).toEqual({
-      events: [sessionEvent],
+      events: [{ ...sessionEvent, sequence: 1 }],
       nextCursor: null
     })
+    expect(store.listSessionEvents('session-2', { limit: 10 }).events[0]?.sequence).toBe(2)
   })
 
   it('dedupes repeated event ids', () => {
@@ -44,7 +46,18 @@ describe('InMemoryObservationStore', () => {
     expect(store.append(event)).toBe(true)
     expect(store.append({ ...event, payload: { ignored: true } })).toBe(false)
 
-    expect(store.listSessionEvents('session-1', { limit: 10 }).events).toEqual([event])
+    expect(store.listSessionEvents('session-1', { limit: 10 }).events).toEqual([{ ...event, sequence: 1 }])
+  })
+
+  it('dedupes repeated non-null dedupe keys', () => {
+    const store = new InMemoryObservationStore()
+    const first = baseEvent({ eventId: 'first', dedupeKey: 'session-1:permission:tool' })
+    const duplicate = baseEvent({ eventId: 'second', dedupeKey: 'session-1:permission:tool' })
+
+    expect(store.append(first)).toBe(true)
+    expect(store.append(duplicate)).toBe(false)
+
+    expect(store.listSessionEvents('session-1', { limit: 10 }).events).toEqual([{ ...first, sequence: 1 }])
   })
 
   it('filters listed events by categories', () => {
@@ -56,7 +69,7 @@ describe('InMemoryObservationStore', () => {
     store.append(evidenceEvent)
 
     expect(store.listSessionEvents('session-1', { limit: 10, categories: ['evidence'] })).toEqual({
-      events: [evidenceEvent],
+      events: [{ ...evidenceEvent, sequence: 2 }],
       nextCursor: null
     })
   })
@@ -69,10 +82,10 @@ describe('InMemoryObservationStore', () => {
     store.append(persistedEvent)
     store.append(ephemeralEvent)
 
-    expect(store.listSessionEvents('session-1', { limit: 10 }).events).toEqual([persistedEvent])
+    expect(store.listSessionEvents('session-1', { limit: 10 }).events).toEqual([{ ...persistedEvent, sequence: 1 }])
     expect(store.listSessionEvents('session-1', { limit: 10, includeEphemeral: true }).events).toEqual([
-      persistedEvent,
-      ephemeralEvent
+      { ...persistedEvent, sequence: 1 },
+      { ...ephemeralEvent, sequence: 2 }
     ])
   })
 
@@ -82,7 +95,7 @@ describe('InMemoryObservationStore', () => {
 
     expect(store.append(ephemeralEvent)).toBe(true)
     expect(store.append(ephemeralEvent)).toBe(false)
-    expect(store.listSessionEvents('session-1', { limit: 10, includeEphemeral: true }).events).toEqual([ephemeralEvent])
+    expect(store.listSessionEvents('session-1', { limit: 10, includeEphemeral: true }).events).toEqual([{ ...ephemeralEvent, sequence: 1 }])
   })
 
   it('lists events by project', () => {
@@ -95,10 +108,13 @@ describe('InMemoryObservationStore', () => {
     store.append(sessionEvent)
     store.append(otherProjectEvent)
 
-    expect(store.listProjectEvents('project-1', { limit: 10 }).events).toEqual([projectEvent, sessionEvent])
+    expect(store.listProjectEvents('project-1', { limit: 10 }).events).toEqual([
+      { ...projectEvent, sequence: 1 },
+      { ...sessionEvent, sequence: 2 }
+    ])
   })
 
-  it('paginates with string index cursors', () => {
+  it('paginates with sequence cursors', () => {
     const store = new InMemoryObservationStore()
     const firstEvent = baseEvent({ eventId: 'event-1' })
     const secondEvent = baseEvent({ eventId: 'event-2' })
@@ -111,11 +127,14 @@ describe('InMemoryObservationStore', () => {
     const firstPage = store.listSessionEvents('session-1', { limit: 2 })
 
     expect(firstPage).toEqual({
-      events: [firstEvent, secondEvent],
+      events: [
+        { ...firstEvent, sequence: 1 },
+        { ...secondEvent, sequence: 2 }
+      ],
       nextCursor: '2'
     })
     expect(store.listSessionEvents('session-1', { limit: 2, cursor: firstPage.nextCursor ?? undefined })).toEqual({
-      events: [thirdEvent],
+      events: [{ ...thirdEvent, sequence: 3 }],
       nextCursor: null
     })
   })

@@ -20,14 +20,25 @@ export interface ObservationStore {
 
 export class InMemoryObservationStore implements ObservationStore {
   private readonly eventIds = new Set<string>()
+  private readonly dedupeKeys = new Set<string>()
   private readonly events: ObservationEvent[] = []
+  private nextSequence = 1
 
   append(event: ObservationEvent): boolean {
     if (this.eventIds.has(event.eventId)) {
       return false
     }
 
+    if (event.dedupeKey && this.dedupeKeys.has(event.dedupeKey)) {
+      return false
+    }
+
+    event.sequence = event.sequence > 0 ? event.sequence : this.nextSequence
+    this.nextSequence = Math.max(this.nextSequence, event.sequence + 1)
     this.eventIds.add(event.eventId)
+    if (event.dedupeKey) {
+      this.dedupeKeys.add(event.dedupeKey)
+    }
     this.events.push(event)
 
     return true
@@ -49,21 +60,25 @@ export class InMemoryObservationStore implements ObservationStore {
 }
 
 function paginateEvents(events: ObservationEvent[], options: ListObservationEventsOptions): ListObservationEventsResult {
+  const cursorSequence = parseCursor(options.cursor)
   const filteredEvents = events.filter((event) => {
+    if (event.sequence <= cursorSequence) {
+      return false
+    }
+
     if (!options.includeEphemeral && event.retention === 'ephemeral') {
       return false
     }
 
     return !options.categories?.length || options.categories.includes(event.category)
   })
-  const startIndex = parseCursor(options.cursor)
   const limit = Math.max(0, options.limit)
-  const page = filteredEvents.slice(startIndex, startIndex + limit)
-  const nextIndex = startIndex + page.length
+  const page = filteredEvents.slice(0, limit)
+  const nextEvent = page[page.length - 1]
 
   return {
     events: page,
-    nextCursor: nextIndex < filteredEvents.length ? String(nextIndex) : null
+    nextCursor: page.length < filteredEvents.length && nextEvent ? String(nextEvent.sequence) : null
   }
 }
 

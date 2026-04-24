@@ -102,6 +102,7 @@ const defaultAppObservability: AppObservabilitySnapshot = {
 const defaultObservationEvent: ObservationEvent = {
   eventId: 'event-observe-1',
   eventVersion: 1,
+  sequence: 1,
   occurredAt: '2026-01-01T00:00:00.000Z',
   ingestedAt: '2026-01-01T00:00:01.000Z',
   scope: 'session',

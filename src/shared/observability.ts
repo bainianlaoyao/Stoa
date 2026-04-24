@@ -9,6 +9,7 @@ export type ObservationSource = 'hook-sidecar' | 'provider-adapter' | 'system-re
 export interface ObservationEvent {
   eventId: string
   eventVersion: 1
+  sequence: number
   occurredAt: string
   ingestedAt: string
   scope: ObservationScope
@@ -60,6 +61,7 @@ export interface SessionPresenceSnapshot {
   lastEvidenceType: string | null
   hasUnreadTurn: boolean
   recoveryPointerState: RecoveryPointerState
+  sourceSequence: number
   updatedAt: string
 }
 
@@ -74,6 +76,7 @@ export interface ProjectObservabilitySnapshot {
   latestAttentionSessionId: string | null
   latestAttentionReason: string | null
   lastEventAt: string | null
+  sourceSequence: number
   updatedAt: string
 }
 
@@ -85,6 +88,7 @@ export interface AppObservabilitySnapshot {
   projectsNeedingAttention: string[]
   providerHealthSummary: Record<string, ObservabilityHealth>
   lastGlobalEventAt: string | null
+  sourceSequence: number
   updatedAt: string
 }
 

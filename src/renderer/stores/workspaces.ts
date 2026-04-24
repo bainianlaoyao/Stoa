@@ -107,13 +107,7 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
         continue
       }
 
-      const [sessionId, snapshot] = entry
-      if (!(sessionId in sessionPresenceById.value)) {
-        sessionPresenceById.value = {
-          ...sessionPresenceById.value,
-          [sessionId]: snapshot
-        }
-      }
+      applySessionPresenceSnapshot(entry[1])
     }
 
     for (const entry of nextProjectObservabilityEntries) {
@@ -121,41 +115,88 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
         continue
       }
 
-      const [projectId, snapshot] = entry
-      if (!(projectId in projectObservabilityById.value)) {
-        projectObservabilityById.value = {
-          ...projectObservabilityById.value,
-          [projectId]: snapshot
-        }
-      }
+      applyProjectObservabilitySnapshot(entry[1])
     }
 
     const initialAppObservability = (await stoa.getAppObservability?.()) ?? null
-    if (appObservability.value === null) {
-      appObservability.value = initialAppObservability
+    if (initialAppObservability) {
+      applyAppObservabilitySnapshot(initialAppObservability)
     }
+
+    await backfillMissedObservability(stoa)
   }
 
   function subscribeToObservability(stoa: typeof window.stoa): void {
     unsubscribeObservability()
 
     unsubscribeSessionPresenceChanged.value = stoa.onSessionPresenceChanged?.((snapshot) => {
-      sessionPresenceById.value = {
-        ...sessionPresenceById.value,
-        [snapshot.sessionId]: snapshot
-      }
+      applySessionPresenceSnapshot(snapshot)
     }) ?? null
 
     unsubscribeProjectObservabilityChanged.value = stoa.onProjectObservabilityChanged?.((snapshot) => {
-      projectObservabilityById.value = {
-        ...projectObservabilityById.value,
-        [snapshot.projectId]: snapshot
-      }
+      applyProjectObservabilitySnapshot(snapshot)
     }) ?? null
 
     unsubscribeAppObservabilityChanged.value = stoa.onAppObservabilityChanged?.((snapshot) => {
-      appObservability.value = snapshot
+      applyAppObservabilitySnapshot(snapshot)
     }) ?? null
+  }
+
+  function applySessionPresenceSnapshot(snapshot: SessionPresenceSnapshot): void {
+    const current = sessionPresenceById.value[snapshot.sessionId]
+    if (current && current.sourceSequence > snapshot.sourceSequence) {
+      return
+    }
+
+    sessionPresenceById.value = {
+      ...sessionPresenceById.value,
+      [snapshot.sessionId]: snapshot
+    }
+  }
+
+  function applyProjectObservabilitySnapshot(snapshot: ProjectObservabilitySnapshot): void {
+    const current = projectObservabilityById.value[snapshot.projectId]
+    if (current && current.sourceSequence > snapshot.sourceSequence) {
+      return
+    }
+
+    projectObservabilityById.value = {
+      ...projectObservabilityById.value,
+      [snapshot.projectId]: snapshot
+    }
+  }
+
+  function applyAppObservabilitySnapshot(snapshot: AppObservabilitySnapshot): void {
+    if (appObservability.value && appObservability.value.sourceSequence > snapshot.sourceSequence) {
+      return
+    }
+
+    appObservability.value = snapshot
+  }
+
+  async function backfillMissedObservability(stoa: typeof window.stoa): Promise<void> {
+    for (const session of sessions.value) {
+      const cursor = String(sessionPresenceById.value[session.id]?.sourceSequence ?? 0)
+      const listed = await stoa.listSessionObservationEvents?.(session.id, { cursor, limit: 50 })
+      if (!listed?.events.length) {
+        continue
+      }
+
+      const sessionSnapshot = await stoa.getSessionPresence?.(session.id)
+      if (sessionSnapshot) {
+        applySessionPresenceSnapshot(sessionSnapshot)
+      }
+
+      const projectSnapshot = await stoa.getProjectObservability?.(session.projectId)
+      if (projectSnapshot) {
+        applyProjectObservabilitySnapshot(projectSnapshot)
+      }
+
+      const nextAppSnapshot = await stoa.getAppObservability?.()
+      if (nextAppSnapshot) {
+        applyAppObservabilitySnapshot(nextAppSnapshot)
+      }
+    }
   }
 
   function unsubscribeObservability(): void {

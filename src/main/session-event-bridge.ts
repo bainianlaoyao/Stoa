@@ -79,6 +79,7 @@ export class SessionEventBridge {
     return {
       eventId: event.event_id,
       eventVersion: 1,
+      sequence: 0,
       occurredAt: event.timestamp,
       ingestedAt: this.nowIso(),
       scope: 'session',

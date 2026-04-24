@@ -21,6 +21,7 @@ interface SessionEvidenceState {
   lastAssistantSnippet: string | null
   lastEvidenceType: string | null
   lastEventAt: string | null
+  sourceSequence: number
 }
 
 const PRESENCE_STATUS_BY_TYPE: Record<string, SessionStatus> = {
@@ -37,6 +38,7 @@ export class ObservabilityService {
   private readonly nowIso: () => string
   private readonly sessions = new Map<string, SessionSummary>()
   private readonly evidence = new Map<string, SessionEvidenceState>()
+  private readonly sourceSequenceBySessionId = new Map<string, number>()
   private readonly sessionSnapshots = new Map<string, SessionPresenceSnapshot>()
   private readonly projectSnapshots = new Map<string, ProjectObservabilitySnapshot>()
   private appSnapshot: AppObservabilitySnapshot
@@ -63,7 +65,8 @@ export class ObservabilityService {
           modelLabel: null,
           lastAssistantSnippet: null,
           lastEvidenceType: null,
-          lastEventAt: null
+          lastEventAt: null,
+          sourceSequence: this.sourceSequenceBySessionId.get(session.id) ?? 0
         }
       )
     }
@@ -81,6 +84,7 @@ export class ObservabilityService {
     for (const sessionId of [...this.sessionSnapshots.keys()]) {
       if (!retainedIds.has(sessionId)) {
         this.sessionSnapshots.delete(sessionId)
+        this.sourceSequenceBySessionId.delete(sessionId)
       }
     }
 
@@ -110,16 +114,27 @@ export class ObservabilityService {
     }
 
     const status = PRESENCE_STATUS_BY_TYPE[event.type]
+    const currentSequence = this.sourceSequenceBySessionId.get(event.sessionId) ?? 0
+    const isStalePresence = Boolean(status && event.sequence <= currentSequence)
+
+    if (isStalePresence) {
+      this.rebuildSnapshots(this.nowIso())
+      return appended
+    }
+
     const nextEvidence = updateEvidence(this.evidence.get(event.sessionId), event)
 
     this.evidence.set(event.sessionId, nextEvidence)
 
-    if (status) {
+    if (status && !isStalePresence) {
       this.sessions.set(event.sessionId, {
         ...session,
         status,
         updatedAt: event.occurredAt
       })
+      this.sourceSequenceBySessionId.set(event.sessionId, event.sequence)
+    } else if (!status) {
+      this.sourceSequenceBySessionId.set(event.sessionId, Math.max(currentSequence, event.sequence))
     }
 
     this.rebuildSnapshots(this.nowIso())
@@ -153,7 +168,11 @@ export class ObservabilityService {
           modelLabel: evidence?.modelLabel ?? null,
           lastAssistantSnippet: evidence?.lastAssistantSnippet ?? null,
           lastEvidenceType: evidence?.lastEvidenceType ?? null,
-          lastEventAt: evidence?.lastEventAt ?? session.updatedAt
+          lastEventAt: evidence?.lastEventAt ?? session.updatedAt,
+          sourceSequence: Math.max(
+            this.sourceSequenceBySessionId.get(session.id) ?? 0,
+            evidence?.sourceSequence ?? 0
+          )
         })
       )
     }
@@ -187,7 +206,8 @@ function updateEvidence(current: SessionEvidenceState | undefined, event: Observ
     modelLabel: null,
     lastAssistantSnippet: null,
     lastEvidenceType: null,
-    lastEventAt: null
+    lastEventAt: null,
+    sourceSequence: 0
   }
   const model = event.payload.model
   const snippet = typeof event.payload.snippet === 'string'
@@ -200,6 +220,7 @@ function updateEvidence(current: SessionEvidenceState | undefined, event: Observ
     modelLabel: typeof model === 'string' ? model : next.modelLabel,
     lastAssistantSnippet: snippet ?? next.lastAssistantSnippet,
     lastEvidenceType: event.category === 'evidence' ? event.type : next.lastEvidenceType,
-    lastEventAt: event.occurredAt
+    lastEventAt: event.occurredAt,
+    sourceSequence: Math.max(next.sourceSequence, event.sequence)
   }
 }
