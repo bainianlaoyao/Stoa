@@ -13,22 +13,11 @@ export function adaptClaudeCodeHook(
     return null
   }
 
-  const status =
-    hookEventName === 'SessionStart'
-      || hookEventName === 'UserPromptSubmit'
-      || hookEventName === 'PreToolUse'
-      ? 'running'
-      : hookEventName === 'Stop'
-      ? 'turn_complete'
-      : hookEventName === 'PermissionRequest'
-        ? 'needs_confirmation'
-        : hookEventName === 'StopFailure'
-          ? 'error'
-          : null
-
-  if (!status) {
+  const patch = mapClaudeHookToPatch(hookEventName)
+  if (!patch) {
     return null
   }
+
   const model = stringField(body.model)
   const snippet = stringField(body.last_assistant_message) ?? stringField(body.assistant_message) ?? stringField(body.summary)
   const toolName = stringField(body.tool_name)
@@ -43,14 +32,35 @@ export function adaptClaudeCodeHook(
     project_id: context.projectId,
     source: 'provider-adapter',
     payload: {
-      status,
+      ...patch,
       summary: hookEventName,
       ...(model ? { model } : {}),
       ...(snippet ? { snippet } : {}),
       ...(toolName ? { toolName } : {}),
-      ...(error ? { error } : {}),
-      ...(hookEventName === 'PermissionRequest' ? { blockingReason: 'permission' } : {})
+      ...(error ? { error } : {})
     }
+  }
+}
+
+function mapClaudeHookToPatch(hookEventName: string): {
+  intent: NonNullable<CanonicalSessionEvent['payload']['intent']>
+  agentState: NonNullable<CanonicalSessionEvent['payload']['agentState']>
+  hasUnseenCompletion?: boolean
+  blockingReason?: NonNullable<CanonicalSessionEvent['payload']['blockingReason']>
+} | null {
+  switch (hookEventName) {
+    case 'UserPromptSubmit':
+      return { intent: 'agent.turn_started', agentState: 'working' }
+    case 'PreToolUse':
+      return { intent: 'agent.tool_started', agentState: 'working' }
+    case 'PermissionRequest':
+      return { intent: 'agent.permission_requested', agentState: 'blocked', blockingReason: 'permission' }
+    case 'Stop':
+      return { intent: 'agent.turn_completed', agentState: 'idle', hasUnseenCompletion: true }
+    case 'StopFailure':
+      return { intent: 'agent.turn_failed', agentState: 'error' }
+    default:
+      return null
   }
 }
 

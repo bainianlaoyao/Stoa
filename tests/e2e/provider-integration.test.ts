@@ -137,7 +137,11 @@ describe('E2E: Provider Integration', () => {
         session_id: 'session_xyz',
         project_id: 'project_abc',
         source: 'hook-sidecar' as const,
-        payload: { status: 'running' as const }
+        payload: {
+          intent: 'agent.turn_started' as const,
+          agentState: 'working' as const,
+          summary: 'event accepted'
+        }
       }
 
       expect(provider.resolveSessionId(event)).toBe('session_xyz')
@@ -508,7 +512,7 @@ describe('E2E: Provider Integration', () => {
       expect(content).not.toContain('project_test_p99')
     })
 
-    test('sidecar plugin emits only explicit state-changing statuses', async () => {
+    test('sidecar plugin emits only explicit state-changing intents', async () => {
       const workspaceDir = await createTempDir('stoa-sidecar-provider-id-')
       const provider = getProvider('opencode')
 
@@ -523,13 +527,19 @@ describe('E2E: Provider Integration', () => {
 
       const content = await readFile(join(workspaceDir, '.opencode', 'plugins', 'stoa-status.ts'), 'utf8')
       expect(content).toContain("case 'session.idle'")
-      expect(content).toContain("status = 'turn_complete'")
+      expect(content).toContain("intent: 'agent.turn_completed'")
+      expect(content).toContain("agentState: 'idle'")
+      expect(content).toContain('hasUnseenCompletion: true')
       expect(content).toContain("case 'permission.asked'")
-      expect(content).toContain("status = 'needs_confirmation'")
+      expect(content).toContain("intent: 'agent.permission_requested'")
+      expect(content).toContain("agentState: 'blocked'")
+      expect(content).toContain("blockingReason: 'permission'")
       expect(content).toContain("case 'permission.replied'")
-      expect(content).toContain("status = 'running'")
+      expect(content).toContain("intent: 'agent.permission_resolved'")
+      expect(content).toContain("agentState: denied ? (failed ? 'error' : 'idle') : 'working'")
       expect(content).toContain("case 'session.error'")
-      expect(content).toContain("status = 'error'")
+      expect(content).toContain("intent: 'agent.turn_failed'")
+      expect(content).toContain("agentState: 'error'")
       expect(content).toContain('externalSessionId: event.properties?.sessionID ?? undefined')
       expect(content).not.toContain("status: event.type === 'session.idle' ? 'awaiting_input' : 'running'")
     })

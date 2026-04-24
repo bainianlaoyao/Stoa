@@ -1,4 +1,7 @@
 import { describe, expect, test } from 'vitest'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { createOpenCodeProvider } from './opencode-provider'
 
 describe('opencode provider', () => {
@@ -61,5 +64,36 @@ describe('opencode provider', () => {
 
     expect(command.command).toBe('C:\\Users\\30280\\AppData\\Roaming\\npm\\opencode.ps1')
     expect(command.args).toEqual([])
+  })
+
+  test('sidecar emits intentful state patch payloads', async () => {
+    const workspaceDir = await mkdtemp(join(tmpdir(), 'stoa-opencode-sidecar-'))
+    const provider = createOpenCodeProvider()
+
+    try {
+      await provider.installSidecar({
+        session_id: 'session_demo_001',
+        project_id: 'project_demo',
+        path: workspaceDir,
+        title: 'demo',
+        type: 'opencode'
+      }, {
+        webhookPort: 43127,
+        sessionSecret: 'secret-1',
+        providerPort: 43128
+      })
+
+      const content = await readFile(join(workspaceDir, '.opencode', 'plugins', 'stoa-status.ts'), 'utf8')
+      expect(content).toContain("intent: 'agent.permission_requested'")
+      expect(content).toContain("intent: 'agent.permission_resolved'")
+      expect(content).toContain("intent: 'agent.turn_completed'")
+      expect(content).toContain("intent: 'agent.turn_failed'")
+      expect(content).toContain("agentState: denied ? (failed ? 'error' : 'idle') : 'working'")
+      expect(content).toContain('hasUnseenCompletion: true')
+      expect(content).not.toContain("status = 'running'")
+      expect(content).not.toContain("status = 'turn_complete'")
+    } finally {
+      await rm(workspaceDir, { recursive: true, force: true })
+    }
   })
 })

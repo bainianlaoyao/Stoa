@@ -15,9 +15,9 @@ function createEvent(): CanonicalSessionEvent {
     project_id: 'project_demo',
     source: 'hook-sidecar',
     payload: {
-      status: 'running',
-      summary: 'event accepted',
-      isProvisional: false
+      intent: 'agent.turn_started',
+      agentState: 'working',
+      summary: 'event accepted'
     }
   }
 }
@@ -170,7 +170,10 @@ describe('local webhook server', () => {
       session_id: 'session_demo_001',
       project_id: 'project_demo',
       payload: {
-        status: 'turn_complete'
+        intent: 'agent.turn_completed',
+        agentState: 'idle',
+        hasUnseenCompletion: true,
+        summary: 'Stop'
       }
     })
   })

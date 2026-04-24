@@ -22,6 +22,7 @@ function isCanonicalSessionEvent(value: unknown): value is CanonicalSessionEvent
   }
 
   const event = value as Record<string, unknown>
+  const payload = event.payload as Record<string, unknown> | null
   return event.event_version === 1
     && typeof event.event_id === 'string'
     && typeof event.event_type === 'string'
@@ -29,8 +30,10 @@ function isCanonicalSessionEvent(value: unknown): value is CanonicalSessionEvent
     && typeof event.session_id === 'string'
     && typeof event.project_id === 'string'
     && typeof event.source === 'string'
-    && !!event.payload
-    && typeof event.payload === 'object'
+    && !!payload
+    && typeof payload === 'object'
+    && typeof payload.intent === 'string'
+    && typeof payload.summary === 'string'
 }
 
 export function createLocalWebhookServer(options: LocalWebhookServerOptions = {}): LocalWebhookServer {

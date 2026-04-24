@@ -61,7 +61,26 @@ if (!sessionId || !projectId || !sessionSecret || !webhookPort || !payload) {
 }
 
 const parsed = JSON.parse(payload)
-if (!parsed || typeof parsed !== 'object' || parsed.type !== 'agent-turn-complete') {
+if (!parsed || typeof parsed !== 'object') {
+  process.exit(0)
+}
+
+let patch
+if (parsed.type === 'agent-turn-complete') {
+  patch = {
+    intent: 'agent.turn_completed',
+    agentState: 'idle',
+    hasUnseenCompletion: true,
+    summary: String(parsed.type)
+  }
+} else if (parsed.type === 'agent-error') {
+  patch = {
+    intent: 'agent.turn_failed',
+    agentState: 'error',
+    summary: String(parsed.type),
+    ...(parsed.message ? { error: String(parsed.message) } : {})
+  }
+} else {
   process.exit(0)
 }
 
@@ -79,10 +98,7 @@ await fetch(\`http://127.0.0.1:\${webhookPort}/events\`, {
     session_id: sessionId,
     project_id: projectId,
     source: 'provider-adapter',
-    payload: {
-      status: 'turn_complete',
-      summary: String(parsed.type)
-    }
+    payload: patch
   })
 })
 `.replaceAll('\n', '\n'),

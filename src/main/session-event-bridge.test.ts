@@ -24,7 +24,9 @@ function createCanonicalEvent(overrides: Partial<CanonicalSessionEvent> = {}): C
     project_id: 'project_1',
     source: 'hook-sidecar',
     payload: {
-      status: 'awaiting_input',
+      intent: 'agent.turn_completed',
+      agentState: 'idle',
+      hasUnseenCompletion: true,
       summary: 'session.idle',
       externalSessionId: 'opencode-real-123'
     },
@@ -42,7 +44,9 @@ function createTurnCompleteEvent(): CanonicalSessionEvent {
     project_id: 'project_1',
     source: 'hook-sidecar',
     payload: {
-      status: 'turn_complete',
+      intent: 'agent.turn_completed',
+      agentState: 'idle',
+      hasUnseenCompletion: true,
       summary: 'Turn complete'
     }
   }
@@ -148,7 +152,12 @@ describe('SessionEventBridge', () => {
       intent: 'agent.turn_completed',
       source: 'provider',
       sourceEventType: 'session.idle',
-      status: 'awaiting_input',
+      runtimeState: undefined,
+      agentState: 'idle',
+      hasUnseenCompletion: true,
+      runtimeExitCode: undefined,
+      runtimeExitReason: undefined,
+      blockingReason: undefined,
       summary: 'session.idle',
       externalSessionId: 'opencode-real-123'
     })
@@ -174,7 +183,12 @@ describe('SessionEventBridge', () => {
       intent: 'agent.turn_completed',
       source: 'provider',
       sourceEventType: 'session.idle',
-      status: 'turn_complete',
+      runtimeState: undefined,
+      agentState: 'idle',
+      hasUnseenCompletion: true,
+      runtimeExitCode: undefined,
+      runtimeExitReason: undefined,
+      blockingReason: undefined,
       summary: 'Turn complete',
       externalSessionId: undefined
     })
@@ -206,7 +220,12 @@ describe('SessionEventBridge', () => {
       intent: 'agent.turn_completed',
       source: 'provider',
       sourceEventType: 'session.idle',
-      status: 'turn_complete',
+      runtimeState: undefined,
+      agentState: 'idle',
+      hasUnseenCompletion: true,
+      runtimeExitCode: undefined,
+      runtimeExitReason: undefined,
+      blockingReason: undefined,
       summary: 'Turn complete',
       externalSessionId: undefined
     })
@@ -286,7 +305,12 @@ describe('SessionEventBridge', () => {
       intent: 'agent.turn_completed',
       source: 'provider',
       sourceEventType: 'session.idle',
-      status: 'awaiting_input',
+      runtimeState: undefined,
+      agentState: 'idle',
+      hasUnseenCompletion: true,
+      runtimeExitCode: undefined,
+      runtimeExitReason: undefined,
+      blockingReason: undefined,
       summary: 'session.idle',
       externalSessionId: 'opencode-real-123'
     })
@@ -329,7 +353,12 @@ describe('SessionEventBridge', () => {
       intent: 'agent.turn_completed',
       source: 'provider',
       sourceEventType: 'claude-code.Stop',
-      status: 'turn_complete',
+      runtimeState: undefined,
+      agentState: 'idle',
+      hasUnseenCompletion: true,
+      runtimeExitCode: undefined,
+      runtimeExitReason: undefined,
+      blockingReason: undefined,
       summary: 'Stop',
       externalSessionId: undefined
     })

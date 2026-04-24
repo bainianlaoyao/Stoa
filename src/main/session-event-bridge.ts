@@ -1,12 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { createLocalWebhookServer } from '@core/webhook-server'
 import type { ProjectSessionManager } from '@core/project-session-manager'
-import type {
-  CanonicalSessionEvent,
-  SessionStateIntent,
-  SessionStatePatchEvent,
-  SessionStatus
-} from '@shared/project-session'
+import type { CanonicalSessionEvent, SessionStatePatchEvent } from '@shared/project-session'
 import type { ObservationCategory, ObservationEvent, ObservationRetention, ObservationSeverity } from '@shared/observability'
 
 interface SessionEventApplier {
@@ -59,12 +54,9 @@ export class SessionEventBridge {
   }
 
   private toObservationEvent(event: CanonicalSessionEvent): ObservationEvent {
-    const status = event.payload.status ?? 'running'
-    const mapping = mapStatusToObservation(status)
-    const payload: Record<string, unknown> = {}
-
-    if (event.payload.summary !== undefined) {
-      payload.summary = event.payload.summary
+    const mapping = mapIntentToObservation(event.payload.intent)
+    const payload: Record<string, unknown> = {
+      summary: event.payload.summary
     }
 
     if (event.payload.externalSessionId !== undefined) {
@@ -93,18 +85,22 @@ export class SessionEventBridge {
   }
 
   private toSessionStatePatch(event: CanonicalSessionEvent): SessionStatePatchEvent {
-    const status = event.payload.status ?? 'running'
     const session = this.manager.snapshot().sessions.find((candidate) => candidate.id === event.session_id)
     return {
       sessionId: event.session_id,
       sequence: (session?.lastStateSequence ?? 0) + 1,
       occurredAt: event.timestamp,
-      intent: mapStatusToIntent(status),
+      intent: event.payload.intent,
       source: 'provider',
       sourceEventType: event.event_type,
-      summary: event.payload.summary ?? event.event_type,
-      externalSessionId: event.payload.externalSessionId,
-      status
+      runtimeState: event.payload.runtimeState,
+      agentState: event.payload.agentState,
+      hasUnseenCompletion: event.payload.hasUnseenCompletion,
+      runtimeExitCode: event.payload.runtimeExitCode,
+      runtimeExitReason: event.payload.runtimeExitReason,
+      blockingReason: event.payload.blockingReason,
+      summary: event.payload.summary,
+      externalSessionId: event.payload.externalSessionId
     }
   }
 
@@ -127,52 +123,34 @@ export class SessionEventBridge {
   }
 }
 
-function mapStatusToIntent(status: SessionStatus): SessionStateIntent {
-  switch (status) {
-    case 'running':
-      return 'agent.turn_started'
-    case 'turn_complete':
-    case 'awaiting_input':
-      return 'agent.turn_completed'
-    case 'needs_confirmation':
-      return 'agent.permission_requested'
-    case 'degraded':
-      return 'agent.recovered'
-    case 'error':
-      return 'agent.turn_failed'
-    case 'exited':
-      return 'runtime.exited_clean'
-    case 'bootstrapping':
-      return 'runtime.created'
-    case 'starting':
-      return 'runtime.starting'
-  }
-}
-
-function mapStatusToObservation(status: SessionStatus): {
+function mapIntentToObservation(intent: CanonicalSessionEvent['payload']['intent']): {
   category: ObservationCategory
   type: string
   severity: ObservationSeverity
   retention: ObservationRetention
 } {
-  switch (status) {
-    case 'running':
+  switch (intent) {
+    case 'agent.turn_started':
+    case 'agent.tool_started':
       return { category: 'presence', type: 'presence.running', severity: 'info', retention: 'operational' }
-    case 'turn_complete':
+    case 'agent.turn_completed':
       return { category: 'presence', type: 'presence.turn_complete', severity: 'info', retention: 'operational' }
-    case 'awaiting_input':
-      return { category: 'presence', type: 'presence.awaiting_input', severity: 'attention', retention: 'operational' }
-    case 'needs_confirmation':
+    case 'agent.permission_requested':
       return { category: 'presence', type: 'presence.needs_confirmation', severity: 'attention', retention: 'critical' }
-    case 'degraded':
+    case 'agent.permission_resolved':
+    case 'agent.recovered':
       return { category: 'presence', type: 'presence.degraded', severity: 'warning', retention: 'critical' }
-    case 'error':
+    case 'agent.turn_failed':
       return { category: 'presence', type: 'presence.error', severity: 'error', retention: 'critical' }
-    case 'exited':
+    case 'runtime.exited_clean':
+    case 'runtime.exited_failed':
       return { category: 'lifecycle', type: 'lifecycle.session_exited', severity: 'info', retention: 'operational' }
-    case 'bootstrapping':
+    case 'runtime.created':
       return { category: 'lifecycle', type: 'lifecycle.session_bootstrapping', severity: 'info', retention: 'ephemeral' }
-    case 'starting':
+    case 'runtime.starting':
+    case 'runtime.alive':
+    case 'runtime.failed_to_start':
+    case 'agent.completion_seen':
       return { category: 'lifecycle', type: 'lifecycle.session_starting', severity: 'info', retention: 'ephemeral' }
   }
 }

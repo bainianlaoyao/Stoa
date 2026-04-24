@@ -56,6 +56,22 @@ export interface SessionStatePatchEvent {
   status?: SessionStatus
 }
 
+export interface SessionStatePatchPayload {
+  intent: SessionStateIntent
+  agentState?: SessionAgentState
+  runtimeState?: SessionRuntimeState
+  hasUnseenCompletion?: boolean
+  runtimeExitCode?: number | null
+  runtimeExitReason?: 'clean' | 'failed' | null
+  blockingReason?: BlockingReason | null
+  summary: string
+  externalSessionId?: string | null
+  model?: string
+  snippet?: string
+  toolName?: string
+  error?: string
+}
+
 export interface ProjectSummary {
   id: string
   name: string
@@ -240,13 +256,6 @@ export interface RendererApi {
   onUpdateState: (callback: (state: UpdateState) => void) => () => void
 }
 
-export interface SessionEventPayload {
-  status?: SessionStatus
-  summary?: string
-  isProvisional?: boolean
-  externalSessionId?: string | null
-}
-
 export interface CanonicalSessionEvent {
   event_version: 1
   event_id: string
@@ -256,7 +265,7 @@ export interface CanonicalSessionEvent {
   project_id: string
   correlation_id?: string
   source: 'hook-sidecar' | 'provider-adapter' | 'system-recovery'
-  payload: SessionEventPayload
+  payload: SessionStatePatchPayload
 }
 
 export interface ProviderCommandContext {
