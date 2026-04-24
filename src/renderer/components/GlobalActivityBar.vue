@@ -14,6 +14,7 @@ interface ActivityIconCircle {
 interface ActivityItem {
   id: AppSurface
   title: string
+  iconKind: string
   iconPaths: string[]
   iconCircles?: ActivityIconCircle[]
 }
@@ -30,11 +31,11 @@ const topItems: ActivityItem[] = [
   {
     id: 'command',
     title: t('activityBar.command'),
+    iconKind: 'terminal-command',
     iconPaths: [
-      'M5.75 6.25h12.5A1.75 1.75 0 0 1 20 8v7.5a1.75 1.75 0 0 1-1.75 1.75H5.75A1.75 1.75 0 0 1 4 15.5V8a1.75 1.75 0 0 1 1.75-1.75Z',
-      'm8.5 10 2 2-2 2',
-      'M13.25 14H16',
-      'M9 17.25h6'
+      'M5.75 5.75h12.5A1.75 1.75 0 0 1 20 7.5v9A1.75 1.75 0 0 1 18.25 18.25H5.75A1.75 1.75 0 0 1 4 16.5v-9A1.75 1.75 0 0 1 5.75 5.75Z',
+      'm8 10 2.25 2.25L7.75 14.5',
+      'M12.75 14.5h3.75'
     ]
   }
 ]
@@ -43,27 +44,28 @@ const bottomItems: ActivityItem[] = [
   {
     id: 'archive',
     title: t('activityBar.archive'),
+    iconKind: 'archive-box',
     iconPaths: [
-      'M5.75 7.25h12.5A1.75 1.75 0 0 1 20 9v1.5a1.75 1.75 0 0 1-1.75 1.75H5.75A1.75 1.75 0 0 1 4 10.5V9a1.75 1.75 0 0 1 1.75-1.75Z',
-      'M5 12.25h14v3.25A1.75 1.75 0 0 1 17.25 17.25H6.75A1.75 1.75 0 0 1 5 15.5v-3.25Z',
-      'M9.25 10.75h5.5'
+      'M5.75 5.75h12.5A1.25 1.25 0 0 1 19.5 7v2.25H4.5V7a1.25 1.25 0 0 1 1.25-1.25Z',
+      'M5.25 9.25h13.5v8A1.75 1.75 0 0 1 17 19H7a1.75 1.75 0 0 1-1.75-1.75v-8Z',
+      'M9.25 12h5.5'
     ]
   },
   {
     id: 'settings',
     title: t('activityBar.settings'),
+    iconKind: 'settings-sliders',
     iconPaths: [
-      'M12 3.75v1.5',
-      'M12 18.75v1.5',
-      'm6.166 6.166 1.06 1.06',
-      'm16.774 16.774 1.06 1.06',
-      'M3.75 12h1.5',
-      'M18.75 12h1.5',
-      'm6.166 17.834 1.06-1.06',
-      'm16.774 7.226 1.06-1.06',
-      'M8.25 6.5h7.5L17 8.75v6.5l-1.25 2.25h-7.5L7 15.25v-6.5L8.25 6.5Z'
-    ],
-    iconCircles: [{ cx: 12, cy: 12, r: 2.25 }]
+      'M5 7.25h5.25',
+      'M13.75 7.25H19',
+      'M10.25 5.75v3',
+      'M5 12h9.25',
+      'M17.75 12H19',
+      'M14.25 10.5v3',
+      'M5 16.75h2.25',
+      'M10.75 16.75H19',
+      'M7.25 15.25v3'
+    ]
   }
 ]
 </script>
@@ -86,6 +88,7 @@ const bottomItems: ActivityItem[] = [
       >
         <svg
           data-activity-icon
+          :data-icon-kind="item.iconKind"
           class="h-[28px] w-[28px] shrink-0"
           viewBox="0 0 24 24"
           fill="none"
@@ -123,6 +126,7 @@ const bottomItems: ActivityItem[] = [
       >
         <svg
           data-activity-icon
+          :data-icon-kind="item.iconKind"
           class="h-[28px] w-[28px] shrink-0"
           viewBox="0 0 24 24"
           fill="none"

@@ -7,6 +7,14 @@ function readRendererFile(relativePath: string): string {
 }
 
 describe('renderer typography baseline', () => {
+  test('uses the selected system UI and terminal mono stacks', () => {
+    const styles = readRendererFile('src/renderer/styles/tailwind.css')
+
+    expect(styles).toContain("--font-ui: 'SF Pro Text', 'Segoe UI Variable', 'Segoe UI', Inter, 'Noto Sans SC', 'Microsoft YaHei UI', sans-serif;")
+    expect(styles).toContain("--font-mono: 'JetBrains Mono', 'Cascadia Mono', 'Cascadia Code', 'SF Mono', Consolas, monospace;")
+    expect(styles).toContain("font-family: 'SF Pro Text';")
+  })
+
   test('shared renderer styles do not keep tiny 10px text or ultra-light 300 weight', () => {
     const styles = readRendererFile('src/renderer/styles/tailwind.css')
 

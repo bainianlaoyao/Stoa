@@ -69,8 +69,8 @@
   --shadow-success-ring: 0 0 0 2px rgba(16, 185, 129, 0.16);
 
   /* Font tokens */
-  --font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans SC', sans-serif;
-  --font-mono: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
+  --font-ui: 'SF Pro Text', 'Segoe UI Variable', 'Segoe UI', Inter, 'Noto Sans SC', 'Microsoft YaHei UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Cascadia Mono', 'Cascadia Code', 'SF Mono', Consolas, monospace;
 
   /* Font size tokens */
   --text-caption: 11px;
@@ -85,6 +85,14 @@
 }
 
 /* ── Font faces ── */
+
+@font-face {
+  font-family: 'SF Pro Text';
+  src: local('SF Pro Text'), local('Segoe UI Variable'), local('Segoe UI');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
 
 @font-face {
   font-family: 'JetBrains Mono';

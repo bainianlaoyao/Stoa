@@ -36,6 +36,15 @@ describe('GlobalActivityBar', () => {
     expect(wrapper.get('[data-activity-item="settings"]').find('[data-activity-icon]').exists()).toBe(true)
   })
 
+  it('uses semantic sidebar icons for command, archive, and settings', () => {
+    const wrapper = mountBar()
+
+    expect(wrapper.get('[data-activity-item="command"]').find('[data-icon-kind="terminal-command"]').exists()).toBe(true)
+    expect(wrapper.get('[data-activity-item="archive"]').find('[data-icon-kind="archive-box"]').exists()).toBe(true)
+    expect(wrapper.get('[data-activity-item="settings"]').find('[data-icon-kind="settings-sliders"]').exists()).toBe(true)
+    expect(wrapper.get('[data-activity-item="settings"]').findAll('circle')).toHaveLength(0)
+  })
+
   it('active item has data-active="true"', () => {
     const wrapper = mountBar({ activeSurface: 'settings' })
     const activeItem = wrapper.find('[data-activity-item="settings"]')
