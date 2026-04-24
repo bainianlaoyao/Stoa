@@ -1,7 +1,13 @@
 // @vitest-environment happy-dom
+import { readFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import GlassFormField from './GlassFormField.vue'
+
+const glassListboxPath = resolve(dirname(fileURLToPath(import.meta.url)), 'GlassListbox.vue')
+const glassPathFieldPath = resolve(dirname(fileURLToPath(import.meta.url)), 'GlassPathField.vue')
 
 describe('GlassFormField', () => {
   describe('text input (default)', () => {
@@ -134,6 +140,23 @@ describe('GlassFormField', () => {
       })
       const input = wrapper.find('[data-testid="form-input"]')
       expect((input.element as HTMLInputElement).placeholder).toBe('')
+    })
+  })
+
+  describe('style contracts', () => {
+    it('keeps GlassListbox transitions on the shared 0.2s baseline', () => {
+      const source = readFileSync(glassListboxPath, 'utf8')
+
+      expect(source).not.toContain('duration-100')
+      expect(source).not.toContain('duration-75')
+      expect(source).not.toContain('0.15s')
+      expect(source).not.toContain('0.1s')
+    })
+
+    it('keeps GlassPathField transitions on the shared 0.2s baseline', () => {
+      const source = readFileSync(glassPathFieldPath, 'utf8')
+
+      expect(source).not.toContain('0.15s')
     })
   })
 })

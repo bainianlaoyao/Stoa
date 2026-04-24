@@ -154,10 +154,10 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <aside class="min-h-0 rounded-[10px] overflow-hidden bg-white/40 border border-black/6" data-testid="workspace-hierarchy-panel" aria-label="Workspace hierarchy">
+  <aside class="min-h-0 rounded-[10px] overflow-hidden bg-surface border border-line" data-testid="workspace-hierarchy-panel" aria-label="Workspace hierarchy">
     <div class="min-h-0 overflow-auto p-2.5 grid gap-3 align-content-start" data-testid="route-body">
       <div class="grid gap-1" data-testid="route-actions">
-        <button class="route-action flex items-center justify-between gap-2 px-2.5 py-2 border border-black/[0.03] rounded-lg bg-surface-solid text-text-strong shadow-[0_1px_3px_rgba(0,0,0,0.02)] cursor-pointer transition-colors duration-200 hover:bg-[#f8f9fb] focus-visible:bg-[#f8f9fb] focus-visible:outline-none" type="button" @click="showNewProject = true">
+        <button class="route-action flex items-center justify-between gap-2 px-2.5 py-2 border border-line rounded-lg bg-surface-solid text-text-strong shadow-card cursor-pointer transition-all duration-200 hover:bg-black-faint focus-visible:bg-black-faint focus-visible:outline-none" type="button" @click="showNewProject = true">
           <span class="text-xs font-semibold tracking-[0.05em]">New Project</span>
           <span class="w-[18px] h-[18px] grid place-items-center rounded-full bg-canvas text-text-strong text-xs">+</span>
         </button>
@@ -312,13 +312,13 @@ onBeforeUnmount(() => {
 
 .route-item:hover:not(.route-item--active),
 .route-item:focus-visible {
-  background: rgba(255, 255, 255, 0.5);
+  background: var(--color-black-faint);
   outline: none;
 }
 
 .route-item--active {
   background: var(--color-surface-solid);
-  border-color: rgba(0, 0, 0, 0.04);
+  border-color: var(--color-line);
   box-shadow: var(--shadow-card);
 }
 
@@ -341,12 +341,12 @@ onBeforeUnmount(() => {
 .route-dot.idle,
 .route-dot.starting,
 .route-dot.bootstrapping {
-  background: #cbd5e1;
+  background: var(--color-subtle);
 }
 
 .route-dot.running {
   background: var(--color-success);
-  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.15);
+  box-shadow: var(--shadow-success-ring);
 }
 
 .route-dot.awaiting_input,

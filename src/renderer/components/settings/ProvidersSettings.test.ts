@@ -1,4 +1,7 @@
 // @vitest-environment happy-dom
+import { readFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
@@ -6,6 +9,8 @@ import { nextTick } from 'vue'
 import { createI18n } from 'vue-i18n'
 import ProvidersSettings from './ProvidersSettings.vue'
 import type { RendererApi } from '@shared/project-session'
+
+const providersSettingsPath = resolve(dirname(fileURLToPath(import.meta.url)), 'ProvidersSettings.vue')
 
 function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
   return {
@@ -145,5 +150,12 @@ describe('ProvidersSettings', () => {
     await toggle.trigger('click')
 
     expect(setSettingMock).toHaveBeenCalledWith('claudeDangerouslySkipPermissions', true)
+  })
+
+  it('does not misuse shadow tokens as badge fills or keep non-baseline switch timings', () => {
+    const source = readFileSync(providersSettingsPath, 'utf8')
+
+    expect(source).not.toContain('background: var(--shadow-success-ring);')
+    expect(source).not.toContain('160ms')
   })
 })

@@ -1,7 +1,12 @@
 // @vitest-environment happy-dom
+import { readFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import ArchiveSurface from './ArchiveSurface.vue'
+
+const archiveSurfacePath = resolve(dirname(fileURLToPath(import.meta.url)), 'ArchiveSurface.vue')
 
 const archivedSession = {
   id: 'session-archived-1',
@@ -51,5 +56,18 @@ describe('ArchiveSurface', () => {
     await wrapper.find('[data-archive-restore="session-archived-1"]').trigger('click')
     expect(wrapper.emitted('restoreSession')).toHaveLength(1)
     expect(wrapper.emitted('restoreSession')![0]).toEqual(['session-archived-1'])
+  })
+
+  it('uses canonical renderer token names instead of deprecated short-form aliases', () => {
+    const source = readFileSync(archiveSurfacePath, 'utf8')
+
+    expect(source).not.toContain('var(--surface')
+    expect(source).not.toContain('var(--surface-solid')
+    expect(source).not.toContain('var(--text-strong')
+    expect(source).not.toContain('var(--text)')
+    expect(source).not.toContain('var(--muted')
+    expect(source).not.toContain('var(--subtle')
+    expect(source).not.toContain('var(--line')
+    expect(source).not.toContain('var(--accent')
   })
 })

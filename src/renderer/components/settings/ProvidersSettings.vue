@@ -189,7 +189,7 @@ function handleClaudeDangerouslySkipPermissionsChange(value: boolean): void {
 }
 
 .settings-card__badge--detected {
-  background: var(--shadow-success-ring);
+  background: color-mix(in srgb, var(--color-success) 12%, transparent);
   color: var(--color-success);
 }
 
@@ -281,7 +281,7 @@ function handleClaudeDangerouslySkipPermissionsChange(value: boolean): void {
   background: var(--color-black-soft);
   box-shadow: inset 0 0 0 1px var(--color-black-soft);
   cursor: pointer;
-  transition: background 160ms ease;
+  transition: all 0.2s ease;
   flex: 0 0 auto;
 }
 
@@ -299,7 +299,7 @@ function handleClaudeDangerouslySkipPermissionsChange(value: boolean): void {
   height: 24px;
   border-radius: 999px;
   background: var(--color-text-strong);
-  transition: transform 160ms ease;
+  transition: all 0.2s ease;
 }
 
 .settings-toggle__switch--active .settings-toggle__thumb {

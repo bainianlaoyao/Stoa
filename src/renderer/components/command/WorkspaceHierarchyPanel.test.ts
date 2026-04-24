@@ -1,4 +1,7 @@
 // @vitest-environment happy-dom
+import { readFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createPinia } from 'pinia'
@@ -7,6 +10,8 @@ import NewProjectModal from './NewProjectModal.vue'
 import ProviderFloatingCard from './ProviderFloatingCard.vue'
 import ProviderRadialMenu from './ProviderRadialMenu.vue'
 import type { ProjectHierarchyNode } from '@renderer/stores/workspaces'
+
+const workspaceHierarchyPanelPath = resolve(dirname(fileURLToPath(import.meta.url)), 'WorkspaceHierarchyPanel.vue')
 
 afterEach(() => {
   vi.useRealTimers()
@@ -591,6 +596,18 @@ describe('WorkspaceHierarchyPanel', () => {
 
       const paths = projects.map(p => p.find('.route-item--parent .route-path').text())
       expect(paths).toEqual(['D:/infra-control', 'D:/data-pipeline'])
+    })
+  })
+
+  describe('style contracts', () => {
+    it('does not keep hardcoded hover colors and status neutrals in component source', () => {
+      const source = readFileSync(workspaceHierarchyPanelPath, 'utf8')
+
+      expect(source).not.toContain('hover:bg-[#f8f9fb]')
+      expect(source).not.toContain('focus-visible:bg-[#f8f9fb]')
+      expect(source).not.toContain('background: rgba(255, 255, 255, 0.5);')
+      expect(source).not.toContain('background: #cbd5e1;')
+      expect(source).not.toContain('box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.15);')
     })
   })
 })

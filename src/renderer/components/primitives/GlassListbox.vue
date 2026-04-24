@@ -40,10 +40,10 @@ const selectedLabel = computed(
       </ListboxButton>
 
       <transition
-        enter-active-class="transition duration-100 ease-out"
+        enter-active-class="transition duration-200 ease-out"
         enter-from-class="opacity-0 scale-95"
         enter-to-class="opacity-100 scale-100"
-        leave-active-class="transition duration-75 ease-in"
+        leave-active-class="transition duration-200 ease-in"
         leave-from-class="opacity-100 scale-100"
         leave-to-class="opacity-0 scale-95"
       >
@@ -98,7 +98,7 @@ const selectedLabel = computed(
   font-size: var(--text-body-sm);
   color: var(--color-text-strong);
   cursor: pointer;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition: all 0.2s ease;
   text-align: left;
 }
 
@@ -113,7 +113,7 @@ const selectedLabel = computed(
   width: 14px;
   height: 14px;
   color: var(--color-muted);
-  transition: transform 0.15s;
+  transition: all 0.2s ease;
 }
 
 .glass-listbox__button[aria-expanded="true"] .glass-listbox__chevron {
@@ -145,7 +145,7 @@ const selectedLabel = computed(
   font-size: var(--text-body-sm);
   color: var(--color-text);
   cursor: pointer;
-  transition: background 0.1s, color 0.1s;
+  transition: all 0.2s ease;
 }
 
 .glass-listbox__option--active {
