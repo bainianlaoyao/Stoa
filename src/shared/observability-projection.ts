@@ -125,7 +125,7 @@ export function buildSessionRowViewModel(
     sessionId: session.id,
     title: session.title,
     phase: snapshot.phase,
-    primaryLabel: phaseLabel(snapshot.phase),
+    primaryLabel: rowPrimaryLabel(snapshot),
     secondaryLabel: [snapshot.providerLabel, snapshot.modelLabel].filter(Boolean).join(' / '),
     tone: mapPhaseToTone(snapshot.phase),
     hasUnreadTurn: snapshot.hasUnreadTurn,
@@ -133,6 +133,14 @@ export function buildSessionRowViewModel(
     attentionReason,
     updatedAgoLabel: updatedAgoLabel(snapshot.updatedAt, nowIso)
   }
+}
+
+function rowPrimaryLabel(snapshot: SessionPresenceSnapshot): string {
+  if (snapshot.canonicalStatus === 'running') {
+    return 'Running'
+  }
+
+  return phaseLabel(snapshot.phase)
 }
 
 export function buildActiveSessionViewModel(

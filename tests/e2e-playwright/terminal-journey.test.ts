@@ -70,6 +70,32 @@ test.describe('Electron terminal journeys', () => {
     }
   })
 
+  test('claude running session shows Running in the row status', async () => {
+    const app = await launchElectronApp()
+
+    try {
+      const projectRow = await createProject(app, {
+        name: 'terminal-claude-running-project',
+        path: join(app.stateDir, 'terminal-claude-running-project')
+      })
+      const session = await createSession(app.page, projectRow, {
+        type: 'claude-code'
+      })
+
+      await waitForSessionStatus(app, session.title, 'running')
+
+      const statusDot = session.row.locator('[data-testid="session-status-dot"]')
+      await expect(statusDot).toHaveAttribute('data-status', 'running')
+      await expect(statusDot).toHaveAttribute('data-phase', 'working')
+      await expect(statusDot).toHaveAttribute('data-tone', 'success')
+      await expect(session.row.locator('.route-time')).toContainText('Running')
+    } finally {
+      const { stateDir } = app
+      await app.close()
+      await cleanupStateDir(stateDir)
+    }
+  })
+
   test('session isolation', async () => {
     const app = await launchElectronApp()
 

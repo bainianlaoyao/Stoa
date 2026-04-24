@@ -78,6 +78,24 @@ describe('renderer observability view models', () => {
     })
   })
 
+  it('labels running Claude sessions as Running in the session row', () => {
+    const viewModel = toSessionRowViewModel(
+      sessionFixture({ type: 'claude-code', status: 'running' }),
+      presenceFixture({
+        providerId: 'claude-code',
+        providerLabel: 'Claude Code',
+        phase: 'working',
+        canonicalStatus: 'running'
+      }),
+      NOW_ISO
+    )
+
+    expect(viewModel.phase).toBe('working')
+    expect(viewModel.tone).toBe('success')
+    expect(viewModel.primaryLabel).toBe('Running')
+    expect(viewModel.secondaryLabel).toBe('Claude Code / Sonnet')
+  })
+
   it('forwards the semantic phase needed to distinguish blocked and degraded rows', () => {
     const blockedPresence = buildSessionPresenceSnapshot(
       sessionFixture({ status: 'needs_confirmation' }),
