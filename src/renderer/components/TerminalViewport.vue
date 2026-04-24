@@ -56,10 +56,12 @@ function writeChunk(targetTerminal: Terminal, data: string): Promise<void> {
 function scheduleTerminalSetup() {
   const localScheduleVersion = ++setupScheduleVersion
 
-  nextTick(() => {
+  nextTick(async () => {
     if (localScheduleVersion !== setupScheduleVersion) {
       return
     }
+
+    await (document.fonts?.ready ?? Promise.resolve())
 
     if (props.session) {
       setupTerminal()
