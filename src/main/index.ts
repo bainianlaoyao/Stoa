@@ -496,7 +496,7 @@ app.whenReady().then(async () => {
       return launched
     } catch (err: unknown) {
       console.error(`[${source}] Failed to start session ${sessionId}:`, err)
-      await runtimeController.markSessionExited(sessionId, `启动失败: ${err instanceof Error ? err.message : String(err)}`)
+      await runtimeController.markRuntimeFailedToStart(sessionId, `启动失败: ${err instanceof Error ? err.message : String(err)}`)
       return false
     }
   }

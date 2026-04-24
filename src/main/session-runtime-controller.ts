@@ -1,4 +1,4 @@
-import type { SessionStatus, SessionSummary } from '@shared/project-session'
+import type { SessionStatePatchEvent, SessionSummary } from '@shared/project-session'
 import { IPC_CHANNELS } from '@core/ipc-channels'
 import type { SessionRuntimeManager } from '@core/session-runtime'
 import type { ProjectSessionManager } from '@core/project-session-manager'
@@ -13,13 +13,6 @@ export interface RuntimeWindow {
   webContents: {
     send: (channel: string, data: unknown) => void
   }
-}
-
-interface AppliedSessionEvent {
-  sessionId: string
-  status: SessionStatus
-  summary: string
-  externalSessionId?: string | null
 }
 
 interface RuntimeObservabilityReader {
@@ -39,43 +32,41 @@ export class SessionRuntimeController implements SessionRuntimeManager {
     private readonly observability?: RuntimeObservabilityReader
   ) {}
 
-  async markSessionStarting(sessionId: string, summary: string, externalSessionId: string | null): Promise<void> {
+  async markRuntimeStarting(sessionId: string, summary: string, externalSessionId: string | null): Promise<void> {
     this.terminalBacklogs.delete(sessionId)
-    await this.manager.markSessionStarting(sessionId, summary, externalSessionId)
-    this.pushSessionEvent(sessionId, 'starting', summary)
-    this.pushObservabilitySnapshots(sessionId)
-    this.onSessionStateChanged?.()
+    await this.manager.markRuntimeStarting(sessionId, summary, externalSessionId)
+    this.pushSessionSummaryPatch(sessionId)
+    this.finishSessionStateChange(sessionId)
   }
 
-  async markSessionRunning(sessionId: string, externalSessionId: string | null): Promise<void> {
-    await this.manager.markSessionRunning(sessionId, externalSessionId)
-    const session = this.manager.snapshot().sessions.find((candidate) => candidate.id === sessionId)
-    this.pushSessionEvent(
-      sessionId,
-      session?.status ?? 'running',
-      session?.summary ?? 'Session running'
-    )
-    this.pushObservabilitySnapshots(sessionId)
-    this.onSessionStateChanged?.()
+  async markRuntimeAlive(sessionId: string, externalSessionId: string | null): Promise<void> {
+    await this.manager.markRuntimeAlive(sessionId, externalSessionId)
+    this.pushSessionSummaryPatch(sessionId)
+    this.finishSessionStateChange(sessionId)
   }
 
-  async markSessionExited(sessionId: string, summary: string): Promise<void> {
-    await this.manager.markSessionExited(sessionId, summary)
-    this.pushSessionEvent(sessionId, 'exited', summary)
-    this.pushObservabilitySnapshots(sessionId)
-    this.onSessionStateChanged?.()
+  async markRuntimeExited(sessionId: string, exitCode: number | null, summary: string): Promise<void> {
+    await this.manager.markRuntimeExited(sessionId, exitCode, summary)
+    this.pushSessionSummaryPatch(sessionId)
+    this.finishSessionStateChange(sessionId)
   }
 
-  async applySessionEvent(event: AppliedSessionEvent): Promise<void> {
-    await this.manager.applySessionEvent(
-      event.sessionId,
-      event.status,
-      event.summary,
-      event.externalSessionId
-    )
-    this.pushSessionEvent(event.sessionId, event.status, event.summary)
-    this.pushObservabilitySnapshots(event.sessionId)
-    this.onSessionStateChanged?.()
+  async markRuntimeFailedToStart(sessionId: string, summary: string): Promise<void> {
+    await this.manager.markRuntimeFailedToStart(sessionId, summary)
+    this.pushSessionSummaryPatch(sessionId)
+    this.finishSessionStateChange(sessionId)
+  }
+
+  async applyProviderStatePatch(patch: SessionStatePatchEvent): Promise<void> {
+    await this.manager.applySessionStatePatch(patch)
+    this.pushSessionSummaryPatch(patch.sessionId)
+    this.finishSessionStateChange(patch.sessionId)
+  }
+
+  async setActiveSession(sessionId: string): Promise<void> {
+    await this.manager.setActiveSession(sessionId)
+    this.pushSessionSummaryPatch(sessionId)
+    this.finishSessionStateChange(sessionId)
   }
 
   async appendTerminalData(chunk: { sessionId: string; data: string }): Promise<void> {
@@ -92,14 +83,24 @@ export class SessionRuntimeController implements SessionRuntimeManager {
     return this.terminalBacklogs.get(sessionId) ?? ''
   }
 
-  private pushSessionEvent(sessionId: string, status: SessionStatus, summary: string): void {
+  private pushSessionSummaryPatch(sessionId: string): void {
     const win = this.getWindow()
-    if (win && !win.isDestroyed()) {
-      console.log(`[pushSessionEvent] Sending ${status} for ${sessionId} to renderer`)
-      win.webContents.send(IPC_CHANNELS.sessionEvent, { sessionId, status, summary })
-    } else {
-      console.warn(`[pushSessionEvent] No window available for ${sessionId} ${status} (win=${!!win}, destroyed=${win?.isDestroyed()})`)
+    const session = this.manager.snapshot().sessions.find((candidate) => candidate.id === sessionId)
+
+    if (!session) {
+      return
     }
+
+    if (!win || win.isDestroyed()) {
+      return
+    }
+
+    win.webContents.send(IPC_CHANNELS.sessionEvent, { session })
+  }
+
+  private finishSessionStateChange(sessionId: string): void {
+    this.pushObservabilitySnapshots(sessionId)
+    this.onSessionStateChanged?.()
   }
 
   private pushObservabilitySnapshots(sessionId: string): void {

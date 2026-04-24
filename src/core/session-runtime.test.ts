@@ -61,9 +61,10 @@ describe('session runtime', () => {
       provider,
       ptyHost: { start } as never,
       manager: {
-        markSessionStarting: vi.fn(async () => {}),
-        markSessionRunning: vi.fn(async () => {}),
-        markSessionExited: vi.fn(async () => {}),
+        markRuntimeStarting: vi.fn(async () => {}),
+        markRuntimeAlive: vi.fn(async () => {}),
+        markRuntimeExited: vi.fn(async () => {}),
+        markRuntimeFailedToStart: vi.fn(async () => {}),
         appendTerminalData: vi.fn(async () => {})
       } as never,
       shellPath: 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe'
@@ -108,9 +109,10 @@ describe('session runtime', () => {
       provider,
       ptyHost: { start } as never,
       manager: {
-        markSessionStarting: vi.fn(async () => {}),
-        markSessionRunning: vi.fn(async () => {}),
-        markSessionExited: vi.fn(async () => {}),
+        markRuntimeStarting: vi.fn(async () => {}),
+        markRuntimeAlive: vi.fn(async () => {}),
+        markRuntimeExited: vi.fn(async () => {}),
+        markRuntimeFailedToStart: vi.fn(async () => {}),
         appendTerminalData: vi.fn(async () => {})
       } as never,
       shellPath: 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe'
@@ -136,8 +138,8 @@ describe('session runtime', () => {
     }))
     const provider = createProvider({ buildResumeCommand })
     const installSidecar = vi.spyOn(provider, 'installSidecar')
-    const markSessionStarting = vi.fn(async () => {})
-    const markSessionRunning = vi.fn(async () => {})
+    const markRuntimeStarting = vi.fn(async () => {})
+    const markRuntimeAlive = vi.fn(async () => {})
     const start = vi.fn(() => ({ runtimeId: 'session_op_1' }))
 
     await startSessionRuntime({
@@ -156,9 +158,10 @@ describe('session runtime', () => {
       provider,
       ptyHost: { start } as never,
       manager: {
-        markSessionStarting,
-        markSessionRunning,
-        markSessionExited: vi.fn(async () => {}),
+        markRuntimeStarting,
+        markRuntimeAlive,
+        markRuntimeExited: vi.fn(async () => {}),
+        markRuntimeFailedToStart: vi.fn(async () => {}),
         appendTerminalData: vi.fn(async () => {})
       } as never
     })
@@ -175,7 +178,7 @@ describe('session runtime', () => {
       expect.any(Function),
       expect.any(Function)
     )
-    expect(markSessionRunning).toHaveBeenCalledWith('session_op_1', 'ext-123')
+    expect(markRuntimeAlive).toHaveBeenCalledWith('session_op_1', 'ext-123')
   })
 
   test('falls back to provider start command and leaves externalSessionId null when no resumable external session is available', async () => {
@@ -187,7 +190,7 @@ describe('session runtime', () => {
     }))
     const provider = createProvider({ buildStartCommand })
     const start = vi.fn(() => ({ runtimeId: 'session_op_1' }))
-    const markSessionRunning = vi.fn(async () => {})
+    const markRuntimeAlive = vi.fn(async () => {})
 
     await startSessionRuntime({
       session: {
@@ -205,9 +208,10 @@ describe('session runtime', () => {
       provider,
       ptyHost: { start } as never,
       manager: {
-        markSessionStarting: vi.fn(async () => {}),
-        markSessionRunning,
-        markSessionExited: vi.fn(async () => {}),
+        markRuntimeStarting: vi.fn(async () => {}),
+        markRuntimeAlive,
+        markRuntimeExited: vi.fn(async () => {}),
+        markRuntimeFailedToStart: vi.fn(async () => {}),
         appendTerminalData: vi.fn(async () => {})
       } as never
     })
@@ -223,7 +227,7 @@ describe('session runtime', () => {
       expect.any(Function),
       expect.any(Function)
     )
-    expect(markSessionRunning).toHaveBeenCalledWith('session_op_1', null)
+    expect(markRuntimeAlive).toHaveBeenCalledWith('session_op_1', null)
   })
 
   test('preserves existing externalSessionId on fresh start when resume is not allowed', async () => {
@@ -234,8 +238,8 @@ describe('session runtime', () => {
       env: { TEST_ENV: '1' }
     }))
     const discoverExternalSessionIdAfterStart = vi.fn(async () => 'wrong-ext-2')
-    const markSessionStarting = vi.fn(async () => {})
-    const markSessionRunning = vi.fn(async () => {})
+    const markRuntimeStarting = vi.fn(async () => {})
+    const markRuntimeAlive = vi.fn(async () => {})
 
     await startSessionRuntime({
       session: {
@@ -256,17 +260,18 @@ describe('session runtime', () => {
       }),
       ptyHost: { start: vi.fn(() => ({ runtimeId: 'session_op_1' })) } as never,
       manager: {
-        markSessionStarting,
-        markSessionRunning,
-        markSessionExited: vi.fn(async () => {}),
+        markRuntimeStarting,
+        markRuntimeAlive,
+        markRuntimeExited: vi.fn(async () => {}),
+        markRuntimeFailedToStart: vi.fn(async () => {}),
         appendTerminalData: vi.fn(async () => {})
       } as never
     })
 
     expect(buildStartCommand).toHaveBeenCalledOnce()
     expect(discoverExternalSessionIdAfterStart).not.toHaveBeenCalled()
-    expect(markSessionStarting).toHaveBeenCalledWith('session_op_1', 'Starting opencode', 'stale-ext-1')
-    expect(markSessionRunning).toHaveBeenCalledWith('session_op_1', 'stale-ext-1')
+    expect(markRuntimeStarting).toHaveBeenCalledWith('session_op_1', 'Starting opencode', 'stale-ext-1')
+    expect(markRuntimeAlive).toHaveBeenCalledWith('session_op_1', 'stale-ext-1')
   })
 
   test('keeps seeded externalSessionId for fresh claude-code starts', async () => {
@@ -282,8 +287,8 @@ describe('session runtime', () => {
       buildStartCommand,
       discoverExternalSessionIdAfterStart: vi.fn(async () => 'claude-seeded-1')
     })
-    const markSessionStarting = vi.fn(async () => {})
-    const markSessionRunning = vi.fn(async () => {})
+    const markRuntimeStarting = vi.fn(async () => {})
+    const markRuntimeAlive = vi.fn(async () => {})
 
     await startSessionRuntime({
       session: {
@@ -301,16 +306,17 @@ describe('session runtime', () => {
       provider,
       ptyHost: { start: vi.fn(() => ({ runtimeId: 'session_claude_1' })) } as never,
       manager: {
-        markSessionStarting,
-        markSessionRunning,
-        markSessionExited: vi.fn(async () => {}),
+        markRuntimeStarting,
+        markRuntimeAlive,
+        markRuntimeExited: vi.fn(async () => {}),
+        markRuntimeFailedToStart: vi.fn(async () => {}),
         appendTerminalData: vi.fn(async () => {})
       } as never
     })
 
     expect(buildStartCommand).toHaveBeenCalledOnce()
-    expect(markSessionStarting).toHaveBeenCalledWith('session_claude_1', 'Starting claude-code', 'claude-seeded-1')
-    expect(markSessionRunning).toHaveBeenCalledWith('session_claude_1', 'claude-seeded-1')
+    expect(markRuntimeStarting).toHaveBeenCalledWith('session_claude_1', 'Starting claude-code', 'claude-seeded-1')
+    expect(markRuntimeAlive).toHaveBeenCalledWith('session_claude_1', 'claude-seeded-1')
   })
 
   test('patches discovered externalSessionId asynchronously for fresh codex starts', async () => {
@@ -327,8 +333,8 @@ describe('session runtime', () => {
       buildStartCommand,
       discoverExternalSessionIdAfterStart
     })
-    const markSessionStarting = vi.fn(async () => {})
-    const markSessionRunning = vi.fn(async () => {})
+    const markRuntimeStarting = vi.fn(async () => {})
+    const markRuntimeAlive = vi.fn(async () => {})
 
     await startSessionRuntime({
       session: {
@@ -346,9 +352,10 @@ describe('session runtime', () => {
       provider,
       ptyHost: { start: vi.fn(() => ({ runtimeId: 'session_codex_1' })) } as never,
       manager: {
-        markSessionStarting,
-        markSessionRunning,
-        markSessionExited: vi.fn(async () => {}),
+        markRuntimeStarting,
+        markRuntimeAlive,
+        markRuntimeExited: vi.fn(async () => {}),
+        markRuntimeFailedToStart: vi.fn(async () => {}),
         appendTerminalData: vi.fn(async () => {})
       } as never,
       shellPath: 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe'
@@ -356,10 +363,10 @@ describe('session runtime', () => {
 
     expect(buildStartCommand).toHaveBeenCalledOnce()
     expect(discoverExternalSessionIdAfterStart).toHaveBeenCalledOnce()
-    expect(markSessionStarting).toHaveBeenCalledWith('session_codex_1', 'Starting codex', null)
-    expect(markSessionRunning).toHaveBeenNthCalledWith(1, 'session_codex_1', null)
+    expect(markRuntimeStarting).toHaveBeenCalledWith('session_codex_1', 'Starting codex', null)
+    expect(markRuntimeAlive).toHaveBeenNthCalledWith(1, 'session_codex_1', null)
     await vi.waitFor(() => {
-      expect(markSessionRunning).toHaveBeenNthCalledWith(2, 'session_codex_1', 'codex-real-123')
+      expect(markRuntimeAlive).toHaveBeenNthCalledWith(2, 'session_codex_1', 'codex-real-123')
     })
   })
 
@@ -400,9 +407,10 @@ describe('session runtime', () => {
       provider,
       ptyHost: { start } as never,
       manager: {
-        markSessionStarting: vi.fn(async () => {}),
-        markSessionRunning: vi.fn(async () => {}),
-        markSessionExited: vi.fn(async () => {}),
+        markRuntimeStarting: vi.fn(async () => {}),
+        markRuntimeAlive: vi.fn(async () => {}),
+        markRuntimeExited: vi.fn(async () => {}),
+        markRuntimeFailedToStart: vi.fn(async () => {}),
         appendTerminalData: vi.fn(async () => {})
       } as never,
       shellPath: 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe'
@@ -434,7 +442,7 @@ describe('session runtime', () => {
       buildResumeCommand,
       discoverExternalSessionIdAfterStart
     })
-    const markSessionRunning = vi.fn(async () => {})
+    const markRuntimeAlive = vi.fn(async () => {})
 
     await startSessionRuntime({
       session: {
@@ -452,17 +460,18 @@ describe('session runtime', () => {
       provider,
       ptyHost: { start: vi.fn(() => ({ runtimeId: 'session_codex_3' })) } as never,
       manager: {
-        markSessionStarting: vi.fn(async () => {}),
-        markSessionRunning,
-        markSessionExited: vi.fn(async () => {}),
+        markRuntimeStarting: vi.fn(async () => {}),
+        markRuntimeAlive,
+        markRuntimeExited: vi.fn(async () => {}),
+        markRuntimeFailedToStart: vi.fn(async () => {}),
         appendTerminalData: vi.fn(async () => {})
       } as never
     })
 
     expect(buildResumeCommand).toHaveBeenCalledOnce()
     expect(discoverExternalSessionIdAfterStart).not.toHaveBeenCalled()
-    expect(markSessionRunning).toHaveBeenCalledTimes(1)
-    expect(markSessionRunning).toHaveBeenCalledWith('session_codex_3', 'codex-known-123')
+    expect(markRuntimeAlive).toHaveBeenCalledTimes(1)
+    expect(markRuntimeAlive).toHaveBeenCalledWith('session_codex_3', 'codex-known-123')
   })
 
   test('does not run discovery when an externalSessionId exists but resume is suppressed by status', async () => {
@@ -479,7 +488,7 @@ describe('session runtime', () => {
       buildStartCommand,
       discoverExternalSessionIdAfterStart
     })
-    const markSessionRunning = vi.fn(async () => {})
+    const markRuntimeAlive = vi.fn(async () => {})
 
     await startSessionRuntime({
       session: {
@@ -497,16 +506,17 @@ describe('session runtime', () => {
       provider,
       ptyHost: { start: vi.fn(() => ({ runtimeId: 'session_claude_boot' })) } as never,
       manager: {
-        markSessionStarting: vi.fn(async () => {}),
-        markSessionRunning,
-        markSessionExited: vi.fn(async () => {}),
+        markRuntimeStarting: vi.fn(async () => {}),
+        markRuntimeAlive,
+        markRuntimeExited: vi.fn(async () => {}),
+        markRuntimeFailedToStart: vi.fn(async () => {}),
         appendTerminalData: vi.fn(async () => {})
       } as never
     })
 
     expect(buildStartCommand).toHaveBeenCalledOnce()
     expect(discoverExternalSessionIdAfterStart).not.toHaveBeenCalled()
-    expect(markSessionRunning).toHaveBeenCalledTimes(1)
-    expect(markSessionRunning).toHaveBeenCalledWith('session_claude_boot', 'claude-seeded-boot')
+    expect(markRuntimeAlive).toHaveBeenCalledTimes(1)
+    expect(markRuntimeAlive).toHaveBeenCalledWith('session_claude_boot', 'claude-seeded-boot')
   })
 })

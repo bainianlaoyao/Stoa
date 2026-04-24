@@ -1,16 +1,16 @@
 import { randomUUID } from 'node:crypto'
 import { createLocalWebhookServer } from '@core/webhook-server'
 import type { ProjectSessionManager } from '@core/project-session-manager'
-import type { CanonicalSessionEvent, SessionStatus } from '@shared/project-session'
+import type {
+  CanonicalSessionEvent,
+  SessionStateIntent,
+  SessionStatePatchEvent,
+  SessionStatus
+} from '@shared/project-session'
 import type { ObservationCategory, ObservationEvent, ObservationRetention, ObservationSeverity } from '@shared/observability'
 
 interface SessionEventApplier {
-  applySessionEvent: (event: {
-    sessionId: string
-    status: SessionStatus
-    summary: string
-    externalSessionId?: string | null
-  }) => Promise<void>
+  applyProviderStatePatch: (patch: SessionStatePatchEvent) => Promise<void>
 }
 
 interface ObservabilityIngester {
@@ -48,12 +48,7 @@ export class SessionEventBridge {
         },
         onEvent: async (event) => {
           this.observability?.ingest(this.toObservationEvent(event))
-          await this.controller.applySessionEvent({
-            sessionId: event.session_id,
-            status: event.payload.status ?? 'running',
-            summary: event.payload.summary ?? event.event_type,
-            externalSessionId: event.payload.externalSessionId
-          })
+          await this.controller.applyProviderStatePatch(this.toSessionStatePatch(event))
         }
       })
     }
@@ -97,6 +92,20 @@ export class SessionEventBridge {
     }
   }
 
+  private toSessionStatePatch(event: CanonicalSessionEvent): SessionStatePatchEvent {
+    const status = event.payload.status ?? 'running'
+    return {
+      sessionId: event.session_id,
+      sequence: 0,
+      occurredAt: event.timestamp,
+      intent: mapStatusToIntent(status),
+      source: 'provider',
+      sourceEventType: event.event_type,
+      summary: event.payload.summary ?? event.event_type,
+      externalSessionId: event.payload.externalSessionId
+    }
+  }
+
   issueSessionSecret(sessionId: string): string {
     const secret = `stoa-${randomUUID()}`
     this.sessionSecrets.set(sessionId, secret)
@@ -113,6 +122,28 @@ export class SessionEventBridge {
     this.sessionSecrets.clear()
     this.port = null
     await this.manager.setTerminalWebhookPort(null)
+  }
+}
+
+function mapStatusToIntent(status: SessionStatus): SessionStateIntent {
+  switch (status) {
+    case 'running':
+      return 'agent.turn_started'
+    case 'turn_complete':
+    case 'awaiting_input':
+      return 'agent.turn_completed'
+    case 'needs_confirmation':
+      return 'agent.permission_requested'
+    case 'degraded':
+      return 'agent.recovered'
+    case 'error':
+      return 'agent.turn_failed'
+    case 'exited':
+      return 'runtime.exited_clean'
+    case 'bootstrapping':
+      return 'runtime.created'
+    case 'starting':
+      return 'runtime.starting'
   }
 }
 

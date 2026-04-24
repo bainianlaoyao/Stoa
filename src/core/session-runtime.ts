@@ -4,9 +4,10 @@ import type { ProviderDefinition, ProviderRuntimeTarget } from '@extensions/prov
 import { wrapCommandForShell } from './shell-command'
 
 export interface SessionRuntimeManager {
-  markSessionStarting: (sessionId: string, summary: string, externalSessionId: string | null) => Promise<void>
-  markSessionRunning: (sessionId: string, externalSessionId: string | null) => Promise<void>
-  markSessionExited: (sessionId: string, summary: string) => Promise<void>
+  markRuntimeStarting: (sessionId: string, summary: string, externalSessionId: string | null) => Promise<void>
+  markRuntimeAlive: (sessionId: string, externalSessionId: string | null) => Promise<void>
+  markRuntimeExited: (sessionId: string, exitCode: number | null, summary: string) => Promise<void>
+  markRuntimeFailedToStart: (sessionId: string, summary: string) => Promise<void>
   appendTerminalData: (chunk: { sessionId: string; data: string }) => Promise<void>
 }
 
@@ -97,24 +98,30 @@ export async function startSessionRuntime(options: StartSessionRuntimeOptions): 
       : providerCommand
   const activeExternalSessionId = session.externalSessionId
 
-  console.log(`[session-runtime] markSessionStarting for ${session.id} (command: ${command.command} ${command.args.join(' ')})`)
-  await manager.markSessionStarting(session.id, `Starting ${session.type}`, activeExternalSessionId)
-  console.log(`[session-runtime] markSessionStarting done, spawning PTY for ${session.id}`)
+  console.log(`[session-runtime] markRuntimeStarting for ${session.id} (command: ${command.command} ${command.args.join(' ')})`)
+  await manager.markRuntimeStarting(session.id, `Starting ${session.type}`, activeExternalSessionId)
+  console.log(`[session-runtime] markRuntimeStarting done, spawning PTY for ${session.id}`)
 
-  const started = ptyHost.start(
-    session.id,
-    command,
-    (data) => {
-      void manager.appendTerminalData({ sessionId: session.id, data })
-    },
-    (exitCode) => {
-      console.log(`[session-runtime] Process exited for ${session.id} with code ${exitCode}`)
-      void manager.markSessionExited(session.id, `${session.type} exited (${exitCode})`)
-    }
-  )
+  let started: { runtimeId: string }
+  try {
+    started = ptyHost.start(
+      session.id,
+      command,
+      (data) => {
+        void manager.appendTerminalData({ sessionId: session.id, data })
+      },
+      (exitCode) => {
+        console.log(`[session-runtime] Process exited for ${session.id} with code ${exitCode}`)
+        void manager.markRuntimeExited(session.id, exitCode, `${session.type} exited (${exitCode})`)
+      }
+    )
+  } catch (error) {
+    await manager.markRuntimeFailedToStart(session.id, `${session.type} failed to start: ${error instanceof Error ? error.message : String(error)}`)
+    throw error
+  }
 
-  console.log(`[session-runtime] markSessionRunning for ${session.id} (runtimeId: ${started.runtimeId})`)
-  await manager.markSessionRunning(session.id, activeExternalSessionId ?? null)
+  console.log(`[session-runtime] markRuntimeAlive for ${session.id} (runtimeId: ${started.runtimeId})`)
+  await manager.markRuntimeAlive(session.id, activeExternalSessionId ?? null)
 
   if (!session.externalSessionId && provider.discoverExternalSessionIdAfterStart) {
     void provider.discoverExternalSessionIdAfterStart(target, context)
@@ -122,12 +129,12 @@ export async function startSessionRuntime(options: StartSessionRuntimeOptions): 
         if (!discoveredExternalSessionId) {
           return
         }
-        await manager.markSessionRunning(session.id, discoveredExternalSessionId)
+        await manager.markRuntimeAlive(session.id, discoveredExternalSessionId)
       })
       .catch((error) => {
         console.error(`[session-runtime] Failed external session discovery for ${session.id}:`, error)
       })
   }
 
-  console.log(`[session-runtime] markSessionRunning done for ${session.id}`)
+  console.log(`[session-runtime] markRuntimeAlive done for ${session.id}`)
 }
