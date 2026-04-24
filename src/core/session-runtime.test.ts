@@ -181,6 +181,45 @@ describe('session runtime', () => {
     expect(markRuntimeAlive).toHaveBeenCalledWith('session_op_1', 'ext-123')
   })
 
+  test('does not mark runtime alive after synchronous process exit during start', async () => {
+    const provider = createProvider()
+    const markRuntimeStarting = vi.fn(async () => {})
+    const markRuntimeAlive = vi.fn(async () => {})
+    const markRuntimeExited = vi.fn(async () => {})
+    const start = vi.fn((runtimeId, command, onData, onExit: (exitCode: number) => void) => {
+      onExit(0)
+      return { runtimeId }
+    })
+
+    await startSessionRuntime({
+      session: {
+        id: 'session_fast_exit',
+        projectId: 'project_alpha',
+        path: 'D:/demo',
+        title: 'Fast exit',
+        type: 'opencode',
+        status: 'running',
+        externalSessionId: null,
+        sessionSecret: 'secret-1',
+        providerPort: 43128
+      },
+      webhookPort: 43127,
+      provider,
+      ptyHost: { start } as never,
+      manager: {
+        markRuntimeStarting,
+        markRuntimeAlive,
+        markRuntimeExited,
+        markRuntimeFailedToStart: vi.fn(async () => {}),
+        appendTerminalData: vi.fn(async () => {})
+      } as never
+    })
+
+    expect(markRuntimeStarting).toHaveBeenCalledWith('session_fast_exit', 'Starting opencode', null)
+    expect(markRuntimeExited).toHaveBeenCalledWith('session_fast_exit', 0, 'opencode exited (0)')
+    expect(markRuntimeAlive).not.toHaveBeenCalled()
+  })
+
   test('falls back to provider start command and leaves externalSessionId null when no resumable external session is available', async () => {
     const buildStartCommand = vi.fn(async () => ({
       command: 'opencode',

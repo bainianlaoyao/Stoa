@@ -103,6 +103,7 @@ export async function startSessionRuntime(options: StartSessionRuntimeOptions): 
   console.log(`[session-runtime] markRuntimeStarting done, spawning PTY for ${session.id}`)
 
   let started: { runtimeId: string }
+  let exitObservedDuringStart = false
   try {
     started = ptyHost.start(
       session.id,
@@ -111,6 +112,7 @@ export async function startSessionRuntime(options: StartSessionRuntimeOptions): 
         void manager.appendTerminalData({ sessionId: session.id, data })
       },
       (exitCode) => {
+        exitObservedDuringStart = true
         console.log(`[session-runtime] Process exited for ${session.id} with code ${exitCode}`)
         void manager.markRuntimeExited(session.id, exitCode, `${session.type} exited (${exitCode})`)
       }
@@ -118,6 +120,11 @@ export async function startSessionRuntime(options: StartSessionRuntimeOptions): 
   } catch (error) {
     await manager.markRuntimeFailedToStart(session.id, `${session.type} failed to start: ${error instanceof Error ? error.message : String(error)}`)
     throw error
+  }
+
+  if (exitObservedDuringStart) {
+    console.log(`[session-runtime] skipped markRuntimeAlive for ${session.id}; process exited during start`)
+    return
   }
 
   console.log(`[session-runtime] markRuntimeAlive for ${session.id} (runtimeId: ${started.runtimeId})`)

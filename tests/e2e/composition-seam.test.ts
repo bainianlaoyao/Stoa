@@ -51,7 +51,17 @@ async function waitFor(check: () => boolean, timeoutMs = 10_000): Promise<void> 
 function getSessionEvents(sent: Array<{ channel: string; data: unknown }>): SessionSummaryEvent[] {
   return sent
     .filter(entry => entry.channel === IPC_CHANNELS.sessionEvent)
-    .map(entry => entry.data as SessionSummaryEvent)
+    .map(entry => {
+      expect(entry.data).toEqual({
+        session: expect.objectContaining({
+          id: expect.any(String)
+        })
+      })
+      expect(entry.data).not.toHaveProperty('sessionId')
+      expect(entry.data).not.toHaveProperty('status')
+
+      return entry.data as SessionSummaryEvent
+    })
 }
 
 function getTerminalChunks(sent: Array<{ channel: string; data: unknown }>): TerminalDataChunk[] {
@@ -192,6 +202,14 @@ describe('E2E: Composition seam', () => {
       if (channel !== IPC_CHANNELS.sessionEvent) {
         return
       }
+
+      expect(data).toEqual({
+        session: expect.objectContaining({
+          id: expect.any(String)
+        })
+      })
+      expect(data).not.toHaveProperty('sessionId')
+      expect(data).not.toHaveProperty('status')
 
       const event = data as SessionSummaryEvent
       persistedStatesAtPush.push(

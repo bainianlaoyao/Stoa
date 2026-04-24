@@ -103,7 +103,6 @@ onMounted(async () => {
     settingsStore.loadSettings(),
     updateStore.refresh()
   ])
-  await updateStore.refresh()
 
   unsubscribeSessionEvent = window.stoa?.onSessionEvent?.((event: SessionSummaryEvent) => {
     workspaceStore.updateSession(event.session.id, event.session)

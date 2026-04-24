@@ -121,7 +121,17 @@ async function waitFor(check: () => boolean | Promise<boolean>, timeoutMs = 10_0
 function getSessionEvents(sent: Array<{ channel: string; data: unknown }>): SessionSummaryEvent[] {
   return sent
     .filter(entry => entry.channel === IPC_CHANNELS.sessionEvent)
-    .map(entry => entry.data as SessionSummaryEvent)
+    .map(entry => {
+      expect(entry.data).toEqual({
+        session: expect.objectContaining({
+          id: expect.any(String)
+        })
+      })
+      expect(entry.data).not.toHaveProperty('sessionId')
+      expect(entry.data).not.toHaveProperty('status')
+
+      return entry.data as SessionSummaryEvent
+    })
 }
 
 function getLatestSessionEvent(sent: Array<{ channel: string; data: unknown }>): SessionSummaryEvent | undefined {
