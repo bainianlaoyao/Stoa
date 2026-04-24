@@ -17,6 +17,7 @@ import { DEFAULT_SETTINGS } from '@shared/project-session'
 import { getProviderDescriptorBySessionType } from '@shared/provider-descriptors'
 import {
   DEFAULT_GLOBAL_STATE,
+  StateReadError,
   readGlobalState,
   readAllProjectSessions,
   readProjectSessions,
@@ -127,11 +128,14 @@ export class ProjectSessionManager {
   private readonly globalStatePath?: string
   private settings: AppSettings
   private readonly persistDisabled: boolean
+  private persistChain: Promise<void> = Promise.resolve()
+  private hasPersistedProjects = false
 
   private constructor(initialState: BootstrapState, globalStatePath?: string, persistedSettings?: AppSettings, persistDisabled = false) {
     this.state = structuredCloneState(initialState)
     this.globalStatePath = globalStatePath
     this.persistDisabled = persistDisabled
+    this.hasPersistedProjects = initialState.projects.length > 0
     this.settings = persistedSettings
       ? {
           ...DEFAULT_SETTINGS,
@@ -145,7 +149,7 @@ export class ProjectSessionManager {
   }
 
   static async create(options: ProjectSessionManagerOptions): Promise<ProjectSessionManager> {
-    const persistedGlobal = await readGlobalState(options.globalStatePath)
+    const persistedGlobal = await ProjectSessionManager.readGlobalStateWithRetry(options.globalStatePath)
     const projects = persistedGlobal.projects.map(toProjectSummary)
     const allSessions = await readAllProjectSessions(persistedGlobal.projects)
     const sessions = allSessions.map(toSessionSummary)
@@ -160,6 +164,19 @@ export class ProjectSessionManager {
 
     const manager = new ProjectSessionManager(initialState, options.globalStatePath, persistedGlobal.settings)
     return manager
+  }
+
+  private static async readGlobalStateWithRetry(globalStatePath?: string): Promise<PersistedGlobalStateV3> {
+    try {
+      return await readGlobalState(globalStatePath)
+    } catch (error) {
+      if (error instanceof StateReadError && error.isTransient) {
+        await new Promise(resolve => setTimeout(resolve, 50))
+        return await readGlobalState(globalStatePath)
+      }
+
+      throw error
+    }
   }
 
   static createForTest(): ProjectSessionManager {
@@ -227,7 +244,6 @@ export class ProjectSessionManager {
 
   async setTerminalWebhookPort(port: number | null): Promise<void> {
     this.state.terminalWebhookPort = port
-    await this.persist()
   }
 
   async applySessionEvent(
@@ -364,6 +380,26 @@ export class ProjectSessionManager {
   private async persist(): Promise<void> {
     if (this.persistDisabled) return
 
+    const runPersist = async () => {
+      try {
+        await this.doPersist()
+      } catch (error) {
+        console.error('[state-persist] Failed to write state to disk', error)
+        throw error
+      }
+    }
+
+    const next = this.persistChain.then(runPersist, runPersist)
+    this.persistChain = next.catch(() => undefined)
+    await next
+  }
+
+  private async doPersist(): Promise<void> {
+    if (this.hasPersistedProjects && this.state.projects.length === 0) {
+      console.error('[state-persist] Refusing to overwrite persisted projects with an empty list')
+      return
+    }
+
     const globalState: PersistedGlobalStateV3 =
       this.state.projects.length === 0
         ? { ...structuredClone(DEFAULT_GLOBAL_STATE), settings: this.settings }
@@ -393,6 +429,10 @@ export class ProjectSessionManager {
         sessions: projectSessions
       }
       await writeProjectSessions(project.path, data)
+    }
+
+    if (this.state.projects.length > 0) {
+      this.hasPersistedProjects = true
     }
   }
 }

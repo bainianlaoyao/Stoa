@@ -77,9 +77,9 @@ function closeRadialMenu() {
   radialMenuVisible.value = false
 }
 
-function openDetail(event: MouseEvent, kind: 'project', project: ProjectHierarchyNode): void
-function openDetail(event: MouseEvent, kind: 'session', session: { title: string; type: string; status: SessionStatus }): void
-function openDetail(event: MouseEvent, kind: 'project' | 'session', data: ProjectHierarchyNode | { title: string; type: string; status: SessionStatus }): void {
+function openDetail(event: MouseEvent | KeyboardEvent, kind: 'project', project: ProjectHierarchyNode): void
+function openDetail(event: MouseEvent | KeyboardEvent, kind: 'session', session: { title: string; type: string; status: SessionStatus }): void
+function openDetail(event: MouseEvent | KeyboardEvent, kind: 'project' | 'session', data: ProjectHierarchyNode | { title: string; type: string; status: SessionStatus }): void {
   event.stopPropagation()
   const el = event.currentTarget as HTMLElement
   const rect = el.getBoundingClientRect()

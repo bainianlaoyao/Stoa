@@ -115,51 +115,30 @@ describe('E2E: Error and Edge Cases', () => {
     })
   })
 
-  describe('State file corruption recovery', () => {
-    test('recovers from corrupted JSON', async () => {
+  describe('State file corruption handling', () => {
+    test('fails startup on corrupted JSON instead of silently resetting state', async () => {
       const globalStatePath = await createGlobalStatePath()
       await writeRawStateFile(globalStatePath, '{not valid json!!!')
 
-      const manager = await ProjectSessionManager.create({
+      await expect(ProjectSessionManager.create({
         webhookPort: null,
         globalStatePath
-      })
-
-      const snapshot = manager.snapshot()
-      expect(snapshot.projects).toHaveLength(0)
-      expect(snapshot.sessions).toHaveLength(0)
-      expect(snapshot.activeProjectId).toBeNull()
-      expect(snapshot.activeSessionId).toBeNull()
+      })).rejects.toThrow('Unable to read global state')
     })
 
-    test('can create projects and sessions normally after corruption recovery', async () => {
-      const workspaceDir = await createTempDir('stoa-e2e-corrupt-')
+    test('leaves corrupted state file untouched when startup fails', async () => {
       const globalStatePath = await createGlobalStatePath()
       await writeRawStateFile(globalStatePath, 'corrupt!!!')
 
-      const manager = await ProjectSessionManager.create({
+      await expect(ProjectSessionManager.create({
         webhookPort: null,
         globalStatePath
-      })
+      })).rejects.toThrow('Unable to read global state')
 
-      const project = await manager.createProject({
-        path: workspaceDir,
-        name: 'Recovered'
-      })
-      const session = await manager.createSession({
-        projectId: project.id,
-        type: 'shell',
-        title: 'Post-Recovery'
-      })
-
-      const snapshot = manager.snapshot()
-      expect(snapshot.projects).toHaveLength(1)
-      expect(snapshot.sessions).toHaveLength(1)
-      expect(snapshot.projects[0]!.name).toBe('Recovered')
-      expect(snapshot.sessions[0]!.id).toBe(session.id)
+      await expect(readGlobalFile(globalStatePath)).rejects.toThrow('Unable to read global state')
     })
 
-    test('falls back to default for wrong version number', async () => {
+    test('fails startup for wrong version number', async () => {
       const globalStatePath = await createGlobalStatePath()
       await writeRawStateFile(globalStatePath, JSON.stringify({
         version: 99,
@@ -168,17 +147,13 @@ describe('E2E: Error and Edge Cases', () => {
         projects: [{ project_id: 'p1', name: 'X', path: 'D:/x', created_at: '', updated_at: '' }]
       }))
 
-      const manager = await ProjectSessionManager.create({
+      await expect(ProjectSessionManager.create({
         webhookPort: null,
         globalStatePath
-      })
-
-      const snapshot = manager.snapshot()
-      expect(snapshot.projects).toHaveLength(0)
-      expect(snapshot.activeProjectId).toBeNull()
+      })).rejects.toThrow('Invalid global state')
     })
 
-    test('falls back to default when version=2 but missing projects key', async () => {
+    test('fails startup when projects key is missing from global state', async () => {
       const globalStatePath = await createGlobalStatePath()
       await writeRawStateFile(globalStatePath, JSON.stringify({
         version: 3,
@@ -186,16 +161,13 @@ describe('E2E: Error and Edge Cases', () => {
         active_session_id: null
       }))
 
-      const manager = await ProjectSessionManager.create({
+      await expect(ProjectSessionManager.create({
         webhookPort: null,
         globalStatePath
-      })
-
-      const snapshot = manager.snapshot()
-      expect(snapshot.projects).toHaveLength(0)
+      })).rejects.toThrow('Invalid global state')
     })
 
-    test('falls back to default when version=2 but missing sessions key', async () => {
+    test('accepts valid v3 global state without legacy sessions key', async () => {
       const globalStatePath = await createGlobalStatePath()
       await writeRawStateFile(globalStatePath, JSON.stringify({
         version: 3,
@@ -260,7 +232,7 @@ describe('E2E: Error and Edge Cases', () => {
       expect(snapshot.activeSessionId).toBeNull()
     })
 
-    test('state.json on disk matches DEFAULT_STATE for empty manager', async () => {
+    test('global.json on disk matches the empty persisted manager state', async () => {
       const globalStatePath = await createGlobalStatePath()
 
       await ProjectSessionManager.create({

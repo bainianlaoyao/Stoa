@@ -1,14 +1,16 @@
-import { readFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterEach, describe, expect, test } from 'vitest'
 import {
   DEFAULT_GLOBAL_STATE,
+  getProjectSessionsFilePath,
+  readAllProjectSessions,
   readGlobalState,
-  writeGlobalState,
   readProjectSessions,
+  writeGlobalState,
   writeProjectSessions
 } from './state-store'
-import type { PersistedGlobalStateV3, PersistedProjectSessions } from '@shared/project-session'
+import type { PersistedGlobalStateV3, PersistedProject, PersistedProjectSessions } from '@shared/project-session'
 import { createTestTempDir } from '../../testing/test-temp'
 
 const tempDirs: string[] = []
@@ -99,5 +101,52 @@ describe('state-store', () => {
 
     const read = await readProjectSessions(projectDir)
     expect(read.sessions).toEqual([])
+  })
+
+  test('throws when global state file contains corrupted JSON', async () => {
+    const globalStatePath = await createTempGlobalStatePath()
+    await writeFile(globalStatePath, '{not valid json', 'utf-8')
+
+    await expect(readGlobalState(globalStatePath)).rejects.toThrow()
+  })
+
+  test('throws when global state file uses an unsupported version', async () => {
+    const globalStatePath = await createTempGlobalStatePath()
+    await writeFile(globalStatePath, JSON.stringify({
+      version: 99,
+      active_project_id: null,
+      active_session_id: null,
+      projects: []
+    }), 'utf-8')
+
+    await expect(readGlobalState(globalStatePath)).rejects.toThrow()
+  })
+
+  test('throws when project sessions file contains corrupted JSON', async () => {
+    const projectDir = await createTempProjectDir()
+    const sessionsFilePath = getProjectSessionsFilePath(projectDir)
+    await mkdir(join(projectDir, '.stoa'), { recursive: true })
+    await writeFile(sessionsFilePath, '{broken sessions', 'utf-8')
+
+    await expect(readProjectSessions(projectDir)).rejects.toThrow()
+  })
+
+  test('throws when one project sessions file is unreadable instead of silently dropping it', async () => {
+    const projectDir = await createTempProjectDir()
+    const sessionsFilePath = getProjectSessionsFilePath(projectDir)
+    await mkdir(sessionsFilePath, { recursive: true })
+
+    const projects: PersistedProject[] = [
+      {
+        project_id: 'project_alpha',
+        name: 'alpha',
+        path: projectDir,
+        default_session_type: 'shell',
+        created_at: '2026-04-19T00:00:00.000Z',
+        updated_at: '2026-04-19T00:00:00.000Z'
+      }
+    ]
+
+    await expect(readAllProjectSessions(projects)).rejects.toThrow()
   })
 })

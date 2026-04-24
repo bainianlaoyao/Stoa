@@ -1,7 +1,9 @@
+import { readFile, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { afterEach, describe, expect, test } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 import { readProjectSessions } from './state-store'
 import { ProjectSessionManager } from './project-session-manager'
+import { DEFAULT_SETTINGS } from '@shared/project-session'
 import { createTestTempDir } from '../../testing/test-temp'
 
 const tempDirs: string[] = []
@@ -70,6 +72,147 @@ describe('ProjectSessionManager', () => {
     })
 
     expect(reloaded.getSettings().claudeDangerouslySkipPermissions).toBe(true)
+  })
+
+  test('rejects startup when persisted global state is corrupted', async () => {
+    const globalStatePath = await createTempGlobalStatePath()
+    await writeFile(globalStatePath, '{broken json', 'utf-8')
+
+    await expect(ProjectSessionManager.create({
+      webhookPort: null,
+      globalStatePath
+    })).rejects.toThrow()
+  })
+
+  test('retries a transient global state read once before bootstrapping', async () => {
+    vi.resetModules()
+
+    class MockStateReadError extends Error {
+      readonly filePath: string
+      readonly isTransient: boolean
+
+      constructor(message: string, filePath: string, isTransient: boolean) {
+        super(message)
+        this.name = 'StateReadError'
+        this.filePath = filePath
+        this.isTransient = isTransient
+      }
+    }
+
+    const readGlobalState = vi.fn()
+      .mockRejectedValueOnce(new MockStateReadError('temporarily locked', 'D:/transient/global.json', true))
+      .mockResolvedValueOnce({
+        version: 3,
+        active_project_id: null,
+        active_session_id: null,
+        projects: [],
+        settings: { ...DEFAULT_SETTINGS }
+      })
+
+    const readAllProjectSessions = vi.fn().mockResolvedValue([])
+
+    vi.doMock('@core/state-store', () => ({
+      DEFAULT_GLOBAL_STATE: {
+        version: 3,
+        active_project_id: null,
+        active_session_id: null,
+        projects: [],
+        settings: { ...DEFAULT_SETTINGS }
+      },
+      StateReadError: MockStateReadError,
+      readGlobalState,
+      readAllProjectSessions,
+      readProjectSessions: vi.fn(),
+      writeGlobalState: vi.fn(),
+      writeProjectSessions: vi.fn()
+    }))
+
+    const { ProjectSessionManager: MockedManager } = await import('./project-session-manager')
+
+    const manager = await MockedManager.create({
+      webhookPort: null,
+      globalStatePath: 'D:/transient/global.json'
+    })
+
+    expect(manager.snapshot().projects).toEqual([])
+    expect(readGlobalState).toHaveBeenCalledTimes(2)
+
+    vi.doUnmock('@core/state-store')
+    vi.resetModules()
+  })
+
+  test('serializes concurrent persist calls so disk writes never overlap', async () => {
+    vi.resetModules()
+
+    let activeGlobalWrites = 0
+    let maxConcurrentGlobalWrites = 0
+    let allowFirstWriteToFinish: (() => void) | undefined
+    let signalFirstWriteStarted: (() => void) | undefined
+    let pauseWrites = false
+    const firstWriteStarted = new Promise<void>((resolve) => {
+      signalFirstWriteStarted = resolve
+    })
+
+    const writeGlobalState = vi.fn(async (state: unknown) => {
+      activeGlobalWrites += 1
+      maxConcurrentGlobalWrites = Math.max(maxConcurrentGlobalWrites, activeGlobalWrites)
+
+      if (pauseWrites && writeGlobalState.mock.calls.length === 1) {
+        signalFirstWriteStarted?.()
+        await new Promise<void>((resolve) => {
+          allowFirstWriteToFinish = resolve
+        })
+      }
+
+      activeGlobalWrites -= 1
+      return state
+    })
+
+    const writeProjectSessions = vi.fn(async () => undefined)
+
+    vi.doMock('@core/state-store', async () => {
+      const actual = await vi.importActual<typeof import('@core/state-store')>('@core/state-store')
+      return {
+        ...actual,
+        writeGlobalState,
+        writeProjectSessions
+      }
+    })
+
+    const { ProjectSessionManager: MockedManager } = await import('./project-session-manager')
+    const manager = await MockedManager.create({
+      webhookPort: null,
+      globalStatePath: 'D:/persist/global.json'
+    })
+
+    const project1 = await manager.createProject({ name: 'alpha', path: 'D:/alpha' })
+    const project2 = await manager.createProject({ name: 'beta', path: 'D:/beta' })
+
+    writeGlobalState.mockClear()
+    writeProjectSessions.mockClear()
+    activeGlobalWrites = 0
+    maxConcurrentGlobalWrites = 0
+    pauseWrites = true
+
+    const firstPersist = manager.setActiveProject(project2.id)
+    await firstWriteStarted
+    const secondPersist = manager.setSetting('terminalFontSize', 16)
+    allowFirstWriteToFinish?.()
+    await Promise.all([firstPersist, secondPersist])
+
+    expect(maxConcurrentGlobalWrites).toBe(1)
+    expect(project1.id).not.toBe(project2.id)
+    expect(writeGlobalState).toHaveBeenCalledTimes(2)
+
+    const lastGlobalState = writeGlobalState.mock.calls.at(-1)?.[0] as {
+      active_project_id: string | null
+      settings?: { terminalFontSize?: number }
+    }
+    expect(lastGlobalState.active_project_id).toBe(project2.id)
+    expect(lastGlobalState.settings?.terminalFontSize).toBe(16)
+
+    vi.doUnmock('@core/state-store')
+    vi.resetModules()
   })
 
   test('rejects orphan sessions and enforces unique project paths', async () => {
@@ -162,6 +305,58 @@ describe('ProjectSessionManager', () => {
     expect(snapshot.activeProjectId).toBe(project.id)
     expect(snapshot.activeSessionId).toBe(session.id)
     expect(snapshot.sessions[0]?.title).toBe('Alpha opencode')
+  })
+
+  test('setTerminalWebhookPort updates runtime state without rewriting global.json', async () => {
+    const globalStatePath = await createTempGlobalStatePath()
+    const projectDir = await createTempProjectDir()
+    const manager = await ProjectSessionManager.create({
+      webhookPort: null,
+      globalStatePath
+    })
+
+    await manager.createProject({
+      path: projectDir,
+      name: 'alpha',
+      defaultSessionType: 'shell'
+    })
+
+    const before = await stat(globalStatePath)
+    const beforeContent = await readFile(globalStatePath, 'utf-8')
+    await new Promise(resolve => setTimeout(resolve, 25))
+
+    await manager.setTerminalWebhookPort(43127)
+
+    const after = await stat(globalStatePath)
+    const afterContent = await readFile(globalStatePath, 'utf-8')
+    expect(manager.snapshot().terminalWebhookPort).toBe(43127)
+    expect(after.mtimeMs).toBe(before.mtimeMs)
+    expect(afterContent).toBe(beforeContent)
+  })
+
+  test('refuses to overwrite persisted projects with an unexpected empty list', async () => {
+    const globalStatePath = await createTempGlobalStatePath()
+    const projectDir = await createTempProjectDir()
+    const manager = await ProjectSessionManager.create({
+      webhookPort: null,
+      globalStatePath
+    })
+
+    await manager.createProject({
+      path: projectDir,
+      name: 'alpha',
+      defaultSessionType: 'shell'
+    })
+
+    const before = await readFile(globalStatePath, 'utf-8')
+    ;(manager as never as { state: { projects: []; activeProjectId: null } }).state.projects = []
+    ;(manager as never as { state: { projects: []; activeProjectId: null } }).state.activeProjectId = null
+
+    await manager.setSetting('terminalFontSize', 16)
+
+    const after = await readFile(globalStatePath, 'utf-8')
+    expect(JSON.parse(after).projects).toHaveLength(1)
+    expect(after).toBe(before)
   })
 
   test('seeds external session ids for claude-code sessions at creation time', async () => {
