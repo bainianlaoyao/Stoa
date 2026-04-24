@@ -1,7 +1,12 @@
+import { readFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
 import TerminalMetaBar from './TerminalMetaBar.vue'
 import type { ProjectSummary, SessionSummary } from '@shared/project-session'
+
+const terminalMetaBarPath = resolve(dirname(fileURLToPath(import.meta.url)), 'TerminalMetaBar.vue')
 
 const mockProject: ProjectSummary = {
   id: 'project_1', name: 'test-project', path: '/tmp/test', createdAt: 'a', updatedAt: 'a'
@@ -49,5 +54,11 @@ describe('TerminalMetaBar', () => {
     const wrapper = mount(TerminalMetaBar, { props: { project: null, session: null } })
     expect(wrapper.find('.terminal-meta').exists()).toBe(false)
     expect(wrapper.text()).toBe('')
+  })
+
+  it('uses token-based metadata color instead of hardcoded text literal', () => {
+    const source = readFileSync(terminalMetaBarPath, 'utf8')
+
+    expect(source).not.toContain('text-[#64748b]')
   })
 })

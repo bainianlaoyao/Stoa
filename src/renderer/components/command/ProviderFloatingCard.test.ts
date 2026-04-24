@@ -1,8 +1,13 @@
 // @vitest-environment happy-dom
+import { readFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import ProviderFloatingCard from './ProviderFloatingCard.vue'
+
+const providerFloatingCardPath = resolve(dirname(fileURLToPath(import.meta.url)), 'ProviderFloatingCard.vue')
 
 function mountCard(visible = true) {
   return mount(ProviderFloatingCard, {
@@ -107,5 +112,13 @@ describe('ProviderFloatingCard', () => {
 
     const closeButton = document.body.querySelector('button[aria-label*="close" i], button[title*="close" i]')
     expect(closeButton).toBeFalsy()
+  })
+
+  it('does not define bespoke gradient glass recipes in local styles', () => {
+    const source = readFileSync(providerFloatingCardPath, 'utf8')
+
+    expect(source).not.toContain('linear-gradient(')
+    expect(source).not.toContain('rgba(255,255,255,0.85)')
+    expect(source).not.toContain('rgba(0, 0, 0, 0.06)')
   })
 })

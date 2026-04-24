@@ -42,7 +42,7 @@ onBeforeUnmount(() => {
     <!-- Window controls -->
     <div class="ml-auto flex h-full" style="-webkit-app-region: no-drag;">
       <button
-        class="inline-flex items-center justify-center w-[46px] h-full text-subtle hover:text-text hover:bg-black-soft transition-colors duration-150"
+        class="inline-flex items-center justify-center w-[46px] h-full text-subtle hover:text-text hover:bg-black-soft transition-all duration-200"
         aria-label="Minimize"
         type="button"
         @click="minimize"
@@ -50,7 +50,7 @@ onBeforeUnmount(() => {
         <svg width="10" height="1" viewBox="0 0 10 1" fill="none"><rect width="10" height="1" fill="currentColor" /></svg>
       </button>
       <button
-        class="inline-flex items-center justify-center w-[46px] h-full text-subtle hover:text-text hover:bg-black-soft transition-colors duration-150"
+        class="inline-flex items-center justify-center w-[46px] h-full text-subtle hover:text-text hover:bg-black-soft transition-all duration-200"
         :aria-label="isMaximized ? 'Restore' : 'Maximize'"
         type="button"
         @click="toggleMaximize"
@@ -64,7 +64,7 @@ onBeforeUnmount(() => {
         </svg>
       </button>
       <button
-        class="inline-flex items-center justify-center w-[46px] h-full text-subtle hover:bg-[#e81123] hover:text-surface-solid transition-colors duration-150"
+        class="inline-flex items-center justify-center w-[46px] h-full text-subtle hover:text-text hover:bg-black-soft transition-all duration-200"
         aria-label="Close"
         type="button"
         @click="close"

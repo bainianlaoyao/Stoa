@@ -1,8 +1,13 @@
 // @vitest-environment happy-dom
+import { readFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import ProviderRadialMenu from './ProviderRadialMenu.vue'
+
+const providerRadialMenuPath = resolve(dirname(fileURLToPath(import.meta.url)), 'ProviderRadialMenu.vue')
 
 describe('ProviderRadialMenu', () => {
   beforeEach(() => {
@@ -181,5 +186,13 @@ describe('ProviderRadialMenu', () => {
     expect(claudeButton?.style.top).toBe('52px')
     expect(shellButton?.style.left).toBe('-52px')
     expect(shellButton?.style.top).toBe('0px')
+  })
+
+  it('avoids decorative glass gradients and one-off rgba borders in local styles', () => {
+    const source = readFileSync(providerRadialMenuPath, 'utf8')
+
+    expect(source).not.toContain('linear-gradient(')
+    expect(source).not.toContain('rgba(255, 255, 255, 0.30)')
+    expect(source).not.toContain('rgba(0, 0, 0, 0.05)')
   })
 })

@@ -29,11 +29,11 @@ function onClose() {
         enter="transition-opacity duration-200 ease-out"
         enter-from="opacity-0"
         enter-to="opacity-100"
-        leave="transition-opacity duration-150 ease-in"
+        leave="transition-opacity duration-200 ease-in"
         leave-from="opacity-100"
         leave-to="opacity-0"
       >
-        <div class="fixed inset-0 bg-black/45" data-testid="modal-overlay" aria-hidden="true" @click="onClose" />
+        <div class="fixed inset-0 bg-overlay-scrim" data-testid="modal-overlay" aria-hidden="true" @click="onClose" />
       </TransitionChild>
 
       <div class="fixed inset-0 overflow-y-auto">
@@ -43,12 +43,12 @@ function onClose() {
             enter="transition duration-200 ease-out"
             enter-from="opacity-0 scale-95"
             enter-to="opacity-100 scale-100"
-            leave="transition duration-150 ease-in"
+            leave="transition duration-200 ease-in"
             leave-from="opacity-100 scale-100"
             leave-to="opacity-0 scale-95"
           >
             <DialogPanel
-              class="w-full max-w-[360px] rounded-[18px] border border-black/6 bg-surface-solid p-5 shadow-premium"
+              class="w-full max-w-[360px] rounded-[18px] border border-line bg-surface-solid p-5 shadow-premium"
               data-testid="modal-panel"
             >
               <div class="flex items-center justify-between mb-4">

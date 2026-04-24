@@ -283,10 +283,10 @@ onBeforeUnmount(disposeTerminal)
 <style scoped>
 .terminal-empty-state {
   min-height: 100%;
-  border: 1px solid rgba(0, 0, 0, 0.1);
+  border: 1px solid var(--color-line-strong);
   border-radius: 10px;
   background: var(--color-terminal-bg);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 1px 0 var(--color-terminal-shell-highlight);
 }
 
 .terminal-viewport {
@@ -308,10 +308,10 @@ onBeforeUnmount(disposeTerminal)
   padding: var(--terminal-shell-gap);
   border-radius: var(--radius-md);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.01)),
+    linear-gradient(180deg, var(--color-terminal-shell-sheen-strong), var(--color-terminal-shell-sheen-soft)),
     var(--color-terminal-bg);
   border: 1px solid var(--color-terminal-border);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 1px 0 var(--color-terminal-shell-highlight);
   overflow: hidden;
 }
 
@@ -369,7 +369,7 @@ onBeforeUnmount(disposeTerminal)
 
 .terminal-viewport__eyebrow {
   margin: 0 0 6px;
-  color: rgba(226, 232, 240, 0.45);
+  color: var(--color-terminal-subtle);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   font-size: 11px;
@@ -381,18 +381,18 @@ onBeforeUnmount(disposeTerminal)
   gap: 8px;
   font-family: var(--font-mono);
   font-size: 11px;
-  color: rgba(226, 232, 240, 0.5);
+  color: var(--color-terminal-muted);
 }
 
 .terminal-viewport__status {
   padding: 2px 6px;
   border-radius: 4px;
-  background: rgba(226, 232, 240, 0.08);
+  background: var(--color-terminal-chip);
 }
 
 .terminal-viewport__details p {
   margin: 0 0 12px;
-  color: rgba(226, 232, 240, 0.6);
+  color: var(--color-terminal-soft);
   font-size: 13px;
 }
 
@@ -410,7 +410,7 @@ onBeforeUnmount(disposeTerminal)
 
 .terminal-viewport__field-list dt {
   font-size: 11px;
-  color: rgba(226, 232, 240, 0.35);
+  color: var(--color-terminal-faint);
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
@@ -425,7 +425,7 @@ onBeforeUnmount(disposeTerminal)
 .terminal-viewport__field-list code {
   font-family: var(--font-mono);
   font-size: 12px;
-  background: rgba(226, 232, 240, 0.06);
+  background: var(--color-terminal-code);
   padding: 1px 4px;
   border-radius: 3px;
 }

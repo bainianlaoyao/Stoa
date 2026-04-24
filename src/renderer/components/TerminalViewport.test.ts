@@ -1,9 +1,14 @@
+import { readFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { mount } from '@vue/test-utils'
 import { describe, expect, test, vi, beforeEach, afterEach } from 'vitest'
 import { nextTick } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import type { ProjectSummary, SessionSummary } from '@shared/project-session'
 import { useSettingsStore } from '@renderer/stores/settings'
+
+const terminalViewportPath = resolve(dirname(fileURLToPath(import.meta.url)), 'TerminalViewport.vue')
 
 vi.mock('@xterm/xterm', () => {
   class Terminal {
@@ -540,5 +545,16 @@ describe('TerminalViewport', () => {
     const { Terminal } = await import('@xterm/xterm')
     const instance = (Terminal as unknown as { instances: Array<{ options: Record<string, unknown> }> }).instances.at(-1)
     expect(instance?.options.fontSize).toBe(18)
+  })
+
+  test('uses terminal subtheme tokens instead of repeated rgba literals in component styles', () => {
+    const source = readFileSync(terminalViewportPath, 'utf8')
+
+    expect(source).not.toContain('rgba(226, 232, 240, 0.45)')
+    expect(source).not.toContain('rgba(226, 232, 240, 0.5)')
+    expect(source).not.toContain('rgba(226, 232, 240, 0.08)')
+    expect(source).not.toContain('rgba(226, 232, 240, 0.6)')
+    expect(source).not.toContain('rgba(226, 232, 240, 0.35)')
+    expect(source).not.toContain('rgba(226, 232, 240, 0.06)')
   })
 })

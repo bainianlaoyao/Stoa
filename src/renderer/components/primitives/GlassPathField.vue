@@ -55,7 +55,7 @@ const emit = defineEmits<{
   color: var(--color-text-strong);
   outline: none;
   width: 100%;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition: all 0.2s ease;
 }
 
 .glass-path-field__input:focus {

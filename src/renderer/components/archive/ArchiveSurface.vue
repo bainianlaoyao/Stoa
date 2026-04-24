@@ -89,7 +89,7 @@ const emit = defineEmits<{
 
 .archive-eyebrow {
   margin: 0;
-  color: var(--muted);
+  color: var(--color-muted);
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.08em;
@@ -98,7 +98,7 @@ const emit = defineEmits<{
 
 .archive-title {
   margin: 0;
-  color: var(--text-strong);
+  color: var(--color-text-strong);
   font-size: 18px;
   font-weight: 600;
 }
@@ -107,7 +107,7 @@ const emit = defineEmits<{
 .archive-empty,
 .archive-card__summary {
   margin: 0;
-  color: var(--muted);
+  color: var(--color-muted);
 }
 
 .archive-list {
@@ -121,9 +121,9 @@ const emit = defineEmits<{
   gap: 16px;
   align-items: center;
   padding: 16px 18px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--color-line);
   border-radius: var(--radius-md);
-  background: var(--surface);
+  background: var(--color-surface);
   backdrop-filter: blur(40px);
   -webkit-backdrop-filter: blur(40px);
   box-shadow: var(--shadow-card);
@@ -131,8 +131,8 @@ const emit = defineEmits<{
 }
 
 .archive-card:hover {
-  border-color: var(--line-strong);
-  background: var(--surface-solid);
+  border-color: var(--color-line-strong);
+  background: var(--color-surface-solid);
 }
 
 .archive-card__content,
@@ -144,39 +144,39 @@ const emit = defineEmits<{
 }
 
 .archive-card__title {
-  color: var(--text-strong);
+  color: var(--color-text-strong);
   font-weight: 600;
 }
 
 .archive-card__badge {
   justify-self: start;
   padding: 2px 8px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--color-line);
   border-radius: 999px;
-  background: var(--surface-solid);
-  color: var(--muted);
+  background: var(--color-surface-solid);
+  color: var(--color-muted);
   font-size: 11px;
   line-height: 1.4;
   text-transform: uppercase;
 }
 
 .archive-card__project {
-  color: var(--text);
+  color: var(--color-text);
   font-size: 13px;
   font-weight: 500;
 }
 
 .archive-card__path {
-  color: var(--subtle);
+  color: var(--color-subtle);
   font: 11px var(--font-mono);
 }
 
 .archive-card__restore {
   align-self: center;
-  border: 1px solid var(--line);
+  border: 1px solid var(--color-line);
   border-radius: var(--radius-sm);
-  background: var(--surface-solid);
-  color: var(--text-strong);
+  background: var(--color-surface-solid);
+  color: var(--color-text-strong);
   padding: 8px 12px;
   font: inherit;
   cursor: pointer;
@@ -185,9 +185,9 @@ const emit = defineEmits<{
 
 .archive-card__restore:hover,
 .archive-card__restore:focus-visible {
-  background: var(--surface);
-  border-color: var(--accent);
-  color: var(--accent);
+  background: var(--color-surface);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
   outline: none;
 }
 </style>

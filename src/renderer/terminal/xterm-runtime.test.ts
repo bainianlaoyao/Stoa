@@ -166,6 +166,38 @@ describe('createTerminalRuntime', () => {
     }
   })
 
+  test('resolves the terminal selection token before passing theme colors into xterm', async () => {
+    const getComputedStyleMock = vi
+      .spyOn(window, 'getComputedStyle')
+      .mockReturnValue({
+        getPropertyValue: (property: string) => {
+          if (property === '--color-terminal-selection') {
+            return 'rgba(226, 232, 240, 0.16)'
+          }
+
+          if (property === '--color-terminal-ansi-red') {
+            return '#ff5a5f'
+          }
+
+          return ''
+        },
+      } as CSSStyleDeclaration)
+
+    try {
+      const { createTerminalRuntime } = await import('./xterm-runtime')
+
+      const runtime = createTerminalRuntime('linux', vi.fn(), true)
+      const terminal = runtime.terminal as unknown as {
+        options: { theme: Record<string, unknown> }
+      }
+
+      expect(terminal.options.theme.selectionBackground).toBe('rgba(226, 232, 240, 0.16)')
+      expect(terminal.options.theme.red).toBe('#ff5a5f')
+    } finally {
+      getComputedStyleMock.mockRestore()
+    }
+  })
+
   test('uses the explicit fontFamily parameter when provided', async () => {
     const { createTerminalRuntime } = await import('./xterm-runtime')
 

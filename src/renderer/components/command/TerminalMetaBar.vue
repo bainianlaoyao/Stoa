@@ -8,7 +8,7 @@ defineProps<{
 </script>
 
 <template>
-  <div v-if="project && session" class="terminal-meta flex justify-between gap-2 text-[#64748b] font-mono text-[11px]">
+  <div v-if="project && session" class="terminal-meta flex justify-between gap-2 text-muted font-mono text-[11px]">
     <div class="terminal-meta__group terminal-meta__group--primary inline-flex gap-2 items-center min-w-0">
       <span>{{ project.id }}</span>
       <span>{{ session.id }}</span>
