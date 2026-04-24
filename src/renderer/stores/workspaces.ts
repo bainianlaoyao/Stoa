@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import type { BootstrapState, ProjectSummary, SessionStatus, SessionSummary } from '@shared/project-session'
+import { buildSessionPresenceSnapshot } from '@shared/observability-projection'
 import type {
   AppObservabilitySnapshot,
   ProjectObservabilitySnapshot,
@@ -231,6 +232,7 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
 
   function addSession(session: SessionSummary): void {
     sessions.value.push(session)
+    syncSessionPresenceFromSummary(session)
   }
 
   function updateSession(sessionId: string, patch: { status?: SessionStatus; summary?: string; externalSessionId?: string | null }): void {
@@ -239,6 +241,30 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
     if (patch.status !== undefined) session.status = patch.status
     if (patch.summary !== undefined) session.summary = patch.summary
     if (patch.externalSessionId !== undefined) session.externalSessionId = patch.externalSessionId
+    syncSessionPresenceFromSummary(session)
+  }
+
+  function syncSessionPresenceFromSummary(session: SessionSummary): void {
+    const current = sessionPresenceById.value[session.id]
+    const next = buildSessionPresenceSnapshot(session, {
+      activeSessionId: activeSessionId.value,
+      nowIso: new Date().toISOString(),
+      sourceSequence: current?.sourceSequence ?? 0
+    })
+
+    sessionPresenceById.value = {
+      ...sessionPresenceById.value,
+      [session.id]: {
+        ...current,
+        ...next,
+        modelLabel: current?.modelLabel ?? next.modelLabel,
+        lastAssistantSnippet: current?.lastAssistantSnippet ?? next.lastAssistantSnippet,
+        lastEvidenceType: current?.lastEvidenceType ?? next.lastEvidenceType,
+        hasUnreadTurn: current?.hasUnreadTurn ?? next.hasUnreadTurn,
+        lastEventAt: current?.lastEventAt ?? next.lastEventAt,
+        sourceSequence: current?.sourceSequence ?? next.sourceSequence
+      }
+    }
   }
 
   function clearError(): void {

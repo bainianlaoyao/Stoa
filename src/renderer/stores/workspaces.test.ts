@@ -768,6 +768,43 @@ describe('project/session renderer store', () => {
       expect(store.appObservability).toEqual(newerApp)
     })
 
+    test('session status updates replace provisional presence derived from session creation', () => {
+      const store = useWorkspaceStore()
+      store.hydrate({
+        activeProjectId: 'project_alpha',
+        activeSessionId: 'session_claude_1',
+        terminalWebhookPort: 43127,
+        projects: [{ id: 'project_alpha', name: 'alpha', path: 'D:/alpha', createdAt: 'a', updatedAt: 'a' }],
+        sessions: []
+      })
+
+      store.addSession({
+        id: 'session_claude_1',
+        projectId: 'project_alpha',
+        type: 'claude-code',
+        status: 'bootstrapping',
+        title: 'Claude',
+        summary: 'Waiting for session to start',
+        recoveryMode: 'resume-external',
+        externalSessionId: 'ext-1',
+        createdAt: 'a',
+        updatedAt: 'a',
+        lastActivatedAt: 'a',
+        archived: false
+      })
+      expect(store.sessionPresenceById.session_claude_1?.phase).toBe('preparing')
+
+      store.updateSession('session_claude_1', {
+        status: 'running',
+        summary: 'Session running'
+      })
+
+      expect(store.sessionPresenceById.session_claude_1).toMatchObject({
+        phase: 'working',
+        canonicalStatus: 'running'
+      })
+    })
+
     test('backfills missed observability events after subscribing and refetches converged snapshots', async () => {
       const refetchedSessionPresence = sessionPresenceFixture({
         sourceSequence: 7,
