@@ -53,7 +53,7 @@ type SessionRuntimeState =
 ```
 
 | Runtime 状态 | 含义 | 典型来源 |
-|---|---|---|
+|---|---|---|---|
 | `created` | Session 记录已创建，但尚未开始启动 runtime。 | `createSession()` |
 | `starting` | 正在安装 sidecar、构建命令或准备 spawn PTY。 | `startSessionRuntime()` |
 | `alive` | PTY/provider 进程已成功 spawn，进程存活。 | `ptyHost.start()` 成功 |
@@ -123,14 +123,15 @@ type SessionPresencePhase =
 
 状态颜色必须遵守 [design-language.md](../../engineering/design-language.md)：使用 design tokens，不硬编码颜色；`accent` 只能用于行动、焦点或明确需要引导注意的状态。
 
-| UI 状态 | 视觉语气 | 颜色约束 |
+| UI 状态 | 打扰级别 | 视觉语气 | 颜色约束 |
 |---|---|---|
-| `ready` | 平和、无打扰 | 必须使用 neutral/subtle 语气，例如低对比灰、柔和文字/点色；不能使用鲜艳蓝色、强 accent、高饱和边框或 glow。 |
-| `complete` | 轻提醒 | 可以比 ready 稍明显，用温和 tint 或 unread marker，但不能像 running/blocked 一样强打扰；用户访问后转为 ready 并回到平和颜色。 |
-| `running` | 活跃 | 可以使用成功/活动语气，但应保持 glassmorphism 的克制，不使用大面积高饱和色。 |
-| `blocked` | 需要注意 | 使用 warning/attention 语气。 |
-| `failed` | 错误 | 使用 danger 语气。 |
-| `preparing` / `exited` | 低强调 | 使用 neutral/subtle 语气。 |
+| `complete` | 最高 | 强提醒但不刺眼 | 表示有完成结果等待用户查看，应使用最显眼的非错误提醒语气；可用明确 unread marker、温和高对比 tint 或强调点色。访问后必须降回 ready。 |
+| `blocked` | 最高 | 强注意 | 表示需要用户介入才能继续，应使用 warning/attention 语气，并与 complete 同级优先。 |
+| `failed` | 高 | 错误 | 使用 danger 语气。它是严重问题，但在“待用户处理队列”里不应压过 complete/blocked 的工作流提醒。 |
+| `running` | 中 | 活跃但不抢注意 | 表示 agent 正在工作，通常无需用户立即行动；使用克制的 activity/success 语气，不使用大面积高饱和色，不应比 complete/blocked 更显眼。 |
+| `preparing` | 低 | 临时低强调 | 使用 neutral/subtle 语气。 |
+| `ready` | 最低 | 平和、无打扰 | 必须使用 neutral/subtle 语气，例如低对比灰、柔和文字/点色；不能使用鲜艳蓝色、强 accent、高饱和边框或 glow。 |
+| `exited` | 最低 | 低强调 | 使用 neutral/subtle 语气。 |
 
 实现时，`ready/idle` 的 dot 和文案都必须接近平和、无打扰的颜色。它不是“选中”“主要行动”或“未读完成”，所以不应该复用鲜艳蓝色。
 
@@ -463,7 +464,7 @@ interface SessionPresenceSnapshot {
 - Renderer 不得把 fallback 写成更高优先级 truth。
 - Renderer apply snapshot/patch 必须比较 `sourceSequence`。
 - Hierarchy row 只渲染 `SessionRowViewModel`，不在组件内重新解释状态。
-- `SessionRowViewModel.tone` 必须和 UI Presence 的打扰级别一致：`ready` 映射为 neutral/subtle，不映射为 accent/blue；`complete` 才允许轻提醒；`running/blocked/failed` 才允许更明显状态色。
+- `SessionRowViewModel.tone` 必须和 UI Presence 的打扰级别一致：`complete` 和 `blocked` 是最高优先级；`running` 只是中等活跃状态，不应比 complete/blocked 更显眼；`ready` 映射为 neutral/subtle，不映射为 accent/blue。
 
 ## 用户可见行为
 
@@ -552,7 +553,7 @@ failed process exit       -> Failed
 - session patch 先到、presence 后到，状态正确。
 - presence 先到、session patch 后到，状态正确。
 - row 展示 `Ready -> Running -> Blocked -> Running -> Complete -> Ready`。
-- Ready/idle 行使用平和低强调颜色，不使用鲜艳蓝色；Complete 行可以有轻提醒色，访问后回到 Ready 的低强调颜色。
+- Ready/idle 行使用平和低强调颜色，不使用鲜艳蓝色；Complete 与 Blocked 行使用最高打扰级别；Running 行只使用中等活跃提示，不能抢过 Complete/Blocked。
 
 ### E2E
 
