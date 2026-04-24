@@ -69,7 +69,7 @@ test.describe('Electron recovery journeys', () => {
       await expect(terminalViewport).toBeVisible()
       await expect(terminalViewport.getByTestId('terminal-empty-state')).toHaveCount(0)
       await expect(terminalViewport.getByTestId('terminal-xterm')).toBeVisible()
-      await expect(terminalViewport.getByTestId('terminal-status-bar')).toBeVisible()
+      await expect(terminalViewport.getByTestId('terminal-xterm-mount')).toBeVisible()
 
       await app.page.locator('[data-activity-item="settings"]').click()
       await expect(app.page.locator('[data-surface="settings"]')).toBeVisible()
@@ -117,7 +117,7 @@ test.describe('Electron recovery journeys', () => {
 
       const terminalViewport = app.page.getByTestId('terminal-viewport')
       await expect(terminalViewport.getByTestId('terminal-xterm')).toBeVisible()
-      await expect(terminalViewport.getByTestId('terminal-status-bar')).toBeVisible()
+      await expect(terminalViewport.getByTestId('terminal-xterm-mount')).toBeVisible()
 
       await app.page.locator('[data-activity-item="settings"]').click()
       await expect(app.page.locator('[data-surface="settings"]')).toBeVisible()

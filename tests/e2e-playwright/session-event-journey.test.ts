@@ -280,7 +280,7 @@ test.describe('Electron push and webhook journeys', () => {
 
       const terminalViewport = app.page.getByTestId('terminal-viewport')
       await expect(terminalViewport.getByTestId('terminal-xterm')).toBeVisible()
-      await expect(terminalViewport.getByTestId('terminal-status-bar')).toBeVisible()
+      await expect(terminalViewport.getByTestId('terminal-xterm-mount')).toBeVisible()
 
       await expect.poll(async () => {
         const nextDebugState = await getMainE2EDebugState(app.electronApp)

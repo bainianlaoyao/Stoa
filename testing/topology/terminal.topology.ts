@@ -7,7 +7,6 @@ export const terminalTopology = defineTopology({
     xterm: 'terminal-xterm',
     shell: 'terminal-shell',
     xtermMount: 'terminal-xterm-mount',
-    statusBar: 'terminal-status-bar',
     emptyState: 'terminal-empty-state'
   }
 })
