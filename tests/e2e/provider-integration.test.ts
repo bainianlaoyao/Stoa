@@ -581,7 +581,7 @@ describe('E2E: Provider Integration', () => {
       expect(command.env.STOA_WEBHOOK_PORT).toBe(String(context.webhookPort))
       expect(command.env.STOA_PROVIDER_PORT).toBe(String(context.providerPort))
 
-      const processEnvKeys = Object.keys(process.env)
+      const processEnvKeys = Object.keys(process.env).filter((key) => !key.startsWith('STOA_'))
       for (const key of processEnvKeys) {
         expect(command.env[key]).toBe((process.env as Record<string, string>)[key])
       }

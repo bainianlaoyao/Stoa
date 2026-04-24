@@ -10,6 +10,8 @@ import NewProjectModal from './NewProjectModal.vue'
 import ProviderFloatingCard from './ProviderFloatingCard.vue'
 import ProviderRadialMenu from './ProviderRadialMenu.vue'
 import type { ProjectHierarchyNode } from '@renderer/stores/workspaces'
+import type { SessionRowViewModel } from '@shared/observability'
+import { buildSessionPresenceSnapshot, buildSessionRowViewModel } from '@shared/observability-projection'
 
 const workspaceHierarchyPanelPath = resolve(dirname(fileURLToPath(import.meta.url)), 'WorkspaceHierarchyPanel.vue')
 
@@ -143,6 +145,39 @@ function mountPanel(overrides: { hierarchy?: ProjectHierarchyNode[]; activeProje
   })
 }
 
+function createSessionRowViewModels(
+  overrides: Partial<Record<string, Partial<SessionRowViewModel>>> = {}
+): Record<string, SessionRowViewModel> {
+  return {
+    session_1: {
+      sessionId: 'session_1',
+      title: 'deploy gateway',
+      phase: 'working',
+      primaryLabel: 'Working',
+      secondaryLabel: 'OpenCode / GPT-5',
+      tone: 'success',
+      hasUnreadTurn: false,
+      needsAttention: false,
+      attentionReason: null,
+      updatedAgoLabel: '10s ago',
+      ...overrides.session_1
+    },
+    session_2: {
+      sessionId: 'session_2',
+      title: 'need confirmation',
+      phase: 'ready',
+      primaryLabel: 'Ready',
+      secondaryLabel: 'Claude Code / Sonnet',
+      tone: 'accent',
+      hasUnreadTurn: false,
+      needsAttention: false,
+      attentionReason: null,
+      updatedAgoLabel: '20s ago',
+      ...overrides.session_2
+    }
+  }
+}
+
 async function openFloatingCard(wrapper: ReturnType<typeof mountPanel>) {
   const addButton = wrapper.find('.route-add-session')
   Object.defineProperty(addButton.element, 'getBoundingClientRect', {
@@ -227,89 +262,314 @@ describe('WorkspaceHierarchyPanel', () => {
       expect(titles).toContain('need confirmation')
     })
 
-    it('renders session type in child .route-time', () => {
-      const wrapper = mountPanel()
+    it('renders state-first secondary label from the row view model', () => {
+      const wrapper = mount(WorkspaceHierarchyPanel, {
+        global: { plugins: [createPinia()] },
+        props: {
+          hierarchy: createHierarchy(),
+          activeProjectId: 'project_alpha',
+          activeSessionId: 'session_2',
+          sessionRowViewModels: createSessionRowViewModels()
+        }
+      })
+
       const children = wrapper.findAll('.route-item.child')
       const types = children.map(c => c.find('.route-time').text())
-      expect(types).toContain('opencode')
-      expect(types).toContain('shell')
+      expect(types).toContain('Ready · Claude Code / Sonnet')
+      expect(types).toContain('Working · OpenCode / GPT-5')
     })
 
-    it('renders .route-dot with session.status as CSS class', () => {
-      const wrapper = mountPanel()
+    it('uses a real projected row view model without duplicating labels', () => {
+      const session = createHierarchy()[0]!.sessions[1]!
+      const projectedViewModel = buildSessionRowViewModel(
+        session,
+        buildSessionPresenceSnapshot(session, {
+          activeSessionId: session.id,
+          nowIso: '2026-04-24T08:00:00.000Z',
+          modelLabel: 'Sonnet'
+        }),
+        '2026-04-24T08:00:00.000Z'
+      )
+
+      const wrapper = mount(WorkspaceHierarchyPanel, {
+        global: { plugins: [createPinia()] },
+        props: {
+          hierarchy: createHierarchy(),
+          activeProjectId: 'project_alpha',
+          activeSessionId: 'session_2',
+          sessionRowViewModels: {
+            session_2: projectedViewModel
+          }
+        }
+      })
+
+      const secondaryLabels = wrapper.findAll('.route-time').map(node => node.text())
+      expect(secondaryLabels).toContain('Ready · Shell / Sonnet')
+      expect(projectedViewModel.secondaryLabel).toBe('Shell / Sonnet')
+      expect(secondaryLabels.join(' | ')).not.toContain('Ready · Ready')
+      expect(secondaryLabels.join(' | ')).not.toContain('Working · Working')
+    })
+
+    it('uses tone and phase data attributes from the row view model instead of status group styling', () => {
+      const wrapper = mount(WorkspaceHierarchyPanel, {
+        global: { plugins: [createPinia()] },
+        props: {
+          hierarchy: createHierarchy(),
+          activeProjectId: 'project_alpha',
+          activeSessionId: 'session_2',
+          sessionRowViewModels: createSessionRowViewModels()
+        }
+      })
+
       const children = wrapper.findAll('.route-item.child')
       const dot1 = children[0].find('.route-dot')
-      expect(dot1.classes()).toContain('running')
+      expect(dot1.attributes('data-tone')).toBe('success')
+      expect(dot1.attributes('data-phase')).toBe('working')
       const dot2 = children[1].find('.route-dot')
-      expect(dot2.classes()).toContain('awaiting_input')
+      expect(dot2.attributes('data-tone')).toBe('accent')
+      expect(dot2.attributes('data-phase')).toBe('ready')
     })
 
-    it('renders turn_complete as a .route-dot CSS class', () => {
-      const wrapper = mountPanel({
-        hierarchy: [{
-          id: 'project_1',
-          name: 'infra-control',
-          path: 'D:/infra-control',
+    it('renders turn_complete rows as Ready with accent tone', () => {
+      const hierarchy: ProjectHierarchyNode[] = [{
+        id: 'project_1',
+        name: 'infra-control',
+        path: 'D:/infra-control',
+        active: true,
+        archivedSessions: [],
+        createdAt: '2026-04-22T12:00:00.000Z',
+        updatedAt: '2026-04-22T12:00:00.000Z',
+        sessions: [{
+          id: 'session_turn_complete',
+          title: 'complete turn',
+          type: 'opencode',
+          status: 'turn_complete',
           active: true,
-          archivedSessions: [],
+          summary: 'waiting for user',
+          projectId: 'project_1',
+          recoveryMode: 'resume-external',
+          externalSessionId: 'ext-1',
           createdAt: '2026-04-22T12:00:00.000Z',
           updatedAt: '2026-04-22T12:00:00.000Z',
-          sessions: [{
-            id: 'session_turn_complete',
-            title: 'complete turn',
-            type: 'opencode',
-            status: 'turn_complete',
-            active: true,
-            summary: 'waiting for user',
-            projectId: 'project_1',
-            recoveryMode: 'resume-external',
-            externalSessionId: 'ext-1',
-            createdAt: '2026-04-22T12:00:00.000Z',
-            updatedAt: '2026-04-22T12:00:00.000Z',
-            lastActivatedAt: '2026-04-22T12:00:00.000Z',
-            archived: false
-          }]
-        }],
-        activeProjectId: 'project_1',
-        activeSessionId: 'session_turn_complete'
+          lastActivatedAt: '2026-04-22T12:00:00.000Z',
+          archived: false
+        }]
+      }]
+
+      const wrapper = mount(WorkspaceHierarchyPanel, {
+        global: { plugins: [createPinia()] },
+        props: {
+          hierarchy,
+          activeProjectId: 'project_1',
+          activeSessionId: 'session_turn_complete',
+          sessionRowViewModels: {
+            session_turn_complete: {
+              sessionId: 'session_turn_complete',
+              title: 'complete turn',
+              phase: 'ready',
+              primaryLabel: 'Ready',
+              secondaryLabel: 'Claude Code / Sonnet',
+              tone: 'accent',
+              hasUnreadTurn: false,
+              needsAttention: false,
+              attentionReason: null,
+              updatedAgoLabel: '4s ago'
+            }
+          }
+        }
       })
 
-      const dot = wrapper.find('.route-item.child .route-dot')
-      expect(dot.classes()).toContain('turn_complete')
+      const row = wrapper.find('.route-item.child')
+      expect(row.find('.route-time').text()).toBe('Ready · Claude Code / Sonnet')
+      expect(row.find('.route-dot').attributes('data-tone')).toBe('accent')
+      expect(row.find('.route-dot').attributes('data-phase')).toBe('ready')
     })
 
-    it('renders needs_confirmation as a .route-dot CSS class', () => {
-      const wrapper = mountPanel({
-        hierarchy: [{
-          id: 'project_1',
-          name: 'infra-control',
-          path: 'D:/infra-control',
+    it('renders needs_confirmation with a distinct approval label and warning tone', () => {
+      const hierarchy: ProjectHierarchyNode[] = [{
+        id: 'project_1',
+        name: 'infra-control',
+        path: 'D:/infra-control',
+        active: true,
+        archivedSessions: [],
+        createdAt: '2026-04-24T12:00:00.000Z',
+        updatedAt: '2026-04-24T12:00:00.000Z',
+        sessions: [{
+          id: 'session_permission_request',
+          title: 'permission request',
+          type: 'claude-code',
+          status: 'needs_confirmation',
           active: true,
-          archivedSessions: [],
+          summary: 'PermissionRequest',
+          projectId: 'project_1',
+          recoveryMode: 'resume-external',
+          externalSessionId: 'ext-1',
           createdAt: '2026-04-24T12:00:00.000Z',
           updatedAt: '2026-04-24T12:00:00.000Z',
-          sessions: [{
-            id: 'session_permission_request',
-            title: 'permission request',
-            type: 'claude-code',
-            status: 'needs_confirmation',
-            active: true,
-            summary: 'PermissionRequest',
-            projectId: 'project_1',
-            recoveryMode: 'resume-external',
-            externalSessionId: 'ext-1',
-            createdAt: '2026-04-24T12:00:00.000Z',
-            updatedAt: '2026-04-24T12:00:00.000Z',
-            lastActivatedAt: '2026-04-24T12:00:00.000Z',
-            archived: false
-          }]
-        }],
-        activeProjectId: 'project_1',
-        activeSessionId: 'session_permission_request'
+          lastActivatedAt: '2026-04-24T12:00:00.000Z',
+          archived: false
+        }]
+      }]
+
+      const blockedSession = hierarchy[0]!.sessions[0]!
+      const blockedViewModel = buildSessionRowViewModel(
+        blockedSession,
+        buildSessionPresenceSnapshot(blockedSession, {
+          activeSessionId: blockedSession.id,
+          nowIso: '2026-04-24T12:00:00.000Z',
+          modelLabel: 'Sonnet'
+        }),
+        '2026-04-24T12:00:00.000Z'
+      )
+
+      const wrapper = mount(WorkspaceHierarchyPanel, {
+        global: { plugins: [createPinia()] },
+        props: {
+          hierarchy,
+          activeProjectId: 'project_1',
+          activeSessionId: 'session_permission_request',
+          sessionRowViewModels: {
+            session_permission_request: blockedViewModel
+          }
+        }
       })
 
-      const dot = wrapper.find('.route-item.child .route-dot')
-      expect(dot.classes()).toContain('needs_confirmation')
+      const row = wrapper.find('.route-item.child')
+      expect(blockedViewModel.primaryLabel).toBe('Blocked')
+      expect(blockedViewModel.phase).toBe('blocked')
+      expect(blockedViewModel.attentionReason).toBe('resume-confirmation')
+      expect(row.find('.route-time').text()).toBe('Blocked · Claude Code / Sonnet')
+      expect(row.find('.route-dot').attributes('data-tone')).toBe('warning')
+      expect(row.find('.route-dot').attributes('data-phase')).toBe('blocked')
+      expect(row.find('.route-dot').attributes('data-attention-reason')).toBe('resume-confirmation')
+    })
+
+    it('renders degraded rows distinctly from approval-needed rows while keeping warning tone', () => {
+      const hierarchy: ProjectHierarchyNode[] = [{
+        id: 'project_1',
+        name: 'infra-control',
+        path: 'D:/infra-control',
+        active: true,
+        archivedSessions: [],
+        createdAt: '2026-04-24T12:00:00.000Z',
+        updatedAt: '2026-04-24T12:00:00.000Z',
+        sessions: [{
+          id: 'session_degraded',
+          title: 'provider degraded',
+          type: 'claude-code',
+          status: 'degraded',
+          active: true,
+          summary: 'provider degraded',
+          projectId: 'project_1',
+          recoveryMode: 'resume-external',
+          externalSessionId: 'ext-1',
+          createdAt: '2026-04-24T12:00:00.000Z',
+          updatedAt: '2026-04-24T12:00:00.000Z',
+          lastActivatedAt: '2026-04-24T12:00:00.000Z',
+          archived: false
+        }]
+      }]
+
+      const wrapper = mount(WorkspaceHierarchyPanel, {
+        global: { plugins: [createPinia()] },
+        props: {
+          hierarchy,
+          activeProjectId: 'project_1',
+          activeSessionId: 'session_degraded',
+          sessionRowViewModels: {
+            session_degraded: {
+              sessionId: 'session_degraded',
+              title: 'provider degraded',
+              phase: 'degraded',
+              primaryLabel: 'Degraded',
+              secondaryLabel: 'Claude Code / Sonnet',
+              tone: 'warning',
+              hasUnreadTurn: false,
+              needsAttention: true,
+              attentionReason: 'degraded',
+              updatedAgoLabel: '3s ago'
+            }
+          }
+        }
+      })
+
+      const row = wrapper.find('.route-item.child')
+      expect(row.find('.route-time').text()).toBe('Degraded · Claude Code / Sonnet')
+      expect(row.find('.route-dot').attributes('data-tone')).toBe('warning')
+      expect(row.find('.route-dot').attributes('data-phase')).toBe('degraded')
+      expect(row.find('.route-dot').attributes('data-attention-reason')).toBe('degraded')
+    })
+
+    it('renders failed rows with danger tone, failed phase, and provider-error attention reason', () => {
+      const hierarchy: ProjectHierarchyNode[] = [{
+        id: 'project_1',
+        name: 'infra-control',
+        path: 'D:/infra-control',
+        active: true,
+        archivedSessions: [],
+        createdAt: '2026-04-24T12:00:00.000Z',
+        updatedAt: '2026-04-24T12:00:00.000Z',
+        sessions: [{
+          id: 'session_failed',
+          title: 'provider failed',
+          type: 'claude-code',
+          status: 'error',
+          active: true,
+          summary: 'provider failed',
+          projectId: 'project_1',
+          recoveryMode: 'resume-external',
+          externalSessionId: 'ext-1',
+          createdAt: '2026-04-24T12:00:00.000Z',
+          updatedAt: '2026-04-24T12:00:00.000Z',
+          lastActivatedAt: '2026-04-24T12:00:00.000Z',
+          archived: false
+        }]
+      }]
+
+      const wrapper = mount(WorkspaceHierarchyPanel, {
+        global: { plugins: [createPinia()] },
+        props: {
+          hierarchy,
+          activeProjectId: 'project_1',
+          activeSessionId: 'session_failed',
+          sessionRowViewModels: {
+            session_failed: {
+              sessionId: 'session_failed',
+              title: 'provider failed',
+              phase: 'failed',
+              primaryLabel: 'Failed',
+              secondaryLabel: 'Claude Code / Sonnet',
+              tone: 'danger',
+              hasUnreadTurn: false,
+              needsAttention: true,
+              attentionReason: 'provider-error',
+              updatedAgoLabel: '3s ago'
+            }
+          }
+        }
+      })
+
+      const row = wrapper.find('.route-item.child')
+      expect(row.find('.route-time').text()).toBe('Failed · Claude Code / Sonnet')
+      expect(row.find('.route-dot').attributes('data-tone')).toBe('danger')
+      expect(row.find('.route-dot').attributes('data-phase')).toBe('failed')
+      expect(row.find('.route-dot').attributes('data-attention-reason')).toBe('provider-error')
+    })
+
+    it('does not show the raw session.type when a row view model exists', () => {
+      const wrapper = mount(WorkspaceHierarchyPanel, {
+        global: { plugins: [createPinia()] },
+        props: {
+          hierarchy: createHierarchy(),
+          activeProjectId: 'project_alpha',
+          activeSessionId: 'session_2',
+          sessionRowViewModels: createSessionRowViewModels()
+        }
+      })
+
+      const secondaryLabels = wrapper.findAll('.route-time').map(node => node.text())
+      expect(secondaryLabels.join(' | ')).not.toContain('opencode')
+      expect(secondaryLabels.join(' | ')).not.toContain('shell')
     })
 
     it('renders "+" .route-add-session button per project', () => {
@@ -644,6 +904,22 @@ describe('WorkspaceHierarchyPanel', () => {
       expect(source).not.toContain('background: rgba(255, 255, 255, 0.5);')
       expect(source).not.toContain('background: #cbd5e1;')
       expect(source).not.toContain('box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.15);')
+      expect(source).not.toContain('border-radius: 8px;')
+      expect(source).not.toContain('border-radius: 4px;')
+      expect(source).not.toContain('rounded-lg')
+      expect(source).not.toContain('rounded-full')
+      expect(source).not.toContain('backdrop-filter: blur(24px)')
+      expect(source).not.toContain('-webkit-backdrop-filter: blur(24px)')
+    })
+
+    it('keeps secondary text and popover path truncation rules in source', () => {
+      const source = readFileSync(workspaceHierarchyPanelPath, 'utf8')
+
+      expect(source).toContain('.route-time')
+      expect(source).toContain('overflow: hidden;')
+      expect(source).toContain('white-space: nowrap;')
+      expect(source).toContain('text-overflow: ellipsis;')
+      expect(source).toContain('min-width: 0;')
     })
   })
 })

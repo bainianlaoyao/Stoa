@@ -1,4 +1,10 @@
 import type { UpdateState } from './update-state'
+import type {
+  AppObservabilitySnapshot,
+  ObservationEvent,
+  ProjectObservabilitySnapshot,
+  SessionPresenceSnapshot
+} from './observability'
 
 export type SessionType = 'shell' | 'opencode' | 'codex' | 'claude-code'
 export type SessionRecoveryMode = 'fresh-shell' | 'resume-external'
@@ -136,6 +142,13 @@ export interface SessionStatusEvent {
   summary: string
 }
 
+export interface ObservationEventListOptions {
+  limit: number
+  cursor?: string
+  categories?: Array<'lifecycle' | 'presence' | 'evidence' | 'activity' | 'system'>
+  includeEphemeral?: boolean
+}
+
 export interface RendererApi {
   getBootstrapState: () => Promise<BootstrapState>
   createProject: (request: CreateProjectRequest) => Promise<ProjectSummary>
@@ -148,6 +161,16 @@ export interface RendererApi {
   sendSessionResize: (sessionId: string, cols: number, rows: number) => Promise<void>
   onTerminalData: (callback: (chunk: TerminalDataChunk) => void) => () => void
   onSessionEvent: (callback: (event: SessionStatusEvent) => void) => () => void
+  getSessionPresence: (sessionId: string) => Promise<SessionPresenceSnapshot | null>
+  getProjectObservability: (projectId: string) => Promise<ProjectObservabilitySnapshot | null>
+  getAppObservability: () => Promise<AppObservabilitySnapshot | null>
+  listSessionObservationEvents: (
+    sessionId: string,
+    options: ObservationEventListOptions
+  ) => Promise<{ events: ObservationEvent[]; nextCursor: string | null }>
+  onSessionPresenceChanged: (callback: (snapshot: SessionPresenceSnapshot) => void) => () => void
+  onProjectObservabilityChanged: (callback: (snapshot: ProjectObservabilitySnapshot) => void) => () => void
+  onAppObservabilityChanged: (callback: (snapshot: AppObservabilitySnapshot) => void) => () => void
   getSettings: () => Promise<AppSettings>
   setSetting: (key: string, value: unknown) => Promise<void>
   pickFolder: (options?: { title?: string }) => Promise<string | null>

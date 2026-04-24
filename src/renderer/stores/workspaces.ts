@@ -1,6 +1,11 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import type { BootstrapState, ProjectSummary, SessionStatus, SessionSummary } from '@shared/project-session'
+import type {
+  AppObservabilitySnapshot,
+  ProjectObservabilitySnapshot,
+  SessionPresenceSnapshot
+} from '@shared/observability'
 
 export interface ProjectHierarchyNode extends ProjectSummary {
   active: boolean
@@ -15,6 +20,12 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
   const activeSessionId = ref<string | null>(null)
   const terminalWebhookPort = ref<number | null>(null)
   const lastError = ref<string | null>(null)
+  const sessionPresenceById = ref<Record<string, SessionPresenceSnapshot>>({})
+  const projectObservabilityById = ref<Record<string, ProjectObservabilitySnapshot>>({})
+  const appObservability = ref<AppObservabilitySnapshot | null>(null)
+  const unsubscribeSessionPresenceChanged = ref<(() => void) | null>(null)
+  const unsubscribeProjectObservabilityChanged = ref<(() => void) | null>(null)
+  const unsubscribeAppObservabilityChanged = ref<(() => void) | null>(null)
 
   const activeProject = computed(() => {
     return projects.value.find((project) => project.id === activeProjectId.value) ?? null
@@ -23,6 +34,17 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
   const activeSession = computed(() => {
     return sessions.value.find((session) => session.id === activeSessionId.value) ?? null
   })
+
+  const activeSessionPresence = computed(() => {
+    if (!activeSessionId.value) {
+      return null
+    }
+
+    return sessionPresenceById.value[activeSessionId.value] ?? null
+  })
+
+  const sessionPresenceMap = computed(() => sessionPresenceById.value)
+  const projectObservabilityMap = computed(() => projectObservabilityById.value)
 
   const projectHierarchy = computed<ProjectHierarchyNode[]>(() => {
     return projects.value.map((project) => {
@@ -55,6 +77,94 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
     activeProjectId.value = state.activeProjectId
     activeSessionId.value = state.activeSessionId
     terminalWebhookPort.value = state.terminalWebhookPort
+  }
+
+  async function hydrateObservability(): Promise<void> {
+    const stoa = window.stoa
+
+    if (!stoa) {
+      return
+    }
+
+    subscribeToObservability(stoa)
+
+    const nextSessionPresenceEntries = await Promise.all(
+      sessions.value.map(async (session) => {
+        const snapshot = await stoa.getSessionPresence?.(session.id)
+        return snapshot ? [session.id, snapshot] as const : null
+      })
+    )
+
+    const nextProjectObservabilityEntries = await Promise.all(
+      projects.value.map(async (project) => {
+        const snapshot = await stoa.getProjectObservability?.(project.id)
+        return snapshot ? [project.id, snapshot] as const : null
+      })
+    )
+
+    for (const entry of nextSessionPresenceEntries) {
+      if (!entry) {
+        continue
+      }
+
+      const [sessionId, snapshot] = entry
+      if (!(sessionId in sessionPresenceById.value)) {
+        sessionPresenceById.value = {
+          ...sessionPresenceById.value,
+          [sessionId]: snapshot
+        }
+      }
+    }
+
+    for (const entry of nextProjectObservabilityEntries) {
+      if (!entry) {
+        continue
+      }
+
+      const [projectId, snapshot] = entry
+      if (!(projectId in projectObservabilityById.value)) {
+        projectObservabilityById.value = {
+          ...projectObservabilityById.value,
+          [projectId]: snapshot
+        }
+      }
+    }
+
+    const initialAppObservability = (await stoa.getAppObservability?.()) ?? null
+    if (appObservability.value === null) {
+      appObservability.value = initialAppObservability
+    }
+  }
+
+  function subscribeToObservability(stoa: typeof window.stoa): void {
+    unsubscribeObservability()
+
+    unsubscribeSessionPresenceChanged.value = stoa.onSessionPresenceChanged?.((snapshot) => {
+      sessionPresenceById.value = {
+        ...sessionPresenceById.value,
+        [snapshot.sessionId]: snapshot
+      }
+    }) ?? null
+
+    unsubscribeProjectObservabilityChanged.value = stoa.onProjectObservabilityChanged?.((snapshot) => {
+      projectObservabilityById.value = {
+        ...projectObservabilityById.value,
+        [snapshot.projectId]: snapshot
+      }
+    }) ?? null
+
+    unsubscribeAppObservabilityChanged.value = stoa.onAppObservabilityChanged?.((snapshot) => {
+      appObservability.value = snapshot
+    }) ?? null
+  }
+
+  function unsubscribeObservability(): void {
+    unsubscribeSessionPresenceChanged.value?.()
+    unsubscribeProjectObservabilityChanged.value?.()
+    unsubscribeAppObservabilityChanged.value?.()
+    unsubscribeSessionPresenceChanged.value = null
+    unsubscribeProjectObservabilityChanged.value = null
+    unsubscribeAppObservabilityChanged.value = null
   }
 
   function setActiveProject(projectId: string): void {
@@ -116,10 +226,17 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
     activeSessionId,
     terminalWebhookPort,
     lastError,
+    sessionPresenceById,
+    projectObservabilityById,
+    appObservability,
     activeProject,
     activeSession,
+    activeSessionPresence,
+    sessionPresenceMap,
+    projectObservabilityMap,
     projectHierarchy,
     hydrate,
+    hydrateObservability,
     addProject,
     addSession,
     updateSession,
@@ -127,6 +244,7 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
     setActiveSession,
     clearError,
     archiveSession,
-    restoreSession
+    restoreSession,
+    unsubscribeObservability
   }
 })

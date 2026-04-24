@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
+import type { SessionRowViewModel } from '@shared/observability'
 import type { SessionStatus, SessionType } from '@shared/project-session'
 import { getProviderDescriptorBySessionType } from '@shared/provider-descriptors'
 import type { ProjectHierarchyNode } from '@renderer/stores/workspaces'
@@ -21,6 +22,7 @@ const props = defineProps<{
   hierarchy: ProjectHierarchyNode[]
   activeProjectId: string | null
   activeSessionId: string | null
+  sessionRowViewModels?: Record<string, SessionRowViewModel>
 }>()
 
 const emit = defineEmits<{
@@ -75,6 +77,36 @@ function closeFloatingCard() {
 
 function closeRadialMenu() {
   radialMenuVisible.value = false
+}
+
+function sessionRowViewModel(sessionId: string): SessionRowViewModel | null {
+  return props.sessionRowViewModels?.[sessionId] ?? null
+}
+
+function sessionSecondaryLabel(session: ProjectHierarchyNode['sessions'][number]): string {
+  const viewModel = sessionRowViewModel(session.id)
+
+  if (viewModel) {
+    return viewModel.secondaryLabel
+  }
+
+  return session.type
+}
+
+function sessionTone(session: ProjectHierarchyNode['sessions'][number]): string {
+  return sessionRowViewModel(session.id)?.tone ?? 'neutral'
+}
+
+function sessionPrimaryLabel(session: ProjectHierarchyNode['sessions'][number]): string | null {
+  return sessionRowViewModel(session.id)?.primaryLabel ?? null
+}
+
+function sessionPhase(session: ProjectHierarchyNode['sessions'][number]): string {
+  return sessionRowViewModel(session.id)?.phase ?? 'unknown'
+}
+
+function sessionAttentionReason(session: ProjectHierarchyNode['sessions'][number]): string | null {
+  return sessionRowViewModel(session.id)?.attentionReason ?? null
 }
 
 function openDetail(event: MouseEvent | KeyboardEvent, kind: 'project', project: ProjectHierarchyNode): void
@@ -192,12 +224,12 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <aside class="min-h-0 rounded-[10px] overflow-hidden bg-surface border border-line" data-testid="workspace-hierarchy-panel" aria-label="Workspace hierarchy">
+  <aside class="min-h-0 overflow-hidden rounded-[var(--radius-sm)] bg-surface border border-line" data-testid="workspace-hierarchy-panel" aria-label="Workspace hierarchy">
     <div class="min-h-0 overflow-auto p-2.5 grid gap-3 align-content-start" data-testid="route-body">
       <div class="grid gap-1" data-testid="route-actions">
-        <button class="route-action flex items-center justify-between gap-2 px-2.5 py-2 border border-line rounded-lg bg-surface-solid text-text-strong shadow-card cursor-pointer transition-all duration-200 hover:bg-black-faint focus-visible:bg-black-faint focus-visible:outline-none" type="button" data-testid="workspace.new-project" @click="showNewProject = true">
+        <button class="route-action flex items-center justify-between gap-2 px-2.5 py-2 border border-line rounded-[var(--radius-sm)] bg-surface-solid text-text-strong shadow-card cursor-pointer transition-all duration-200 hover:bg-black-faint focus-visible:bg-black-faint focus-visible:outline-none" type="button" data-testid="workspace.new-project" @click="showNewProject = true">
           <span class="text-xs font-semibold tracking-[0.05em]">New Project</span>
-          <span class="w-[18px] h-[18px] grid place-items-center rounded-full bg-canvas text-text-strong text-xs">+</span>
+          <span class="w-[18px] h-[18px] grid place-items-center rounded-[var(--radius-sm)] bg-canvas text-text-strong text-xs">+</span>
         </button>
       </div>
 
@@ -261,10 +293,21 @@ onBeforeUnmount(() => {
               type="button"
               @click="emit('selectSession', session.id)"
             >
-              <div class="route-dot" :class="session.status" data-testid="session-status-dot" :data-status="session.status" />
+              <div
+                class="route-dot"
+                data-testid="session-status-dot"
+                :data-status="session.status"
+                :data-tone="sessionTone(session)"
+                :data-phase="sessionPhase(session)"
+                :data-attention-reason="sessionAttentionReason(session) ?? undefined"
+              />
               <div class="route-copy">
                 <div class="route-name">{{ session.title }}</div>
-                <div class="route-time">{{ session.type }}</div>
+                <div class="route-time">
+                  <span v-if="sessionPrimaryLabel(session)" class="route-time__primary">{{ sessionPrimaryLabel(session) }}</span>
+                  <span v-if="sessionPrimaryLabel(session) && sessionSecondaryLabel(session)" class="route-time__separator" aria-hidden="true"> · </span>
+                  <span class="route-time__secondary">{{ sessionSecondaryLabel(session) }}</span>
+                </div>
               </div>
             </button>
             <span class="route-row-actions">
@@ -367,7 +410,7 @@ onBeforeUnmount(() => {
   align-items: center;
   padding: 6px 8px 6px 4px;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: inherit;
   text-align: left;
@@ -405,7 +448,7 @@ onBeforeUnmount(() => {
   height: 20px;
   padding: 0;
   border: 0;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--color-subtle);
   display: grid;
@@ -445,36 +488,63 @@ onBeforeUnmount(() => {
   width: 6px;
   height: 6px;
   border-radius: 50%;
+  border: 1px solid transparent;
+  background: var(--color-subtle);
+  opacity: 0.85;
+}
+
+.route-dot[data-tone='neutral'] {
   background: var(--color-subtle);
 }
 
-.route-dot.idle,
-.route-dot.starting,
-.route-dot.bootstrapping {
-  background: var(--color-subtle);
-}
-
-.route-dot.running {
+.route-dot[data-tone='success'] {
   background: var(--color-success);
   box-shadow: var(--shadow-success-ring);
 }
 
-.route-dot.awaiting_input,
-.route-dot.turn_complete,
-.route-dot.awaiting,
-.route-dot.degraded,
-.route-dot.needs_confirmation {
+.route-dot[data-tone='accent'] {
+  background: var(--color-accent);
+}
+
+.route-dot[data-tone='warning'] {
   background: var(--color-warning);
 }
 
-.route-dot.error,
-.route-dot.exited {
+.route-dot[data-phase='blocked'] {
+  border-color: var(--color-line);
+  box-shadow: inset 0 0 0 1px var(--color-surface-solid);
+  opacity: 1;
+}
+
+.route-dot[data-phase='degraded'] {
+  opacity: 0.7;
+}
+
+.route-dot[data-tone='danger'] {
   background: var(--color-error);
 }
 
 .route-time {
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  gap: 0;
   color: var(--color-muted);
   font: var(--text-caption) var(--font-mono);
+}
+
+.route-time__primary,
+.route-time__secondary,
+.route-time__separator {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.route-time__primary {
+  color: var(--color-subtle);
 }
 
 /* Detail popover */
@@ -482,8 +552,6 @@ onBeforeUnmount(() => {
   position: fixed;
   z-index: 100;
   background: var(--color-surface);
-  backdrop-filter: blur(24px) saturate(120%);
-  -webkit-backdrop-filter: blur(24px) saturate(120%);
   border: 1px solid var(--color-line);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-glass);
@@ -501,9 +569,11 @@ onBeforeUnmount(() => {
 }
 
 .detail-popover__info {
+  overflow: hidden;
   color: var(--color-muted);
   font: var(--text-caption) var(--font-mono);
-  word-break: break-all;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Group label */

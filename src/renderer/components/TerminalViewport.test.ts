@@ -32,6 +32,12 @@ vi.mock('@xterm/xterm', () => {
     onData(cb: (data: string) => void) {
       return { dispose: () => {} }
     }
+    onSelectionChange(_cb: () => void) {
+      return { dispose: () => {} }
+    }
+    getSelection() {
+      return ''
+    }
     loadAddon() {}
     dispose() {}
   }

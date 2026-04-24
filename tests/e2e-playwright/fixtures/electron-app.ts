@@ -99,15 +99,18 @@ async function closeElectronAppWithTimeout(
 export async function launchElectronApp(options: LaunchOptions = {}): Promise<LaunchedElectronApp> {
   const stateDir = options.stateDir ?? await createStateDir()
   const entryPath = ensureElectronMainEntrypoint()
+  const env = {
+    ...process.env,
+    NODE_ENV: 'test',
+    VIBECODING_E2E: '1',
+    VIBECODING_STATE_DIR: stateDir,
+    ...options.env,
+  }
+  delete env.ELECTRON_RENDERER_URL
+
   const electronApp = await electron.launch({
     args: [entryPath],
-    env: {
-      ...process.env,
-      NODE_ENV: 'test',
-      VIBECODING_E2E: '1',
-      VIBECODING_STATE_DIR: stateDir,
-      ...options.env,
-    },
+    env,
   })
 
   const page = await electronApp.firstWindow()

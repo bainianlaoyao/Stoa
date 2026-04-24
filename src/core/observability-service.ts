@@ -1,0 +1,205 @@
+import {
+  buildAppObservabilitySnapshot,
+  buildProjectObservabilitySnapshot,
+  buildSessionPresenceSnapshot
+} from '../shared/observability-projection'
+import type {
+  AppObservabilitySnapshot,
+  ObservationEvent,
+  ProjectObservabilitySnapshot,
+  SessionPresenceSnapshot
+} from '../shared/observability'
+import type { SessionStatus, SessionSummary } from '../shared/project-session'
+import type { ObservationStore } from './observation-store'
+
+export interface ObservabilityServiceOptions {
+  nowIso?: () => string
+}
+
+interface SessionEvidenceState {
+  modelLabel: string | null
+  lastAssistantSnippet: string | null
+  lastEvidenceType: string | null
+  lastEventAt: string | null
+}
+
+const PRESENCE_STATUS_BY_TYPE: Record<string, SessionStatus> = {
+  'presence.running': 'running',
+  'presence.turn_complete': 'turn_complete',
+  'presence.awaiting_input': 'awaiting_input',
+  'presence.needs_confirmation': 'needs_confirmation',
+  'presence.degraded': 'degraded',
+  'presence.error': 'error',
+  'lifecycle.session_exited': 'exited'
+}
+
+export class ObservabilityService {
+  private readonly nowIso: () => string
+  private readonly sessions = new Map<string, SessionSummary>()
+  private readonly evidence = new Map<string, SessionEvidenceState>()
+  private readonly sessionSnapshots = new Map<string, SessionPresenceSnapshot>()
+  private readonly projectSnapshots = new Map<string, ProjectObservabilitySnapshot>()
+  private appSnapshot: AppObservabilitySnapshot
+  private activeSessionId: string | null = null
+
+  constructor(private readonly store: ObservationStore, options: ObservabilityServiceOptions = {}) {
+    this.nowIso = options.nowIso ?? (() => new Date().toISOString())
+    this.appSnapshot = buildAppObservabilitySnapshot([], [], this.nowIso())
+  }
+
+  syncSessions(sessions: SessionSummary[], activeSessionId: string | null): void {
+    this.activeSessionId = activeSessionId
+
+    const retainedSessions = sessions.filter((session) => !session.archived)
+    const retainedIds = new Set(retainedSessions.map((session) => session.id))
+    const nextSessions = new Map<string, SessionSummary>()
+    const nextEvidence = new Map<string, SessionEvidenceState>()
+
+    for (const session of retainedSessions) {
+      nextSessions.set(session.id, session)
+      nextEvidence.set(
+        session.id,
+        this.evidence.get(session.id) ?? {
+          modelLabel: null,
+          lastAssistantSnippet: null,
+          lastEvidenceType: null,
+          lastEventAt: null
+        }
+      )
+    }
+
+    this.sessions.clear()
+    for (const [sessionId, session] of nextSessions) {
+      this.sessions.set(sessionId, session)
+    }
+
+    this.evidence.clear()
+    for (const [sessionId, evidence] of nextEvidence) {
+      this.evidence.set(sessionId, evidence)
+    }
+
+    for (const sessionId of [...this.sessionSnapshots.keys()]) {
+      if (!retainedIds.has(sessionId)) {
+        this.sessionSnapshots.delete(sessionId)
+      }
+    }
+
+    this.rebuildSnapshots(this.nowIso())
+  }
+
+  registerSession(session: SessionSummary, activeSessionId: string | null): void {
+    this.syncSessions([...this.sessions.values(), session], activeSessionId)
+  }
+
+  setActiveSession(sessionId: string | null): void {
+    this.activeSessionId = sessionId
+    this.rebuildSnapshots(this.nowIso())
+  }
+
+  ingest(event: ObservationEvent): boolean {
+    const appended = this.store.append(event)
+
+    if (!appended || !event.sessionId) {
+      return appended
+    }
+
+    const session = this.sessions.get(event.sessionId)
+
+    if (!session) {
+      return appended
+    }
+
+    const status = PRESENCE_STATUS_BY_TYPE[event.type]
+    const nextEvidence = updateEvidence(this.evidence.get(event.sessionId), event)
+
+    this.evidence.set(event.sessionId, nextEvidence)
+
+    if (status) {
+      this.sessions.set(event.sessionId, {
+        ...session,
+        status,
+        updatedAt: event.occurredAt
+      })
+    }
+
+    this.rebuildSnapshots(this.nowIso())
+
+    return appended
+  }
+
+  getSessionPresence(sessionId: string): SessionPresenceSnapshot | null {
+    return this.sessionSnapshots.get(sessionId) ?? null
+  }
+
+  getProjectObservability(projectId: string): ProjectObservabilitySnapshot | null {
+    return this.projectSnapshots.get(projectId) ?? null
+  }
+
+  getAppObservability(): AppObservabilitySnapshot {
+    return this.appSnapshot
+  }
+
+  private rebuildSnapshots(nowIso: string): void {
+    this.sessionSnapshots.clear()
+
+    for (const session of this.sessions.values()) {
+      const evidence = this.evidence.get(session.id)
+
+      this.sessionSnapshots.set(
+        session.id,
+        buildSessionPresenceSnapshot(session, {
+          activeSessionId: this.activeSessionId,
+          nowIso,
+          modelLabel: evidence?.modelLabel ?? null,
+          lastAssistantSnippet: evidence?.lastAssistantSnippet ?? null,
+          lastEvidenceType: evidence?.lastEvidenceType ?? null,
+          lastEventAt: evidence?.lastEventAt ?? session.updatedAt
+        })
+      )
+    }
+
+    this.rebuildProjectSnapshots(nowIso)
+    this.appSnapshot = buildAppObservabilitySnapshot(
+      [...this.projectSnapshots.values()],
+      [...this.sessionSnapshots.values()],
+      nowIso
+    )
+  }
+
+  private rebuildProjectSnapshots(nowIso: string): void {
+    this.projectSnapshots.clear()
+
+    for (const projectId of new Set([...this.sessions.values()].map((session) => session.projectId))) {
+      this.projectSnapshots.set(
+        projectId,
+        buildProjectObservabilitySnapshot(
+          projectId,
+          [...this.sessionSnapshots.values()].filter((snapshot) => snapshot.projectId === projectId),
+          nowIso
+        )
+      )
+    }
+  }
+}
+
+function updateEvidence(current: SessionEvidenceState | undefined, event: ObservationEvent): SessionEvidenceState {
+  const next: SessionEvidenceState = current ?? {
+    modelLabel: null,
+    lastAssistantSnippet: null,
+    lastEvidenceType: null,
+    lastEventAt: null
+  }
+  const model = event.payload.model
+  const snippet = typeof event.payload.snippet === 'string'
+    ? event.payload.snippet
+    : typeof event.payload.summary === 'string'
+      ? event.payload.summary
+      : null
+
+  return {
+    modelLabel: typeof model === 'string' ? model : next.modelLabel,
+    lastAssistantSnippet: snippet ?? next.lastAssistantSnippet,
+    lastEvidenceType: event.category === 'evidence' ? event.type : next.lastEvidenceType,
+    lastEventAt: event.occurredAt
+  }
+}

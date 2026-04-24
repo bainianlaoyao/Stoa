@@ -1,14 +1,20 @@
 import { readFileSync } from 'node:fs'
+import { rm } from 'node:fs/promises'
 import { request } from 'node:http'
 import { join } from 'node:path'
 import { afterEach, describe, expect, test, vi } from 'vitest'
+import { InMemoryObservationStore } from '@core/observation-store'
+import { ObservabilityService } from '@core/observability-service'
 import { ProjectSessionManager } from '@core/project-session-manager'
-import type { CanonicalSessionEvent } from '@shared/project-session'
+import type { CanonicalSessionEvent, SessionStatus } from '@shared/project-session'
+import type { ObservationEvent } from '@shared/observability'
+import { createTestTempDir } from '../../testing/test-temp'
 import { SessionEventBridge } from './session-event-bridge'
 
 const bridges: SessionEventBridge[] = []
+const tempDirs: string[] = []
 
-function createCanonicalEvent(): CanonicalSessionEvent {
+function createCanonicalEvent(overrides: Partial<CanonicalSessionEvent> = {}): CanonicalSessionEvent {
   return {
     event_version: 1,
     event_id: 'evt_1',
@@ -21,7 +27,8 @@ function createCanonicalEvent(): CanonicalSessionEvent {
       status: 'awaiting_input',
       summary: 'session.idle',
       externalSessionId: 'opencode-real-123'
-    }
+    },
+    ...overrides
   }
 }
 
@@ -118,6 +125,7 @@ async function postClaudeHook(
 describe('SessionEventBridge', () => {
   afterEach(async () => {
     await Promise.allSettled(bridges.splice(0).map(async (bridge) => bridge.stop()))
+    await Promise.allSettled(tempDirs.splice(0).map(async (dir) => rm(dir, { recursive: true, force: true })))
   })
 
   test('issuing a secret allows the same session event to reach applySessionEvent', async () => {
@@ -159,6 +167,124 @@ describe('SessionEventBridge', () => {
       status: 'turn_complete',
       summary: 'Turn complete',
       externalSessionId: undefined
+    })
+  })
+
+  test('canonical turn_complete events also ingest an observability event', async () => {
+    const manager = ProjectSessionManager.createForTest()
+    const controller = {
+      applySessionEvent: vi.fn(async () => {})
+    }
+    const observability = {
+      ingest: vi.fn(() => true)
+    }
+    const bridge = new SessionEventBridge(manager, controller, observability, {
+      nowIso: () => '2026-01-01T00:00:10.000Z'
+    })
+    bridges.push(bridge)
+
+    const port = await bridge.start()
+    const secret = bridge.issueSessionSecret('session_1')
+    const canonical = createTurnCompleteEvent()
+    const response = await postEvent(port, canonical, secret)
+
+    expect(response.statusCode).toBe(202)
+    expect(controller.applySessionEvent).toHaveBeenCalledWith({
+      sessionId: 'session_1',
+      status: 'turn_complete',
+      summary: 'Turn complete',
+      externalSessionId: undefined
+    })
+    expect(observability.ingest).toHaveBeenCalledWith(
+      expect.objectContaining<Partial<ObservationEvent>>({
+        eventId: 'evt_turn_complete',
+        eventVersion: 1,
+        occurredAt: canonical.timestamp,
+        ingestedAt: '2026-01-01T00:00:10.000Z',
+        scope: 'session',
+        projectId: 'project_1',
+        sessionId: 'session_1',
+        providerId: null,
+        category: 'presence',
+        type: 'presence.turn_complete',
+        severity: 'info',
+        retention: 'operational',
+        source: 'hook-sidecar',
+        correlationId: null,
+        dedupeKey: null,
+        payload: {
+          summary: 'Turn complete'
+        }
+      })
+    )
+  })
+
+  test('canonical event externalSessionId is reflected in observability after manager apply and sync', async () => {
+    const stateDir = await createTestTempDir('session-event-bridge-state-')
+    const workspaceDir = await createTestTempDir('session-event-bridge-workspace-')
+    tempDirs.push(stateDir, workspaceDir)
+    const manager = await ProjectSessionManager.create({
+      webhookPort: null,
+      globalStatePath: join(stateDir, 'global.json')
+    })
+    const project = await manager.createProject({
+      name: 'P1',
+      path: workspaceDir,
+      defaultSessionType: 'opencode'
+    })
+    const session = await manager.createSession({
+      projectId: project.id,
+      type: 'opencode',
+      title: 'S1',
+      externalSessionId: null
+    })
+    await manager.applySessionEvent(session.id, 'running', 'Running', null)
+    const observability = new ObservabilityService(new InMemoryObservationStore(), {
+      nowIso: () => '2026-01-01T00:00:10.000Z'
+    })
+    observability.syncSessions(manager.snapshot().sessions, manager.snapshot().activeSessionId)
+    const controller = {
+      applySessionEvent: vi.fn(async (appliedEvent: {
+        sessionId: string
+        status: SessionStatus
+        summary: string
+        externalSessionId?: string | null
+      }) => {
+        await manager.applySessionEvent(
+          appliedEvent.sessionId,
+          appliedEvent.status,
+          appliedEvent.summary,
+          appliedEvent.externalSessionId
+        )
+        const snapshot = manager.snapshot()
+        observability.syncSessions(snapshot.sessions, snapshot.activeSessionId)
+      })
+    }
+    const bridge = new SessionEventBridge(manager, controller, observability, {
+      nowIso: () => '2026-01-01T00:00:10.000Z'
+    })
+    bridges.push(bridge)
+
+    const port = await bridge.start()
+    const secret = bridge.issueSessionSecret(session.id)
+    const response = await postEvent(
+      port,
+      createCanonicalEvent({ session_id: session.id, project_id: project.id }),
+      secret
+    )
+
+    expect(response.statusCode).toBe(202)
+    expect(controller.applySessionEvent).toHaveBeenCalledWith({
+      sessionId: session.id,
+      status: 'awaiting_input',
+      summary: 'session.idle',
+      externalSessionId: 'opencode-real-123'
+    })
+    expect(observability.getSessionPresence(session.id)).toMatchObject({
+      sessionId: session.id,
+      canonicalStatus: 'awaiting_input',
+      confidence: 'authoritative',
+      recoveryPointerState: 'trusted'
     })
   })
 

@@ -2,7 +2,10 @@ import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { describe, test, expect, beforeEach, afterEach } from 'vitest'
 import { SessionRuntimeController } from './session-runtime-controller'
+import { syncObservabilitySessionsFromManager } from './observability-sync'
 import { IPC_CHANNELS } from '@core/ipc-channels'
+import { InMemoryObservationStore } from '@core/observation-store'
+import { ObservabilityService } from '@core/observability-service'
 import { ProjectSessionManager } from '@core/project-session-manager'
 import { createTestTempDir } from '../../testing/test-temp'
 
@@ -135,6 +138,157 @@ describe('SessionRuntimeController', () => {
       sessionId: session.id,
       status: 'awaiting_input',
       summary: 'session.idle'
+    })
+  })
+
+  test('applySessionEvent preserves session event push and publishes observability snapshots', async () => {
+    const { window: win, sent } = createMockWindow()
+    const project = await manager.createProject({ path: await createTestWorkspace('ctrl-observe-'), name: 'test' })
+    const session = await manager.createSession({ projectId: project.id, type: 'opencode', title: 'S1' })
+    const observability = new ObservabilityService(new InMemoryObservationStore(), {
+      nowIso: () => '2026-01-01T00:00:02.000Z'
+    })
+    observability.syncSessions(manager.snapshot().sessions, manager.snapshot().activeSessionId)
+
+    const controller = new SessionRuntimeController(manager, () => win, undefined, observability)
+    await controller.applySessionEvent({
+      sessionId: session.id,
+      status: 'turn_complete',
+      summary: 'Turn complete',
+      externalSessionId: 'opencode-real-123'
+    })
+
+    expect(sent.map((item) => item.channel)).toEqual([
+      IPC_CHANNELS.sessionEvent,
+      IPC_CHANNELS.observabilitySessionPresenceChanged,
+      IPC_CHANNELS.observabilityProjectChanged,
+      IPC_CHANNELS.observabilityAppChanged
+    ])
+    expect(sent[0]!.data).toEqual({
+      sessionId: session.id,
+      status: 'turn_complete',
+      summary: 'Turn complete'
+    })
+    expect(sent[1]!.data).toMatchObject({
+      sessionId: session.id,
+      canonicalStatus: 'turn_complete',
+      confidence: 'authoritative',
+      recoveryPointerState: 'trusted'
+    })
+    expect(sent[2]!.data).toMatchObject({
+      projectId: project.id,
+      activeSessionCount: 1
+    })
+    expect(sent[3]!.data).toMatchObject({
+      providerHealthSummary: {
+        opencode: 'healthy'
+      }
+    })
+  })
+
+  test('observability snapshots follow manager state after canonical lifecycle changes', async () => {
+    const { window: win, sent } = createMockWindow()
+    const project = await manager.createProject({ path: await createTestWorkspace('ctrl-sync-'), name: 'test' })
+    const session = await manager.createSession({ projectId: project.id, type: 'opencode', title: 'S1' })
+    const observability = new ObservabilityService(new InMemoryObservationStore(), {
+      nowIso: () => '2026-01-01T00:00:02.000Z'
+    })
+    observability.syncSessions(manager.snapshot().sessions, manager.snapshot().activeSessionId)
+    const controller = new SessionRuntimeController(manager, () => win, undefined, observability)
+
+    await controller.applySessionEvent({
+      sessionId: session.id,
+      status: 'awaiting_input',
+      summary: 'session.idle',
+      externalSessionId: 'opencode-real-123'
+    })
+    sent.length = 0
+
+    await controller.markSessionRunning(session.id, 'opencode-real-456')
+
+    expect(sent.map((item) => item.channel)).toEqual([
+      IPC_CHANNELS.sessionEvent,
+      IPC_CHANNELS.observabilitySessionPresenceChanged,
+      IPC_CHANNELS.observabilityProjectChanged,
+      IPC_CHANNELS.observabilityAppChanged
+    ])
+    expect(sent[0]!.data).toEqual({
+      sessionId: session.id,
+      status: 'awaiting_input',
+      summary: 'session.idle'
+    })
+    expect(sent[1]!.data).toMatchObject({
+      sessionId: session.id,
+      canonicalStatus: 'awaiting_input',
+      confidence: 'authoritative',
+      recoveryPointerState: 'trusted'
+    })
+  })
+
+  test('manager snapshot sync excludes archived sessions from observability bootstrap aggregates', async () => {
+    const activeProject = await manager.createProject({ path: await createTestWorkspace('ctrl-bootstrap-a-'), name: 'Active' })
+    const archivedProject = await manager.createProject({ path: await createTestWorkspace('ctrl-bootstrap-b-'), name: 'Archived' })
+    const activeSession = await manager.createSession({ projectId: activeProject.id, type: 'opencode', title: 'Active Session' })
+    const archivedSession = await manager.createSession({ projectId: archivedProject.id, type: 'opencode', title: 'Archived Session' })
+    await manager.applySessionEvent(activeSession.id, 'running', 'Running', 'active-ext')
+    await manager.applySessionEvent(archivedSession.id, 'needs_confirmation', 'Confirm resume', 'archived-ext')
+    await manager.archiveSession(archivedSession.id)
+
+    const observability = new ObservabilityService(new InMemoryObservationStore(), {
+      nowIso: () => '2026-01-01T00:00:02.000Z'
+    })
+
+    syncObservabilitySessionsFromManager(manager, observability)
+
+    expect(observability.getSessionPresence(activeSession.id)).toMatchObject({
+      sessionId: activeSession.id,
+      canonicalStatus: 'running'
+    })
+    expect(observability.getSessionPresence(archivedSession.id)).toBeNull()
+    expect(observability.getProjectObservability(activeProject.id)).toMatchObject({
+      projectId: activeProject.id,
+      activeSessionCount: 1,
+      blockedSessionCount: 0
+    })
+    expect(observability.getProjectObservability(archivedProject.id)).toBeNull()
+    expect(observability.getAppObservability()).toMatchObject({
+      blockedProjectCount: 0,
+      projectsNeedingAttention: []
+    })
+  })
+
+  test('manager archive sync removes archived sessions from observability aggregates', async () => {
+    const project = await manager.createProject({ path: await createTestWorkspace('ctrl-archive-sync-'), name: 'Archive Sync' })
+    const retainedSession = await manager.createSession({ projectId: project.id, type: 'opencode', title: 'Retained' })
+    const archivedSession = await manager.createSession({ projectId: project.id, type: 'opencode', title: 'Archive Me' })
+    await manager.applySessionEvent(retainedSession.id, 'running', 'Running', 'retained-ext')
+    await manager.applySessionEvent(archivedSession.id, 'needs_confirmation', 'Confirm resume', 'archived-ext')
+
+    const observability = new ObservabilityService(new InMemoryObservationStore(), {
+      nowIso: () => '2026-01-01T00:00:02.000Z'
+    })
+
+    syncObservabilitySessionsFromManager(manager, observability)
+    expect(observability.getProjectObservability(project.id)).toMatchObject({
+      activeSessionCount: 2,
+      blockedSessionCount: 1
+    })
+    expect(observability.getAppObservability()).toMatchObject({
+      blockedProjectCount: 1,
+      projectsNeedingAttention: [project.id]
+    })
+
+    await manager.archiveSession(archivedSession.id)
+    syncObservabilitySessionsFromManager(manager, observability)
+
+    expect(observability.getSessionPresence(archivedSession.id)).toBeNull()
+    expect(observability.getProjectObservability(project.id)).toMatchObject({
+      activeSessionCount: 1,
+      blockedSessionCount: 0
+    })
+    expect(observability.getAppObservability()).toMatchObject({
+      blockedProjectCount: 0,
+      projectsNeedingAttention: []
     })
   })
 
