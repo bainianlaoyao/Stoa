@@ -21,6 +21,8 @@ describe('renderer brand assets', () => {
     expect(source).not.toContain('data:image')
     expect(source).not.toContain('<text')
     expect(source).not.toContain('currentColor')
+    expect(source).toContain('fill="#0055FF"')
+    expect(source.match(/<rect /g)).toHaveLength(5)
   })
 
   it('keeps the horizontal wordmark self-contained and font-independent', () => {
@@ -30,5 +32,7 @@ describe('renderer brand assets', () => {
     expect(source).not.toContain('data:image')
     expect(source).not.toContain('<text')
     expect(source).not.toContain('font-family')
+    expect(source).toContain('fill="#0055FF"')
+    expect(source.match(/<rect /g)).toHaveLength(5)
   })
 })

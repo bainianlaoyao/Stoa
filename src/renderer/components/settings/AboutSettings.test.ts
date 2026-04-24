@@ -86,6 +86,18 @@ describe('AboutSettings', () => {
     expect(wrapper.find('.settings-about__name').text()).toBe('Stoa')
   })
 
+  it('uses the shared renderer brand symbol for the about logo', () => {
+    const wrapper = mount(AboutSettings, {
+      global: { plugins: [pinia] }
+    })
+    const logo = wrapper.get('.settings-about__logo')
+
+    expect(logo.element.tagName).toBe('IMG')
+    expect(logo.attributes('src')).toMatch(/^data:image\/svg\+xml,/)
+    expect(logo.attributes('aria-hidden')).toBe('true')
+    expect(logo.text()).toBe('')
+  })
+
   it('renders version "v0.1.0"', () => {
     const store = useUpdateStore()
     store.applyState(createUpdateState({ currentVersion: '0.1.0' }))
