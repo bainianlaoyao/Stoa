@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount } from 'vue'
+import stoaSymbol from '@renderer/assets/brand/stoa-symbol.svg'
 
 const isMaximized = ref(false)
 
@@ -33,7 +34,7 @@ onBeforeUnmount(() => {
   <div class="flex items-center h-[46px] shrink-0 select-none border-b border-line" style="-webkit-app-region: drag;">
     <!-- Brand -->
     <div class="w-14 flex items-center justify-center" style="-webkit-app-region: no-drag;">
-      <div class="w-8 h-8 grid place-items-center rounded-lg bg-text-strong text-surface-solid text-sm font-bold tracking-wide shadow-soft">S</div>
+      <img :src="stoaSymbol" alt="" class="h-8 w-8" aria-hidden="true">
     </div>
     <span class="text-[14px] font-semibold tracking-tight text-text-strong">Stoa</span>
 

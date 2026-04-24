@@ -13,6 +13,14 @@ vi.mock('@xterm/xterm', () => {
     loadAddon(addon: unknown) {
       this.loadedAddons.push(addon)
     }
+
+    onSelectionChange(_cb: () => void) {
+      return { dispose: () => {} }
+    }
+
+    getSelection() {
+      return ''
+    }
   }
 
   return { Terminal }
