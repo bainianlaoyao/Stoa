@@ -46,7 +46,10 @@ jobs:
         run: pnpm run build
 
       - name: Package Windows artifacts
-        run: pnpm run package -- --publish never
+        run: pnpm exec electron-builder --config electron-builder.yml --publish never
+        env:
+          GH_OWNER: local-dev
+          GH_REPO: stoa-local
 
       - name: Verify release artifacts
         run: pnpm run verify:packaging
