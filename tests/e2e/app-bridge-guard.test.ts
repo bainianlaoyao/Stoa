@@ -51,9 +51,8 @@ function removeStoa(): void {
   Reflect.deleteProperty(window, 'stoa')
 }
 
-/** Set up a fully functional window.stoa mock. */
-function setupStoa(overrides?: Partial<typeof window.stoa>): void {
-  window.stoa = {
+function createStoaMock(overrides?: Partial<typeof window.stoa>): typeof window.stoa {
+  return {
     getBootstrapState: vi.fn().mockResolvedValue({ ...mockBootstrapState }),
     createProject: vi.fn().mockResolvedValue({ ...mockCreatedProject }),
     createSession: vi.fn().mockResolvedValue({ ...mockCreatedSession }),
@@ -87,6 +86,11 @@ function setupStoa(overrides?: Partial<typeof window.stoa>): void {
     listArchivedSessions: vi.fn().mockResolvedValue([]),
     ...overrides
   }
+}
+
+/** Set up a fully functional window.stoa mock. */
+function setupStoa(overrides?: Partial<typeof window.stoa>): void {
+  window.stoa = createStoaMock(overrides)
 }
 
 function mountApp(pinia: Pinia) {
@@ -258,10 +262,10 @@ describe('E2E: App.vue Bridge Guard (window.stoa undefined)', () => {
     // -----------------------------------------------------------------------
     it('missing createProject method — emit still rejects into lastError', async () => {
       // Provide getBootstrapState but omit createProject.
-      window.stoa = {
-        ...setupStoaBase(),
+      window.stoa = createStoaMock({
+        createProject: undefined,
         getBootstrapState: vi.fn().mockResolvedValue({ ...mockBootstrapState })
-      } as typeof window.stoa
+      })
 
       wrapper = mountApp(pinia)
       await flush()
@@ -279,10 +283,10 @@ describe('E2E: App.vue Bridge Guard (window.stoa undefined)', () => {
     // -----------------------------------------------------------------------
     it('missing getBootstrapState method — hydrate never runs', async () => {
       // Provide createProject but omit getBootstrapState.
-      window.stoa = {
-        ...setupStoaBase(),
+      window.stoa = createStoaMock({
+        getBootstrapState: undefined,
         createProject: vi.fn().mockResolvedValue({ ...mockCreatedProject })
-      } as typeof window.stoa
+      })
 
       wrapper = mountApp(pinia)
       await flush()

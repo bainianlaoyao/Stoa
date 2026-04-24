@@ -44,6 +44,10 @@ function updateSessionTitle(event: Event): void {
   emit('update:sessionTitle', (event.target as HTMLInputElement).value)
 }
 
+function updateSessionType(value: string): void {
+  emit('update:sessionType', value as SessionType)
+}
+
 const sessionTypeOptions = listProviderDescriptors().map((descriptor) => ({
   value: descriptor.sessionType,
   label: descriptor.displayName
@@ -92,7 +96,7 @@ const sessionTypeOptions = listProviderDescriptors().map((descriptor) => ({
         <GlassListbox
           :model-value="props.sessionType"
           :options="sessionTypeOptions"
-          @update:model-value="emit('update:sessionType', $event)"
+          @update:model-value="updateSessionType"
         />
       </label>
     </section>

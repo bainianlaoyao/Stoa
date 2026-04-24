@@ -265,7 +265,7 @@ describe('session runtime', () => {
 
     expect(buildStartCommand).toHaveBeenCalledOnce()
     expect(discoverExternalSessionIdAfterStart).not.toHaveBeenCalled()
-    expect(markSessionStarting).toHaveBeenCalledWith('session_op_1', '正在启动 opencode', 'stale-ext-1')
+    expect(markSessionStarting).toHaveBeenCalledWith('session_op_1', 'Starting opencode', 'stale-ext-1')
     expect(markSessionRunning).toHaveBeenCalledWith('session_op_1', 'stale-ext-1')
   })
 
@@ -309,7 +309,7 @@ describe('session runtime', () => {
     })
 
     expect(buildStartCommand).toHaveBeenCalledOnce()
-    expect(markSessionStarting).toHaveBeenCalledWith('session_claude_1', '正在启动 claude-code', 'claude-seeded-1')
+    expect(markSessionStarting).toHaveBeenCalledWith('session_claude_1', 'Starting claude-code', 'claude-seeded-1')
     expect(markSessionRunning).toHaveBeenCalledWith('session_claude_1', 'claude-seeded-1')
   })
 
@@ -356,7 +356,7 @@ describe('session runtime', () => {
 
     expect(buildStartCommand).toHaveBeenCalledOnce()
     expect(discoverExternalSessionIdAfterStart).toHaveBeenCalledOnce()
-    expect(markSessionStarting).toHaveBeenCalledWith('session_codex_1', '正在启动 codex', null)
+    expect(markSessionStarting).toHaveBeenCalledWith('session_codex_1', 'Starting codex', null)
     expect(markSessionRunning).toHaveBeenNthCalledWith(1, 'session_codex_1', null)
     await vi.waitFor(() => {
       expect(markSessionRunning).toHaveBeenNthCalledWith(2, 'session_codex_1', 'codex-real-123')

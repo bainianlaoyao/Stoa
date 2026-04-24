@@ -181,7 +181,7 @@ describe('E2E: Backend Full User Lifecycle', () => {
       expect(snapshot.activeProjectId).toBe(project.id)
     })
 
-    test('persists project to state.json on disk', async () => {
+    test('persists project to global.json on disk', async () => {
       const workspaceDir = await createTestWorkspace('stoa-e2e-test_workspace-')
       const globalStatePath = await createTestGlobalStatePath()
 
@@ -201,7 +201,7 @@ describe('E2E: Backend Full User Lifecycle', () => {
       expect(diskState.projects[0]!.path).toBe(workspaceDir)
     })
 
-    test('re-reading state.json yields identical project data', async () => {
+    test('re-reading global.json yields identical project data', async () => {
       const workspaceDir = await createTestWorkspace('stoa-e2e-test_workspace-')
       const globalStatePath = await createTestGlobalStatePath()
 
@@ -353,7 +353,7 @@ describe('E2E: Backend Full User Lifecycle', () => {
       expect(snapshot.activeSessionId).toBe(session2.id)
     })
 
-    test('all data persisted correctly to state.json', async () => {
+    test('all data persisted correctly to global.json plus per-project sessions.json files', async () => {
       const workspace1 = await createTestWorkspace('stoa-e2e-test_workspace-')
       const workspace2 = await createTestWorkspace('stoa-e2e-test_workspace2-')
       const globalStatePath = await createTestGlobalStatePath()
@@ -1006,7 +1006,10 @@ describe('E2E: Backend Full User Lifecycle', () => {
       const pluginPath = join(workspaceDir, '.opencode', 'plugins', 'stoa-status.ts')
       const content = await readFile(pluginPath, 'utf-8')
       expect(content).toContain('127.0.0.1:43127')
-      expect(content).toContain('test-secret')
+      expect(content).toContain('process.env.STOA_SESSION_ID')
+      expect(content).toContain('process.env.STOA_PROJECT_ID')
+      expect(content).toContain('process.env.STOA_SESSION_SECRET')
+      expect(content).not.toContain('test-secret')
     })
 
     test('getProvider fall back to local-shell for unknown provider', () => {

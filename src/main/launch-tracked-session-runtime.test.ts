@@ -95,7 +95,11 @@ describe('launchTrackedSessionRuntime', () => {
       sessionEventBridge: {
         issueSessionSecret: vi.fn(() => 'secret-1')
       } as never,
-      resolveRuntimePaths: vi.fn(async () => ({ shellPath: null, providerPath: null })),
+      resolveRuntimePaths: vi.fn(async () => ({
+        shellPath: null,
+        providerPath: null,
+        claudeDangerouslySkipPermissions: false
+      })),
       getProvider: vi.fn() as never,
       startRuntime
     })
