@@ -30,7 +30,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="flex items-center h-[54px] shrink-0 select-none border-b border-line" style="-webkit-app-region: drag;">
+  <div class="flex items-center h-[46px] shrink-0 select-none border-b border-line" style="-webkit-app-region: drag;">
     <!-- Brand -->
     <div class="w-14 flex items-center justify-center" style="-webkit-app-region: no-drag;">
       <div class="w-8 h-8 grid place-items-center rounded-lg bg-text-strong text-surface-solid text-sm font-bold tracking-wide shadow-soft">S</div>
