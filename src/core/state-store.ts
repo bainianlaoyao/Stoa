@@ -44,6 +44,8 @@ export function createAtomicTempFilePath(filePath: string): string {
   return `${filePath}.${process.pid}.${Date.now()}.${randomUUID()}.tmp`
 }
 
+const pendingFileAccesses = new Map<string, Promise<void>>()
+
 async function fileExists(filePath: string): Promise<boolean> {
   try {
     await access(filePath)
@@ -63,6 +65,52 @@ async function backupFile(filePath: string, reason: string): Promise<void> {
   await rename(filePath, backupPath)
 }
 
+function withFileAccess<T>(filePath: string, operation: () => Promise<T>): Promise<T> {
+  // Serialize all access per target so reads cannot observe the Windows replace gap.
+  const previous = pendingFileAccesses.get(filePath) ?? Promise.resolve()
+  const current = previous.catch(() => {}).then(operation)
+  let tracked: Promise<void>
+  tracked = current.then(
+    () => undefined,
+    () => undefined
+  ).finally(() => {
+    if (pendingFileAccesses.get(filePath) === tracked) {
+      pendingFileAccesses.delete(filePath)
+    }
+  })
+  pendingFileAccesses.set(filePath, tracked)
+  return current
+}
+
+async function replaceFileAtomically(tempFilePath: string, filePath: string): Promise<void> {
+  try {
+    await rename(tempFilePath, filePath)
+    return
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code
+    if (code !== 'EEXIST' && code !== 'EPERM') {
+      throw error
+    }
+  }
+
+  const backupPath = `${filePath}.replace.bak`
+  await rm(backupPath, { force: true })
+
+  if (await fileExists(filePath)) {
+    await rename(filePath, backupPath)
+  }
+
+  try {
+    await rename(tempFilePath, filePath)
+    await rm(backupPath, { force: true })
+  } catch (error) {
+    if (!(await fileExists(filePath)) && await fileExists(backupPath)) {
+      await rename(backupPath, filePath)
+    }
+    throw error
+  }
+}
+
 function isSupportedGlobalState(value: PersistedGlobalStateV3): boolean {
   return value.version === 3 && Array.isArray(value.projects)
 }
@@ -74,86 +122,94 @@ function isSupportedProjectSessions(value: PersistedProjectSessions): boolean {
 }
 
 async function readProjectSessionsFile(filePath: string): Promise<PersistedProjectSessions> {
-  let raw: string
+  return await withFileAccess(filePath, async () => {
+    let raw: string
 
-  try {
-    raw = await readFile(filePath, 'utf-8')
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+    try {
+      raw = await readFile(filePath, 'utf-8')
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        return structuredClone(DEFAULT_PROJECT_SESSIONS)
+      }
+
       return structuredClone(DEFAULT_PROJECT_SESSIONS)
     }
 
-    return structuredClone(DEFAULT_PROJECT_SESSIONS)
-  }
+    let parsed: PersistedProjectSessions
+    try {
+      parsed = JSON.parse(raw) as PersistedProjectSessions
+    } catch {
+      await backupFile(filePath, 'invalid-json')
+      return structuredClone(DEFAULT_PROJECT_SESSIONS)
+    }
 
-  let parsed: PersistedProjectSessions
-  try {
-    parsed = JSON.parse(raw) as PersistedProjectSessions
-  } catch {
-    await backupFile(filePath, 'invalid-json')
-    return structuredClone(DEFAULT_PROJECT_SESSIONS)
-  }
+    if (!isSupportedProjectSessions(parsed)) {
+      await backupFile(filePath, 'unsupported-version')
+      return structuredClone(DEFAULT_PROJECT_SESSIONS)
+    }
 
-  if (!isSupportedProjectSessions(parsed)) {
-    await backupFile(filePath, 'unsupported-version')
-    return structuredClone(DEFAULT_PROJECT_SESSIONS)
-  }
-
-  return parsed
+    return parsed
+  })
 }
 
 async function writeJsonAtomically(filePath: string, payload: unknown): Promise<void> {
-  await mkdir(dirname(filePath), { recursive: true })
-  const tempFilePath = createAtomicTempFilePath(filePath)
-  try {
-    await writeFile(tempFilePath, JSON.stringify(payload, null, 2), 'utf-8')
-    await rename(tempFilePath, filePath)
-  } finally {
-    await rm(tempFilePath, { force: true })
-  }
+  await withFileAccess(filePath, async () => {
+    await mkdir(dirname(filePath), { recursive: true })
+    const tempFilePath = createAtomicTempFilePath(filePath)
+    try {
+      await writeFile(tempFilePath, JSON.stringify(payload, null, 2), 'utf-8')
+      await replaceFileAtomically(tempFilePath, filePath)
+    } finally {
+      await rm(tempFilePath, { force: true })
+    }
+  })
 }
 
 export async function readPersistedState<TState = PersistedAppStateV2>(filePath = getStateFilePath()): Promise<TState> {
-  try {
-    const raw = await readFile(filePath, 'utf-8')
-    const parsed = JSON.parse(raw) as PersistedAppStateV2
-    if (
-      parsed.version !== 2
-      || !Array.isArray(parsed.projects)
-      || !Array.isArray(parsed.sessions)
-    ) {
+  return await withFileAccess(filePath, async () => {
+    try {
+      const raw = await readFile(filePath, 'utf-8')
+      const parsed = JSON.parse(raw) as PersistedAppStateV2
+      if (
+        parsed.version !== 2
+        || !Array.isArray(parsed.projects)
+        || !Array.isArray(parsed.sessions)
+      ) {
+        return structuredClone(DEFAULT_STATE) as TState
+      }
+
+      return parsed as TState
+    } catch {
       return structuredClone(DEFAULT_STATE) as TState
     }
-
-    return parsed as TState
-  } catch {
-    return structuredClone(DEFAULT_STATE) as TState
-  }
+  })
 }
 
 export async function readGlobalState(filePath = getGlobalStateFilePath()): Promise<PersistedGlobalStateV3> {
-  let raw: string
+  return await withFileAccess(filePath, async () => {
+    let raw: string
 
-  try {
-    raw = await readFile(filePath, 'utf-8')
-  } catch {
-    return structuredClone(DEFAULT_GLOBAL_STATE)
-  }
+    try {
+      raw = await readFile(filePath, 'utf-8')
+    } catch {
+      return structuredClone(DEFAULT_GLOBAL_STATE)
+    }
 
-  let parsed: PersistedGlobalStateV3
-  try {
-    parsed = JSON.parse(raw) as PersistedGlobalStateV3
-  } catch {
-    await backupFile(filePath, 'invalid-json')
-    return structuredClone(DEFAULT_GLOBAL_STATE)
-  }
+    let parsed: PersistedGlobalStateV3
+    try {
+      parsed = JSON.parse(raw) as PersistedGlobalStateV3
+    } catch {
+      await backupFile(filePath, 'invalid-json')
+      return structuredClone(DEFAULT_GLOBAL_STATE)
+    }
 
-  if (!isSupportedGlobalState(parsed)) {
-    await backupFile(filePath, 'unsupported-version')
-    return structuredClone(DEFAULT_GLOBAL_STATE)
-  }
+    if (!isSupportedGlobalState(parsed)) {
+      await backupFile(filePath, 'unsupported-version')
+      return structuredClone(DEFAULT_GLOBAL_STATE)
+    }
 
-  return parsed
+    return parsed
+  })
 }
 
 export async function readProjectSessions(projectPath: string): Promise<PersistedProjectSessions> {

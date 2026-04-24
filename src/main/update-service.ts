@@ -1,5 +1,6 @@
 import type { BootstrapState } from '@shared/project-session'
 import type { UpdateState } from '@shared/update-state'
+import { writeUpdateLog } from '@core/app-logger'
 
 interface AppLike {
   isPackaged: boolean
@@ -28,6 +29,7 @@ interface UpdateServiceOptions {
   showSessionWarningDialog: () => Promise<boolean>
   prepareToInstall?: () => Promise<void>
   onStateChange?: (state: UpdateState) => void
+  writeLog?: (message: string) => Promise<void>
 }
 
 const DISABLED_MESSAGE = 'Updates are only available in packaged builds.'
@@ -96,6 +98,7 @@ export class UpdateService {
     this.options.updater.autoDownload = false
     this.state = createBaseState(this.options.app.getVersion(), this.options.app.isPackaged)
     this.bindUpdaterEvents()
+    this.log(`initialized phase=${this.state.phase} version=${this.state.currentVersion}`)
   }
 
   async getState(): Promise<UpdateState> {
@@ -114,6 +117,7 @@ export class UpdateService {
       return this.getState()
     }
 
+    this.log('check requested')
     this.setState({
       phase: 'checking',
       lastCheckedAt: new Date().toISOString(),
@@ -156,6 +160,7 @@ export class UpdateService {
       return this.getState()
     }
 
+    this.log('download requested')
     this.setState({
       phase: 'downloading',
       downloadProgressPercent: 0,
@@ -190,12 +195,15 @@ export class UpdateService {
     }
 
     if (this.hasBlockingSessions()) {
+      this.log('install blocked by active sessions pending confirmation')
       const shouldContinue = await this.options.showSessionWarningDialog()
       if (!shouldContinue) {
+        this.log('install cancelled after session warning')
         return
       }
     }
 
+    this.log('quitAndInstall requested')
     await this.options.prepareToInstall?.()
     this.options.updater.quitAndInstall()
   }
@@ -217,6 +225,13 @@ export class UpdateService {
     const snapshot = this.snapshotState()
     this.options.onStateChange?.(snapshot)
     return snapshot
+  }
+
+  private log(message: string): void {
+    const writer = this.options.writeLog ?? writeUpdateLog
+    void writer(message).catch((error) => {
+      console.error('[update-log] Failed to write update log entry:', error)
+    })
   }
 
   private bindUpdaterEvents(): void {
@@ -290,6 +305,9 @@ export class UpdateService {
       ...this.state,
       ...next
     })
+    this.log(
+      `state phase=${this.state.phase} available=${this.state.availableVersion ?? 'null'} downloaded=${this.state.downloadedVersion ?? 'null'} message=${this.state.message ?? 'null'}`
+    )
 
     return this.publishState()
   }

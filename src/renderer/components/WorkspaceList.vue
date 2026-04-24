@@ -48,6 +48,13 @@ const sessionTypeOptions = listProviderDescriptors().map((descriptor) => ({
   value: descriptor.sessionType,
   label: descriptor.displayName
 }))
+const validSessionTypes = new Set<SessionType>(sessionTypeOptions.map((option) => option.value))
+
+function updateSessionType(value: string): void {
+  if (validSessionTypes.has(value as SessionType)) {
+    emit('update:sessionType', value as SessionType)
+  }
+}
 </script>
 
 <template>
@@ -92,7 +99,7 @@ const sessionTypeOptions = listProviderDescriptors().map((descriptor) => ({
         <GlassListbox
           :model-value="props.sessionType"
           :options="sessionTypeOptions"
-          @update:model-value="emit('update:sessionType', $event)"
+          @update:model-value="updateSessionType"
         />
       </label>
     </section>

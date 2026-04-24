@@ -24,6 +24,7 @@ function createSnapshot(overrides?: Partial<BootstrapState>): BootstrapState {
 describe('UpdateService', () => {
   test('forces autoDownload off for the updater transport', () => {
     const updater = new FakeUpdater()
+    const writeLog = vi.fn(async () => undefined)
 
     new UpdateService({
       app: {
@@ -34,10 +35,12 @@ describe('UpdateService', () => {
       sessionManager: {
         snapshot: () => createSnapshot()
       },
-      showSessionWarningDialog: async () => true
+      showSessionWarningDialog: async () => true,
+      writeLog
     })
 
     expect(updater.autoDownload).toBe(false)
+    expect(writeLog).toHaveBeenCalled()
   })
 
   test('returns disabled state and skips updater checks when app is not packaged', async () => {
@@ -245,5 +248,79 @@ describe('UpdateService', () => {
         downloadProgressPercent: null
       })
     )
+  })
+
+  test('writes update log entries for state transitions and install decisions', async () => {
+    const updater = new FakeUpdater()
+    const writeLog = vi.fn(async () => undefined)
+    const service = new UpdateService({
+      app: {
+        isPackaged: true,
+        getVersion: () => '1.2.3'
+      },
+      updater,
+      sessionManager: {
+        snapshot: () => createSnapshot({
+          sessions: [
+            {
+              id: 'session-1',
+              projectId: 'project-1',
+              type: 'shell',
+              status: 'running',
+              title: 'Shell',
+              summary: 'Running',
+              recoveryMode: 'fresh-shell',
+              externalSessionId: null,
+              createdAt: '2026-04-24T00:00:00.000Z',
+              updatedAt: '2026-04-24T00:00:00.000Z',
+              lastActivatedAt: '2026-04-24T00:00:00.000Z',
+              archived: false
+            }
+          ]
+        })
+      },
+      showSessionWarningDialog: async () => false,
+      writeLog
+    })
+
+    updater.emit('update-available', { version: '1.3.0' })
+    updater.emit('update-downloaded', { version: '1.3.0' })
+    await service.quitAndInstall()
+
+    expect(writeLog).toHaveBeenCalledWith(expect.stringContaining('state phase=available'))
+    expect(writeLog).toHaveBeenCalledWith(expect.stringContaining('state phase=downloaded'))
+    expect(writeLog).toHaveBeenCalledWith('install blocked by active sessions pending confirmation')
+    expect(writeLog).toHaveBeenCalledWith('install cancelled after session warning')
+  })
+
+  test('swallows update log write failures', async () => {
+    const updater = new FakeUpdater()
+    const writeLog = vi.fn(async () => {
+      throw new Error('disk full')
+    })
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const service = new UpdateService({
+      app: {
+        isPackaged: true,
+        getVersion: () => '1.2.3'
+      },
+      updater,
+      sessionManager: {
+        snapshot: () => createSnapshot()
+      },
+      showSessionWarningDialog: async () => true,
+      writeLog
+    })
+
+    updater.emit('update-available', { version: '1.3.0' })
+    await Promise.resolve()
+
+    expect(service).toBeDefined()
+    expect(consoleError).toHaveBeenCalledWith(
+      '[update-log] Failed to write update log entry:',
+      expect.any(Error)
+    )
+
+    consoleError.mockRestore()
   })
 })

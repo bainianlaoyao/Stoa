@@ -6,7 +6,13 @@ import { resolve } from 'node:path'
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin()],
+    build: {
+      lib: {
+        entry: resolve('src/main/index.ts'),
+        formats: ['cjs']
+      }
+    },
+    plugins: [externalizeDepsPlugin({ exclude: ['express'] })],
     resolve: {
       alias: {
         '@core': resolve('src/core'),
@@ -16,6 +22,12 @@ export default defineConfig({
     }
   },
   preload: {
+    build: {
+      lib: {
+        entry: resolve('src/preload/index.ts'),
+        formats: ['cjs']
+      }
+    },
     plugins: [externalizeDepsPlugin()],
     resolve: {
       alias: {

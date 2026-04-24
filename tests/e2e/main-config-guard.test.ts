@@ -135,8 +135,8 @@ describe('E2E: Main Process Config Guard', () => {
       expect(pathPrefs!).toMatch(/sandbox\s*:\s*false/)
     })
 
-    it('preload path in main/index.ts ends with .mjs extension', () => {
-      expect(mainSource).toMatch(/preload[/'"]+index\.mjs['"]\)/)
+    it('preload path in main/index.ts ends with .cjs extension', () => {
+      expect(mainSource).toMatch(/preload[/'"]+index\.cjs['"]\)/)
     })
   })
 

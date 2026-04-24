@@ -32,6 +32,38 @@ function createCanonicalEvent(args: {
   }
 }
 
+async function waitForSessionSnapshot(app: Parameters<typeof getMainE2EDebugState>[0], sessionId: string) {
+  const deadline = Date.now() + 10_000
+
+  while (Date.now() < deadline) {
+    const nextDebugState = await getMainE2EDebugState(app)
+    const session = nextDebugState?.snapshot?.sessions.find(candidate => candidate.id === sessionId) ?? null
+    if (session) {
+      return session
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+
+  throw new Error(`Timed out waiting for session snapshot ${sessionId}`)
+}
+
+async function waitForLiveSessionStatus(app: Parameters<typeof getMainE2EDebugState>[0], sessionId: string) {
+  const deadline = Date.now() + 10_000
+
+  while (Date.now() < deadline) {
+    const nextDebugState = await getMainE2EDebugState(app)
+    const status = nextDebugState?.snapshot?.sessions.find(candidate => candidate.id === sessionId)?.status ?? null
+    if (status === 'running' || status === 'awaiting_input') {
+      return
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+
+  throw new Error(`Timed out waiting for session ${sessionId} to become live`)
+}
+
 test.describe('Electron push and webhook journeys', () => {
   test('session event projection', async () => {
     const app = await launchElectronApp()
@@ -45,12 +77,16 @@ test.describe('Electron push and webhook journeys', () => {
         type: 'opencode'
       })
 
-      const debugState = await getMainE2EDebugState(app.electronApp)
-      const sessionState = debugState?.snapshot?.sessions.find(candidate => candidate.title === session.title)
-      const secret = sessionState ? debugState?.sessionSecrets[sessionState.id] : undefined
+      const initialDebugState = await getMainE2EDebugState(app.electronApp)
+      const initialSessionState = initialDebugState?.snapshot?.sessions.find(candidate => candidate.title === session.title)
+      expect(initialDebugState?.webhookPort).toBeTruthy()
+      expect(initialSessionState).toBeDefined()
 
-      expect(debugState?.webhookPort).toBeTruthy()
-      expect(sessionState).toBeDefined()
+      await waitForLiveSessionStatus(app.electronApp, initialSessionState!.id)
+
+      const debugState = await getMainE2EDebugState(app.electronApp)
+      const sessionState = debugState?.snapshot?.sessions.find(candidate => candidate.id === initialSessionState!.id)
+      const secret = sessionState ? debugState?.sessionSecrets[sessionState.id] : undefined
       expect(secret).toBeTruthy()
 
       const response = await postWebhookEvent({
@@ -137,10 +173,15 @@ test.describe('Electron push and webhook journeys', () => {
         type: 'opencode'
       })
 
+      const initialDebugState = await getMainE2EDebugState(app.electronApp)
+      const initialSessionState = initialDebugState?.snapshot?.sessions.find(candidate => candidate.title === session.title)
+      expect(initialSessionState).toBeDefined()
+      await waitForLiveSessionStatus(app.electronApp, initialSessionState!.id)
+
       const debugState = await getMainE2EDebugState(app.electronApp)
-      const sessionState = debugState?.snapshot?.sessions.find(candidate => candidate.title === session.title)
+      const sessionState = debugState?.snapshot?.sessions.find(candidate => candidate.id === initialSessionState!.id)
       expect(sessionState).toBeDefined()
-      const sessionBefore = await getMainE2EDebugState(app.electronApp)
+      const sessionBefore = await waitForSessionSnapshot(app.electronApp, sessionState!.id)
       const statusClassBefore = await session.row.locator('.route-dot').evaluate((element) => element.className)
 
       const response = await postWebhookEvent({
@@ -159,7 +200,7 @@ test.describe('Electron push and webhook journeys', () => {
       await expect.poll(async () => {
         const nextDebugState = await getMainE2EDebugState(app.electronApp)
         return nextDebugState?.snapshot?.sessions.find(candidate => candidate.id === sessionState!.id) ?? null
-      }).toEqual(sessionBefore?.snapshot?.sessions.find(candidate => candidate.id === sessionState!.id) ?? null)
+      }).toEqual(sessionBefore)
     } finally {
       const { stateDir } = app
       await app.close()

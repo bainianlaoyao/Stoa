@@ -1,0 +1,53 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate deterministic tests
+        run: pnpm run test:generate
+
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      - name: Run Vitest
+        run: pnpm vitest run
+
+      - name: Run Electron Playwright journeys
+        run: pnpm run test:e2e
+
+      - name: Verify behavior coverage
+        run: pnpm run test:behavior-coverage
+
+      - name: Build production bundles
+        run: pnpm run build
+
+      - name: Package Windows artifacts
+        run: pnpm run package
+
+      - name: Verify release artifacts
+        run: pnpm run verify:packaging
+
+      - name: Smoke packaged Windows build
+        run: pnpm run verify:release-smoke

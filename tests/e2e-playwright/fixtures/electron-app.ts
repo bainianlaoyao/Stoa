@@ -39,7 +39,7 @@ export async function createStateDir(prefix = 'stoa-playwright-'): Promise<strin
 }
 
 export function resolveElectronMainEntrypoint(cwd = process.cwd()): string {
-  return join(cwd, 'out', 'main', 'index.js')
+  return join(cwd, 'out', 'main', 'index.cjs')
 }
 
 export function ensureElectronMainEntrypoint(cwd = process.cwd()): string {

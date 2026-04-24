@@ -1,4 +1,4 @@
-import { readFile, writeFile } from 'node:fs/promises'
+import * as fsPromises from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
@@ -60,9 +60,32 @@ describe('state-store', () => {
     await writeGlobalState(state, globalStatePath)
 
     await expect(readGlobalState(globalStatePath)).resolves.toEqual(state)
-    const raw = JSON.parse(await readFile(globalStatePath, 'utf-8')) as PersistedGlobalStateV3
+    const raw = JSON.parse(await fsPromises.readFile(globalStatePath, 'utf-8')) as PersistedGlobalStateV3
     expect(raw.active_project_id).toBe('project_alpha')
     expect(raw.version).toBe(3)
+  })
+
+  test('serializes concurrent writes to the same global state file and keeps the last payload', async () => {
+    const globalStatePath = await createTempGlobalStatePath()
+    const first: PersistedGlobalStateV3 = {
+      version: 3,
+      active_project_id: 'project_alpha',
+      active_session_id: null,
+      projects: []
+    }
+    const second: PersistedGlobalStateV3 = {
+      version: 3,
+      active_project_id: 'project_beta',
+      active_session_id: null,
+      projects: []
+    }
+
+    await expect(Promise.all([
+      writeGlobalState(first, globalStatePath),
+      writeGlobalState(second, globalStatePath)
+    ])).resolves.toEqual([undefined, undefined])
+
+    await expect(readGlobalState(globalStatePath)).resolves.toEqual(second)
   })
 
   test('uses distinct temp files for concurrent atomic global state writes in the same millisecond', async () => {
@@ -106,6 +129,46 @@ describe('state-store', () => {
     expect(read.sessions[0]!.last_known_status).toBe('running')
   })
 
+  test('overwrites an existing project sessions file on repeated writes', async () => {
+    const projectDir = await createTempProjectDir()
+    const first: PersistedProjectSessions = {
+      version: 4,
+      project_id: 'project_alpha',
+      sessions: []
+    }
+    const second: PersistedProjectSessions = {
+      version: 4,
+      project_id: 'project_beta',
+      sessions: []
+    }
+
+    await writeProjectSessions(projectDir, first)
+    await writeProjectSessions(projectDir, second)
+
+    await expect(readProjectSessions(projectDir)).resolves.toEqual(second)
+  })
+
+  test('serializes concurrent writes to the same project sessions file and keeps the last payload', async () => {
+    const projectDir = await createTempProjectDir()
+    const first: PersistedProjectSessions = {
+      version: 4,
+      project_id: 'project_alpha',
+      sessions: []
+    }
+    const second: PersistedProjectSessions = {
+      version: 4,
+      project_id: 'project_beta',
+      sessions: []
+    }
+
+    await expect(Promise.all([
+      writeProjectSessions(projectDir, first),
+      writeProjectSessions(projectDir, second)
+    ])).resolves.toEqual([undefined, undefined])
+
+    await expect(readProjectSessions(projectDir)).resolves.toEqual(second)
+  })
+
   test('returns versioned empty sessions when project has no sessions file', async () => {
     const projectDir = await createTempProjectDir()
 
@@ -119,19 +182,19 @@ describe('state-store', () => {
 
   test('backs up invalid global state before returning the default', async () => {
     const globalStatePath = await createTempGlobalStatePath()
-    await writeFile(globalStatePath, '{invalid-json', 'utf-8')
+    await fsPromises.writeFile(globalStatePath, '{invalid-json', 'utf-8')
 
     await expect(readGlobalState(globalStatePath)).resolves.toEqual(DEFAULT_GLOBAL_STATE)
 
     const backupPath = `${globalStatePath}.invalid-json.bak`
-    await expect(readFile(backupPath, 'utf-8')).resolves.toBe('{invalid-json')
+    await expect(fsPromises.readFile(backupPath, 'utf-8')).resolves.toBe('{invalid-json')
   })
 
   test('backs up unsupported unversioned project sessions before returning the default', async () => {
     const projectDir = await createTempProjectDir()
     const sessionsPath = join(projectDir, '.stoa', 'sessions.json')
     await import('node:fs/promises').then(({ mkdir }) => mkdir(join(projectDir, '.stoa'), { recursive: true }))
-    await writeFile(
+    await fsPromises.writeFile(
       sessionsPath,
       JSON.stringify({
         project_id: 'project_alpha',
@@ -147,7 +210,7 @@ describe('state-store', () => {
     })
 
     const backupPath = `${sessionsPath}.unsupported-version.bak`
-    const backup = JSON.parse(await readFile(backupPath, 'utf-8')) as Record<string, unknown>
+    const backup = JSON.parse(await fsPromises.readFile(backupPath, 'utf-8')) as Record<string, unknown>
     expect(backup.project_id).toBe('project_alpha')
     expect(backup.sessions).toEqual([])
   })
