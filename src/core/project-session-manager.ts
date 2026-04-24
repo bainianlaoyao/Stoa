@@ -343,8 +343,8 @@ export class ProjectSessionManager {
     const session = this.state.sessions.find(s => s.id === sessionId)
     if (!session) return
 
-    // If an external event (e.g. webhook) already set exited with a custom summary, preserve it
-    if (session.status === 'exited') return
+    // If an external event (e.g. webhook) already set a richer status, don't regress
+    if (NON_REGRESSIBLE_RUNNING_STATUSES.has(session.status)) return
 
     await this.applySessionEvent(sessionId, 'exited', summary)
   }
