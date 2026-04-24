@@ -15,6 +15,7 @@ export const commandTopology = defineTopology({
     addSessionButton: 'workspace.add-session',
     sessionRow: 'session-row',
     sessionStatusDot: 'session-status-dot',
+    terminalStatusBar: 'terminal-status-bar',
     archiveSessionButton: 'workspace.archive-session'
   }
 })

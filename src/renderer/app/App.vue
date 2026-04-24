@@ -98,6 +98,7 @@ onMounted(async () => {
 
   const bootstrapState = await window.stoa.getBootstrapState()
   workspaceStore.hydrate(bootstrapState)
+  await workspaceStore.hydrateObservability()
   await Promise.all([
     settingsStore.loadSettings(),
     updateStore.refresh()
@@ -115,6 +116,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   unsubscribeSessionEvent?.()
   unsubscribeUpdateState?.()
+  workspaceStore.unsubscribeObservability()
 })
 </script>
 

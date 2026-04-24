@@ -1,10 +1,12 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
-import { createPinia } from 'pinia'
+import { createPinia, setActivePinia } from 'pinia'
 import CommandSurface from './CommandSurface.vue'
 import WorkspaceHierarchyPanel from './WorkspaceHierarchyPanel.vue'
+import { useWorkspaceStore } from '@renderer/stores/workspaces'
 import type { ProjectHierarchyNode } from '@renderer/stores/workspaces'
+import type { SessionPresenceSnapshot } from '@shared/observability'
 import type { ProjectSummary, SessionSummary } from '@shared/project-session'
 
 const hierarchy: ProjectHierarchyNode[] = [
@@ -59,6 +61,29 @@ const activeSession: SessionSummary = {
   archived: false
 }
 
+function createPresenceSnapshot(overrides: Partial<SessionPresenceSnapshot> = {}): SessionPresenceSnapshot {
+  return {
+    sessionId: 'session_1',
+    projectId: 'project_alpha',
+    providerId: 'opencode',
+    providerLabel: 'OpenCode',
+    modelLabel: 'GPT-5',
+    phase: 'working',
+    canonicalStatus: 'running',
+    confidence: 'authoritative',
+    health: 'healthy',
+    blockingReason: null,
+    lastAssistantSnippet: null,
+    lastEventAt: '2026-04-24T08:00:00.000Z',
+    lastEvidenceType: null,
+    hasUnreadTurn: false,
+    recoveryPointerState: 'trusted',
+    sourceSequence: 1,
+    updatedAt: '2026-04-24T08:00:00.000Z',
+    ...overrides
+  }
+}
+
 describe('CommandSurface', () => {
   it('uses the command panel wrapper structure', () => {
     const wrapper = mount(CommandSurface, {
@@ -96,6 +121,49 @@ describe('CommandSurface', () => {
     expect(statusDot.attributes('data-status')).toBe('running')
     expect(statusDot.attributes('data-phase')).toBe('working')
     expect(statusDot.attributes('data-tone')).toBe('success')
+  })
+
+  it('renders blocked observability in the row dot and active terminal status bar', () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const store = useWorkspaceStore(pinia)
+    store.hydrate({
+      activeProjectId: 'project_alpha',
+      activeSessionId: 'session_1',
+      terminalWebhookPort: 0,
+      projects: [activeProject],
+      sessions: [activeSession]
+    })
+    store.sessionPresenceById = {
+      session_1: createPresenceSnapshot({
+        phase: 'blocked',
+        canonicalStatus: 'needs_confirmation',
+        blockingReason: 'permission',
+        sourceSequence: 3
+      })
+    }
+
+    const wrapper = mount(CommandSurface, {
+      global: { plugins: [pinia] },
+      props: {
+        hierarchy,
+        activeProject,
+        activeSession,
+        activeProjectId: 'project_alpha',
+        activeSessionId: 'session_1'
+      }
+    })
+
+    const statusDot = wrapper.find('[data-testid="session-status-dot"]')
+    const terminalStatusBar = wrapper.find('[data-testid="terminal-status-bar"]')
+    const terminalViewport = wrapper.find('[data-testid="terminal-viewport"]')
+
+    expect(statusDot.attributes('data-status')).toBe('running')
+    expect(statusDot.attributes('data-phase')).toBe('blocked')
+    expect(statusDot.attributes('data-tone')).toBe('warning')
+    expect(terminalStatusBar.exists()).toBe(true)
+    expect(terminalStatusBar.text()).toContain('Blocked')
+    expect(terminalViewport.find('[data-testid="terminal-status-bar"]').exists()).toBe(false)
   })
 
   it('forwards archiveSession from WorkspaceHierarchyPanel', async () => {

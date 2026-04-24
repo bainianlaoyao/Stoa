@@ -2,9 +2,10 @@
 import { computed } from 'vue'
 import { storeToRefs } from 'pinia'
 import WorkspaceHierarchyPanel from './WorkspaceHierarchyPanel.vue'
+import TerminalMetaBar from './TerminalMetaBar.vue'
 import TerminalViewport from '@renderer/components/TerminalViewport.vue'
 import { useWorkspaceStore } from '@renderer/stores/workspaces'
-import { toSessionRowViewModel } from '@renderer/stores/observability-view-models'
+import { toActiveSessionViewModel, toSessionRowViewModel } from '@renderer/stores/observability-view-models'
 import { buildSessionPresenceSnapshot } from '@shared/observability-projection'
 import type { ProjectSummary, SessionSummary } from '@shared/project-session'
 import type { ProjectHierarchyNode } from '@renderer/stores/workspaces'
@@ -26,7 +27,7 @@ const emit = defineEmits<{
 }>()
 
 const workspaceStore = useWorkspaceStore()
-const { sessionPresenceMap } = storeToRefs(workspaceStore)
+const { activeSessionPresence, sessionPresenceMap } = storeToRefs(workspaceStore)
 
 const sessionRowViewModels = computed(() => {
   const nowIso = new Date().toISOString()
@@ -44,6 +45,14 @@ const sessionRowViewModels = computed(() => {
   }
 
   return viewModels
+})
+
+const activeSessionViewModel = computed(() => {
+  if (!props.activeSession || !activeSessionPresence.value) {
+    return null
+  }
+
+  return toActiveSessionViewModel(props.activeSession, activeSessionPresence.value, new Date().toISOString())
 })
 </script>
 
@@ -63,7 +72,14 @@ const sessionRowViewModels = computed(() => {
           @archive-session="emit('archiveSession', $event)"
         />
 
-        <TerminalViewport :project="activeProject" :session="activeSession" />
+        <div class="min-h-0 grid grid-rows-[auto_minmax(0,1fr)] gap-2.5" data-testid="command-main">
+          <TerminalMetaBar
+            :project="activeProject"
+            :session="activeSession"
+            :active-view-model="activeSessionViewModel"
+          />
+          <TerminalViewport :project="activeProject" :session="activeSession" />
+        </div>
       </div>
     </div>
   </section>
