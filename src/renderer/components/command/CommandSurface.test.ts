@@ -79,6 +79,25 @@ describe('CommandSurface', () => {
     expect(wrapper.find('.terminal-viewport').exists()).toBe(true)
   })
 
+  it('derives a visible running status from session state before observability snapshots arrive', () => {
+    const wrapper = mount(CommandSurface, {
+      global: { plugins: [createPinia()] },
+      props: {
+        hierarchy,
+        activeProject,
+        activeSession,
+        activeProjectId: 'project_alpha',
+        activeSessionId: 'session_1',
+      }
+    })
+
+    const statusDot = wrapper.find('[data-testid="session-status-dot"]')
+
+    expect(statusDot.attributes('data-status')).toBe('running')
+    expect(statusDot.attributes('data-phase')).toBe('working')
+    expect(statusDot.attributes('data-tone')).toBe('success')
+  })
+
   it('forwards archiveSession from WorkspaceHierarchyPanel', async () => {
     const wrapper = mount(CommandSurface, {
       global: { plugins: [createPinia()] },
