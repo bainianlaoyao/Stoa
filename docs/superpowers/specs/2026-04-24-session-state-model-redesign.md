@@ -53,7 +53,7 @@ type SessionRuntimeState =
 ```
 
 | Runtime 状态 | 含义 | 典型来源 |
-|---|---|---|---|
+|---|---|---|
 | `created` | Session 记录已创建，但尚未开始启动 runtime。 | `createSession()` |
 | `starting` | 正在安装 sidecar、构建命令或准备 spawn PTY。 | `startSessionRuntime()` |
 | `alive` | PTY/provider 进程已成功 spawn，进程存活。 | `ptyHost.start()` 成功 |
@@ -67,7 +67,7 @@ runtimeExitCode: number | null
 runtimeExitReason: 'clean' | 'failed' | null
 ```
 
-`runtimeState = exited` 本身不说明成功还是失败，必须结合 exit metadata。干净退出显示 `Exited`，异常退出显示 `Failed`。
+`runtimeState = exited` 本身不说明成功还是失败，必须结合 exit metadata。异常退出显示 `Failed`；干净退出在没有更高优先级 UI presence（例如未读 `Complete`）时显示 `Exited`。
 
 ### 第二层：Agent 状态全集
 
@@ -112,7 +112,7 @@ type SessionPresencePhase =
 | UI 状态 | 展示文案 | 含义 |
 |---|---|---|
 | `preparing` | Preparing | Stoa 正在创建或启动 runtime。 |
-| `ready` | Ready | runtime 可用，agent 没在工作，或当前 turn 已完成。 |
+| `ready` | Ready | runtime 可用，agent idle，且没有未读完成结果。 |
 | `running` | Running | agent 正在处理任务；Shell 例外，进程 alive 即 Running。 |
 | `complete` | Complete | agent 已完成当前轮，但用户尚未访问该结果。 |
 | `blocked` | Blocked | agent 等待权限/确认/用户介入。 |
@@ -125,9 +125,9 @@ type SessionPresencePhase =
 
 | UI 状态 | 打扰级别 | 视觉语气 | 颜色约束 |
 |---|---|---|
-| `complete` | 最高 | 强提醒但不刺眼 | 表示有完成结果等待用户查看，应使用最显眼的非错误提醒语气；可用明确 unread marker、温和高对比 tint 或强调点色。访问后必须降回 ready。 |
-| `blocked` | 最高 | 强注意 | 表示需要用户介入才能继续，应使用 warning/attention 语气，并与 complete 同级优先。 |
-| `failed` | 高 | 错误 | 使用 danger 语气。它是严重问题，但在“待用户处理队列”里不应压过 complete/blocked 的工作流提醒。 |
+| `failed` | 最高 | 错误 | 使用 danger 语气。失败是最高优先级事实，必须压过 complete/blocked/running/ready。 |
+| `complete` | 高 | 强提醒但不刺眼 | 表示有完成结果等待用户查看，应使用最显眼的非错误提醒语气；可用明确 unread marker、温和高对比 tint 或强调点色。访问后必须降回 ready。 |
+| `blocked` | 高 | 强注意 | 表示需要用户介入才能继续，应使用 warning/attention 语气，并与 complete 同级。 |
 | `running` | 中 | 活跃但不抢注意 | 表示 agent 正在工作，通常无需用户立即行动；使用克制的 activity/success 语气，不使用大面积高饱和色，不应比 complete/blocked 更显眼。 |
 | `preparing` | 低 | 临时低强调 | 使用 neutral/subtle 语气。 |
 | `ready` | 最低 | 平和、无打扰 | 必须使用 neutral/subtle 语气，例如低对比灰、柔和文字/点色；不能使用鲜艳蓝色、强 accent、高饱和边框或 glow。 |
@@ -167,9 +167,11 @@ interface SessionStatePatchEvent {
   sequence: number
   occurredAt: string
   intent: SessionStateIntent
-  providerEventType: string
+  source: 'runtime' | 'provider' | 'ui'
+  sourceEventType?: string
   runtimeState?: SessionRuntimeState
   agentState?: SessionAgentState
+  hasUnseenCompletion?: boolean
   runtimeExitCode?: number | null
   runtimeExitReason?: 'clean' | 'failed' | null
   blockingReason?: BlockingReason | null
@@ -202,18 +204,26 @@ function derivePresencePhase(input: {
 | 条件 | UI Presence |
 |---|---|
 | `runtimeState = failed_to_start` | `failed` |
-| `agentState = error` | `failed` |
 | `runtimeState = exited` 且 `runtimeExitReason = failed` | `failed` |
-| `runtimeState = exited` 且 `runtimeExitReason = clean` | `exited` |
-| `agentState = blocked` | `blocked` |
-| `agentState = working` | `running` |
-| `agentState = idle` 且 `hasUnseenCompletion = true` | `complete` |
-| `agentState = idle` | `ready` |
+| `agentState = error` | `failed` |
 | `runtimeState = created 或 starting` | `preparing` |
+| `agentState = blocked` | `blocked` |
+| `agentState = idle` 且 `hasUnseenCompletion = true` | `complete` |
+| `runtimeState = exited` 且 `runtimeExitReason = clean` | `exited` |
+| `agentState = working` | `running` |
+| `agentState = idle` | `ready` |
 | `runtimeState = alive` 且 `agentState = unknown` 且 provider 是 Shell | `running` |
 | `runtimeState = alive` 且 `agentState = unknown` 且 provider 是 agent provider | `ready` |
 
 `activeSessionId` 不得参与 phase 派生。当前是否 active 只影响 unread/attention 元数据，不影响 session 本身状态。
+
+Phase 派生优先级和视觉打扰级别不是同一套排序：
+
+- failed 是 phase 最高优先级：`failed_to_start`、failed exit、agent `error` 必须覆盖展示为 `failed`。
+- `runtimeState = created/starting` 表示一次新的启动边界，优先于非错误 agent 状态显示 `preparing`；进入 `starting` 时 reducer 必须清理旧 agent/unseen/blocking/exit metadata，避免 restore/retry 被旧状态污染。
+- `blocked` 和 `complete` 是非 failed 场景下最高打扰级别的可行动 UI 状态；它们优先于 `running`、`ready`、clean `exited`。
+- clean `exited` 不得覆盖 `hasUnseenCompletion = true`，否则完成但未访问的结果会丢失 UI 提醒。
+- `running` 是中等活跃状态，不能覆盖 `blocked` 或 `complete`。
 
 ## 状态转换总览
 
@@ -222,19 +232,20 @@ function derivePresencePhase(input: {
 | 当前 Runtime | 事件 intent | 下一个 Runtime | 说明 |
 |---|---|---|---|
 | 无记录 | `runtime.created` | `created` | 创建 session。 |
-| `created` | `runtime.starting` | `starting` | 开始启动 runtime。 |
+| `created` | `runtime.starting` | `starting` | 开始启动 runtime，并重置旧 agent/unseen/blocking/exit metadata。 |
 | `starting` | `runtime.alive` | `alive` | PTY spawn 成功。 |
 | `created` / `starting` | `runtime.failed_to_start` | `failed_to_start` | 启动前失败。 |
 | `alive` | `runtime.exited_clean` | `exited` | 正常退出。 |
 | `alive` | `runtime.exited_failed` | `exited` | 异常退出，UI 派生为 Failed。 |
-| `exited` | `runtime.starting` | `starting` | 用户显式 restore/retry。 |
-| `failed_to_start` | `runtime.starting` | `starting` | 用户显式 retry。 |
+| `exited` | `runtime.starting` | `starting` | 用户显式 restore/retry，并重置旧 agent/unseen/blocking/exit metadata。 |
+| `failed_to_start` | `runtime.starting` | `starting` | 用户显式 retry，并重置旧 agent/unseen/blocking/exit metadata。 |
 
 Runtime 非法或忽略转换：
 
 - 旧 sequence 的 runtime 事件忽略。
 - `exited` 后的旧 `alive` 忽略，除非来自更新 sequence 的 restore/retry。
 - `failed_to_start` 后的 provider agent 事件忽略，除非 runtime 已重新进入 `starting/alive`。
+- `runtime.starting` 是新启动边界：设置 `runtimeState = starting`、`agentState = unknown`、`hasUnseenCompletion = false`、`blockingReason = null`、`runtimeExitCode = null`、`runtimeExitReason = null`。
 
 ### Agent 合法转换
 
@@ -260,13 +271,14 @@ Agent 非法或忽略转换：
 - `blocked -> working` 不能由普通 `agent.tool_started` 随意触发，必须是明确的 permission resolved 或同一 turn 的 post-permission continuation。
 - `blocked -> idle + unseen completion` 不能由 stale `agent.turn_completed` 触发。
 - `error -> idle` 不能由 stale `agent.turn_completed` 触发。
+- `hasUnseenCompletion` 只能由 reducer 根据 intent 修改：`agent.turn_completed` 设置为 `true`，`agent.completion_seen` 设置为 `false`，`runtime.starting` 设置为 `false`；其他 intent 默认不得修改该字段。
 - UI `complete -> ready` 只能由 `agent.completion_seen` 清除 `hasUnseenCompletion` 触发，不能由时间流逝、runtime alive 或任意 renderer hydrate 触发。
 - `runtimeState = exited` 后的 agent 事件忽略，除非 session 已有更新 sequence 的 restart/resume。
-- sequence 小于等于 `lastStateSequence` 的 patch 忽略，除完全幂等重复外。
+- sequence 小于 `lastStateSequence` 的 patch 忽略；sequence 等于 `lastStateSequence` 仅允许作为完全重复事件忽略，不得再次产生状态变化。重复事件按 `sessionId + sequence + intent + source + sourceEventType` 判断。
 
 ### UI Presence 转换
 
-下面是用户实际看到的稳定转换。`Complete` 不是长期状态，而是 `Running -> Ready` 的事件说明。
+下面是用户实际看到的稳定转换。`Complete` 是 UI Presence 层的稳定派生状态：只要 `agentState = idle` 且 `hasUnseenCompletion = true`，它就必须持续显示；只有用户访问/激活该 session 并触发 `agent.completion_seen` 后，才能降为 `Ready`。
 
 | 当前 UI | 触发事实 | 下一个 UI | 例子 |
 |---|---|---|---|
@@ -281,7 +293,8 @@ Agent 非法或忽略转换：
 | `Running` | `agent.turn_completed` 设置 `agentState = idle` 且 `hasUnseenCompletion = true` | `Complete` | Claude `Stop`，完成但未访问。 |
 | `Complete` | 用户访问/激活该 session，触发 `agent.completion_seen` 清除 unseen 标记 | `Ready` | Agent 仍是 `idle`。 |
 | `Running` | `agent.turn_failed` | `Failed` | Claude `StopFailure`。 |
-| `Ready` | runtime clean exit | `Exited` | 用户关闭进程。 |
+| `Ready` / `Running` / `Blocked` | runtime clean exit 且没有未读完成 | `Exited` | 用户关闭进程或 provider 正常退出。 |
+| `Complete` | runtime clean exit | `Complete` | clean exit 不覆盖未读完成提醒。 |
 | 任意非 Failed | runtime failed exit | `Failed` | provider crash。 |
 | `Failed` / `Exited` | 用户 restore/retry | `Preparing` | 恢复 session。 |
 
@@ -398,8 +411,10 @@ function reduceSessionState(
 
 - Runtime 和 Agent 是独立字段。
 - `runtime.alive` 只能更新 runtime，绝不能设置 agent 为 `working`。
+- `runtime.starting` 表示新的启动边界，必须清理旧 agent/unseen/blocking/exit metadata。
 - `agent.turn_completed` 表示完成事件，最终稳定 agent 状态是 `agentState = idle`，同时设置 `hasUnseenCompletion = true`，UI 显示 `Complete`。
 - `agent.completion_seen` 表示用户已访问完成结果，agent 仍为 `idle`，但清除 `hasUnseenCompletion`，UI 显示 `Ready`。
+- 除 `agent.turn_completed`、`agent.completion_seen`、`runtime.starting` 外，其他 intent 默认不得修改 `hasUnseenCompletion`。
 - `agent.permission_requested` 设置 `blocked`。
 - `blocked -> working` 必须有 explicit unblock evidence。
 - `error -> idle/working` 必须有新 turn 或 explicit recovery evidence。
@@ -464,7 +479,7 @@ interface SessionPresenceSnapshot {
 - Renderer 不得把 fallback 写成更高优先级 truth。
 - Renderer apply snapshot/patch 必须比较 `sourceSequence`。
 - Hierarchy row 只渲染 `SessionRowViewModel`，不在组件内重新解释状态。
-- `SessionRowViewModel.tone` 必须和 UI Presence 的打扰级别一致：`complete` 和 `blocked` 是最高优先级；`running` 只是中等活跃状态，不应比 complete/blocked 更显眼；`ready` 映射为 neutral/subtle，不映射为 accent/blue。
+- `SessionRowViewModel.tone` 必须和 UI Presence 的打扰级别一致：`failed` 是最高优先级；`complete` 和 `blocked` 是非 failed 场景下最高优先级；`running` 只是中等活跃状态，不应比 complete/blocked 更显眼；`ready` 映射为 neutral/subtle，不映射为 accent/blue。
 
 ## 用户可见行为
 
@@ -553,7 +568,7 @@ failed process exit       -> Failed
 - session patch 先到、presence 后到，状态正确。
 - presence 先到、session patch 后到，状态正确。
 - row 展示 `Ready -> Running -> Blocked -> Running -> Complete -> Ready`。
-- Ready/idle 行使用平和低强调颜色，不使用鲜艳蓝色；Complete 与 Blocked 行使用最高打扰级别；Running 行只使用中等活跃提示，不能抢过 Complete/Blocked。
+- Ready/idle 行使用平和低强调颜色，不使用鲜艳蓝色；Failed 行使用最高打扰级别；Complete 与 Blocked 行使用非 failed 场景下最高打扰级别；Running 行只使用中等活跃提示，不能抢过 Complete/Blocked。
 
 ### E2E
 
