@@ -5,7 +5,7 @@ import { mount } from '@vue/test-utils'
 import { describe, expect, test, vi, beforeEach, afterEach } from 'vitest'
 import { nextTick } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
-import type { ProjectSummary, SessionSummary } from '@shared/project-session'
+import type { ProjectSummary, SessionSummary, SessionSummaryEvent } from '@shared/project-session'
 import { useSettingsStore } from '@renderer/stores/settings'
 
 const terminalViewportPath = resolve(dirname(fileURLToPath(import.meta.url)), 'TerminalViewport.vue')
@@ -83,7 +83,7 @@ vi.mock('@xterm/xterm/css/xterm.css', () => ({}))
 function createMockApi() {
   const callbacks = {
     terminalData: [] as Array<(chunk: { sessionId: string; data: string }) => void>,
-    sessionEvent: [] as Array<(event: { sessionId: string; status: string; summary: string }) => void>,
+    sessionEvent: [] as Array<(event: SessionSummaryEvent) => void>,
   }
 
   return {
@@ -97,7 +97,7 @@ function createMockApi() {
         if (idx >= 0) callbacks.terminalData.splice(idx, 1)
       }
     }),
-    onSessionEvent: vi.fn((cb: (event: { sessionId: string; status: string; summary: string }) => void) => {
+    onSessionEvent: vi.fn((cb: (event: SessionSummaryEvent) => void) => {
       callbacks.sessionEvent.push(cb)
       return () => {
         const idx = callbacks.sessionEvent.indexOf(cb)
@@ -121,6 +121,13 @@ const baseSession: SessionSummary = {
   projectId: 'project_alpha',
   type: 'opencode',
   status: 'running',
+  runtimeState: 'alive',
+  agentState: 'idle',
+  hasUnseenCompletion: false,
+  runtimeExitCode: null,
+  runtimeExitReason: null,
+  lastStateSequence: 1,
+  blockingReason: null,
   title: 'Deploy',
   summary: 'ready',
   recoveryMode: 'resume-external',
@@ -129,6 +136,13 @@ const baseSession: SessionSummary = {
   updatedAt: 'a',
   lastActivatedAt: 'a',
   archived: false
+}
+
+function sessionSummary(overrides: Partial<SessionSummary> = {}): SessionSummary {
+  return {
+    ...baseSession,
+    ...overrides,
+  }
 }
 
 async function flushTerminal(): Promise<void> {
@@ -283,7 +297,7 @@ describe('TerminalViewport', () => {
       cb({ sessionId: 'session_op_1', data: 'live-before-replay' })
     })
     mockApi.callbacks.sessionEvent.forEach((cb) => {
-      cb({ sessionId: 'session_op_1', status: 'exited', summary: 'done' })
+      cb({ session: sessionSummary({ status: 'exited', runtimeState: 'exited', runtimeExitCode: 0, runtimeExitReason: 'clean', summary: 'done' }) })
     })
 
     resolveReplay('restored-frame')
@@ -315,7 +329,7 @@ describe('TerminalViewport', () => {
         cb({ sessionId: 'session_op_1', data: 'live-while-hung' })
       })
       mockApi.callbacks.sessionEvent.forEach((cb) => {
-        cb({ sessionId: 'session_op_1', status: 'exited', summary: 'done' })
+        cb({ session: sessionSummary({ status: 'exited', runtimeState: 'exited', runtimeExitCode: 0, runtimeExitReason: 'clean', summary: 'done' }) })
       })
       await flushTerminal()
 

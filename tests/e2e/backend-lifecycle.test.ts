@@ -35,14 +35,17 @@ function createMockManager() {
   const log: Array<{ method: string; args: unknown[] }> = []
   return {
     manager: {
-      async markSessionStarting(sessionId: string, summary: string, externalSessionId: string | null) {
-        log.push({ method: 'markSessionStarting', args: [sessionId, summary, externalSessionId] })
+      async markRuntimeStarting(sessionId: string, summary: string, externalSessionId: string | null) {
+        log.push({ method: 'markRuntimeStarting', args: [sessionId, summary, externalSessionId] })
       },
-      async markSessionRunning(sessionId: string, externalSessionId: string | null) {
-        log.push({ method: 'markSessionRunning', args: [sessionId, externalSessionId] })
+      async markRuntimeAlive(sessionId: string, externalSessionId: string | null) {
+        log.push({ method: 'markRuntimeAlive', args: [sessionId, externalSessionId] })
       },
-      async markSessionExited(sessionId: string, summary: string) {
-        log.push({ method: 'markSessionExited', args: [sessionId, summary] })
+      async markRuntimeExited(sessionId: string, exitCode: number | null, summary: string) {
+        log.push({ method: 'markRuntimeExited', args: [sessionId, exitCode, summary] })
+      },
+      async markRuntimeFailedToStart(sessionId: string, summary: string) {
+        log.push({ method: 'markRuntimeFailedToStart', args: [sessionId, summary] })
       },
       async appendTerminalData(chunk: { sessionId: string; data: string }) {
         log.push({ method: 'appendTerminalData', args: [chunk] })
@@ -697,7 +700,7 @@ describe('E2E: Backend Full User Lifecycle', () => {
   // ── Phase 6: Session runtime integration (with mock PTY) ──────────
 
   describe('Phase 6: Session runtime integration (with mock PTY)', () => {
-    test('startSessionRuntime calls markSessionStarting then markSessionRunning', async () => {
+    test('startSessionRuntime calls markRuntimeStarting then markRuntimeAlive', async () => {
       const provider = getProvider('opencode')
       const pty = createMockPtyHost()
       const mock = createMockManager()
@@ -719,11 +722,11 @@ describe('E2E: Backend Full User Lifecycle', () => {
       })
 
       expect(mock.methodNames()).toEqual([
-        'markSessionStarting',
-        'markSessionRunning'
+        'markRuntimeStarting',
+        'markRuntimeAlive'
       ])
-      expect(mock.log[0]!.method).toBe('markSessionStarting')
-      expect(mock.log[1]!.method).toBe('markSessionRunning')
+      expect(mock.log[0]!.method).toBe('markRuntimeStarting')
+      expect(mock.log[1]!.method).toBe('markRuntimeAlive')
     })
 
     test('shell session: uses buildStartCommand (never resume)', async () => {
@@ -882,13 +885,13 @@ describe('E2E: Backend Full User Lifecycle', () => {
         manager: mock.manager
       })
 
-      const startingLog = mock.log.find(entry => entry.method === 'markSessionStarting')
-      const runningLog = mock.log.find(entry => entry.method === 'markSessionRunning')
+      const startingLog = mock.log.find(entry => entry.method === 'markRuntimeStarting')
+      const runningLog = mock.log.find(entry => entry.method === 'markRuntimeAlive')
       expect(startingLog?.args[2]).toBe('stale-ext')
       expect(runningLog?.args[1]).toBe('stale-ext')
     })
 
-    test('PTY exit callback triggers markSessionExited', async () => {
+    test('PTY exit callback triggers markRuntimeExited', async () => {
       const provider = getProvider('local-shell')
       let exitCallback: ((exitCode: number) => void) | undefined
 
@@ -920,10 +923,11 @@ describe('E2E: Backend Full User Lifecycle', () => {
       expect(exitCallback).toBeDefined()
       exitCallback!(0)
 
-      expect(mock.methodNames()).toContain('markSessionExited')
-      const exitLog = mock.log.find(e => e.method === 'markSessionExited')
+      expect(mock.methodNames()).toContain('markRuntimeExited')
+      const exitLog = mock.log.find(e => e.method === 'markRuntimeExited')
       expect(exitLog!.args[0]).toBe('session_shell_1')
-      expect(exitLog!.args[1]).toMatch(/exited/)
+      expect(exitLog!.args[1]).toBe(0)
+      expect(exitLog!.args[2]).toMatch(/exited/)
     })
   })
 
