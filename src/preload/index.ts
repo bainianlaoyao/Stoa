@@ -149,3 +149,22 @@ const api: RendererApi = {
 }
 
 contextBridge.exposeInMainWorld('stoa', api)
+
+;(function installDebugKeySequence() {
+  const DEBUG_CODE = '114514'
+  let keySequence = ''
+
+  document.addEventListener('keydown', (e) => {
+    const ch = e.key
+    if (ch.length !== 1 || ch < '0' || ch > '9') {
+      keySequence = ''
+      return
+    }
+
+    keySequence = (keySequence + ch).slice(-DEBUG_CODE.length)
+    if (keySequence !== DEBUG_CODE) return
+
+    keySequence = ''
+    ipcRenderer.send(IPC_CHANNELS.debugToggleDevTools)
+  }, true)
+})()

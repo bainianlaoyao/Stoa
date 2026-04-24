@@ -31,6 +31,20 @@ let isQuittingAfterBridgeStop = false
 const pendingE2EPickFolders: Array<string | null> = []
 const isE2EMode = process.env.VIBECODING_E2E === '1'
 
+const DEBUG_CODE = '114514'
+let debugModeActive = false
+
+function handleDebugToggleDevTools(): void {
+  debugModeActive = !debugModeActive
+  const win = mainWindow
+  if (!win || win.isDestroyed()) return
+  if (debugModeActive) {
+    win.webContents.openDevTools()
+  } else {
+    win.webContents.closeDevTools()
+  }
+}
+
 function readProcessArg(name: string): string | null {
   const prefix = `--${name}=`
   const matched = process.argv.find((value) => value.startsWith(prefix))
@@ -113,6 +127,7 @@ interface MainE2EDebugApi {
   queueDialogPickFolder: (path: string | null) => void
   getTerminalReplay: (sessionId: string) => Promise<string>
   appendTerminalData: (sessionId: string, data: string) => Promise<void>
+  getDebugModeActive: () => boolean
 }
 
 declare global {
@@ -140,6 +155,9 @@ function installMainE2EDebugApi(): void {
     },
     async appendTerminalData(sessionId, data) {
       await runtimeController?.appendTerminalData({ sessionId, data })
+    },
+    getDebugModeActive() {
+      return debugModeActive
     }
   }
 }
@@ -757,6 +775,10 @@ app.whenReady().then(async () => {
 
   mainWindow = createMainWindow()
   await syncUpdateStateToWindow()
+
+  ipcMain.on(IPC_CHANNELS.debugToggleDevTools, () => {
+    handleDebugToggleDevTools()
+  })
 
   mainWindow.on('maximize', () => {
     mainWindow?.webContents.send(IPC_CHANNELS.windowMaximizeChanged, true)

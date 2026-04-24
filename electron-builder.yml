@@ -20,5 +20,8 @@ win:
   icon: build/icons/icon.ico
   target:
     - nsis
+    - target: portable
+      arch:
+        - x64
 npmRebuild: false
 electronVersion: 37.4.0

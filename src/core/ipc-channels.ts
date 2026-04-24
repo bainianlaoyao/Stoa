@@ -36,4 +36,5 @@ export const IPC_CHANNELS = {
   windowClose: 'window:close',
   windowIsMaximized: 'window:is-maximized',
   windowMaximizeChanged: 'window:maximize-changed',
+  debugToggleDevTools: 'debug:toggle-devtools',
 } as const

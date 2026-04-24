@@ -203,6 +203,15 @@ export async function getMainE2EDebugState(electronApp: ElectronApplication): Pr
   })
 }
 
+export async function getDebugModeActive(electronApp: ElectronApplication): Promise<boolean> {
+  return await electronApp.evaluate(async () => {
+    const api = (globalThis as typeof globalThis & {
+      __VIBECODING_MAIN_E2E__?: MainE2EDebugApi
+    }).__VIBECODING_MAIN_E2E__
+    return api?.getDebugModeActive() ?? false
+  })
+}
+
 export async function queueNextFolderPick(
   electronApp: ElectronApplication,
   path: string | null

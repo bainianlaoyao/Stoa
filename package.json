@@ -10,6 +10,7 @@
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "package": "node -e \"const { spawnSync } = require('node:child_process'); const env = { ...process.env, GH_OWNER: process.env.GH_OWNER || 'local-dev', GH_REPO: process.env.GH_REPO || 'stoa-local' }; const cli = require.resolve('electron-builder/out/cli/cli.js'); const result = spawnSync(process.execPath, [cli, '--config', 'electron-builder.yml'], { stdio: 'inherit', env }); process.exit(result.status ?? 1);\"",
+    "package:local": "pnpm run build && pnpm run package",
     "package:release": "electron-builder --config electron-builder.yml --publish always",
     "rebuild:native": "node scripts/rebuild-node-pty.mjs",
     "verify:icons": "node scripts/validate-ico.mjs build/icons/icon.ico",
