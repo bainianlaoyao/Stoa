@@ -340,6 +340,12 @@ export class ProjectSessionManager {
   }
 
   async markSessionExited(sessionId: string, summary: string): Promise<void> {
+    const session = this.state.sessions.find(s => s.id === sessionId)
+    if (!session) return
+
+    // If an external event (e.g. webhook) already set exited with a custom summary, preserve it
+    if (session.status === 'exited') return
+
     await this.applySessionEvent(sessionId, 'exited', summary)
   }
 
