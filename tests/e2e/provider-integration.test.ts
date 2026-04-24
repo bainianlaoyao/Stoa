@@ -343,9 +343,7 @@ describe('E2E: Provider Integration', () => {
       expect(command.command).toBe('claude')
       expect(command.args).toEqual([
         '--session-id',
-        '11111111-1111-1111-1111-111111111111',
-        '--setting-sources',
-        'user,project,local'
+        '11111111-1111-1111-1111-111111111111'
       ])
     })
 
@@ -368,9 +366,7 @@ describe('E2E: Provider Integration', () => {
 
       expect(command.args).toEqual([
         '--resume',
-        '11111111-1111-1111-1111-111111111111',
-        '--setting-sources',
-        'user,project,local'
+        '11111111-1111-1111-1111-111111111111'
       ])
     })
 

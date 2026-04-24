@@ -22,11 +22,11 @@ describe('claude-code provider', () => {
     })
 
     expect(command.command).toBe('claude')
-    expect(command.args).toEqual(['--session-id', 'external-123', '--setting-sources', 'user,project,local'])
+    expect(command.args).toEqual(['--session-id', 'external-123'])
     expect(command.cwd).toBe('D:/alpha')
   })
 
-  test('forces local Claude settings source so project hooks are loaded', async () => {
+  test('does not add diagnostic-only settings source args to production sessions', async () => {
     const provider = createClaudeCodeProvider()
 
     const command = await provider.buildStartCommand({
@@ -42,8 +42,8 @@ describe('claude-code provider', () => {
       providerPort: 43128
     })
 
-    expect(command.args).toContain('--setting-sources')
-    expect(command.args).toContain('user,project,local')
+    expect(command.args).not.toContain('--setting-sources')
+    expect(command.args).not.toContain('user,project,local')
   })
 
   test('appends dangerously-skip-permissions on fresh start when enabled', async () => {
@@ -66,8 +66,6 @@ describe('claude-code provider', () => {
     expect(command.args).toEqual([
       '--session-id',
       'external-456',
-      '--setting-sources',
-      'user,project,local',
       '--dangerously-skip-permissions'
     ])
   })
@@ -92,8 +90,6 @@ describe('claude-code provider', () => {
     expect(command.args).toEqual([
       '--resume',
       'external-789',
-      '--setting-sources',
-      'user,project,local',
       '--dangerously-skip-permissions'
     ])
   })

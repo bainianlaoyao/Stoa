@@ -4,7 +4,6 @@ import type { CanonicalSessionEvent, ProviderCommand, ProviderCommandContext } f
 import type { ProviderDefinition, ProviderRuntimeTarget } from './index'
 
 const CLAUDE_HOOK_EVENTS = ['UserPromptSubmit', 'PreToolUse', 'Stop', 'StopFailure', 'PermissionRequest'] as const
-const CLAUDE_SETTINGS_SOURCE_ARGS = ['--setting-sources', 'user,project,local'] as const
 
 function claudeCommand(context: ProviderCommandContext): string {
   const configuredPath = context.providerPath?.trim()
@@ -23,12 +22,11 @@ function createProviderEnv(target: ProviderRuntimeTarget, context: ProviderComma
 }
 
 function createCommand(target: ProviderRuntimeTarget, context: ProviderCommandContext, args: string[]): ProviderCommand {
-  const effectiveArgs = [...args, ...CLAUDE_SETTINGS_SOURCE_ARGS]
   return {
     command: claudeCommand(context),
     args: context.claudeDangerouslySkipPermissions === true
-      ? [...effectiveArgs, '--dangerously-skip-permissions']
-      : effectiveArgs,
+      ? [...args, '--dangerously-skip-permissions']
+      : args,
     cwd: target.path,
     env: createProviderEnv(target, context)
   }
