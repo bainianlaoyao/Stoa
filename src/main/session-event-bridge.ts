@@ -18,6 +18,7 @@ interface SessionEventBridgeOptions {
 
 export class SessionEventBridge {
   private readonly sessionSecrets = new Map<string, string>()
+  private readonly providerPatchSequences = new Map<string, number>()
   private readonly nowIso: () => string
   private server: ReturnType<typeof createLocalWebhookServer> | null = null
   private port: number | null = null
@@ -85,10 +86,9 @@ export class SessionEventBridge {
   }
 
   private toSessionStatePatch(event: CanonicalSessionEvent): SessionStatePatchEvent {
-    const session = this.manager.snapshot().sessions.find((candidate) => candidate.id === event.session_id)
     return {
       sessionId: event.session_id,
-      sequence: (session?.lastStateSequence ?? 0) + 1,
+      sequence: this.allocateProviderPatchSequence(event.session_id),
       occurredAt: event.timestamp,
       intent: event.payload.intent,
       source: 'provider',
@@ -102,6 +102,15 @@ export class SessionEventBridge {
       summary: event.payload.summary,
       externalSessionId: event.payload.externalSessionId
     }
+  }
+
+  private allocateProviderPatchSequence(sessionId: string): number {
+    const session = this.manager.snapshot().sessions.find((candidate) => candidate.id === sessionId)
+    const lastManagerSequence = session?.lastStateSequence ?? 0
+    const lastAllocatedSequence = this.providerPatchSequences.get(sessionId) ?? 0
+    const nextSequence = Math.max(lastManagerSequence, lastAllocatedSequence) + 1
+    this.providerPatchSequences.set(sessionId, nextSequence)
+    return nextSequence
   }
 
   issueSessionSecret(sessionId: string): string {
@@ -118,6 +127,7 @@ export class SessionEventBridge {
     await this.server?.stop()
     this.server = null
     this.sessionSecrets.clear()
+    this.providerPatchSequences.clear()
     this.port = null
     await this.manager.setTerminalWebhookPort(null)
   }

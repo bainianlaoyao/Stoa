@@ -194,6 +194,46 @@ describe('SessionEventBridge', () => {
     })
   })
 
+  test('same-session provider events allocate increasing sequences when manager snapshot is stale', async () => {
+    const manager = ProjectSessionManager.createForTest()
+    const controller = {
+      applyProviderStatePatch: vi.fn(async () => {})
+    }
+    const bridge = new SessionEventBridge(manager, controller)
+    bridges.push(bridge)
+
+    const port = await bridge.start()
+    const secret = bridge.issueSessionSecret('session_1')
+    const firstResponse = await postEvent(
+      port,
+      createCanonicalEvent({ event_id: 'evt_1', timestamp: '2026-01-01T00:00:01.000Z' }),
+      secret
+    )
+    const secondResponse = await postEvent(
+      port,
+      createCanonicalEvent({ event_id: 'evt_2', timestamp: '2026-01-01T00:00:02.000Z' }),
+      secret
+    )
+
+    expect(firstResponse.statusCode).toBe(202)
+    expect(secondResponse.statusCode).toBe(202)
+    expect(controller.applyProviderStatePatch).toHaveBeenCalledTimes(2)
+    expect(controller.applyProviderStatePatch).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining<Partial<SessionStatePatchEvent>>({
+        sessionId: 'session_1',
+        sequence: 1
+      })
+    )
+    expect(controller.applyProviderStatePatch).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining<Partial<SessionStatePatchEvent>>({
+        sessionId: 'session_1',
+        sequence: 2
+      })
+    )
+  })
+
   test('canonical turn_complete events also ingest an observability event', async () => {
     const manager = ProjectSessionManager.createForTest()
     const controller = {
