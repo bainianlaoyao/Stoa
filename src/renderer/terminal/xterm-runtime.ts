@@ -151,7 +151,7 @@ export function createTerminalRuntime(
     lineHeight: 1,
     theme: resolveTerminalTheme(),
     allowProposedApi: true,
-    scrollback: 10_000,
+    scrollback: 100_000,
     windowsPty: platform === 'win32' ? { backend: 'conpty' } : undefined,
   })
 
