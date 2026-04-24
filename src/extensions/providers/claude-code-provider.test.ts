@@ -22,8 +22,28 @@ describe('claude-code provider', () => {
     })
 
     expect(command.command).toBe('claude')
-    expect(command.args).toEqual(['--session-id', 'external-123'])
+    expect(command.args).toEqual(['--session-id', 'external-123', '--setting-sources', 'user,project,local'])
     expect(command.cwd).toBe('D:/alpha')
+  })
+
+  test('forces local Claude settings source so project hooks are loaded', async () => {
+    const provider = createClaudeCodeProvider()
+
+    const command = await provider.buildStartCommand({
+      session_id: 'session_claude_settings',
+      project_id: 'project_alpha',
+      path: 'D:/alpha',
+      title: 'Claude Alpha',
+      type: 'claude-code',
+      external_session_id: 'external-settings'
+    }, {
+      webhookPort: 43127,
+      sessionSecret: 'secret',
+      providerPort: 43128
+    })
+
+    expect(command.args).toContain('--setting-sources')
+    expect(command.args).toContain('user,project,local')
   })
 
   test('appends dangerously-skip-permissions on fresh start when enabled', async () => {
@@ -43,7 +63,13 @@ describe('claude-code provider', () => {
       claudeDangerouslySkipPermissions: true
     })
 
-    expect(command.args).toEqual(['--session-id', 'external-456', '--dangerously-skip-permissions'])
+    expect(command.args).toEqual([
+      '--session-id',
+      'external-456',
+      '--setting-sources',
+      'user,project,local',
+      '--dangerously-skip-permissions'
+    ])
   })
 
   test('appends dangerously-skip-permissions on resume when enabled', async () => {
@@ -63,7 +89,13 @@ describe('claude-code provider', () => {
       claudeDangerouslySkipPermissions: true
     })
 
-    expect(command.args).toEqual(['--resume', 'external-789', '--dangerously-skip-permissions'])
+    expect(command.args).toEqual([
+      '--resume',
+      'external-789',
+      '--setting-sources',
+      'user,project,local',
+      '--dangerously-skip-permissions'
+    ])
   })
 
   test('uses configured provider path when provided in context', async () => {

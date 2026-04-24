@@ -341,7 +341,12 @@ describe('E2E: Provider Integration', () => {
       const command = await provider.buildStartCommand(target, context)
 
       expect(command.command).toBe('claude')
-      expect(command.args).toEqual(['--session-id', '11111111-1111-1111-1111-111111111111'])
+      expect(command.args).toEqual([
+        '--session-id',
+        '11111111-1111-1111-1111-111111111111',
+        '--setting-sources',
+        'user,project,local'
+      ])
     })
 
     test('buildStartCommand rejects missing external session ids', async () => {
@@ -361,7 +366,12 @@ describe('E2E: Provider Integration', () => {
 
       const command = await provider.buildResumeCommand(target, '11111111-1111-1111-1111-111111111111', context)
 
-      expect(command.args).toEqual(['--resume', '11111111-1111-1111-1111-111111111111'])
+      expect(command.args).toEqual([
+        '--resume',
+        '11111111-1111-1111-1111-111111111111',
+        '--setting-sources',
+        'user,project,local'
+      ])
     })
 
     test('supportsStructuredEvents() returns true', () => {
