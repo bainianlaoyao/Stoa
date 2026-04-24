@@ -308,20 +308,7 @@ export class ProjectSessionManager {
   }
 
   async applySessionStatePatch(patch: SessionStatePatchEvent): Promise<void> {
-    const session = this.state.sessions.find(s => s.id === patch.sessionId)
-    if (!session) return
-
-    const reduced = reduceSessionState(session, patch, new Date().toISOString())
-    if (reduced === session) {
-      return
-    }
-
-    const summary = shouldApplyPatchSummary(session, patch) ? patch.summary : session.summary
-    Object.assign(session, reduced, { summary })
-    if (patch.externalSessionId !== undefined) {
-      session.externalSessionId = patch.externalSessionId
-    }
-    await this.persist()
+    await this.applySessionStateReduction(patch)
   }
 
   async markRuntimeStarting(sessionId: string, summary: string, externalSessionId: string | null): Promise<void> {
@@ -363,8 +350,7 @@ export class ProjectSessionManager {
     this.state.activeProjectId = session.projectId
     if (session.agentState === 'idle' && session.hasUnseenCompletion) {
       const patch = this.createSessionStatePatch(session, 'agent.completion_seen', 'Completion seen', { source: 'ui' })
-      const reduced = reduceSessionState(session, patch, new Date().toISOString())
-      Object.assign(session, reduced, { summary: patch.summary })
+      this.applySessionStateReductionToSession(session, patch, new Date().toISOString())
     }
     await this.persist()
   }
@@ -520,6 +506,33 @@ export class ProjectSessionManager {
     if (!session) return
 
     await this.applySessionStatePatch(this.createSessionStatePatch(session, intent, summary, options))
+  }
+
+  private async applySessionStateReduction(patch: SessionStatePatchEvent): Promise<void> {
+    const session = this.state.sessions.find(s => s.id === patch.sessionId)
+    if (!session) return
+
+    if (this.applySessionStateReductionToSession(session, patch, new Date().toISOString())) {
+      await this.persist()
+    }
+  }
+
+  private applySessionStateReductionToSession(
+    session: SessionSummary,
+    patch: SessionStatePatchEvent,
+    nowIso: string
+  ): boolean {
+    const reduced = reduceSessionState(session, patch, nowIso)
+    if (reduced === session) {
+      return false
+    }
+
+    const summary = shouldApplyPatchSummary(session, patch) ? patch.summary : session.summary
+    Object.assign(session, reduced, { summary })
+    if (patch.externalSessionId !== undefined) {
+      session.externalSessionId = patch.externalSessionId
+    }
+    return true
   }
 
   private createSessionStatePatch(

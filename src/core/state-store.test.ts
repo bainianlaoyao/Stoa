@@ -209,6 +209,38 @@ describe('state-store', () => {
     })
   })
 
+  test('readProjectSessions ignores malformed v5 session entries as a breaking schema reset', async () => {
+    const projectDir = await createTempProjectDir()
+    const sessionsFilePath = getProjectSessionsFilePath(projectDir)
+    await fsPromises.mkdir(join(projectDir, '.stoa'), { recursive: true })
+    await fsPromises.writeFile(sessionsFilePath, JSON.stringify({
+      version: 5,
+      project_id: 'project_malformed',
+      sessions: [
+        {
+          session_id: 'session_legacy',
+          project_id: 'project_malformed',
+          type: 'shell',
+          title: 'Legacy shell',
+          last_known_status: 'running',
+          last_summary: 'attached',
+          external_session_id: null,
+          created_at: '2026-04-19T00:00:00.000Z',
+          updated_at: '2026-04-19T00:00:00.000Z',
+          last_activated_at: '2026-04-19T00:00:00.000Z',
+          recovery_mode: 'fresh-shell',
+          archived: false
+        }
+      ]
+    }), 'utf-8')
+
+    await expect(readProjectSessions(projectDir)).resolves.toEqual({
+      version: 5,
+      project_id: 'project_malformed',
+      sessions: []
+    })
+  })
+
   test('returns versioned empty sessions when project has no sessions file', async () => {
     const projectDir = await createTempProjectDir()
 
