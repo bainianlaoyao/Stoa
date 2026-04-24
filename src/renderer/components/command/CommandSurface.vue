@@ -1,10 +1,14 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+import { storeToRefs } from 'pinia'
 import WorkspaceHierarchyPanel from './WorkspaceHierarchyPanel.vue'
 import TerminalViewport from '@renderer/components/TerminalViewport.vue'
+import { useWorkspaceStore } from '@renderer/stores/workspaces'
+import { toSessionRowViewModel } from '@renderer/stores/observability-view-models'
 import type { ProjectSummary, SessionSummary } from '@shared/project-session'
 import type { ProjectHierarchyNode } from '@renderer/stores/workspaces'
 
-defineProps<{
+const props = defineProps<{
   hierarchy: ProjectHierarchyNode[]
   activeProject: ProjectSummary | null
   activeSession: SessionSummary | null
@@ -19,6 +23,28 @@ const emit = defineEmits<{
   createSession: [payload: { projectId: string; type: string; title: string }]
   archiveSession: [sessionId: string]
 }>()
+
+const workspaceStore = useWorkspaceStore()
+const { sessionPresenceMap } = storeToRefs(workspaceStore)
+
+const sessionRowViewModels = computed(() => {
+  const nowIso = new Date().toISOString()
+  const viewModels: Record<string, ReturnType<typeof toSessionRowViewModel>> = {}
+
+  for (const project of props.hierarchy) {
+    for (const session of project.sessions) {
+      const presence = sessionPresenceMap.value[session.id]
+
+      if (!presence) {
+        continue
+      }
+
+      viewModels[session.id] = toSessionRowViewModel(session, presence, nowIso)
+    }
+  }
+
+  return viewModels
+})
 </script>
 
 <template>
@@ -29,6 +55,7 @@ const emit = defineEmits<{
           :hierarchy="hierarchy"
           :active-project-id="activeProjectId"
           :active-session-id="activeSessionId"
+          :session-row-view-models="sessionRowViewModels"
           @select-project="emit('selectProject', $event)"
           @select-session="emit('selectSession', $event)"
           @create-project="emit('createProject', $event)"

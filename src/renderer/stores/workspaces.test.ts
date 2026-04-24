@@ -1,10 +1,173 @@
-import { beforeEach, describe, expect, test } from 'vitest'
+import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
+import type {
+  AppObservabilitySnapshot,
+  ProjectObservabilitySnapshot,
+  SessionPresenceSnapshot
+} from '@shared/observability'
+import type { RendererApi } from '@shared/project-session'
 import { useWorkspaceStore } from './workspaces'
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void
+  const promise = new Promise<T>((nextResolve) => {
+    resolve = nextResolve
+  })
+
+  return { promise, resolve }
+}
+
+function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
+  return {
+    getBootstrapState: vi.fn().mockResolvedValue({
+      activeProjectId: null,
+      activeSessionId: null,
+      terminalWebhookPort: null,
+      projects: [],
+      sessions: []
+    }),
+    createProject: vi.fn().mockResolvedValue(null),
+    createSession: vi.fn().mockResolvedValue(null),
+    setActiveProject: vi.fn().mockResolvedValue(undefined),
+    setActiveSession: vi.fn().mockResolvedValue(undefined),
+    archiveSession: vi.fn().mockResolvedValue(undefined),
+    getTerminalReplay: vi.fn().mockResolvedValue(''),
+    sendSessionInput: vi.fn().mockResolvedValue(undefined),
+    sendSessionResize: vi.fn().mockResolvedValue(undefined),
+    onTerminalData: vi.fn().mockReturnValue(() => {}),
+    onSessionEvent: vi.fn().mockReturnValue(() => {}),
+    getSessionPresence: vi.fn().mockResolvedValue(null),
+    getProjectObservability: vi.fn().mockResolvedValue(null),
+    getAppObservability: vi.fn().mockResolvedValue({
+      blockedProjectCount: 0,
+      failedProjectCount: 0,
+      degradedProjectCount: 0,
+      totalUnreadTurns: 0,
+      projectsNeedingAttention: [],
+      providerHealthSummary: {},
+      lastGlobalEventAt: null,
+      updatedAt: '2026-04-24T08:00:00.000Z'
+    }),
+    listSessionObservationEvents: vi.fn().mockResolvedValue({ events: [], nextCursor: null }),
+    onSessionPresenceChanged: vi.fn().mockReturnValue(() => {}),
+    onProjectObservabilityChanged: vi.fn().mockReturnValue(() => {}),
+    onAppObservabilityChanged: vi.fn().mockReturnValue(() => {}),
+    getSettings: vi.fn().mockResolvedValue({
+      shellPath: '',
+      terminalFontSize: 14,
+      terminalFontFamily: 'JetBrains Mono',
+      providers: {},
+      claudeDangerouslySkipPermissions: false,
+      locale: 'en'
+    }),
+    setSetting: vi.fn().mockResolvedValue(undefined),
+    pickFolder: vi.fn().mockResolvedValue(null),
+    pickFile: vi.fn().mockResolvedValue(null),
+    detectShell: vi.fn().mockResolvedValue(null),
+    detectProvider: vi.fn().mockResolvedValue(null),
+    minimizeWindow: vi.fn().mockResolvedValue(undefined),
+    maximizeWindow: vi.fn().mockResolvedValue(undefined),
+    closeWindow: vi.fn().mockResolvedValue(undefined),
+    isWindowMaximized: vi.fn().mockResolvedValue(false),
+    onWindowMaximizeChange: vi.fn().mockReturnValue(() => {}),
+    restoreSession: vi.fn().mockResolvedValue(undefined),
+    listArchivedSessions: vi.fn().mockResolvedValue([]),
+    getUpdateState: vi.fn().mockResolvedValue({
+      phase: 'idle',
+      currentVersion: '0.1.0',
+      availableVersion: null,
+      downloadedVersion: null,
+      downloadProgressPercent: null,
+      lastCheckedAt: null,
+      message: null,
+      requiresSessionWarning: false
+    }),
+    checkForUpdates: vi.fn().mockResolvedValue({
+      phase: 'idle',
+      currentVersion: '0.1.0',
+      availableVersion: null,
+      downloadedVersion: null,
+      downloadProgressPercent: null,
+      lastCheckedAt: null,
+      message: null,
+      requiresSessionWarning: false
+    }),
+    downloadUpdate: vi.fn().mockResolvedValue({
+      phase: 'idle',
+      currentVersion: '0.1.0',
+      availableVersion: null,
+      downloadedVersion: null,
+      downloadProgressPercent: null,
+      lastCheckedAt: null,
+      message: null,
+      requiresSessionWarning: false
+    }),
+    quitAndInstallUpdate: vi.fn().mockResolvedValue(undefined),
+    dismissUpdate: vi.fn().mockResolvedValue(undefined),
+    onUpdateState: vi.fn().mockReturnValue(() => {}),
+    ...overrides
+  }
+}
+
+function sessionPresenceFixture(patch: Partial<SessionPresenceSnapshot> = {}): SessionPresenceSnapshot {
+  return {
+    sessionId: 'session_op_1',
+    projectId: 'project_alpha',
+    providerId: 'claude-code',
+    providerLabel: 'Claude Code',
+    modelLabel: 'Sonnet',
+    phase: 'working',
+    canonicalStatus: 'running',
+    confidence: 'authoritative',
+    health: 'healthy',
+    blockingReason: null,
+    lastAssistantSnippet: null,
+    lastEventAt: '2026-04-24T07:59:50.000Z',
+    lastEvidenceType: null,
+    hasUnreadTurn: false,
+    recoveryPointerState: 'trusted',
+    updatedAt: '2026-04-24T07:59:50.000Z',
+    ...patch
+  }
+}
+
+function projectObservabilityFixture(
+  patch: Partial<ProjectObservabilitySnapshot> = {}
+): ProjectObservabilitySnapshot {
+  return {
+    projectId: 'project_alpha',
+    overallHealth: 'healthy',
+    activeSessionCount: 1,
+    blockedSessionCount: 0,
+    degradedSessionCount: 0,
+    failedSessionCount: 0,
+    unreadTurnCount: 0,
+    latestAttentionSessionId: null,
+    latestAttentionReason: null,
+    lastEventAt: '2026-04-24T07:59:50.000Z',
+    updatedAt: '2026-04-24T08:00:00.000Z',
+    ...patch
+  }
+}
+
+function appObservabilityFixture(patch: Partial<AppObservabilitySnapshot> = {}): AppObservabilitySnapshot {
+  return {
+    blockedProjectCount: 0,
+    failedProjectCount: 0,
+    degradedProjectCount: 0,
+    totalUnreadTurns: 0,
+    projectsNeedingAttention: [],
+    providerHealthSummary: {},
+    lastGlobalEventAt: null,
+    updatedAt: '2026-04-24T08:00:00.000Z',
+    ...patch
+  }
+}
 
 describe('project/session renderer store', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
+    window.stoa = createStoaMock()
   })
 
   test('hydrates explicit projects and sessions without name+path grouping', () => {
@@ -288,6 +451,231 @@ describe('project/session renderer store', () => {
       expect(store.sessions[0]!.archived).toBe(false)
       expect(store.projectHierarchy[0]!.archivedSessions).toHaveLength(0)
       expect(store.projectHierarchy[0]!.sessions[0]!.id).toBe('session_archived')
+    })
+  })
+
+  describe('observability', () => {
+    test('hydrates initial observability snapshots from the renderer bridge without changing bootstrap hydrate semantics', async () => {
+      const sessionPresence = sessionPresenceFixture()
+      const projectObservability = projectObservabilityFixture()
+      const appObservability = appObservabilityFixture({
+        totalUnreadTurns: 2,
+        projectsNeedingAttention: ['project_alpha']
+      })
+
+      window.stoa = createStoaMock({
+        getSessionPresence: vi.fn().mockResolvedValue(sessionPresence),
+        getProjectObservability: vi.fn().mockResolvedValue(projectObservability),
+        getAppObservability: vi.fn().mockResolvedValue(appObservability)
+      })
+
+      const store = useWorkspaceStore()
+      store.hydrate({
+        activeProjectId: 'project_alpha',
+        activeSessionId: 'session_op_1',
+        terminalWebhookPort: 43127,
+        projects: [
+          { id: 'project_alpha', name: 'alpha', path: 'D:/alpha', createdAt: 'a', updatedAt: 'a' }
+        ],
+        sessions: [
+          {
+            id: 'session_op_1',
+            projectId: 'project_alpha',
+            type: 'opencode',
+            status: 'running',
+            title: 'Deploy',
+            summary: 'running',
+            recoveryMode: 'resume-external',
+            externalSessionId: 'ext-1',
+            createdAt: 'a',
+            updatedAt: 'a',
+            lastActivatedAt: 'a',
+            archived: false
+          }
+        ]
+      })
+
+      expect(store.sessionPresenceById).toEqual({})
+      expect(store.projectObservabilityById).toEqual({})
+      expect(store.appObservability).toBeNull()
+
+      await store.hydrateObservability()
+
+      expect(window.stoa.getSessionPresence).toHaveBeenCalledWith('session_op_1')
+      expect(window.stoa.getProjectObservability).toHaveBeenCalledWith('project_alpha')
+      expect(window.stoa.getAppObservability).toHaveBeenCalledOnce()
+      expect(store.sessionPresenceById).toEqual({ session_op_1: sessionPresence })
+      expect(store.projectObservabilityById).toEqual({ project_alpha: projectObservability })
+      expect(store.appObservability).toEqual(appObservability)
+      expect(store.activeSessionPresence).toEqual(sessionPresence)
+      expect(store.sessionPresenceMap).toEqual({ session_op_1: sessionPresence })
+      expect(store.projectObservabilityMap).toEqual({ project_alpha: projectObservability })
+    })
+
+    test('applies pushed session, project, and app observability snapshots from subscriptions', async () => {
+      let sessionListener: ((snapshot: SessionPresenceSnapshot) => void) | undefined
+      let projectListener: ((snapshot: ProjectObservabilitySnapshot) => void) | undefined
+      let appListener: ((snapshot: AppObservabilitySnapshot) => void) | undefined
+
+      window.stoa = createStoaMock({
+        onSessionPresenceChanged: vi.fn().mockImplementation((callback: (snapshot: SessionPresenceSnapshot) => void) => {
+          sessionListener = callback
+          return () => {}
+        }),
+        onProjectObservabilityChanged: vi.fn().mockImplementation((callback: (snapshot: ProjectObservabilitySnapshot) => void) => {
+          projectListener = callback
+          return () => {}
+        }),
+        onAppObservabilityChanged: vi.fn().mockImplementation((callback: (snapshot: AppObservabilitySnapshot) => void) => {
+          appListener = callback
+          return () => {}
+        })
+      })
+
+      const store = useWorkspaceStore()
+      store.hydrate({
+        activeProjectId: 'project_alpha',
+        activeSessionId: 'session_op_1',
+        terminalWebhookPort: 43127,
+        projects: [
+          { id: 'project_alpha', name: 'alpha', path: 'D:/alpha', createdAt: 'a', updatedAt: 'a' }
+        ],
+        sessions: [
+          {
+            id: 'session_op_1',
+            projectId: 'project_alpha',
+            type: 'opencode',
+            status: 'running',
+            title: 'Deploy',
+            summary: 'running',
+            recoveryMode: 'resume-external',
+            externalSessionId: 'ext-1',
+            createdAt: 'a',
+            updatedAt: 'a',
+            lastActivatedAt: 'a',
+            archived: false
+          }
+        ]
+      })
+
+      await store.hydrateObservability()
+
+      const sessionPresence = sessionPresenceFixture({
+        phase: 'blocked',
+        blockingReason: 'permission',
+        health: 'degraded',
+        hasUnreadTurn: true
+      })
+      const projectObservability = projectObservabilityFixture({
+        overallHealth: 'degraded',
+        blockedSessionCount: 1,
+        unreadTurnCount: 1,
+        latestAttentionSessionId: 'session_op_1',
+        latestAttentionReason: 'permission'
+      })
+      const appObservability = appObservabilityFixture({
+        blockedProjectCount: 1,
+        totalUnreadTurns: 1,
+        projectsNeedingAttention: ['project_alpha']
+      })
+
+      sessionListener?.(sessionPresence)
+      projectListener?.(projectObservability)
+      appListener?.(appObservability)
+
+      expect(store.sessionPresenceById.session_op_1).toEqual(sessionPresence)
+      expect(store.projectObservabilityById.project_alpha).toEqual(projectObservability)
+      expect(store.appObservability).toEqual(appObservability)
+      expect(store.activeSessionPresence?.blockingReason).toBe('permission')
+    })
+
+    test('keeps newer pushed snapshots when initial observability queries resolve later', async () => {
+      let sessionListener: ((snapshot: SessionPresenceSnapshot) => void) | undefined
+      let projectListener: ((snapshot: ProjectObservabilitySnapshot) => void) | undefined
+      let appListener: ((snapshot: AppObservabilitySnapshot) => void) | undefined
+
+      const delayedSessionPresence = deferred<SessionPresenceSnapshot | null>()
+      const delayedProjectObservability = deferred<ProjectObservabilitySnapshot | null>()
+      const delayedAppObservability = deferred<AppObservabilitySnapshot | null>()
+
+      window.stoa = createStoaMock({
+        getSessionPresence: vi.fn().mockReturnValue(delayedSessionPresence.promise),
+        getProjectObservability: vi.fn().mockReturnValue(delayedProjectObservability.promise),
+        getAppObservability: vi.fn().mockReturnValue(delayedAppObservability.promise),
+        onSessionPresenceChanged: vi.fn().mockImplementation((callback: (snapshot: SessionPresenceSnapshot) => void) => {
+          sessionListener = callback
+          return () => {}
+        }),
+        onProjectObservabilityChanged: vi.fn().mockImplementation((callback: (snapshot: ProjectObservabilitySnapshot) => void) => {
+          projectListener = callback
+          return () => {}
+        }),
+        onAppObservabilityChanged: vi.fn().mockImplementation((callback: (snapshot: AppObservabilitySnapshot) => void) => {
+          appListener = callback
+          return () => {}
+        })
+      })
+
+      const store = useWorkspaceStore()
+      store.hydrate({
+        activeProjectId: 'project_alpha',
+        activeSessionId: 'session_op_1',
+        terminalWebhookPort: 43127,
+        projects: [
+          { id: 'project_alpha', name: 'alpha', path: 'D:/alpha', createdAt: 'a', updatedAt: 'a' }
+        ],
+        sessions: [
+          {
+            id: 'session_op_1',
+            projectId: 'project_alpha',
+            type: 'opencode',
+            status: 'running',
+            title: 'Deploy',
+            summary: 'running',
+            recoveryMode: 'resume-external',
+            externalSessionId: 'ext-1',
+            createdAt: 'a',
+            updatedAt: 'a',
+            lastActivatedAt: 'a',
+            archived: false
+          }
+        ]
+      })
+
+      const hydrationPromise = store.hydrateObservability()
+
+      const pushedSessionPresence = sessionPresenceFixture({
+        updatedAt: '2026-04-24T08:00:10.000Z',
+        phase: 'blocked',
+        blockingReason: 'permission',
+        health: 'degraded'
+      })
+      const pushedProjectObservability = projectObservabilityFixture({
+        updatedAt: '2026-04-24T08:00:10.000Z',
+        overallHealth: 'degraded',
+        blockedSessionCount: 1,
+        latestAttentionSessionId: 'session_op_1',
+        latestAttentionReason: 'permission'
+      })
+      const pushedAppObservability = appObservabilityFixture({
+        updatedAt: '2026-04-24T08:00:10.000Z',
+        blockedProjectCount: 1,
+        projectsNeedingAttention: ['project_alpha']
+      })
+
+      sessionListener?.(pushedSessionPresence)
+      projectListener?.(pushedProjectObservability)
+      appListener?.(pushedAppObservability)
+
+      delayedSessionPresence.resolve(sessionPresenceFixture({ updatedAt: '2026-04-24T08:00:00.000Z' }))
+      delayedProjectObservability.resolve(projectObservabilityFixture({ updatedAt: '2026-04-24T08:00:00.000Z' }))
+      delayedAppObservability.resolve(appObservabilityFixture({ updatedAt: '2026-04-24T08:00:00.000Z' }))
+
+      await hydrationPromise
+
+      expect(store.sessionPresenceById.session_op_1).toEqual(pushedSessionPresence)
+      expect(store.projectObservabilityById.project_alpha).toEqual(pushedProjectObservability)
+      expect(store.appObservability).toEqual(pushedAppObservability)
     })
   })
 })

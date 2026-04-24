@@ -79,6 +79,17 @@ function extractPreloadChannelInvokes(source: string): Array<{ method: string; c
   return results
 }
 
+function resolveChannelReference(channel: string, constants: Map<string, string>): string {
+  const trimmed = channel.trim()
+  const constantMatch = trimmed.match(/^IPC_CHANNELS\.(\w+)$/)
+
+  if (constantMatch) {
+    return constants.get(constantMatch[1]) ?? trimmed
+  }
+
+  return trimmed.replace(/['"]/g, '')
+}
+
 function extractChannelConstants(source: string): Map<string, string> {
   const constants = new Map<string, string>()
   const pattern = /(\w+)\s*:\s*'([^']+)'/g
@@ -155,9 +166,16 @@ describe('E2E: Main Process Config Guard', () => {
         ['createSession', 'sessionCreate'],
         ['setActiveProject', 'projectSetActive'],
         ['setActiveSession', 'sessionSetActive'],
+        ['getSessionPresence', 'observabilityGetSessionPresence'],
+        ['getProjectObservability', 'observabilityGetProject'],
+        ['getAppObservability', 'observabilityGetApp'],
+        ['listSessionObservationEvents', 'observabilityListSessionEvents'],
         ['getTerminalReplay', 'sessionTerminalReplay'],
         ['sendSessionInput', 'sessionInput'],
         ['sendSessionResize', 'sessionResize'],
+        ['archiveSession', 'sessionArchive'],
+        ['restoreSession', 'sessionRestore'],
+        ['listArchivedSessions', 'sessionListArchived'],
         ['getSettings', 'settingsGet'],
         ['setSetting', 'settingsSet'],
         ['pickFolder', 'dialogPickFolder'],
@@ -190,7 +208,7 @@ describe('E2E: Main Process Config Guard', () => {
       const constantValues = new Set(constants.values())
 
       for (const { method, channel } of preloadInvokes) {
-        const channelStr = channel.replace(/['"]/g, '')
+        const channelStr = resolveChannelReference(channel, constants)
         expect(
           constantValues.has(channelStr),
           `Preload method "${method}" uses channel "${channelStr}" which is not in IPC_CHANNELS`
@@ -250,6 +268,10 @@ describe('E2E: Main Process Config Guard', () => {
         'createSession',
         'setActiveProject',
         'setActiveSession',
+        'getSessionPresence',
+        'getProjectObservability',
+        'getAppObservability',
+        'listSessionObservationEvents',
         'getTerminalReplay',
         'sendSessionInput',
         'sendSessionResize',
@@ -289,13 +311,20 @@ describe('E2E: Main Process Config Guard', () => {
 
     it('preload uses correct channel name for each method', () => {
       const invocations = extractPreloadChannelInvokes(preloadSource)
-      const invMap = new Map(invocations.map(({ method, channel }) => [method, channel.replace(/['"]/g, '')]))
+      const constants = extractChannelConstants(channelsSource)
+      const invMap = new Map(
+        invocations.map(({ method, channel }) => [method, resolveChannelReference(channel, constants)])
+      )
 
       expect(invMap.get('getBootstrapState')).toBe('project:bootstrap')
       expect(invMap.get('createProject')).toBe('project:create')
       expect(invMap.get('createSession')).toBe('session:create')
       expect(invMap.get('setActiveProject')).toBe('project:set-active')
       expect(invMap.get('setActiveSession')).toBe('session:set-active')
+      expect(invMap.get('getSessionPresence')).toBe('observability:get-session-presence')
+      expect(invMap.get('getProjectObservability')).toBe('observability:get-project-observability')
+      expect(invMap.get('getAppObservability')).toBe('observability:get-app-observability')
+      expect(invMap.get('listSessionObservationEvents')).toBe('observability:list-session-events')
       expect(invMap.get('getTerminalReplay')).toBe('session:terminal-replay')
       expect(invMap.get('sendSessionInput')).toBe('session:input')
       expect(invMap.get('sendSessionResize')).toBe('session:resize')
@@ -335,15 +364,21 @@ describe('E2E: Main Process Config Guard', () => {
 
   describe('Push channel registration', () => {
     it('preload registers listener for terminal:data channel', () => {
-      expect(preloadSource).toMatch(/ipcRenderer\.on\(\s*['"]terminal:data['"]/)
+      expect(preloadSource).toMatch(/ipcRenderer\.on\(\s*IPC_CHANNELS\.terminalData/)
     })
 
     it('preload registers listener for session:event channel', () => {
-      expect(preloadSource).toMatch(/ipcRenderer\.on\(\s*['"]session:event['"]/)
+      expect(preloadSource).toMatch(/ipcRenderer\.on\(\s*IPC_CHANNELS\.sessionEvent/)
+    })
+
+    it('preload registers listener for observability push channels', () => {
+      expect(preloadSource).toMatch(/ipcRenderer\.on\(\s*IPC_CHANNELS\.observabilitySessionPresenceChanged/)
+      expect(preloadSource).toMatch(/ipcRenderer\.on\(\s*IPC_CHANNELS\.observabilityProjectChanged/)
+      expect(preloadSource).toMatch(/ipcRenderer\.on\(\s*IPC_CHANNELS\.observabilityAppChanged/)
     })
 
     it('preload registers listener for update:state channel', () => {
-      expect(preloadSource).toMatch(/ipcRenderer\.on\(\s*['"]update:state['"]/)
+      expect(preloadSource).toMatch(/ipcRenderer\.on\(\s*IPC_CHANNELS\.updateState/)
     })
 
     it('main process uses webContents.send for update state', () => {

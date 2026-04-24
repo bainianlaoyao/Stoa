@@ -14,7 +14,7 @@ vi.mock('@xterm/xterm', () => {
       this.loadedAddons.push(addon)
     }
 
-    onSelectionChange(_cb: () => void) {
+    onSelectionChange(_handler: () => void) {
       return { dispose: () => {} }
     }
 

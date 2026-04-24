@@ -6,10 +6,17 @@ import type {
   BootstrapState,
   CreateProjectRequest,
   CreateSessionRequest,
+  ObservationEventListOptions,
   ProjectSummary,
   RendererApi,
   SessionSummary
 } from '@shared/project-session'
+import type {
+  AppObservabilitySnapshot,
+  ObservationEvent,
+  ProjectObservabilitySnapshot,
+  SessionPresenceSnapshot
+} from '@shared/observability'
 
 class FakeIpcBus {
   private handlers = new Map<string, (...args: any[]) => Promise<any>>()
@@ -39,10 +46,77 @@ const RENDERER_API_INVOKE_CHANNELS = [
   IPC_CHANNELS.sessionCreate,
   IPC_CHANNELS.projectSetActive,
   IPC_CHANNELS.sessionSetActive,
+  IPC_CHANNELS.observabilityGetSessionPresence,
+  IPC_CHANNELS.observabilityGetProject,
+  IPC_CHANNELS.observabilityGetApp,
+  IPC_CHANNELS.observabilityListSessionEvents,
   IPC_CHANNELS.sessionTerminalReplay,
   IPC_CHANNELS.sessionInput,
   IPC_CHANNELS.sessionResize
 ] as const
+
+const defaultPresenceSnapshot: SessionPresenceSnapshot = {
+  sessionId: 'session-observe-1',
+  projectId: 'project-observe-1',
+  providerId: 'local-shell',
+  providerLabel: 'Shell',
+  modelLabel: null,
+  phase: 'working',
+  canonicalStatus: 'running',
+  confidence: 'stale',
+  health: 'healthy',
+  blockingReason: null,
+  lastAssistantSnippet: null,
+  lastEventAt: '2026-01-01T00:00:00.000Z',
+  lastEvidenceType: null,
+  hasUnreadTurn: false,
+  recoveryPointerState: 'missing',
+  updatedAt: '2026-01-01T00:00:00.000Z'
+}
+
+const defaultProjectObservability: ProjectObservabilitySnapshot = {
+  projectId: 'project-observe-1',
+  overallHealth: 'healthy',
+  activeSessionCount: 1,
+  blockedSessionCount: 0,
+  degradedSessionCount: 0,
+  failedSessionCount: 0,
+  unreadTurnCount: 0,
+  latestAttentionSessionId: null,
+  latestAttentionReason: null,
+  lastEventAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z'
+}
+
+const defaultAppObservability: AppObservabilitySnapshot = {
+  blockedProjectCount: 0,
+  failedProjectCount: 0,
+  degradedProjectCount: 0,
+  totalUnreadTurns: 0,
+  projectsNeedingAttention: [],
+  providerHealthSummary: {},
+  lastGlobalEventAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z'
+}
+
+const defaultObservationEvent: ObservationEvent = {
+  eventId: 'event-observe-1',
+  eventVersion: 1,
+  occurredAt: '2026-01-01T00:00:00.000Z',
+  ingestedAt: '2026-01-01T00:00:01.000Z',
+  scope: 'session',
+  projectId: 'project-observe-1',
+  sessionId: 'session-observe-1',
+  providerId: null,
+  category: 'presence',
+  type: 'presence.running',
+  severity: 'info',
+  retention: 'operational',
+  source: 'runtime-controller',
+  correlationId: null,
+  dedupeKey: null,
+  payload: {}
+}
 
 function createPreloadApi(bus: FakeIpcBus): RendererApi {
   return {
@@ -51,11 +125,19 @@ function createPreloadApi(bus: FakeIpcBus): RendererApi {
     createSession: (request: CreateSessionRequest) => bus.invoke(IPC_CHANNELS.sessionCreate, request),
     setActiveProject: (projectId: string) => bus.invoke(IPC_CHANNELS.projectSetActive, projectId),
     setActiveSession: (sessionId: string) => bus.invoke(IPC_CHANNELS.sessionSetActive, sessionId),
+    getSessionPresence: (sessionId: string) => bus.invoke(IPC_CHANNELS.observabilityGetSessionPresence, sessionId),
+    getProjectObservability: (projectId: string) => bus.invoke(IPC_CHANNELS.observabilityGetProject, projectId),
+    getAppObservability: () => bus.invoke(IPC_CHANNELS.observabilityGetApp),
+    listSessionObservationEvents: (sessionId: string, options: ObservationEventListOptions) =>
+      bus.invoke(IPC_CHANNELS.observabilityListSessionEvents, sessionId, options),
     getTerminalReplay: (sessionId: string) => bus.invoke(IPC_CHANNELS.sessionTerminalReplay, sessionId),
     sendSessionInput: (sessionId: string, data: string) => bus.invoke(IPC_CHANNELS.sessionInput, sessionId, data),
     sendSessionResize: (sessionId: string, cols: number, rows: number) => bus.invoke(IPC_CHANNELS.sessionResize, sessionId, cols, rows),
     onTerminalData: () => () => {},
-    onSessionEvent: () => () => {}
+    onSessionEvent: () => () => {},
+    onSessionPresenceChanged: () => () => {},
+    onProjectObservabilityChanged: () => () => {},
+    onAppObservabilityChanged: () => () => {}
   }
 }
 
@@ -86,6 +168,19 @@ async function registerMainHandlers(
 
   bus.handle(IPC_CHANNELS.sessionSetActive, async (_event, sessionId: string) => {
     await manager.setActiveSession(sessionId)
+  })
+
+  bus.handle(IPC_CHANNELS.observabilityGetSessionPresence, async () => defaultPresenceSnapshot)
+
+  bus.handle(IPC_CHANNELS.observabilityGetProject, async () => defaultProjectObservability)
+
+  bus.handle(IPC_CHANNELS.observabilityGetApp, async () => defaultAppObservability)
+
+  bus.handle(IPC_CHANNELS.observabilityListSessionEvents, async (_event, _sessionId: string, options: ObservationEventListOptions) => {
+    return {
+      events: options.limit > 0 ? [defaultObservationEvent] : [],
+      nextCursor: null
+    }
   })
 
   bus.handle(IPC_CHANNELS.sessionTerminalReplay, async (_event, sessionId: string) => {
@@ -134,6 +229,10 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
       expect(IPC_CHANNELS.projectSetActive).toBe('project:set-active')
       expect(IPC_CHANNELS.sessionCreate).toBe('session:create')
       expect(IPC_CHANNELS.sessionSetActive).toBe('session:set-active')
+      expect(IPC_CHANNELS.observabilityGetSessionPresence).toBe('observability:get-session-presence')
+      expect(IPC_CHANNELS.observabilityGetProject).toBe('observability:get-project-observability')
+      expect(IPC_CHANNELS.observabilityGetApp).toBe('observability:get-app-observability')
+      expect(IPC_CHANNELS.observabilityListSessionEvents).toBe('observability:list-session-events')
       expect(IPC_CHANNELS.sessionTerminalReplay).toBe('session:terminal-replay')
       expect(IPC_CHANNELS.sessionInput).toBe('session:input')
       expect(IPC_CHANNELS.sessionResize).toBe('session:resize')
@@ -230,6 +329,18 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
 
       expect(backlog).toBe('[replay:session_op_1]')
     })
+
+    test('observability query round-trip returns presence, project, app, and events payloads', async () => {
+      await expect(api.getSessionPresence('session-observe-1')).resolves.toEqual(defaultPresenceSnapshot)
+      await expect(api.getProjectObservability('project-observe-1')).resolves.toEqual(defaultProjectObservability)
+      await expect(api.getAppObservability()).resolves.toEqual(defaultAppObservability)
+      await expect(
+        api.listSessionObservationEvents('session-observe-1', { limit: 1 })
+      ).resolves.toEqual({
+        events: [defaultObservationEvent],
+        nextCursor: null
+      })
+    })
   })
 
   describe('Null manager returns fallback values', () => {
@@ -262,6 +373,10 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
 
       bus.handle(IPC_CHANNELS.projectSetActive, async () => { return })
       bus.handle(IPC_CHANNELS.sessionSetActive, async () => { return })
+      bus.handle(IPC_CHANNELS.observabilityGetSessionPresence, async () => null)
+      bus.handle(IPC_CHANNELS.observabilityGetProject, async () => null)
+      bus.handle(IPC_CHANNELS.observabilityGetApp, async () => defaultAppObservability)
+      bus.handle(IPC_CHANNELS.observabilityListSessionEvents, async () => ({ events: [], nextCursor: null }))
       bus.handle(IPC_CHANNELS.sessionTerminalReplay, async () => '')
       bus.handle(IPC_CHANNELS.sessionInput, async () => { return })
       bus.handle(IPC_CHANNELS.sessionResize, async () => { return })
@@ -363,19 +478,26 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
         createSession: IPC_CHANNELS.sessionCreate,
         setActiveProject: IPC_CHANNELS.projectSetActive,
         setActiveSession: IPC_CHANNELS.sessionSetActive,
+        getSessionPresence: IPC_CHANNELS.observabilityGetSessionPresence,
+        getProjectObservability: IPC_CHANNELS.observabilityGetProject,
+        getAppObservability: IPC_CHANNELS.observabilityGetApp,
+        listSessionObservationEvents: IPC_CHANNELS.observabilityListSessionEvents,
         getTerminalReplay: IPC_CHANNELS.sessionTerminalReplay,
         sendSessionInput: IPC_CHANNELS.sessionInput,
         sendSessionResize: IPC_CHANNELS.sessionResize,
         onTerminalData: IPC_CHANNELS.terminalData,
-        onSessionEvent: IPC_CHANNELS.sessionEvent
+        onSessionEvent: IPC_CHANNELS.sessionEvent,
+        onSessionPresenceChanged: IPC_CHANNELS.observabilitySessionPresenceChanged,
+        onProjectObservabilityChanged: IPC_CHANNELS.observabilityProjectChanged,
+        onAppObservabilityChanged: IPC_CHANNELS.observabilityAppChanged
       }
 
       const methods = Object.keys(apiMethodToChannel)
-      expect(methods).toHaveLength(10)
+      expect(methods).toHaveLength(17)
 
       const channelValues = Object.values(apiMethodToChannel)
       const uniqueChannels = new Set(channelValues)
-      expect(uniqueChannels.size).toBe(10)
+      expect(uniqueChannels.size).toBe(17)
 
       for (const channel of channelValues) {
         expect(typeof channel).toBe('string')

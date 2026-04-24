@@ -50,6 +50,22 @@ describe('AppShell', () => {
       sendSessionResize: vi.fn().mockResolvedValue(undefined),
       onTerminalData: vi.fn().mockReturnValue(() => {}),
       onSessionEvent: vi.fn().mockReturnValue(() => {}),
+      getSessionPresence: vi.fn().mockResolvedValue(null),
+      getProjectObservability: vi.fn().mockResolvedValue(null),
+      getAppObservability: vi.fn().mockResolvedValue({
+        blockedProjectCount: 0,
+        failedProjectCount: 0,
+        degradedProjectCount: 0,
+        totalUnreadTurns: 0,
+        projectsNeedingAttention: [],
+        providerHealthSummary: {},
+        lastGlobalEventAt: null,
+        updatedAt: '2026-04-21T00:00:00.000Z'
+      }),
+      listSessionObservationEvents: vi.fn().mockResolvedValue({ events: [], nextCursor: null }),
+      onSessionPresenceChanged: vi.fn().mockReturnValue(() => {}),
+      onProjectObservabilityChanged: vi.fn().mockReturnValue(() => {}),
+      onAppObservabilityChanged: vi.fn().mockReturnValue(() => {}),
       getSettings: vi.fn().mockResolvedValue({
         shellPath: '',
         terminalFontSize: 14,

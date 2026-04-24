@@ -4,12 +4,16 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { autoUpdater } from 'electron-updater'
 import { IPC_CHANNELS } from '@core/ipc-channels'
+import { InMemoryObservationStore } from '@core/observation-store'
+import type { ListObservationEventsOptions } from '@core/observation-store'
+import { ObservabilityService } from '@core/observability-service'
 import { ProjectSessionManager } from '@core/project-session-manager'
 import { detectShell, detectProvider } from '@core/settings-detector'
 import { getProviderDescriptorByProviderId, getProviderDescriptorBySessionType } from '@shared/provider-descriptors'
 import { SessionRuntimeController } from './session-runtime-controller'
 import { SessionEventBridge } from './session-event-bridge'
 import { launchTrackedSessionRuntime } from './launch-tracked-session-runtime'
+import { syncObservabilitySessionsFromManager } from './observability-sync'
 import { UpdateService } from './update-service'
 import type { CreateProjectRequest, CreateSessionRequest } from '@shared/project-session'
 import type { UpdateState } from '@shared/update-state'
@@ -20,6 +24,8 @@ let projectSessionManager: ProjectSessionManager | null = null
 let ptyHost: PtyHost | null = null
 let runtimeController: SessionRuntimeController | null = null
 let sessionEventBridge: SessionEventBridge | null = null
+let observationStore: InMemoryObservationStore | null = null
+let observabilityService: ObservabilityService | null = null
 let updateService: UpdateService | null = null
 let isQuittingAfterBridgeStop = false
 const pendingE2EPickFolders: Array<string | null> = []
@@ -277,6 +283,51 @@ function pushUpdateState(state: UpdateState): void {
   }
 }
 
+function pushObservabilitySnapshotsForSession(sessionId: string): void {
+  if (!mainWindow || mainWindow.isDestroyed() || !projectSessionManager || !observabilityService) {
+    return
+  }
+
+  const session = projectSessionManager.snapshot().sessions.find((candidate) => candidate.id === sessionId)
+  const sessionPresence = observabilityService.getSessionPresence(sessionId)
+
+  if (sessionPresence) {
+    mainWindow.webContents.send(IPC_CHANNELS.observabilitySessionPresenceChanged, sessionPresence)
+  }
+
+  const projectObservability = session
+    ? observabilityService.getProjectObservability(session.projectId)
+    : null
+
+  if (projectObservability) {
+    mainWindow.webContents.send(IPC_CHANNELS.observabilityProjectChanged, projectObservability)
+  }
+
+  mainWindow.webContents.send(IPC_CHANNELS.observabilityAppChanged, observabilityService.getAppObservability())
+}
+
+function syncObservabilitySessions(): void {
+  if (!projectSessionManager || !observabilityService) {
+    return
+  }
+
+  syncObservabilitySessionsFromManager(projectSessionManager, observabilityService)
+}
+
+function syncObservabilityAndPushForSession(sessionId: string): void {
+  syncObservabilitySessions()
+  pushObservabilitySnapshotsForSession(sessionId)
+}
+
+function normalizeObservationListOptions(options: ListObservationEventsOptions | undefined): ListObservationEventsOptions {
+  return {
+    limit: Math.min(Math.max(options?.limit ?? 50, 0), 200),
+    cursor: options?.cursor,
+    categories: options?.categories,
+    includeEphemeral: options?.includeEphemeral
+  }
+}
+
 async function syncUpdateStateToWindow(): Promise<void> {
   if (updateService) {
     updateService.publishState()
@@ -323,6 +374,10 @@ app.whenReady().then(async () => {
     webhookPort: null,
     globalStatePath: e2eGlobalStatePath
   })
+  observationStore = new InMemoryObservationStore()
+  observabilityService = new ObservabilityService(observationStore)
+
+  syncObservabilitySessions()
 
   const { PtyHost } = await import('@core/pty-host')
   ptyHost = new PtyHost()
@@ -332,9 +387,10 @@ app.whenReady().then(async () => {
     () => mainWindow,
     () => {
       void syncUpdateStateToWindow()
-    }
+    },
+    observabilityService
   )
-  sessionEventBridge = new SessionEventBridge(projectSessionManager, runtimeController)
+  sessionEventBridge = new SessionEventBridge(projectSessionManager, runtimeController, observabilityService)
   updateService = new UpdateService({
     app,
     updater: autoUpdater,
@@ -467,6 +523,7 @@ app.whenReady().then(async () => {
         type: 'shell',
         title: 'packaged-smoke-shell'
       })
+      syncObservabilityAndPushForSession(session.id)
       await syncUpdateStateToWindow()
       await recordPackagedSmoke('session-created', { sessionId: session.id })
 
@@ -532,6 +589,9 @@ app.whenReady().then(async () => {
 
   ipcMain.handle(IPC_CHANNELS.sessionCreate, async (_event, payload: CreateSessionRequest) => {
     const session = await projectSessionManager?.createSession(payload)
+    if (session) {
+      syncObservabilityAndPushForSession(session.id)
+    }
     await syncUpdateStateToWindow()
     if (!session) {
       console.log('[session-create] Aborted: no session was created.')
@@ -544,11 +604,40 @@ app.whenReady().then(async () => {
 
   ipcMain.handle(IPC_CHANNELS.projectSetActive, async (_event, projectId: string) => {
     await projectSessionManager?.setActiveProject(projectId)
+    syncObservabilitySessions()
+    const activeSessionId = projectSessionManager?.snapshot().activeSessionId ?? null
+    if (activeSessionId) {
+      pushObservabilitySnapshotsForSession(activeSessionId)
+    }
   })
 
   ipcMain.handle(IPC_CHANNELS.sessionSetActive, async (_event, sessionId: string) => {
     await projectSessionManager?.setActiveSession(sessionId)
+    syncObservabilitySessions()
+    pushObservabilitySnapshotsForSession(sessionId)
   })
+
+  ipcMain.handle(IPC_CHANNELS.observabilityGetSessionPresence, async (_event, sessionId: string) => {
+    return observabilityService?.getSessionPresence(sessionId) ?? null
+  })
+
+  ipcMain.handle(IPC_CHANNELS.observabilityGetProject, async (_event, projectId: string) => {
+    return observabilityService?.getProjectObservability(projectId) ?? null
+  })
+
+  ipcMain.handle(IPC_CHANNELS.observabilityGetApp, async () => {
+    return observabilityService?.getAppObservability() ?? null
+  })
+
+  ipcMain.handle(
+    IPC_CHANNELS.observabilityListSessionEvents,
+    async (_event, sessionId: string, options: ListObservationEventsOptions) => {
+      return observationStore?.listSessionEvents(sessionId, normalizeObservationListOptions(options)) ?? {
+        events: [],
+        nextCursor: null
+      }
+    }
+  )
 
   ipcMain.handle(IPC_CHANNELS.sessionTerminalReplay, async (_event, sessionId: string) => {
     return runtimeController?.getTerminalReplay(sessionId) ?? ''
@@ -626,6 +715,8 @@ app.whenReady().then(async () => {
     if (!projectSessionManager || !ptyHost) return
     ptyHost.kill(sessionId)
     await projectSessionManager.archiveSession(sessionId)
+    syncObservabilitySessions()
+    pushObservabilitySnapshotsForSession(sessionId)
     await syncUpdateStateToWindow()
   })
 
@@ -635,6 +726,7 @@ app.whenReady().then(async () => {
     }
 
     await projectSessionManager.restoreSession(sessionId)
+    syncObservabilityAndPushForSession(sessionId)
     await syncUpdateStateToWindow()
     void launchSessionRuntimeWithGuard(sessionId, 'session-restore')
   })
@@ -667,10 +759,10 @@ app.whenReady().then(async () => {
   await syncUpdateStateToWindow()
 
   mainWindow.on('maximize', () => {
-    mainWindow?.webContents.send('window:maximize-changed', true)
+    mainWindow?.webContents.send(IPC_CHANNELS.windowMaximizeChanged, true)
   })
   mainWindow.on('unmaximize', () => {
-    mainWindow?.webContents.send('window:maximize-changed', false)
+    mainWindow?.webContents.send(IPC_CHANNELS.windowMaximizeChanged, false)
   })
 
   if (isPackagedSmokeMode) {
