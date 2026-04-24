@@ -4,7 +4,7 @@ import { ProjectSessionManager } from '@core/project-session-manager'
 import { PtyHost } from '@core/pty-host'
 import { readProjectSessions } from '@core/state-store'
 import { startSessionRuntime } from '@core/session-runtime'
-import type { SessionStatusEvent, TerminalDataChunk } from '@shared/project-session'
+import type { SessionSummaryEvent, TerminalDataChunk } from '@shared/project-session'
 import { SessionRuntimeController } from '../../src/main/session-runtime-controller'
 import {
   createMockWindow,
@@ -14,9 +14,9 @@ import {
 } from './helpers'
 
 interface PersistedEventState {
-  pushedStatus: SessionStatusEvent['status']
+  pushedRuntimeState: SessionSummaryEvent['session']['runtimeState']
   pushedSummary: string
-  persistedStatus: SessionStatusEvent['status']
+  persistedRuntimeState: SessionSummaryEvent['session']['runtimeState']
   persistedSummary: string
 }
 
@@ -48,10 +48,10 @@ async function waitFor(check: () => boolean, timeoutMs = 10_000): Promise<void> 
   }
 }
 
-function getSessionEvents(sent: Array<{ channel: string; data: unknown }>): SessionStatusEvent[] {
+function getSessionEvents(sent: Array<{ channel: string; data: unknown }>): SessionSummaryEvent[] {
   return sent
     .filter(entry => entry.channel === IPC_CHANNELS.sessionEvent)
-    .map(entry => entry.data as SessionStatusEvent)
+    .map(entry => entry.data as SessionSummaryEvent)
 }
 
 function getTerminalChunks(sent: Array<{ channel: string; data: unknown }>): TerminalDataChunk[] {
@@ -135,24 +135,24 @@ describe('E2E: Composition seam', () => {
     const sessionEvents = getSessionEvents(harness.sent)
 
     expect(sessionEvents).toHaveLength(3)
-    expect(sessionEvents.map(event => event.status)).toEqual(['starting', 'running', 'exited'])
-    expect(sessionEvents.map(event => event.sessionId)).toEqual([
+    expect(sessionEvents.map(event => event.session.runtimeState)).toEqual(['starting', 'alive', 'exited'])
+    expect(sessionEvents.map(event => event.session.id)).toEqual([
       harness.session.id,
       harness.session.id,
       harness.session.id
     ])
-    expect(sessionEvents.every(event => event.summary.length > 0)).toBe(true)
+    expect(sessionEvents.every(event => event.session.summary.length > 0)).toBe(true)
 
     const snapshotSession = harness.manager.snapshot().sessions.find(candidate => candidate.id === harness.session.id)
     expect(snapshotSession).toBeDefined()
-    expect(snapshotSession!.status).toBe('exited')
+    expect(snapshotSession!.runtimeState).toBe('exited')
   })
 
   test('flows terminal data from PTY through the controller to the window', async () => {
     const harness = await createCompositionHarness(activeHosts)
 
     await waitFor(() => getTerminalChunks(harness.sent).length > 0)
-    await waitFor(() => getSessionEvents(harness.sent).some(event => event.status === 'exited'))
+    await waitFor(() => getSessionEvents(harness.sent).some(event => event.session.runtimeState === 'exited'))
 
     const terminalChunks = getTerminalChunks(harness.sent)
 
@@ -193,7 +193,7 @@ describe('E2E: Composition seam', () => {
         return
       }
 
-      const event = data as SessionStatusEvent
+      const event = data as SessionSummaryEvent
       persistedStatesAtPush.push(
         readProjectSessions(workspaceDir).then((diskSessions) => {
           const persistedSession = diskSessions.sessions.find(candidate => candidate.session_id === session.id)
@@ -202,9 +202,9 @@ describe('E2E: Composition seam', () => {
           }
 
           return {
-            pushedStatus: event.status,
-            pushedSummary: event.summary,
-            persistedStatus: persistedSession.last_known_status,
+            pushedRuntimeState: event.session.runtimeState,
+            pushedSummary: event.session.summary,
+            persistedRuntimeState: persistedSession.runtime_state,
             persistedSummary: persistedSession.last_summary
           }
         })
@@ -235,9 +235,9 @@ describe('E2E: Composition seam', () => {
 
     const persistedMatches = await Promise.all(persistedStatesAtPush)
 
-    expect(persistedMatches.map(match => match.pushedStatus)).toEqual(['starting', 'running', 'exited'])
+    expect(persistedMatches.map(match => match.pushedRuntimeState)).toEqual(['starting', 'alive', 'exited'])
     expect(persistedMatches.every((match) => {
-      return match.pushedStatus === match.persistedStatus
+      return match.pushedRuntimeState === match.persistedRuntimeState
         && match.pushedSummary === match.persistedSummary
     })).toBe(true)
 
@@ -245,6 +245,6 @@ describe('E2E: Composition seam', () => {
     const persistedSession = diskSessions.sessions.find(candidate => candidate.session_id === session.id)
 
     expect(persistedSession).toBeDefined()
-    expect(persistedSession!.last_known_status).toBe('exited')
+    expect(persistedSession!.runtime_state).toBe('exited')
   })
 })

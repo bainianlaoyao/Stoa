@@ -179,7 +179,7 @@ function setupTerminal() {
   })
 
   unsubscribeEvents = stoa.onSessionEvent((event) => {
-    if (event.sessionId === sessionId && event.status === 'exited') {
+    if (event.session.id === sessionId && event.session.status === 'exited') {
       queueOrWrite('\r\n\x1b[90m[session exited]\x1b[0m')
     }
   })
