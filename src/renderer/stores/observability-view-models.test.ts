@@ -36,8 +36,13 @@ function presenceFixture(patch: Partial<SessionPresenceSnapshot> = {}): SessionP
     providerId: 'claude-code',
     providerLabel: 'Claude Code',
     modelLabel: 'Sonnet',
-    phase: 'working',
+    phase: 'running',
     canonicalStatus: 'running',
+    runtimeState: 'alive',
+    agentState: 'working',
+    hasUnseenCompletion: false,
+    runtimeExitCode: null,
+    runtimeExitReason: null,
     confidence: 'authoritative',
     health: 'healthy',
     blockingReason: null,
@@ -84,7 +89,7 @@ describe('renderer observability view models', () => {
       presenceFixture({
         providerId: 'claude-code',
         providerLabel: 'Claude Code',
-        phase: 'working',
+        phase: 'running',
         canonicalStatus: 'running'
       }),
       NOW_ISO
@@ -113,7 +118,7 @@ describe('renderer observability view models', () => {
     const degradedViewModel = toSessionRowViewModel(
       sessionFixture({ status: 'degraded' }),
       presenceFixture({
-        phase: 'degraded',
+        phase: 'failed',
         canonicalStatus: 'degraded',
         health: 'degraded'
       }),
@@ -145,16 +150,16 @@ describe('renderer observability view models', () => {
   it.each([
     ['permission', 'blocked', 'Provider is waiting for permission.'],
     ['resume-confirmation', 'blocked', 'Provider is waiting for confirmation.'],
-    [null, 'degraded', 'Structured provider state is partially unavailable.'],
+    [null, 'failed', 'Provider reported an error.'],
     ['provider-error', 'failed', 'Provider reported an error.'],
-    [null, 'working', null]
+    [null, 'running', null]
   ] as const)('maps blocking and degraded/failed states to the expected explanation', (blockingReason, phase, explanation) => {
     const viewModel = toActiveSessionViewModel(
       sessionFixture(),
       presenceFixture({
         blockingReason,
         phase,
-        health: phase === 'failed' ? 'lost' : phase === 'degraded' ? 'degraded' : 'healthy'
+        health: phase === 'failed' ? 'lost' : 'healthy'
       }),
       NOW_ISO
     )

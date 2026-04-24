@@ -63,10 +63,6 @@ function explanationForPresence(presence: SessionPresenceSnapshot): string | nul
     return 'Provider is waiting for confirmation.'
   }
 
-  if (presence.phase === 'degraded') {
-    return 'Structured provider state is partially unavailable.'
-  }
-
   if (presence.phase === 'failed') {
     return 'Provider reported an error.'
   }

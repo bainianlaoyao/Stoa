@@ -1,6 +1,7 @@
 import type { UpdateState } from './update-state'
 import type {
   AppObservabilitySnapshot,
+  BlockingReason,
   ObservationEvent,
   ProjectObservabilitySnapshot,
   SessionPresenceSnapshot
@@ -18,6 +19,41 @@ export type SessionStatus =
   | 'error'
   | 'exited'
   | 'needs_confirmation'
+export type SessionRuntimeState = 'created' | 'starting' | 'alive' | 'exited' | 'failed_to_start'
+export type SessionAgentState = 'unknown' | 'idle' | 'working' | 'blocked' | 'error'
+export type SessionStateSource = 'runtime' | 'provider' | 'ui'
+export type SessionStateIntent =
+  | 'runtime.created'
+  | 'runtime.starting'
+  | 'runtime.alive'
+  | 'runtime.exited_clean'
+  | 'runtime.exited_failed'
+  | 'runtime.failed_to_start'
+  | 'agent.turn_started'
+  | 'agent.tool_started'
+  | 'agent.turn_completed'
+  | 'agent.completion_seen'
+  | 'agent.permission_requested'
+  | 'agent.permission_resolved'
+  | 'agent.turn_failed'
+  | 'agent.recovered'
+
+export interface SessionStatePatchEvent {
+  sessionId: string
+  sequence: number
+  occurredAt: string
+  intent: SessionStateIntent
+  source: SessionStateSource
+  sourceEventType?: string
+  runtimeState?: SessionRuntimeState
+  agentState?: SessionAgentState
+  hasUnseenCompletion?: boolean
+  runtimeExitCode?: number | null
+  runtimeExitReason?: 'clean' | 'failed' | null
+  blockingReason?: BlockingReason | null
+  summary: string
+  externalSessionId?: string | null
+}
 
 export interface ProjectSummary {
   id: string
@@ -33,6 +69,13 @@ export interface SessionSummary {
   projectId: string
   type: SessionType
   status: SessionStatus
+  runtimeState?: SessionRuntimeState
+  agentState?: SessionAgentState
+  hasUnseenCompletion?: boolean
+  runtimeExitCode?: number | null
+  runtimeExitReason?: 'clean' | 'failed' | null
+  lastStateSequence?: number
+  blockingReason?: BlockingReason | null
   title: string
   summary: string
   recoveryMode: SessionRecoveryMode
@@ -58,6 +101,13 @@ export interface PersistedSession {
   type: SessionType
   title: string
   last_known_status: SessionStatus
+  runtime_state?: SessionRuntimeState
+  agent_state?: SessionAgentState
+  has_unseen_completion?: boolean
+  runtime_exit_code?: number | null
+  runtime_exit_reason?: 'clean' | 'failed' | null
+  last_state_sequence?: number
+  blocking_reason?: BlockingReason | null
   last_summary: string
   external_session_id: string | null
   created_at: string
