@@ -12,6 +12,10 @@ publish:
   owner: "${env.GH_OWNER}"
   repo: "${env.GH_REPO}"
   releaseType: release
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
 win:
   icon: build/icons/icon.ico
   target:
