@@ -1,11 +1,11 @@
 import type { UpdateState } from './update-state'
 import type {
   AppObservabilitySnapshot,
-  BlockingReason,
   ObservationEvent,
   ProjectObservabilitySnapshot,
   SessionPresenceSnapshot
 } from './observability'
+import type { BlockingReason } from '@shared/observability'
 
 export type SessionType = 'shell' | 'opencode' | 'codex' | 'claude-code'
 export type SessionRecoveryMode = 'fresh-shell' | 'resume-external'
@@ -69,13 +69,13 @@ export interface SessionSummary {
   projectId: string
   type: SessionType
   status: SessionStatus
-  runtimeState?: SessionRuntimeState
-  agentState?: SessionAgentState
-  hasUnseenCompletion?: boolean
-  runtimeExitCode?: number | null
-  runtimeExitReason?: 'clean' | 'failed' | null
-  lastStateSequence?: number
-  blockingReason?: BlockingReason | null
+  runtimeState: SessionRuntimeState
+  agentState: SessionAgentState
+  hasUnseenCompletion: boolean
+  runtimeExitCode: number | null
+  runtimeExitReason: 'clean' | 'failed' | null
+  lastStateSequence: number
+  blockingReason: BlockingReason | null
   title: string
   summary: string
   recoveryMode: SessionRecoveryMode
@@ -101,13 +101,13 @@ export interface PersistedSession {
   type: SessionType
   title: string
   last_known_status: SessionStatus
-  runtime_state?: SessionRuntimeState
-  agent_state?: SessionAgentState
-  has_unseen_completion?: boolean
-  runtime_exit_code?: number | null
-  runtime_exit_reason?: 'clean' | 'failed' | null
-  last_state_sequence?: number
-  blocking_reason?: BlockingReason | null
+  runtime_state: SessionRuntimeState
+  agent_state: SessionAgentState
+  has_unseen_completion: boolean
+  runtime_exit_code: number | null
+  runtime_exit_reason: 'clean' | 'failed' | null
+  last_state_sequence: number
+  blocking_reason: BlockingReason | null
   last_summary: string
   external_session_id: string | null
   created_at: string

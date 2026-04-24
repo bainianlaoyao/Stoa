@@ -1,117 +1,31 @@
 import type {
   SessionAgentState,
   SessionRuntimeState,
-  SessionStatePatchEvent
+  SessionStatePatchEvent,
+  SessionSummary,
+  SessionType
 } from './project-session'
-import type { BlockingReason, SessionPresencePhase } from './observability'
+import type { SessionPresencePhase } from './observability'
 
-export interface SessionStateFields {
+export interface SessionPresenceInput {
   runtimeState: SessionRuntimeState
   agentState: SessionAgentState
   hasUnseenCompletion: boolean
   runtimeExitCode: number | null
   runtimeExitReason: 'clean' | 'failed' | null
-  lastStateSequence: number
-  blockingReason: BlockingReason | null
-}
-
-export interface SessionPresenceInput extends SessionStateFields {
-  providerId?: string | null
-}
-
-export function createInitialSessionState(): SessionStateFields {
-  return {
-    runtimeState: 'created',
-    agentState: 'unknown',
-    hasUnseenCompletion: false,
-    runtimeExitCode: null,
-    runtimeExitReason: null,
-    lastStateSequence: 0,
-    blockingReason: null
-  }
-}
-
-export function reduceSessionState(current: SessionStateFields, event: SessionStatePatchEvent): SessionStateFields {
-  if (event.sequence <= current.lastStateSequence) {
-    return current
-  }
-
-  const next: SessionStateFields = {
-    ...current,
-    lastStateSequence: event.sequence
-  }
-
-  switch (event.intent) {
-    case 'runtime.created':
-      next.runtimeState = 'created'
-      resetLaunchBoundaryFields(next)
-      break
-    case 'runtime.starting':
-      next.runtimeState = 'starting'
-      resetLaunchBoundaryFields(next)
-      break
-    case 'runtime.alive':
-      next.runtimeState = 'alive'
-      break
-    case 'runtime.exited_clean':
-      next.runtimeState = 'exited'
-      next.runtimeExitReason = 'clean'
-      next.runtimeExitCode = event.runtimeExitCode ?? 0
-      break
-    case 'runtime.exited_failed':
-      next.runtimeState = 'exited'
-      next.runtimeExitReason = 'failed'
-      next.runtimeExitCode = event.runtimeExitCode ?? 1
-      next.agentState = 'error'
-      break
-    case 'runtime.failed_to_start':
-      next.runtimeState = 'failed_to_start'
-      next.runtimeExitReason = 'failed'
-      next.runtimeExitCode = event.runtimeExitCode ?? 1
-      next.agentState = 'error'
-      break
-    case 'agent.turn_started':
-    case 'agent.tool_started':
-      if (current.runtimeState === 'alive') {
-        next.agentState = 'working'
-        next.hasUnseenCompletion = false
-        next.blockingReason = null
-      }
-      break
-    case 'agent.turn_completed':
-      if (current.agentState === 'unknown' || current.agentState === 'working') {
-        next.agentState = 'idle'
-        next.hasUnseenCompletion = true
-      }
-      break
-    case 'agent.completion_seen':
-      next.hasUnseenCompletion = false
-      break
-    case 'agent.permission_requested':
-      next.agentState = 'blocked'
-      next.blockingReason = event.blockingReason ?? null
-      break
-    case 'agent.permission_resolved':
-      if (current.agentState === 'blocked') {
-        next.agentState = 'working'
-        next.blockingReason = null
-      }
-      break
-    case 'agent.turn_failed':
-      next.agentState = 'error'
-      next.blockingReason = null
-      break
-    case 'agent.recovered':
-      next.agentState = 'idle'
-      next.blockingReason = null
-      break
-  }
-
-  return next
+  provider: SessionType
 }
 
 export function derivePresencePhase(input: SessionPresenceInput): SessionPresencePhase {
-  if (input.runtimeState === 'failed_to_start' || input.runtimeExitReason === 'failed' || input.agentState === 'error') {
+  if (input.runtimeState === 'failed_to_start') {
+    return 'failed'
+  }
+
+  if (input.runtimeState === 'exited' && input.runtimeExitReason === 'failed') {
+    return 'failed'
+  }
+
+  if (input.agentState === 'error') {
     return 'failed'
   }
 
@@ -127,33 +41,137 @@ export function derivePresencePhase(input: SessionPresenceInput): SessionPresenc
     return 'complete'
   }
 
-  if (input.runtimeState === 'exited') {
+  if (input.runtimeState === 'exited' && input.runtimeExitReason === 'clean') {
     return 'exited'
   }
 
-  if (input.runtimeState === 'alive' && input.agentState === 'working') {
+  if (input.agentState === 'working') {
     return 'running'
   }
 
-  if (input.runtimeState === 'alive' && input.agentState === 'unknown' && input.providerId === 'shell') {
-    return 'running'
-  }
-
-  if (input.runtimeState === 'alive' && input.agentState === 'unknown' && input.providerId !== 'shell') {
+  if (input.agentState === 'idle') {
     return 'ready'
   }
 
-  if (input.runtimeState === 'alive' && input.agentState === 'idle') {
+  if (input.runtimeState === 'alive' && input.agentState === 'unknown' && input.provider === 'shell') {
+    return 'running'
+  }
+
+  if (input.runtimeState === 'alive' && input.agentState === 'unknown' && input.provider !== 'shell') {
     return 'ready'
   }
 
   return 'ready'
 }
 
-function resetLaunchBoundaryFields(next: SessionStateFields): void {
+export function reduceSessionState(
+  session: SessionSummary,
+  patch: SessionStatePatchEvent,
+  nowIso: string
+): SessionSummary {
+  if (patch.sequence <= session.lastStateSequence) {
+    return session
+  }
+
+  const next: SessionSummary = {
+    ...session,
+    lastStateSequence: patch.sequence,
+    updatedAt: nowIso
+  }
+
+  switch (patch.intent) {
+    case 'runtime.created':
+      next.runtimeState = 'created'
+      resetStartingState(next)
+      break
+    case 'runtime.starting':
+      next.runtimeState = 'starting'
+      resetStartingState(next)
+      break
+    case 'runtime.alive':
+      next.runtimeState = 'alive'
+      applyExternalSessionId(next, patch)
+      break
+    case 'runtime.exited_clean':
+      next.runtimeState = 'exited'
+      next.runtimeExitReason = 'clean'
+      next.runtimeExitCode = patch.runtimeExitCode ?? 0
+      break
+    case 'runtime.exited_failed':
+      next.runtimeState = 'exited'
+      next.runtimeExitReason = 'failed'
+      next.runtimeExitCode = patch.runtimeExitCode ?? 1
+      break
+    case 'runtime.failed_to_start':
+      next.runtimeState = 'failed_to_start'
+      next.runtimeExitReason = 'failed'
+      next.runtimeExitCode = patch.runtimeExitCode ?? 1
+      next.agentState = 'error'
+      next.blockingReason = null
+      break
+    case 'agent.turn_started':
+      markAgentWorkingIfRuntimeAlive(session, next)
+      break
+    case 'agent.tool_started':
+      if (patch.sourceEventType === 'post_permission_continuation') {
+        markAgentWorkingIfRuntimeAlive(session, next)
+      } else if (session.agentState !== 'blocked') {
+        markAgentWorkingIfRuntimeAlive(session, next)
+      }
+      break
+    case 'agent.turn_completed':
+      if (session.agentState === 'unknown' || session.agentState === 'working') {
+        next.agentState = 'idle'
+        next.hasUnseenCompletion = true
+      }
+      break
+    case 'agent.completion_seen':
+      next.hasUnseenCompletion = false
+      break
+    case 'agent.permission_requested':
+      next.agentState = 'blocked'
+      next.blockingReason = patch.blockingReason ?? null
+      break
+    case 'agent.permission_resolved':
+      if (session.agentState === 'blocked') {
+        next.agentState = 'working'
+        next.blockingReason = null
+      }
+      break
+    case 'agent.turn_failed':
+      next.agentState = 'error'
+      next.blockingReason = null
+      break
+    case 'agent.recovered':
+      next.agentState = 'idle'
+      next.hasUnseenCompletion = false
+      next.blockingReason = null
+      break
+  }
+
+  return next
+}
+
+function resetStartingState(next: SessionSummary): void {
   next.agentState = 'unknown'
   next.hasUnseenCompletion = false
+  next.blockingReason = null
   next.runtimeExitCode = null
   next.runtimeExitReason = null
+}
+
+function applyExternalSessionId(next: SessionSummary, patch: SessionStatePatchEvent): void {
+  if (patch.externalSessionId !== undefined) {
+    next.externalSessionId = patch.externalSessionId
+  }
+}
+
+function markAgentWorkingIfRuntimeAlive(current: SessionSummary, next: SessionSummary): void {
+  if (current.runtimeState !== 'alive') {
+    return
+  }
+
+  next.agentState = 'working'
+  next.hasUnseenCompletion = false
   next.blockingReason = null
 }

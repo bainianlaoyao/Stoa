@@ -118,13 +118,8 @@ function sessionPresenceFixture(patch: Partial<SessionPresenceSnapshot> = {}): S
     providerId: 'claude-code',
     providerLabel: 'Claude Code',
     modelLabel: 'Sonnet',
-    phase: 'running',
+    phase: 'working',
     canonicalStatus: 'running',
-    runtimeState: 'alive',
-    agentState: 'working',
-    hasUnseenCompletion: false,
-    runtimeExitCode: null,
-    runtimeExitReason: null,
     confidence: 'authoritative',
     health: 'healthy',
     blockingReason: null,
@@ -764,7 +759,7 @@ describe('project/session renderer store', () => {
       sessionListener?.(newerSession)
       projectListener?.(newerProject)
       appListener?.(newerApp)
-      sessionListener?.(sessionPresenceFixture({ sourceSequence: 9, phase: 'running', canonicalStatus: 'running' }))
+      sessionListener?.(sessionPresenceFixture({ sourceSequence: 9, phase: 'working', canonicalStatus: 'running' }))
       projectListener?.(projectObservabilityFixture({ sourceSequence: 9, blockedSessionCount: 0 }))
       appListener?.(appObservabilityFixture({ sourceSequence: 9, blockedProjectCount: 0 }))
 
@@ -805,7 +800,7 @@ describe('project/session renderer store', () => {
       })
 
       expect(store.sessionPresenceById.session_claude_1).toMatchObject({
-        phase: 'running',
+        phase: 'working',
         canonicalStatus: 'running'
       })
     })

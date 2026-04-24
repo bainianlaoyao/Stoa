@@ -1,6 +1,5 @@
 import type { SessionStatus, SessionSummary } from './project-session'
 import { getProviderDescriptorByProviderId, getProviderDescriptorBySessionType } from './provider-descriptors'
-import { createInitialSessionState, derivePresencePhase, type SessionStateFields } from './session-state-reducer'
 import type {
   ActiveSessionViewModel,
   AppObservabilitySnapshot,
@@ -21,15 +20,14 @@ export function mapStatusToPresencePhase(status: SessionStatus): SessionPresence
     case 'starting':
       return 'preparing'
     case 'running':
-      return 'running'
+      return 'working'
     case 'turn_complete':
-      return 'complete'
     case 'awaiting_input':
       return 'ready'
     case 'needs_confirmation':
       return 'blocked'
     case 'degraded':
-      return 'failed'
+      return 'degraded'
     case 'error':
       return 'failed'
     case 'exited':
@@ -41,10 +39,10 @@ export function mapPhaseToTone(phase: SessionPresencePhase): ObservabilityTone {
   switch (phase) {
     case 'ready':
       return 'accent'
-    case 'running':
-    case 'complete':
+    case 'working':
       return 'success'
     case 'blocked':
+    case 'degraded':
       return 'warning'
     case 'failed':
       return 'danger'
@@ -62,14 +60,14 @@ export function phaseLabel(phase: SessionPresencePhase): string {
   switch (phase) {
     case 'preparing':
       return 'Preparing'
-    case 'running':
-      return 'Running'
-    case 'complete':
-      return 'Complete'
+    case 'working':
+      return 'Working'
     case 'ready':
       return 'Ready'
     case 'blocked':
       return 'Blocked'
+    case 'degraded':
+      return 'Degraded'
     case 'failed':
       return 'Failed'
     case 'exited':
@@ -90,10 +88,7 @@ export function buildSessionPresenceSnapshot(
   }
 ): SessionPresenceSnapshot {
   const descriptor = getProviderDescriptorBySessionType(session.type)
-  const stateFields = sessionStateFieldsForSummary(session)
-  const phase = hasSessionStateFields(session)
-    ? derivePresencePhase({ ...stateFields, providerId: descriptor.providerId })
-    : mapStatusToPresencePhase(session.status)
+  const phase = mapStatusToPresencePhase(session.status)
   const lastAssistantSnippet = options.lastAssistantSnippet ?? null
   const hasUnreadTurn = Boolean(lastAssistantSnippet && options.activeSessionId && options.activeSessionId !== session.id)
   const lastEventAt = options.lastEventAt ?? options.nowIso
@@ -105,11 +100,7 @@ export function buildSessionPresenceSnapshot(
     providerLabel: descriptor.displayName,
     modelLabel: options.modelLabel ?? null,
     phase,
-    runtimeState: stateFields.runtimeState,
-    agentState: stateFields.agentState,
-    hasUnseenCompletion: stateFields.hasUnseenCompletion,
-    runtimeExitCode: stateFields.runtimeExitCode,
-    runtimeExitReason: stateFields.runtimeExitReason,
+    canonicalStatus: session.status,
     confidence: confidenceForSession(session),
     health: healthForPhase(phase),
     blockingReason: blockingReasonForStatus(session.status),
@@ -145,7 +136,7 @@ export function buildSessionRowViewModel(
 }
 
 function rowPrimaryLabel(snapshot: SessionPresenceSnapshot): string {
-  if (snapshot.phase === 'running') {
+  if (snapshot.canonicalStatus === 'running') {
     return 'Running'
   }
 
@@ -183,7 +174,7 @@ export function buildProjectObservabilitySnapshot(
     overallHealth: aggregateHealth(sessions.map((session) => session.health)),
     activeSessionCount: sessions.length,
     blockedSessionCount: sessions.filter((session) => session.phase === 'blocked').length,
-    degradedSessionCount: 0,
+    degradedSessionCount: sessions.filter((session) => session.phase === 'degraded').length,
     failedSessionCount: sessions.filter((session) => session.phase === 'failed').length,
     unreadTurnCount: sessions.filter((session) => session.hasUnreadTurn).length,
     latestAttentionSessionId: attentionSession?.sessionId ?? null,
@@ -223,7 +214,7 @@ function healthForPhase(phase: SessionPresencePhase): ObservabilityHealth {
     return 'lost'
   }
 
-  if (phase === 'blocked') {
+  if (phase === 'blocked' || phase === 'degraded') {
     return 'degraded'
   }
 
@@ -248,32 +239,6 @@ function blockingReasonForStatus(status: SessionStatus): BlockingReason | null {
   }
 
   return null
-}
-
-function hasSessionStateFields(session: SessionSummary): boolean {
-  return (
-    session.runtimeState !== undefined &&
-    session.agentState !== undefined &&
-    session.hasUnseenCompletion !== undefined &&
-    session.runtimeExitCode !== undefined &&
-    session.runtimeExitReason !== undefined &&
-    session.lastStateSequence !== undefined &&
-    session.blockingReason !== undefined
-  )
-}
-
-function sessionStateFieldsForSummary(session: SessionSummary): SessionStateFields {
-  const initialState = createInitialSessionState()
-
-  return {
-    runtimeState: session.runtimeState ?? initialState.runtimeState,
-    agentState: session.agentState ?? initialState.agentState,
-    hasUnseenCompletion: session.hasUnseenCompletion ?? initialState.hasUnseenCompletion,
-    runtimeExitCode: session.runtimeExitCode ?? initialState.runtimeExitCode,
-    runtimeExitReason: session.runtimeExitReason ?? initialState.runtimeExitReason,
-    lastStateSequence: session.lastStateSequence ?? initialState.lastStateSequence,
-    blockingReason: session.blockingReason ?? initialState.blockingReason
-  }
 }
 
 function aggregateHealth(healthValues: ObservabilityHealth[]): ObservabilityHealth {
@@ -321,6 +286,10 @@ function attentionReasonForSession(session: SessionPresenceSnapshot): string | n
     return 'provider-error'
   }
 
+  if (session.phase === 'degraded') {
+    return 'degraded'
+  }
+
   if (session.hasUnreadTurn) {
     return 'unread-turn'
   }
@@ -336,6 +305,8 @@ function attentionPriority(session: SessionPresenceSnapshot): number {
     case 'permission':
     case 'elicitation':
       return 3
+    case 'degraded':
+      return 2
     case 'unread-turn':
       return 1
     default:

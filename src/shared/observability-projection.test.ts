@@ -39,11 +39,11 @@ const statusPhaseCases: Array<{
 }> = [
   { status: 'bootstrapping', phase: 'preparing' },
   { status: 'starting', phase: 'preparing' },
-  { status: 'running', phase: 'running' },
+  { status: 'running', phase: 'working' },
   { status: 'turn_complete', phase: 'ready' },
   { status: 'awaiting_input', phase: 'ready' },
   { status: 'needs_confirmation', phase: 'blocked' },
-  { status: 'degraded', phase: 'failed' },
+  { status: 'degraded', phase: 'degraded' },
   { status: 'error', phase: 'failed' },
   { status: 'exited', phase: 'exited' }
 ]
@@ -53,9 +53,10 @@ const phaseToneCases: Array<{
   tone: ObservabilityTone
 }> = [
   { phase: 'preparing', tone: 'neutral' },
-  { phase: 'running', tone: 'success' },
+  { phase: 'working', tone: 'success' },
   { phase: 'ready', tone: 'accent' },
   { phase: 'blocked', tone: 'warning' },
+  { phase: 'degraded', tone: 'warning' },
   { phase: 'failed', tone: 'danger' },
   { phase: 'exited', tone: 'neutral' }
 ]
@@ -87,11 +88,7 @@ describe('observability projection', () => {
       providerLabel: 'Claude Code',
       modelLabel: 'Sonnet',
       phase: 'ready',
-      runtimeState: 'alive',
-      agentState: 'idle',
-      hasUnseenCompletion: true,
-      runtimeExitCode: null,
-      runtimeExitReason: null,
+      canonicalStatus: 'turn_complete',
       confidence: 'authoritative',
       health: 'healthy',
       blockingReason: null,
@@ -238,13 +235,13 @@ describe('observability projection', () => {
     expect(app).toEqual({
       blockedProjectCount: 1,
       failedProjectCount: 1,
-      degradedProjectCount: 0,
+      degradedProjectCount: 1,
       totalUnreadTurns: 1,
       projectsNeedingAttention: ['project-blocked', 'project-failed', 'project-degraded'],
       providerHealthSummary: {
         'claude-code': 'degraded',
         codex: 'lost',
-        'local-shell': 'lost'
+        'local-shell': 'degraded'
       },
       lastGlobalEventAt: NOW_ISO,
       sourceSequence: 0,

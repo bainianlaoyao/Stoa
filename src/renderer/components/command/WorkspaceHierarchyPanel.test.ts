@@ -152,7 +152,7 @@ function createSessionRowViewModels(
     session_1: {
       sessionId: 'session_1',
       title: 'deploy gateway',
-      phase: 'running',
+      phase: 'working',
       primaryLabel: 'Working',
       secondaryLabel: 'OpenCode / GPT-5',
       tone: 'success',
@@ -480,7 +480,7 @@ describe('WorkspaceHierarchyPanel', () => {
             session_degraded: {
               sessionId: 'session_degraded',
               title: 'provider degraded',
-              phase: 'failed',
+              phase: 'degraded',
               primaryLabel: 'Degraded',
               secondaryLabel: 'Claude Code / Sonnet',
               tone: 'warning',

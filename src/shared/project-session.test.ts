@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import type {
   PersistedAppStateV2,
+  PersistedProjectSessions,
   ProjectSummary,
-  SessionStatus,
+  SessionAgentState,
+  SessionRuntimeState,
   SessionSummary,
   SessionType
 } from './project-session'
@@ -80,6 +82,38 @@ describe('project/session shared contracts', () => {
 
     expect(state.projects[0]?.path).toBe('D:/alpha')
     expect(state.sessions[0]?.project_id).toBe('project_alpha')
+
+    const projectSessions: PersistedProjectSessions = {
+      version: 4,
+      project_id: project.id,
+      sessions: [
+        {
+          session_id: session.id,
+          project_id: session.projectId,
+          type: session.type,
+          title: session.title,
+          last_known_status: session.status,
+          runtime_state: session.runtimeState,
+          agent_state: session.agentState,
+          has_unseen_completion: session.hasUnseenCompletion,
+          runtime_exit_code: session.runtimeExitCode,
+          runtime_exit_reason: session.runtimeExitReason,
+          last_state_sequence: session.lastStateSequence,
+          blocking_reason: session.blockingReason,
+          last_summary: session.summary,
+          external_session_id: null,
+          created_at: session.createdAt,
+          updated_at: session.updatedAt,
+          last_activated_at: session.lastActivatedAt,
+          recovery_mode: session.recoveryMode,
+          archived: session.archived
+        }
+      ]
+    }
+
+    expect(projectSessions.version).toBe(4)
+    expect(projectSessions.sessions[0]?.last_known_status).toBe('running')
+    expect(projectSessions.sessions[0]?.runtime_state).toBe('alive')
   })
 
   it('supports shell, opencode, codex, and claude-code session types', () => {
@@ -105,9 +139,11 @@ describe('project/session shared contracts', () => {
     ])
   })
 
-  it('supports turn_complete as a session status', () => {
-    const status: SessionStatus = 'turn_complete'
+  it('supports runtime and agent session states', () => {
+    const runtimeState: SessionRuntimeState = 'alive'
+    const agentState: SessionAgentState = 'idle'
 
-    expect(status).toBe('turn_complete')
+    expect(runtimeState).toBe('alive')
+    expect(agentState).toBe('idle')
   })
 })

@@ -1,275 +1,265 @@
 import { describe, expect, it } from 'vitest'
-import type { SessionStatePatchEvent } from './project-session'
-import {
-  createInitialSessionState,
-  derivePresencePhase,
-  reduceSessionState,
-  type SessionPresenceInput,
-  type SessionStateFields
-} from './session-state-reducer'
+import type { SessionStatePatchEvent, SessionSummary } from './project-session'
+import { derivePresencePhase, reduceSessionState } from './session-state-reducer'
 
-const BASE_OCCURRED_AT = '2026-04-24T00:00:00.000Z'
+const NOW = '2026-04-24T00:00:00.000Z'
 
-function event(
-  patch: Omit<SessionStatePatchEvent, 'sessionId' | 'occurredAt' | 'source' | 'summary'> &
-    Partial<Pick<SessionStatePatchEvent, 'source'>>
-): SessionStatePatchEvent {
+function session(overrides: Partial<SessionSummary> = {}): SessionSummary {
+  return {
+    id: 'session_1',
+    projectId: 'project_1',
+    type: 'codex',
+    status: 'running',
+    runtimeState: 'alive',
+    agentState: 'idle',
+    hasUnseenCompletion: false,
+    runtimeExitCode: null,
+    runtimeExitReason: null,
+    lastStateSequence: 1,
+    blockingReason: null,
+    title: 'Session 1',
+    summary: 'ready',
+    recoveryMode: 'resume-external',
+    externalSessionId: null,
+    createdAt: '2026-04-23T00:00:00.000Z',
+    updatedAt: '2026-04-23T00:00:00.000Z',
+    lastActivatedAt: null,
+    archived: false,
+    ...overrides
+  }
+}
+
+function patch(overrides: Partial<SessionStatePatchEvent> = {}): SessionStatePatchEvent {
   return {
     sessionId: 'session_1',
-    occurredAt: BASE_OCCURRED_AT,
-    source: 'runtime',
-    summary: patch.intent,
-    ...patch
-  }
-}
-
-function state(patch: Partial<SessionStateFields> = {}): SessionStateFields {
-  return {
-    ...createInitialSessionState(),
-    ...patch
-  }
-}
-
-function presenceInput(patch: Partial<SessionPresenceInput> = {}): SessionPresenceInput {
-  return {
-    ...createInitialSessionState(),
-    ...patch
+    sequence: 2,
+    occurredAt: '2026-04-24T00:00:00.000Z',
+    intent: 'agent.turn_started',
+    source: 'provider',
+    summary: 'event',
+    ...overrides
   }
 }
 
 describe('session state reducer', () => {
   it('derives preparing for created and starting before stale agent state', () => {
     expect(
-      derivePresencePhase(
-        presenceInput({
-          runtimeState: 'created',
-          agentState: 'working',
-          hasUnseenCompletion: true
-        })
-      )
+      derivePresencePhase({
+        runtimeState: 'created',
+        agentState: 'working',
+        hasUnseenCompletion: true,
+        runtimeExitCode: null,
+        runtimeExitReason: null,
+        provider: 'codex'
+      })
     ).toBe('preparing')
     expect(
-      derivePresencePhase(
-        presenceInput({
-          runtimeState: 'starting',
-          agentState: 'blocked',
-          blockingReason: 'permission'
-        })
-      )
+      derivePresencePhase({
+        runtimeState: 'starting',
+        agentState: 'idle',
+        hasUnseenCompletion: true,
+        runtimeExitCode: null,
+        runtimeExitReason: null,
+        provider: 'codex'
+      })
     ).toBe('preparing')
   })
 
   it('derives failed before blocked complete running and ready', () => {
-    expect(
-      derivePresencePhase(
-        presenceInput({
-          runtimeState: 'alive',
-          agentState: 'error',
-          hasUnseenCompletion: true,
-          blockingReason: 'permission'
-        })
-      )
-    ).toBe('failed')
-    expect(
-      derivePresencePhase(
-        presenceInput({
-          runtimeState: 'failed_to_start',
-          agentState: 'blocked',
-          blockingReason: 'permission'
-        })
-      )
-    ).toBe('failed')
-    expect(
-      derivePresencePhase(
-        presenceInput({
-          runtimeState: 'alive',
-          agentState: 'working',
-          runtimeExitReason: 'failed'
-        })
-      )
-    ).toBe('failed')
+    for (const input of [
+      {
+        runtimeState: 'failed_to_start' as const,
+        agentState: 'blocked' as const,
+        hasUnseenCompletion: true,
+        runtimeExitCode: null,
+        runtimeExitReason: null
+      },
+      {
+        runtimeState: 'exited' as const,
+        agentState: 'working' as const,
+        hasUnseenCompletion: false,
+        runtimeExitCode: 1,
+        runtimeExitReason: 'failed' as const
+      },
+      {
+        runtimeState: 'alive' as const,
+        agentState: 'error' as const,
+        hasUnseenCompletion: true,
+        runtimeExitCode: null,
+        runtimeExitReason: null
+      }
+    ]) {
+      expect(derivePresencePhase({ ...input, provider: 'codex' })).toBe('failed')
+    }
   })
 
   it('derives complete from idle plus unseen completion before clean exited', () => {
     expect(
-      derivePresencePhase(
-        presenceInput({
-          runtimeState: 'exited',
-          agentState: 'idle',
-          hasUnseenCompletion: true,
-          runtimeExitReason: 'clean',
-          runtimeExitCode: 0
-        })
-      )
+      derivePresencePhase({
+        runtimeState: 'exited',
+        agentState: 'idle',
+        hasUnseenCompletion: true,
+        runtimeExitCode: 0,
+        runtimeExitReason: 'clean',
+        provider: 'codex'
+      })
     ).toBe('complete')
   })
 
   it('derives shell alive unknown as running', () => {
     expect(
-      derivePresencePhase(
-        presenceInput({
-          runtimeState: 'alive',
-          agentState: 'unknown',
-          providerId: 'shell'
-        })
-      )
+      derivePresencePhase({
+        runtimeState: 'alive',
+        agentState: 'unknown',
+        hasUnseenCompletion: false,
+        runtimeExitCode: null,
+        runtimeExitReason: null,
+        provider: 'shell'
+      })
     ).toBe('running')
   })
 
   it('derives agent provider alive unknown as ready', () => {
     expect(
-      derivePresencePhase(
-        presenceInput({
-          runtimeState: 'alive',
-          agentState: 'unknown',
-          providerId: 'codex'
-        })
-      )
+      derivePresencePhase({
+        runtimeState: 'alive',
+        agentState: 'unknown',
+        hasUnseenCompletion: false,
+        runtimeExitCode: null,
+        runtimeExitReason: null,
+        provider: 'codex'
+      })
     ).toBe('ready')
   })
 
   it('runtime alive never changes agent state to working', () => {
     const next = reduceSessionState(
-      state({ runtimeState: 'starting', agentState: 'unknown', lastStateSequence: 1 }),
-      event({ sequence: 2, intent: 'runtime.alive' })
+      session({ runtimeState: 'starting', agentState: 'unknown' }),
+      patch({ intent: 'runtime.alive', externalSessionId: 'external_1' }),
+      NOW
     )
 
     expect(next).toMatchObject({
       runtimeState: 'alive',
       agentState: 'unknown',
-      hasUnseenCompletion: false,
-      lastStateSequence: 2
+      externalSessionId: 'external_1',
+      lastStateSequence: 2,
+      updatedAt: NOW
     })
   })
 
   it('runtime starting resets agent unseen blocking and exit metadata', () => {
     const next = reduceSessionState(
-      state({
+      session({
         runtimeState: 'exited',
         agentState: 'blocked',
         hasUnseenCompletion: true,
         runtimeExitCode: 42,
         runtimeExitReason: 'failed',
-        blockingReason: 'permission',
-        lastStateSequence: 4
+        blockingReason: 'permission'
       }),
-      event({ sequence: 5, intent: 'runtime.starting' })
+      patch({ intent: 'runtime.starting' }),
+      NOW
     )
 
-    expect(next).toEqual({
+    expect(next).toMatchObject({
       runtimeState: 'starting',
       agentState: 'unknown',
       hasUnseenCompletion: false,
       runtimeExitCode: null,
       runtimeExitReason: null,
       blockingReason: null,
-      lastStateSequence: 5
+      lastStateSequence: 2,
+      updatedAt: NOW
     })
   })
 
-  it('turn completed marks unknown or working as idle with unseen completion', () => {
-    expect(
-      reduceSessionState(
-        state({ runtimeState: 'alive', agentState: 'unknown', lastStateSequence: 1 }),
-        event({ sequence: 2, intent: 'agent.turn_completed', source: 'provider' })
-      )
-    ).toMatchObject({
-      agentState: 'idle',
-      hasUnseenCompletion: true,
-      lastStateSequence: 2
-    })
-    expect(
-      reduceSessionState(
-        state({ runtimeState: 'alive', agentState: 'working', lastStateSequence: 2 }),
-        event({ sequence: 3, intent: 'agent.turn_completed', source: 'provider' })
-      )
-    ).toMatchObject({
-      agentState: 'idle',
-      hasUnseenCompletion: true,
-      lastStateSequence: 3
-    })
-  })
-
-  it('turn completed does not clear blocked or error', () => {
-    expect(
-      reduceSessionState(
-        state({
-          runtimeState: 'alive',
-          agentState: 'blocked',
-          blockingReason: 'permission',
-          hasUnseenCompletion: false,
-          lastStateSequence: 1
-        }),
-        event({ sequence: 2, intent: 'agent.turn_completed', source: 'provider' })
-      )
-    ).toMatchObject({
-      agentState: 'blocked',
-      blockingReason: 'permission',
-      hasUnseenCompletion: false,
-      lastStateSequence: 2
-    })
-    expect(
-      reduceSessionState(
-        state({ runtimeState: 'alive', agentState: 'error', hasUnseenCompletion: false, lastStateSequence: 2 }),
-        event({ sequence: 3, intent: 'agent.turn_completed', source: 'provider' })
-      )
-    ).toMatchObject({
-      agentState: 'error',
-      hasUnseenCompletion: false,
-      lastStateSequence: 3
-    })
-  })
-
-  it('completion seen only clears unseen completion', () => {
+  it('turn completed sets agent idle and unseen completion', () => {
     const next = reduceSessionState(
-      state({
-        runtimeState: 'alive',
-        agentState: 'idle',
-        hasUnseenCompletion: true,
-        blockingReason: 'permission',
-        runtimeExitCode: 7,
-        runtimeExitReason: 'clean',
-        lastStateSequence: 1
-      }),
-      event({ sequence: 2, intent: 'agent.completion_seen', source: 'ui' })
+      session({ agentState: 'working', hasUnseenCompletion: false }),
+      patch({ intent: 'agent.turn_completed' }),
+      NOW
     )
 
-    expect(next).toEqual({
-      runtimeState: 'alive',
+    expect(next).toMatchObject({
       agentState: 'idle',
-      hasUnseenCompletion: false,
-      runtimeExitCode: 7,
-      runtimeExitReason: 'clean',
-      blockingReason: 'permission',
-      lastStateSequence: 2
+      hasUnseenCompletion: true,
+      lastStateSequence: 2,
+      updatedAt: NOW
     })
   })
 
-  it('stale sequences are ignored', () => {
-    const current = state({ runtimeState: 'alive', agentState: 'idle', lastStateSequence: 10 })
+  it('completion seen clears unseen completion without changing agent idle', () => {
+    const next = reduceSessionState(
+      session({ agentState: 'idle', hasUnseenCompletion: true }),
+      patch({ intent: 'agent.completion_seen', source: 'ui' }),
+      NOW
+    )
 
-    expect(
-      reduceSessionState(current, event({ sequence: 10, intent: 'agent.turn_started', source: 'provider' }))
-    ).toBe(current)
-    expect(
-      reduceSessionState(current, event({ sequence: 9, intent: 'runtime.exited_failed', runtimeExitCode: 1 }))
-    ).toBe(current)
+    expect(next).toMatchObject({
+      agentState: 'idle',
+      hasUnseenCompletion: false,
+      lastStateSequence: 2,
+      updatedAt: NOW
+    })
   })
 
-  it('newer sequences are applied', () => {
-    expect(
-      reduceSessionState(
-        state({ runtimeState: 'alive', agentState: 'idle', lastStateSequence: 10 }),
-        event({ sequence: 11, intent: 'agent.turn_started', source: 'provider' })
-      )
-    ).toEqual({
-      runtimeState: 'alive',
+  it('blocked cannot be cleared by ordinary stale tool started', () => {
+    const next = reduceSessionState(
+      session({ agentState: 'blocked', blockingReason: 'permission', hasUnseenCompletion: true }),
+      patch({ intent: 'agent.tool_started' }),
+      NOW
+    )
+
+    expect(next).toMatchObject({
+      agentState: 'blocked',
+      blockingReason: 'permission',
+      hasUnseenCompletion: true,
+      lastStateSequence: 2,
+      updatedAt: NOW
+    })
+  })
+
+  it('permission resolved can move blocked to working', () => {
+    const next = reduceSessionState(
+      session({ agentState: 'blocked', blockingReason: 'permission' }),
+      patch({ intent: 'agent.permission_resolved' }),
+      NOW
+    )
+
+    expect(next).toMatchObject({
       agentState: 'working',
-      hasUnseenCompletion: false,
-      runtimeExitCode: null,
-      runtimeExitReason: null,
       blockingReason: null,
-      lastStateSequence: 11
+      lastStateSequence: 2,
+      updatedAt: NOW
+    })
+  })
+
+  it('stale sequence patches are ignored', () => {
+    const current = session({ lastStateSequence: 10 })
+
+    expect(reduceSessionState(current, patch({ sequence: 10 }), NOW)).toBe(current)
+    expect(reduceSessionState(current, patch({ sequence: 9 }), NOW)).toBe(current)
+  })
+
+  it('duplicate same-sequence patches do not mutate state twice', () => {
+    const first = reduceSessionState(
+      session({ lastStateSequence: 1, agentState: 'working' }),
+      patch({ sequence: 2, intent: 'agent.turn_completed' }),
+      NOW
+    )
+    const second = reduceSessionState(
+      first,
+      patch({ sequence: 2, intent: 'agent.completion_seen', source: 'ui' }),
+      '2026-04-24T00:01:00.000Z'
+    )
+
+    expect(second).toBe(first)
+    expect(second).toMatchObject({
+      agentState: 'idle',
+      hasUnseenCompletion: true,
+      lastStateSequence: 2,
+      updatedAt: NOW
     })
   })
 })
