@@ -204,10 +204,12 @@ describe('WorkspaceHierarchyPanel', () => {
       expect(names[0].text()).toBe('infra-control')
     })
 
-    it('renders project path in .route-path', () => {
+    it('renders project detail trigger instead of .route-path', () => {
       const wrapper = mountPanel()
       const path = wrapper.find('.route-project .route-item--parent .route-path')
-      expect(path.text()).toBe('D:/infra-control')
+      expect(path.exists()).toBe(false)
+      const trigger = wrapper.find('.route-project .route-item--parent .route-detail-trigger')
+      expect(trigger.exists()).toBe(true)
     })
 
     it('renders one .route-item.child button per session', () => {
@@ -628,8 +630,8 @@ describe('WorkspaceHierarchyPanel', () => {
       const names = projects.map(p => p.find('.route-item--parent .route-name').text())
       expect(names).toEqual(['infra-control', 'data-pipeline'])
 
-      const paths = projects.map(p => p.find('.route-item--parent .route-path').text())
-      expect(paths).toEqual(['D:/infra-control', 'D:/data-pipeline'])
+      const paths = projects.map(p => p.find('.route-item--parent .route-path'))
+      expect(paths.every(p => !p.exists())).toBe(true)
     })
   })
 

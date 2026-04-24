@@ -3,6 +3,9 @@ import { onBeforeUnmount, onMounted, ref } from 'vue'
 import type { SessionStatus, SessionType } from '@shared/project-session'
 import { getProviderDescriptorBySessionType } from '@shared/provider-descriptors'
 import type { ProjectHierarchyNode } from '@renderer/stores/workspaces'
+import NewProjectModal from './NewProjectModal.vue'
+import ProviderFloatingCard from './ProviderFloatingCard.vue'
+import ProviderRadialMenu from './ProviderRadialMenu.vue'
 
 interface DetailState {
   kind: 'project' | 'session'
@@ -13,9 +16,6 @@ interface DetailState {
   x: number
   y: number
 }
-import NewProjectModal from './NewProjectModal.vue'
-import ProviderFloatingCard from './ProviderFloatingCard.vue'
-import ProviderRadialMenu from './ProviderRadialMenu.vue'
 
 const props = defineProps<{
   hierarchy: ProjectHierarchyNode[]
@@ -218,13 +218,13 @@ onBeforeUnmount(() => {
               type="button"
               @click="emit('selectProject', project.id)"
             >
-              <button class="route-detail-trigger" type="button" aria-label="Project details" @click="openDetail($event, 'project', project)">
+              <span class="route-detail-trigger" role="button" tabindex="0" aria-label="Project details" @click="openDetail($event, 'project', project)" @keydown.enter="openDetail($event, 'project', project)">
                 <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                   <circle cx="8" cy="3.5" r="1.25" fill="currentColor" />
                   <circle cx="8" cy="8" r="1.25" fill="currentColor" />
                   <circle cx="8" cy="12.5" r="1.25" fill="currentColor" />
                 </svg>
-              </button>
+              </span>
               <div class="route-copy">
                 <div class="route-name">{{ project.name }}</div>
               </div>
@@ -261,15 +261,10 @@ onBeforeUnmount(() => {
               type="button"
               @click="emit('selectSession', session.id)"
             >
-              <button class="route-detail-trigger" type="button" aria-label="Session details" @click="openDetail($event, 'session', session)">
-                <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                  <circle cx="8" cy="3.5" r="1.25" fill="currentColor" />
-                  <circle cx="8" cy="8" r="1.25" fill="currentColor" />
-                  <circle cx="8" cy="12.5" r="1.25" fill="currentColor" />
-                </svg>
-              </button>
+              <div class="route-dot" :class="session.status" data-testid="session-status-dot" :data-status="session.status" />
               <div class="route-copy">
                 <div class="route-name">{{ session.title }}</div>
+                <div class="route-time">{{ session.type }}</div>
               </div>
             </button>
             <span class="route-row-actions">
@@ -326,6 +321,19 @@ onBeforeUnmount(() => {
     @create="handleRadialMenuCreate"
     @close="closeRadialMenu"
   />
+
+  <Teleport to="body">
+    <div
+      v-if="detailState"
+      class="detail-popover"
+      :style="{ left: `${detailState.x}px`, top: `${detailState.y}px` }"
+    >
+      <div class="detail-popover__name">{{ detailState.name }}</div>
+      <div v-if="detailState.path" class="detail-popover__info">{{ detailState.path }}</div>
+      <div v-if="detailState.sessionType" class="detail-popover__info">{{ detailState.sessionType }}</div>
+      <div v-if="detailState.status" class="detail-popover__info">{{ detailState.status }}</div>
+    </div>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -354,10 +362,10 @@ onBeforeUnmount(() => {
 /* Route items */
 .route-item {
   display: grid;
-  grid-template-columns: 8px minmax(0, 1fr) auto;
-  gap: 10px;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 8px;
   align-items: center;
-  padding: 6px 8px 6px 10px;
+  padding: 6px 8px 6px 4px;
   border: 1px solid transparent;
   border-radius: 8px;
   background: transparent;
@@ -365,6 +373,14 @@ onBeforeUnmount(() => {
   text-align: left;
   cursor: pointer;
   transition: all 0.2s ease;
+}
+
+/* Session rows use the original dot column */
+.route-item.child {
+  grid-template-columns: 8px minmax(0, 1fr);
+  gap: 10px;
+  padding: 6px 8px 6px 10px;
+  padding-left: 24px;
 }
 
 .route-item:hover:not(.route-item--active),
@@ -379,15 +395,52 @@ onBeforeUnmount(() => {
   box-shadow: var(--shadow-card);
 }
 
-.route-item.child {
-  padding-left: 24px;
-}
-
 .route-item--parent {
   padding-right: 10px;
 }
 
-/* Route dot status colors */
+/* Detail trigger (⋮) */
+.route-detail-trigger {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-subtle);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.route-detail-trigger svg {
+  width: 14px;
+  height: 14px;
+}
+
+.route-detail-trigger:hover {
+  background: var(--color-black-faint);
+  color: var(--color-text-strong);
+}
+
+/* Copy/text */
+.route-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.route-name {
+  overflow: hidden;
+  color: var(--color-text-strong);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--text-body-sm);
+  font-weight: 600;
+}
+
+/* Route dot status colors (session rows only) */
 .route-dot {
   width: 6px;
   height: 6px;
@@ -419,26 +472,38 @@ onBeforeUnmount(() => {
   background: var(--color-error);
 }
 
-/* Copy/text */
-.route-copy {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-}
-
-.route-name {
-  overflow: hidden;
-  color: var(--color-text-strong);
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  font-size: var(--text-body-sm);
-  font-weight: 600;
-}
-
-.route-path,
 .route-time {
   color: var(--color-muted);
   font: var(--text-caption) var(--font-mono);
+}
+
+/* Detail popover */
+.detail-popover {
+  position: fixed;
+  z-index: 100;
+  background: var(--color-surface);
+  backdrop-filter: blur(24px) saturate(120%);
+  -webkit-backdrop-filter: blur(24px) saturate(120%);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-glass);
+  padding: 8px 10px;
+  max-width: 280px;
+  min-width: 160px;
+  display: grid;
+  gap: 4px;
+}
+
+.detail-popover__name {
+  font-size: var(--text-body-sm);
+  font-weight: 600;
+  color: var(--color-text-strong);
+}
+
+.detail-popover__info {
+  color: var(--color-muted);
+  font: var(--text-caption) var(--font-mono);
+  word-break: break-all;
 }
 
 /* Group label */
