@@ -129,6 +129,14 @@ describe('App (root)', () => {
   })
 
   describe('bootstrap', () => {
+    it('renders a full-height root wrapper so AppShell can inherit window height', async () => {
+      wrapper = await mountApp(pinia)
+      await flush()
+
+      const root = wrapper.get('.app-root')
+      expect(root.classes()).toEqual(expect.arrayContaining(['h-full', 'flex', 'flex-col']))
+    })
+
     it('on mount calls window.stoa.getBootstrapState', async () => {
       wrapper = await mountApp(pinia)
       expect(window.stoa.getBootstrapState).toHaveBeenCalledOnce()

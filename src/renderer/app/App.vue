@@ -119,8 +119,9 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="app-root">
+  <div class="app-root h-full flex flex-col overflow-hidden">
     <AppShell
+      class="flex-1 min-h-0"
       :hierarchy="projectHierarchy"
       :active-project-id="activeProjectId"
       :active-session-id="activeSessionId"
