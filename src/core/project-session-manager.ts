@@ -19,6 +19,7 @@ import {
   DEFAULT_GLOBAL_STATE,
   readGlobalState,
   readAllProjectSessions,
+  readProjectSessions,
   writeGlobalState,
   writeProjectSessions
 } from '@core/state-store'
@@ -207,6 +208,16 @@ export class ProjectSessionManager {
     this.state.projects.push(project)
     if (!this.state.activeProjectId) {
       this.state.activeProjectId = project.id
+    }
+
+    if (!this.persistDisabled) {
+      const existingSessions = await readProjectSessions(request.path)
+      if (Array.isArray(existingSessions.sessions) && existingSessions.sessions.length > 0) {
+        const mapped = existingSessions.sessions
+          .filter(s => s.project_id && !this.state.sessions.some(existing => existing.id === s.session_id))
+          .map(toSessionSummary)
+        this.state.sessions.push(...mapped)
+      }
     }
 
     await this.persist()
