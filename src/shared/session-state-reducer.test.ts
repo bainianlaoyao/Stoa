@@ -220,6 +220,62 @@ describe('session state reducer', () => {
     })
   })
 
+  it('post permission continuation clears blocked to working when runtime is alive', () => {
+    const next = reduceSessionState(
+      session({ agentState: 'blocked', blockingReason: 'permission', hasUnseenCompletion: true }),
+      patch({ intent: 'agent.tool_started', sourceEventType: 'post_permission_continuation' }),
+      NOW
+    )
+
+    expect(next).toMatchObject({
+      agentState: 'working',
+      blockingReason: null,
+      hasUnseenCompletion: false,
+      lastStateSequence: 2,
+      updatedAt: NOW
+    })
+  })
+
+  it('permission events do not change agent fields when runtime is not alive', () => {
+    const requested = reduceSessionState(
+      session({
+        runtimeState: 'exited',
+        agentState: 'idle',
+        blockingReason: null,
+        hasUnseenCompletion: true
+      }),
+      patch({ intent: 'agent.permission_requested', blockingReason: 'permission' }),
+      NOW
+    )
+    const resolved = reduceSessionState(
+      session({
+        runtimeState: 'failed_to_start',
+        agentState: 'blocked',
+        blockingReason: 'permission',
+        hasUnseenCompletion: true
+      }),
+      patch({ intent: 'agent.permission_resolved' }),
+      NOW
+    )
+
+    expect(requested).toMatchObject({
+      runtimeState: 'exited',
+      agentState: 'idle',
+      blockingReason: null,
+      hasUnseenCompletion: true,
+      lastStateSequence: 2,
+      updatedAt: NOW
+    })
+    expect(resolved).toMatchObject({
+      runtimeState: 'failed_to_start',
+      agentState: 'blocked',
+      blockingReason: 'permission',
+      hasUnseenCompletion: true,
+      lastStateSequence: 2,
+      updatedAt: NOW
+    })
+  })
+
   it('permission resolved can move blocked to working', () => {
     const next = reduceSessionState(
       session({ agentState: 'blocked', blockingReason: 'permission' }),

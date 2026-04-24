@@ -129,11 +129,13 @@ export function reduceSessionState(
       next.hasUnseenCompletion = false
       break
     case 'agent.permission_requested':
-      next.agentState = 'blocked'
-      next.blockingReason = patch.blockingReason ?? null
+      if (session.runtimeState === 'alive') {
+        next.agentState = 'blocked'
+        next.blockingReason = patch.blockingReason ?? null
+      }
       break
     case 'agent.permission_resolved':
-      if (session.agentState === 'blocked') {
+      if (session.runtimeState === 'alive' && session.agentState === 'blocked') {
         next.agentState = 'working'
         next.blockingReason = null
       }
