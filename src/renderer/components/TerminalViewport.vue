@@ -227,15 +227,15 @@ onBeforeUnmount(disposeTerminal)
 </script>
 
 <template>
-  <section class="terminal-viewport">
+  <section class="terminal-viewport" data-testid="terminal-viewport">
     <template v-if="project && session">
-      <div v-if="isLiveTerminal" class="terminal-viewport__xterm">
-        <div class="terminal-viewport__shell">
-          <div class="terminal-viewport__xterm-mount" ref="terminalContainer" />
+      <div v-if="isLiveTerminal" class="terminal-viewport__xterm" data-testid="terminal-xterm">
+        <div class="terminal-viewport__shell" data-testid="terminal-shell">
+          <div class="terminal-viewport__xterm-mount" ref="terminalContainer" data-testid="terminal-xterm-mount" />
         </div>
       </div>
 
-      <div v-else class="terminal-viewport__overlay">
+      <div v-else class="terminal-viewport__overlay" data-testid="terminal-overlay">
         <header class="terminal-viewport__header">
           <div>
             <p class="terminal-viewport__eyebrow">{{ t('terminal.details') }}</p>
@@ -272,7 +272,7 @@ onBeforeUnmount(disposeTerminal)
     </template>
 
     <template v-else>
-      <section class="terminal-empty-state">
+      <section class="terminal-empty-state" data-testid="terminal-empty-state">
         <h2>{{ t('terminal.emptyTitle') }}</h2>
         <p>{{ t('terminal.emptyHint') }}</p>
       </section>

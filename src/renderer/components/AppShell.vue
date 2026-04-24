@@ -45,7 +45,7 @@ const archivedSessions = computed(() => {
     <main class="grid grid-cols-[56px_1fr] flex-1 min-h-0 p-0 gap-0">
       <GlobalActivityBar :active-surface="activeSurface" @select="activeSurface = $event" />
 
-      <section class="min-w-0 min-h-0 m-3 ml-0 border border-black/[0.04] rounded-2xl bg-surface backdrop-blur-[40px] saturate-[1.2] shadow-premium overflow-hidden" aria-label="Application viewport">
+      <section class="min-w-0 min-h-0 m-3 ml-0 border border-black/[0.04] rounded-2xl bg-surface backdrop-blur-[40px] saturate-[1.2] shadow-premium overflow-hidden" data-testid="app-viewport" aria-label="Application viewport">
         <CommandSurface
           v-if="activeSurface === 'command'"
           aria-label="Command surface"

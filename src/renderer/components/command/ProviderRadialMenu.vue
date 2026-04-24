@@ -85,6 +85,7 @@ function createSession(type: SessionType) {
   <Teleport v-if="visible" to="body">
     <div
       class="radial-menu"
+      data-testid="provider-radial"
       role="group"
       aria-label="Session providers (radial)"
       :style="menuStyle"
@@ -99,6 +100,8 @@ function createSession(type: SessionType) {
         :key="provider.type"
         type="button"
         class="radial-menu__item"
+        data-testid="provider-radial.item"
+        :data-provider-type="provider.type"
         :aria-label="`Create ${getProviderDescriptorBySessionType(provider.type).displayName} session`"
         :style="provider.style"
         @mouseup="onItemMouseUp($event, provider.type)"

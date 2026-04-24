@@ -111,8 +111,8 @@ export async function launchElectronApp(options: LaunchOptions = {}): Promise<La
   })
 
   const page = await electronApp.firstWindow()
-  await expect(page.getByRole('region', { name: 'Application viewport' })).toBeVisible({ timeout: 15_000 })
-  await expect(page.getByRole('region', { name: 'Command surface' })).toBeVisible()
+  await expect(page.getByTestId('app-viewport')).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByTestId('command-panel')).toBeVisible()
 
   return {
     electronApp,

@@ -67,8 +67,8 @@ watch(() => props.show, (isVisible) => {
     />
     <div v-if="store.lastError" class="text-xs text-error bg-error/8 rounded-md px-3 py-2 mt-2">{{ store.lastError }}</div>
     <div class="flex justify-end gap-2 mt-5">
-      <button class="btn-ghost" @click="emit('update:show', false)">{{ t('newProject.cancel') }}</button>
-      <button class="btn-primary" @click="submit">{{ t('newProject.create') }}</button>
+      <button class="btn-ghost" data-testid="new-project.cancel" @click="emit('update:show', false)">{{ t('newProject.cancel') }}</button>
+      <button class="btn-primary" data-testid="new-project.submit" @click="submit">{{ t('newProject.create') }}</button>
     </div>
   </BaseModal>
 </template>

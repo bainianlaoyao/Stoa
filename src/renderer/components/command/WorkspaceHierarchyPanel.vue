@@ -157,7 +157,7 @@ onBeforeUnmount(() => {
   <aside class="min-h-0 rounded-[10px] overflow-hidden bg-surface border border-line" data-testid="workspace-hierarchy-panel" aria-label="Workspace hierarchy">
     <div class="min-h-0 overflow-auto p-2.5 grid gap-3 align-content-start" data-testid="route-body">
       <div class="grid gap-1" data-testid="route-actions">
-        <button class="route-action flex items-center justify-between gap-2 px-2.5 py-2 border border-line rounded-lg bg-surface-solid text-text-strong shadow-card cursor-pointer transition-all duration-200 hover:bg-black-faint focus-visible:bg-black-faint focus-visible:outline-none" type="button" @click="showNewProject = true">
+        <button class="route-action flex items-center justify-between gap-2 px-2.5 py-2 border border-line rounded-lg bg-surface-solid text-text-strong shadow-card cursor-pointer transition-all duration-200 hover:bg-black-faint focus-visible:bg-black-faint focus-visible:outline-none" type="button" data-testid="workspace.new-project" @click="showNewProject = true">
           <span class="text-xs font-semibold tracking-[0.05em]">New Project</span>
           <span class="w-[18px] h-[18px] grid place-items-center rounded-full bg-canvas text-text-strong text-xs">+</span>
         </button>
@@ -175,6 +175,8 @@ onBeforeUnmount(() => {
               class="route-item route-item--parent"
               :class="{ 'route-item--active': project.id === activeProjectId }"
               :aria-current="project.id === activeProjectId ? 'true' : undefined"
+              data-testid="project-row"
+              :data-project-name="project.name"
               type="button"
               @click="emit('selectProject', project.id)"
             >
@@ -188,6 +190,8 @@ onBeforeUnmount(() => {
               <button
                 class="route-add-session route-icon-button"
                 type="button"
+                data-testid="workspace.add-session"
+                :data-project-id="project.id"
                 :aria-label="`Add session to ${project.name}`"
                 title="Add session · long-press for radial"
                 @mousedown="onAddButtonMouseDown($event, project.id)"
@@ -208,10 +212,13 @@ onBeforeUnmount(() => {
               class="route-item child"
               :class="{ 'route-item--active': session.id === activeSessionId }"
               :aria-current="session.id === activeSessionId ? 'true' : undefined"
+              data-testid="session-row"
+              :data-session-title="session.title"
+              :data-session-type="session.type"
               type="button"
               @click="emit('selectSession', session.id)"
             >
-              <div class="route-dot" :class="session.status" />
+              <div class="route-dot" :class="session.status" data-testid="session-status-dot" :data-status="session.status" />
               <div class="route-copy">
                 <div class="route-name">{{ session.title }}</div>
                 <div class="route-time">{{ session.type }}</div>
@@ -221,6 +228,8 @@ onBeforeUnmount(() => {
               <button
                 class="route-row-action route-icon-button"
                 type="button"
+                data-testid="workspace.archive-session"
+                :data-session-id="session.id"
                 :aria-label="`Archive ${session.title}`"
                 title="Archive session"
                 :data-row-archive="session.id"

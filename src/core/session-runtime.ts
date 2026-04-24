@@ -98,7 +98,7 @@ export async function startSessionRuntime(options: StartSessionRuntimeOptions): 
   const activeExternalSessionId = session.externalSessionId
 
   console.log(`[session-runtime] markSessionStarting for ${session.id} (command: ${command.command} ${command.args.join(' ')})`)
-  await manager.markSessionStarting(session.id, `正在启动 ${session.type}`, activeExternalSessionId)
+  await manager.markSessionStarting(session.id, `Starting ${session.type}`, activeExternalSessionId)
   console.log(`[session-runtime] markSessionStarting done, spawning PTY for ${session.id}`)
 
   const started = ptyHost.start(

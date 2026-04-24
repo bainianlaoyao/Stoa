@@ -11,3 +11,5 @@ tmp/
 release/
 .agents/
 .tmp/
+test-results/
+.codex/

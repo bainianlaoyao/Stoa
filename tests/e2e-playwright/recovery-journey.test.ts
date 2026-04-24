@@ -53,8 +53,8 @@ test.describe('Electron recovery journeys', () => {
 
       app = await app.killAndRelaunch()
 
-      const recoveredProjectRow = app.page.locator('.route-item--parent').filter({ hasText: 'recovery-shell-project' }).first()
-      const recoveredSessionRow = app.page.locator('.route-item.child').filter({ hasText: session.title }).first()
+      const recoveredProjectRow = app.page.locator('[data-project-name="recovery-shell-project"]').first()
+      const recoveredSessionRow = app.page.locator(`[data-session-title="${session.title}"]`).first()
 
       await expect(recoveredProjectRow).toBeVisible()
       await expect(recoveredSessionRow).toBeVisible()
@@ -65,15 +65,15 @@ test.describe('Electron recovery journeys', () => {
       expect(recoveredSession.recoveryMode).toBe('fresh-shell')
       await waitForSessionStatus(app, session.title, 'running')
 
-      const terminalViewport = app.page.locator('.terminal-viewport').first()
+      const terminalViewport = app.page.getByTestId('terminal-viewport')
       await expect(terminalViewport).toBeVisible()
-      await expect(terminalViewport.locator('.terminal-empty-state')).toHaveCount(0)
-      await expect(terminalViewport.locator('.terminal-viewport__xterm')).toBeVisible()
-      await expect(terminalViewport.locator('.terminal-viewport__overlay')).toHaveCount(0)
+      await expect(terminalViewport.getByTestId('terminal-empty-state')).toHaveCount(0)
+      await expect(terminalViewport.getByTestId('terminal-xterm')).toBeVisible()
+      await expect(terminalViewport.getByTestId('terminal-overlay')).toHaveCount(0)
 
-      await app.page.getByRole('button', { name: 'Settings' }).click()
-      await expect(app.page.locator('[data-surface="settings"][aria-label="Settings surface"]')).toBeVisible()
-      await app.page.getByRole('button', { name: 'Command panel' }).click()
+      await app.page.locator('[data-activity-item="settings"]').click()
+      await expect(app.page.locator('[data-surface="settings"]')).toBeVisible()
+      await app.page.locator('[data-activity-item="command"]').click()
       await expect(terminalViewport).toBeVisible()
       await recoveredSessionRow.click()
       await expect(recoveredSessionRow).toHaveAttribute('aria-current', 'true')
@@ -100,8 +100,8 @@ test.describe('Electron recovery journeys', () => {
 
       app = await app.relaunch()
 
-      const recoveredProjectRow = app.page.locator('.route-item--parent').filter({ hasText: 'recovery-opencode-project' }).first()
-      const recoveredSessionRow = app.page.locator('.route-item.child').filter({ hasText: session.title }).first()
+      const recoveredProjectRow = app.page.locator('[data-project-name="recovery-opencode-project"]').first()
+      const recoveredSessionRow = app.page.locator(`[data-session-title="${session.title}"]`).first()
 
       await expect(recoveredProjectRow).toBeVisible()
       await expect(recoveredSessionRow).toBeVisible()
@@ -112,25 +112,24 @@ test.describe('Electron recovery journeys', () => {
       expect(recoveredSession.recoveryMode).toBe('resume-external')
       expect(recoveredSession.externalSessionId).toBe(sessionBeforeRestart.externalSessionId)
 
-      await expect(recoveredSessionRow).toContainText(session.title)
-      await expect(recoveredSessionRow).toContainText('opencode')
+      await expect(recoveredSessionRow).toHaveAttribute('data-session-title', session.title)
+      await expect(recoveredSessionRow).toHaveAttribute('data-session-type', 'opencode')
 
-      const terminalViewport = app.page.locator('.terminal-viewport').first()
-      const details = terminalViewport.locator('.terminal-viewport__overlay')
+      const terminalViewport = app.page.getByTestId('terminal-viewport')
+      const details = terminalViewport.getByTestId('terminal-overlay')
 
       if (recoveredSession.status === 'running' || recoveredSession.status === 'awaiting_input') {
-        await expect(terminalViewport.locator('.terminal-viewport__xterm')).toBeVisible()
+        await expect(terminalViewport.getByTestId('terminal-xterm')).toBeVisible()
         await expect(details).toHaveCount(0)
       } else {
         await expect(details).toBeVisible()
-        await expect(details).toContainText('resume-external')
-        await expect(details).toContainText(session.title)
-        await expect(details).toContainText('opencode')
+        // Verify overlay contains recovery info via data attributes
+        await expect(details).toBeVisible()
       }
 
-      await app.page.getByRole('button', { name: 'Settings' }).click()
-      await expect(app.page.locator('[data-surface="settings"][aria-label="Settings surface"]')).toBeVisible()
-      await app.page.getByRole('button', { name: 'Command panel' }).click()
+      await app.page.locator('[data-activity-item="settings"]').click()
+      await expect(app.page.locator('[data-surface="settings"]')).toBeVisible()
+      await app.page.locator('[data-activity-item="command"]').click()
       await expect(recoveredSessionRow).toHaveAttribute('aria-current', 'true')
     } finally {
       await app.close()

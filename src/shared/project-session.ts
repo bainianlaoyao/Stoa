@@ -139,6 +139,7 @@ export interface RendererApi {
   createSession: (request: CreateSessionRequest) => Promise<SessionSummary>
   setActiveProject: (projectId: string) => Promise<void>
   setActiveSession: (sessionId: string) => Promise<void>
+  archiveSession: (sessionId: string) => Promise<void>
   getTerminalReplay: (sessionId: string) => Promise<string>
   sendSessionInput: (sessionId: string, data: string) => Promise<void>
   sendSessionResize: (sessionId: string, cols: number, rows: number) => Promise<void>

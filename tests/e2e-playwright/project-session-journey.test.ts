@@ -13,17 +13,17 @@ test.describe('Electron project/session journeys', () => {
         path: join(app.stateDir, 'demo-shell-project')
       })
 
-      await expect(projectRow).toContainText('demo-shell-project')
+      await expect(projectRow).toHaveAttribute('data-project-name', 'demo-shell-project')
 
       const session = await createSession(app.page, projectRow, {
         type: 'shell'
       })
 
       await session.row.click()
-      await expect(session.row).toContainText(session.title)
-      await expect(session.row).toContainText('shell')
+      await expect(session.row).toHaveAttribute('data-session-title', session.title)
+      await expect(session.row).toHaveAttribute('data-session-type', 'shell')
       await expect(session.row).toHaveAttribute('aria-current', 'true')
-      await expect(app.page.getByRole('region', { name: 'Terminal empty state' })).toHaveCount(0)
+      await expect(app.page.getByTestId('terminal-empty-state')).toHaveCount(0)
     } finally {
       const { stateDir } = app
       await app.close()
@@ -45,8 +45,8 @@ test.describe('Electron project/session journeys', () => {
       })
 
       await session.row.click()
-      await expect(session.row).toContainText(session.title)
-      await expect(session.row).toContainText('opencode')
+      await expect(session.row).toHaveAttribute('data-session-title', session.title)
+      await expect(session.row).toHaveAttribute('data-session-type', 'opencode')
 
       const debugState = await getMainE2EDebugState(app.electronApp)
       const sessionState = debugState?.snapshot?.sessions.find((candidate) => candidate.title === session.title)

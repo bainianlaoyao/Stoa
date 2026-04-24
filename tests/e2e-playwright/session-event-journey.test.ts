@@ -66,7 +66,7 @@ test.describe('Electron push and webhook journeys', () => {
       })
 
       expect(response.status).toBe(202)
-      await expect(session.row.locator('.route-dot.awaiting_input')).toBeVisible()
+      await expect(session.row.locator('[data-testid="session-status-dot"][data-status="awaiting_input"]')).toBeVisible()
 
       await expect.poll(async () => {
         const nextDebugState = await getMainE2EDebugState(app.electronApp)
@@ -110,7 +110,7 @@ test.describe('Electron push and webhook journeys', () => {
       })
 
       expect(response.status).toBe(202)
-      await expect(session.row.locator('.route-dot.exited')).toBeVisible()
+      await expect(session.row.locator('[data-testid="session-status-dot"][data-status="exited"]')).toBeVisible()
 
       await expect.poll(async () => {
         const nextDebugState = await getMainE2EDebugState(app.electronApp)
@@ -154,7 +154,7 @@ test.describe('Electron push and webhook journeys', () => {
       })
 
       expect(response.status).toBe(202)
-      await expect(session.row.locator('.route-dot.turn_complete')).toBeVisible()
+      await expect(session.row.locator('[data-testid="session-status-dot"][data-status="turn_complete"]')).toBeVisible()
 
       await expect.poll(async () => {
         const nextDebugState = await getMainE2EDebugState(app.electronApp)
@@ -197,7 +197,7 @@ test.describe('Electron push and webhook journeys', () => {
       })
 
       expect(response.status).toBe(202)
-      await expect(session.row.locator('.route-dot.turn_complete')).toBeVisible()
+      await expect(session.row.locator('[data-testid="session-status-dot"][data-status="turn_complete"]')).toBeVisible()
 
       await expect.poll(async () => {
         const nextDebugState = await getMainE2EDebugState(app.electronApp)
@@ -229,7 +229,7 @@ test.describe('Electron push and webhook journeys', () => {
       const sessionState = debugState?.snapshot?.sessions.find(candidate => candidate.title === session.title)
       expect(sessionState).toBeDefined()
       const sessionBefore = await getMainE2EDebugState(app.electronApp)
-      const statusClassBefore = await session.row.locator('.route-dot').evaluate((element) => element.className)
+      const statusBefore = await session.row.locator('[data-testid="session-status-dot"]').getAttribute('data-status')
 
       const response = await postWebhookEvent({
         port: debugState!.webhookPort!,
@@ -243,7 +243,7 @@ test.describe('Electron push and webhook journeys', () => {
       })
 
       expect(response.status).toBe(401)
-      await expect(session.row.locator('.route-dot')).toHaveClass(statusClassBefore)
+      await expect(session.row.locator('[data-testid="session-status-dot"]')).toHaveAttribute('data-status', statusBefore!)
       await expect.poll(async () => {
         const nextDebugState = await getMainE2EDebugState(app.electronApp)
         return nextDebugState?.snapshot?.sessions.find(candidate => candidate.id === sessionState!.id) ?? null

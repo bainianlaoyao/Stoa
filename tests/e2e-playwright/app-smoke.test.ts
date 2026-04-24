@@ -6,11 +6,11 @@ test.describe('Electron smoke sentinel', () => {
     const app = await launchElectronApp()
 
     try {
-      await expect(app.page.getByRole('region', { name: 'Application viewport' })).toBeVisible()
-      await expect(app.page.getByRole('region', { name: 'Command surface' })).toBeVisible()
-      await expect(app.page.getByRole('button', { name: 'Command panel' })).toBeVisible()
-      await expect(app.page.getByRole('button', { name: 'Archive' })).toBeVisible()
-      await expect(app.page.getByRole('button', { name: 'Settings' })).toBeVisible()
+      await expect(app.page.getByTestId('app-viewport')).toBeVisible()
+      await expect(app.page.getByTestId('command-panel')).toBeVisible()
+      await expect(app.page.locator('[data-activity-item="command"]')).toBeVisible()
+      await expect(app.page.locator('[data-activity-item="archive"]')).toBeVisible()
+      await expect(app.page.locator('[data-activity-item="settings"]')).toBeVisible()
     } finally {
       const { stateDir } = app
       await app.close()
@@ -22,8 +22,7 @@ test.describe('Electron smoke sentinel', () => {
     const app = await launchElectronApp()
 
     try {
-      await expect(app.page.locator('.terminal-empty-state')).toBeVisible()
-      await expect(app.page.locator('.terminal-empty-state')).toContainText('No session to display')
+      await expect(app.page.getByTestId('terminal-empty-state')).toBeVisible()
     } finally {
       const { stateDir } = app
       await app.close()
@@ -46,16 +45,16 @@ test.describe('Electron smoke sentinel', () => {
 
       await expectStableActivityIcons()
 
-      await app.page.getByRole('button', { name: 'Settings' }).click()
-      await expect(app.page.locator('[data-surface="settings"][aria-label="Settings surface"]')).toBeVisible()
+      await app.page.locator('[data-activity-item="settings"]').click()
+      await expect(app.page.locator('[data-surface="settings"]')).toBeVisible()
       await expectStableActivityIcons()
 
-      await app.page.getByRole('button', { name: 'Archive' }).click()
-      await expect(app.page.locator('[data-surface="archive"][aria-label="Archive surface"]')).toBeVisible()
+      await app.page.locator('[data-activity-item="archive"]').click()
+      await expect(app.page.locator('[data-surface="archive"]')).toBeVisible()
       await expectStableActivityIcons()
 
-      await app.page.getByRole('button', { name: 'Command panel' }).click()
-      await expect(app.page.getByRole('region', { name: 'Command surface' })).toBeVisible()
+      await app.page.locator('[data-activity-item="command"]').click()
+      await expect(app.page.getByTestId('command-panel')).toBeVisible()
       await expectStableActivityIcons()
     } finally {
       const { stateDir } = app

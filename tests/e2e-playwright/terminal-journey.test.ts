@@ -53,10 +53,10 @@ test.describe('Electron terminal journeys', () => {
 
       await waitForSessionStatus(app, session.title, 'running')
       const sessionState = await waitForSessionByTitle(app, session.title)
-      const terminalViewport = app.page.locator('.terminal-viewport').first()
+      const terminalViewport = app.page.getByTestId('terminal-viewport')
       await expect(terminalViewport).toBeVisible()
-      await expect(terminalViewport.locator('.terminal-viewport__xterm')).toBeVisible()
-      await expect(terminalViewport.locator('.terminal-empty-state')).toHaveCount(0)
+      await expect(terminalViewport.getByTestId('terminal-xterm')).toBeVisible()
+      await expect(terminalViewport.getByTestId('terminal-empty-state')).toHaveCount(0)
 
       await appendTerminalData(app.electronApp, sessionState.id, '\r\n__PLAYWRIGHT_OK__\r\n')
       await waitForTerminalBufferText(app.electronApp, sessionState.id, '__PLAYWRIGHT_OK__')
@@ -141,13 +141,14 @@ test.describe('Electron terminal journeys', () => {
       await appendTerminalData(app.electronApp, sessionState.id, '\r\n__PLAYWRIGHT_VISUAL__\r\n')
       await waitForTerminalBufferText(app.electronApp, sessionState.id, '__PLAYWRIGHT_VISUAL__')
 
-      const terminalViewport = app.page.locator('.terminal-viewport').first()
+      const terminalViewport = app.page.getByTestId('terminal-viewport')
       await expect(terminalViewport).toBeVisible()
-      await expect(terminalViewport.locator('.terminal-viewport__xterm')).toBeVisible()
-      await expect(terminalViewport.locator('.terminal-viewport__shell')).toBeVisible()
-      await expect(terminalViewport.locator('.terminal-viewport__xterm-mount')).toBeVisible()
+      await expect(terminalViewport.getByTestId('terminal-xterm')).toBeVisible()
+      await expect(terminalViewport.getByTestId('terminal-shell')).toBeVisible()
+      await expect(terminalViewport.getByTestId('terminal-xterm-mount')).toBeVisible()
+      // xterm is a third-party component — CSS class is the only available selector for internals
       await expect(terminalViewport.locator('.xterm')).toBeVisible()
-      await expect(terminalViewport.locator('.terminal-empty-state')).toHaveCount(0)
+      await expect(terminalViewport.getByTestId('terminal-empty-state')).toHaveCount(0)
     } finally {
       const { stateDir } = app
       await app.close()

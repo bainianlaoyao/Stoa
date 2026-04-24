@@ -37,7 +37,8 @@ const mockCreatedSession: SessionSummary = {
   externalSessionId: null,
   createdAt: 'x',
   updatedAt: 'x',
-  lastActivatedAt: 'x'
+  lastActivatedAt: 'x',
+  archived: false
 }
 
 async function flush(): Promise<void> {
@@ -58,14 +59,31 @@ function setupStoa(overrides?: Partial<typeof window.stoa>): void {
     createSession: vi.fn().mockResolvedValue({ ...mockCreatedSession }),
     setActiveProject: vi.fn().mockResolvedValue(undefined),
     setActiveSession: vi.fn().mockResolvedValue(undefined),
+    archiveSession: vi.fn().mockResolvedValue(undefined),
+    restoreSession: vi.fn().mockResolvedValue(undefined),
+    sendSessionInput: vi.fn().mockResolvedValue(undefined),
+    sendSessionResize: vi.fn().mockResolvedValue(undefined),
+    onTerminalData: vi.fn().mockReturnValue(() => {}),
+    onSessionEvent: vi.fn().mockReturnValue(() => {}),
     getTerminalReplay: vi.fn().mockResolvedValue(''),
     getSettings: vi.fn().mockResolvedValue({
       shellPath: '',
       terminalFontSize: 14,
       terminalFontFamily: 'JetBrains Mono',
       providers: {},
-      claudeDangerouslySkipPermissions: false
+      claudeDangerouslySkipPermissions: false,
+      locale: 'en'
     }),
+    setSetting: vi.fn().mockResolvedValue(undefined),
+    pickFolder: vi.fn().mockResolvedValue(null),
+    pickFile: vi.fn().mockResolvedValue(null),
+    detectShell: vi.fn().mockResolvedValue(null),
+    detectProvider: vi.fn().mockResolvedValue(null),
+    minimizeWindow: vi.fn().mockResolvedValue(undefined),
+    maximizeWindow: vi.fn().mockResolvedValue(undefined),
+    closeWindow: vi.fn().mockResolvedValue(undefined),
+    isWindowMaximized: vi.fn().mockResolvedValue(false),
+    onWindowMaximizeChange: vi.fn().mockReturnValue(() => {}),
     listArchivedSessions: vi.fn().mockResolvedValue([]),
     ...overrides
   }
@@ -241,6 +259,7 @@ describe('E2E: App.vue Bridge Guard (window.stoa undefined)', () => {
     it('missing createProject method — emit still rejects into lastError', async () => {
       // Provide getBootstrapState but omit createProject.
       window.stoa = {
+        ...setupStoaBase(),
         getBootstrapState: vi.fn().mockResolvedValue({ ...mockBootstrapState })
       } as typeof window.stoa
 
@@ -261,6 +280,7 @@ describe('E2E: App.vue Bridge Guard (window.stoa undefined)', () => {
     it('missing getBootstrapState method — hydrate never runs', async () => {
       // Provide createProject but omit getBootstrapState.
       window.stoa = {
+        ...setupStoaBase(),
         createProject: vi.fn().mockResolvedValue({ ...mockCreatedProject })
       } as typeof window.stoa
 

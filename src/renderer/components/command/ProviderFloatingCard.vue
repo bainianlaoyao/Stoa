@@ -35,6 +35,7 @@ function emitCreate(type: SessionType) {
     <div
       v-if="visible"
       class="provider-floating-card"
+      data-testid="provider-card"
       role="group"
       aria-label="Session providers"
       :style="cardStyle"
@@ -44,6 +45,8 @@ function emitCreate(type: SessionType) {
         :key="provider.type"
         type="button"
         class="provider-icon-cell"
+        data-testid="provider-card.item"
+        :data-provider-type="provider.type"
         :aria-label="`Create ${provider.providerName} session`"
         @click="emitCreate(provider.type)"
       >
