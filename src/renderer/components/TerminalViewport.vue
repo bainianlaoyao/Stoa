@@ -23,6 +23,7 @@ let resizeObserver: ResizeObserver | null = null
 let unsubscribeData: (() => void) | null = null
 let unsubscribeEvents: (() => void) | null = null
 let dataDisposable: { dispose(): void } | null = null
+let pendingFitResolve: (() => void) | null = null
 let mountVersion = 0
 let setupScheduleVersion = 0
 const REPLAY_FALLBACK_TIMEOUT_MS = 1_000
@@ -30,6 +31,8 @@ const REPLAY_FALLBACK_TIMEOUT_MS = 1_000
 function disposeTerminal() {
   setupScheduleVersion += 1
   mountVersion += 1
+  pendingFitResolve?.()
+  pendingFitResolve = null
   dataDisposable?.dispose()
   dataDisposable = null
   unsubscribeData?.()
@@ -76,6 +79,10 @@ function setupTerminal() {
   let writeChain = Promise.resolve()
   let replayFallbackTimer: ReturnType<typeof setTimeout> | null = null
 
+  let localFitResolve: (() => void) | null = null
+  const fitSettled = new Promise<void>((resolve) => { localFitResolve = resolve })
+  pendingFitResolve = localFitResolve
+
   const { terminal: localTerminal, fitAddon: localFitAddon } = createTerminalRuntime(
     undefined,
     undefined,
@@ -96,6 +103,7 @@ function setupTerminal() {
         return
       }
 
+      await fitSettled
       await writeChunk(localTerminal, data)
     })
   }
@@ -134,6 +142,7 @@ function setupTerminal() {
 
   nextTick(async () => {
     if (!isActiveMount()) {
+      localFitResolve?.()
       return
     }
 
@@ -144,6 +153,8 @@ function setupTerminal() {
     if (cols && rows) {
       stoa.sendSessionResize(sessionId, cols, rows)
     }
+    localFitResolve?.()
+    localFitResolve = null
   })
 
   dataDisposable = localTerminal.onData((data) => {
