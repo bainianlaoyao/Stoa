@@ -47,6 +47,8 @@ jobs:
 
       - name: Package Windows artifacts
         run: pnpm run package
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
 
       - name: Verify release artifacts
         run: pnpm run verify:packaging
