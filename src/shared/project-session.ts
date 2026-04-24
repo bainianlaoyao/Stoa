@@ -100,7 +100,6 @@ export interface PersistedSession {
   project_id: string
   type: SessionType
   title: string
-  last_known_status: SessionStatus
   runtime_state: SessionRuntimeState
   agent_state: SessionAgentState
   has_unseen_completion: boolean
@@ -155,7 +154,7 @@ export interface PersistedGlobalStateV3 {
 }
 
 export interface PersistedProjectSessions {
-  version: 4
+  version: 5
   project_id: string
   sessions: PersistedSession[]
 }

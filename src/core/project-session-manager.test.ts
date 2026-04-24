@@ -286,7 +286,7 @@ describe('ProjectSessionManager', () => {
       ]
     }, globalStatePath)
     await stateStore.writeProjectSessions(projectDir, {
-      version: 4,
+      version: 5,
       project_id: 'project_real',
       sessions: []
     })
@@ -322,7 +322,7 @@ describe('ProjectSessionManager', () => {
       ]
     }, globalStatePath)
     await stateStore.writeProjectSessions(projectDir, {
-      version: 4,
+      version: 5,
       project_id: 'project_real',
       sessions: [
         {
@@ -330,7 +330,13 @@ describe('ProjectSessionManager', () => {
           project_id: 'project_real',
           type: 'shell',
           title: 'Alpha shell',
-          last_known_status: 'running',
+          runtime_state: 'alive',
+          agent_state: 'unknown',
+          has_unseen_completion: false,
+          runtime_exit_code: null,
+          runtime_exit_reason: null,
+          last_state_sequence: 3,
+          blocking_reason: null,
           last_summary: 'alive',
           external_session_id: null,
           created_at: now,
@@ -372,7 +378,7 @@ describe('ProjectSessionManager', () => {
       ]
     }, globalStatePath)
     await stateStore.writeProjectSessions(projectDir, {
-      version: 4,
+      version: 5,
       project_id: 'project_real',
       sessions: [
         {
@@ -380,7 +386,13 @@ describe('ProjectSessionManager', () => {
           project_id: 'project_missing',
           type: 'shell',
           title: 'Orphan shell',
-          last_known_status: 'running',
+          runtime_state: 'alive',
+          agent_state: 'unknown',
+          has_unseen_completion: false,
+          runtime_exit_code: null,
+          runtime_exit_reason: null,
+          last_state_sequence: 3,
+          blocking_reason: null,
           last_summary: 'alive',
           external_session_id: null,
           created_at: now,
@@ -486,7 +498,13 @@ describe('ProjectSessionManager', () => {
     const snapshot = manager.snapshot()
     expect(session.projectId).toBe(project.id)
     expect(session.recoveryMode).toBe('resume-external')
-    expect(session.status).toBe('bootstrapping')
+    expect(session.runtimeState).toBe('created')
+    expect(session.agentState).toBe('unknown')
+    expect(session.hasUnseenCompletion).toBe(false)
+    expect(session.runtimeExitCode).toBeNull()
+    expect(session.runtimeExitReason).toBeNull()
+    expect(session.lastStateSequence).toBe(0)
+    expect(session.blockingReason).toBeNull()
     expect(session.lastActivatedAt).not.toBe(null)
     expect(snapshot.activeProjectId).toBe(project.id)
     expect(snapshot.activeSessionId).toBe(session.id)
@@ -643,63 +661,214 @@ describe('ProjectSessionManager', () => {
   })
 
   describe('session lifecycle methods', () => {
-    test('markSessionStarting updates status and summary', async () => {
+    test('createSession initializes runtime created agent unknown and no unseen completion', async () => {
+      const manager = ProjectSessionManager.createForTest()
+      const project = await manager.createProject({ name: 'test', path: 'D:/test' })
+
+      const session = await manager.createSession({ projectId: project.id, type: 'shell', title: 'S1' })
+
+      expect(session.runtimeState).toBe('created')
+      expect(session.agentState).toBe('unknown')
+      expect(session.hasUnseenCompletion).toBe(false)
+      expect(session.runtimeExitCode).toBeNull()
+      expect(session.runtimeExitReason).toBeNull()
+      expect(session.lastStateSequence).toBe(0)
+      expect(session.blockingReason).toBeNull()
+      expect(session.summary).toBe('Waiting for session to start')
+    })
+
+    test('markRuntimeStarting resets stale agent state and unseen completion', async () => {
+      const manager = ProjectSessionManager.createForTest()
+      const project = await manager.createProject({ name: 'test', path: 'D:/test' })
+      const session = await manager.createSession({ projectId: project.id, type: 'claude-code', title: 'S1' })
+
+      await manager.applySessionStatePatch({
+        sessionId: session.id,
+        sequence: 1,
+        occurredAt: '2026-04-24T00:00:00.000Z',
+        intent: 'runtime.alive',
+        source: 'runtime',
+        summary: 'alive'
+      })
+      await manager.applySessionStatePatch({
+        sessionId: session.id,
+        sequence: 2,
+        occurredAt: '2026-04-24T00:00:01.000Z',
+        intent: 'agent.turn_completed',
+        source: 'provider',
+        summary: 'complete'
+      })
+      await manager.markRuntimeExited(session.id, 1, 'failed')
+
+      await manager.markRuntimeStarting(session.id, 'starting again', 'claude-real-123')
+
+      const updated = manager.snapshot().sessions.find(s => s.id === session.id)!
+      expect(updated.runtimeState).toBe('starting')
+      expect(updated.agentState).toBe('unknown')
+      expect(updated.hasUnseenCompletion).toBe(false)
+      expect(updated.runtimeExitCode).toBeNull()
+      expect(updated.runtimeExitReason).toBeNull()
+      expect(updated.blockingReason).toBeNull()
+      expect(updated.externalSessionId).toBe('claude-real-123')
+      expect(updated.summary).toBe('starting again')
+      expect(updated.lastStateSequence).toBe(4)
+    })
+
+    test('markRuntimeAlive does not set agent working', async () => {
+      const manager = ProjectSessionManager.createForTest()
+      const project = await manager.createProject({ name: 'test', path: 'D:/test' })
+      const session = await manager.createSession({ projectId: project.id, type: 'opencode', title: 'S1' })
+
+      await manager.markRuntimeAlive(session.id, 'opencode-real-123')
+
+      const updated = manager.snapshot().sessions.find(s => s.id === session.id)!
+      expect(updated.runtimeState).toBe('alive')
+      expect(updated.agentState).toBe('unknown')
+      expect(updated.hasUnseenCompletion).toBe(false)
+      expect(updated.externalSessionId).toBe('opencode-real-123')
+      expect(updated.summary).toBe('Session running')
+      expect(updated.lastStateSequence).toBe(1)
+    })
+
+    test('applySessionStatePatch turns Claude completion into idle plus unseen completion', async () => {
+      const manager = ProjectSessionManager.createForTest()
+      const project = await manager.createProject({ name: 'test', path: 'D:/test' })
+      const session = await manager.createSession({ projectId: project.id, type: 'claude-code', title: 'S1' })
+
+      await manager.markRuntimeAlive(session.id, 'claude-real-123')
+      await manager.applySessionStatePatch({
+        sessionId: session.id,
+        sequence: 2,
+        occurredAt: '2026-04-24T00:00:01.000Z',
+        intent: 'agent.turn_completed',
+        source: 'provider',
+        sourceEventType: 'Stop',
+        summary: 'Claude completed'
+      })
+
+      const updated = manager.snapshot().sessions.find(s => s.id === session.id)!
+      expect(updated.agentState).toBe('idle')
+      expect(updated.hasUnseenCompletion).toBe(true)
+      expect(updated.summary).toBe('Claude completed')
+      expect(updated.lastStateSequence).toBe(2)
+    })
+
+    test('setActiveSession marks complete sessions as seen', async () => {
+      const manager = ProjectSessionManager.createForTest()
+      const project = await manager.createProject({ name: 'test', path: 'D:/test' })
+      const first = await manager.createSession({ projectId: project.id, type: 'claude-code', title: 'S1' })
+      const second = await manager.createSession({ projectId: project.id, type: 'shell', title: 'S2' })
+
+      await manager.markRuntimeAlive(first.id, 'claude-real-123')
+      await manager.applySessionStatePatch({
+        sessionId: first.id,
+        sequence: 2,
+        occurredAt: '2026-04-24T00:00:01.000Z',
+        intent: 'agent.turn_completed',
+        source: 'provider',
+        summary: 'Claude completed'
+      })
+      await manager.setActiveSession(second.id)
+
+      await manager.setActiveSession(first.id)
+
+      const updated = manager.snapshot().sessions.find(s => s.id === first.id)!
+      expect(updated.agentState).toBe('idle')
+      expect(updated.hasUnseenCompletion).toBe(false)
+      expect(updated.summary).toBe('Completion seen')
+      expect(updated.lastStateSequence).toBe(3)
+    })
+
+    test('persists project session schema v5 without legacy status', async () => {
       const globalStatePath = await createTempGlobalStatePath()
       const projectDir = await createTempProjectDir()
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
       const project = await manager.createProject({ path: projectDir, name: 'test' })
       const session = await manager.createSession({ projectId: project.id, type: 'shell', title: 'S1' })
 
-      await manager.markSessionStarting(session.id, '正在启动 shell', null)
+      await manager.markRuntimeStarting(session.id, 'starting...', null)
+
+      const diskSessions = await readProjectSessions(projectDir)
+      expect(diskSessions.version).toBe(5)
+      expect(diskSessions.sessions[0]).toMatchObject({
+        runtime_state: 'starting',
+        agent_state: 'unknown',
+        has_unseen_completion: false,
+        runtime_exit_code: null,
+        runtime_exit_reason: null,
+        last_state_sequence: 1,
+        blocking_reason: null,
+        last_summary: 'starting...'
+      })
+      expect(diskSessions.sessions[0]).not.toHaveProperty('last_known_status')
+    })
+
+    test('markRuntimeStarting updates runtime state and summary', async () => {
+      const globalStatePath = await createTempGlobalStatePath()
+      const projectDir = await createTempProjectDir()
+      const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
+      const project = await manager.createProject({ path: projectDir, name: 'test' })
+      const session = await manager.createSession({ projectId: project.id, type: 'shell', title: 'S1' })
+
+      await manager.markRuntimeStarting(session.id, '正在启动 shell', null)
 
       const updated = manager.snapshot().sessions.find(s => s.id === session.id)!
-      expect(updated.status).toBe('starting')
+      expect(updated.runtimeState).toBe('starting')
       expect(updated.summary).toBe('正在启动 shell')
     })
 
-    test('markSessionRunning preserves null externalSessionId for fresh shell starts', async () => {
+    test('markRuntimeAlive preserves null externalSessionId for fresh shell starts', async () => {
       const globalStatePath = await createTempGlobalStatePath()
       const projectDir = await createTempProjectDir()
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
       const project = await manager.createProject({ path: projectDir, name: 'test' })
       const session = await manager.createSession({ projectId: project.id, type: 'shell', title: 'S1' })
 
-      await manager.markSessionRunning(session.id, null)
+      await manager.markRuntimeAlive(session.id, null)
 
       const updated = manager.snapshot().sessions.find(s => s.id === session.id)!
-      expect(updated.status).toBe('running')
+      expect(updated.runtimeState).toBe('alive')
       expect(updated.externalSessionId).toBeNull()
       expect(updated.summary).toBe('Session running')
     })
 
-    test('markSessionRunning does not invent a session id for shell sessions', async () => {
+    test('markRuntimeAlive does not invent a session id for shell sessions', async () => {
       const manager = ProjectSessionManager.createForTest()
       const project = await manager.createProject({ name: 'test', path: 'D:/test' })
       const session = await manager.createSession({ projectId: project.id, type: 'shell', title: 'S1' })
 
-      await manager.markSessionRunning(session.id, null)
+      await manager.markRuntimeAlive(session.id, null)
 
       const updated = manager.snapshot().sessions.find(s => s.id === session.id)!
       expect(updated.externalSessionId).toBeNull()
     })
 
-    test('markSessionRunning replaces ready canonical states when runtime becomes active again', async () => {
+    test('markRuntimeAlive preserves idle agent state when runtime becomes active again', async () => {
       const globalStatePath = await createTempGlobalStatePath()
       const projectDir = await createTempProjectDir()
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
       const project = await manager.createProject({ path: projectDir, name: 'test' })
       const session = await manager.createSession({ projectId: project.id, type: 'opencode', title: 'S1' })
 
-      await manager.applySessionEvent(session.id, 'awaiting_input', 'session.idle', 'opencode-real-123')
-      await manager.markSessionRunning(session.id, 'opencode-real-456')
+      await manager.markRuntimeAlive(session.id, 'opencode-real-123')
+      await manager.applySessionStatePatch({
+        sessionId: session.id,
+        sequence: 2,
+        occurredAt: '2026-04-24T00:00:01.000Z',
+        intent: 'agent.recovered',
+        source: 'provider',
+        summary: 'session.idle'
+      })
+      await manager.markRuntimeAlive(session.id, 'opencode-real-456')
 
       const updated = manager.snapshot().sessions.find(s => s.id === session.id)!
-      expect(updated.status).toBe('running')
+      expect(updated.runtimeState).toBe('alive')
+      expect(updated.agentState).toBe('idle')
       expect(updated.summary).toBe('Session running')
       expect(updated.externalSessionId).toBe('opencode-real-456')
     })
 
-    test('markSessionRunning preserves blocked and failed states while refreshing externalSessionId', async () => {
+    test('markRuntimeAlive preserves blocked and failed states while refreshing externalSessionId', async () => {
       const globalStatePath = await createTempGlobalStatePath()
       const projectDir = await createTempProjectDir()
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
@@ -707,54 +876,75 @@ describe('ProjectSessionManager', () => {
       const blockedSession = await manager.createSession({ projectId: project.id, type: 'claude-code', title: 'blocked' })
       const failedSession = await manager.createSession({ projectId: project.id, type: 'claude-code', title: 'failed' })
 
-      await manager.applySessionEvent(blockedSession.id, 'needs_confirmation', 'PermissionRequest', 'claude-real-123')
-      await manager.applySessionEvent(failedSession.id, 'error', 'Provider error', 'claude-real-456')
-      await manager.markSessionRunning(blockedSession.id, 'claude-real-789')
-      await manager.markSessionRunning(failedSession.id, 'claude-real-999')
+      await manager.markRuntimeAlive(blockedSession.id, 'claude-real-123')
+      await manager.markRuntimeAlive(failedSession.id, 'claude-real-456')
+      await manager.applySessionStatePatch({
+        sessionId: blockedSession.id,
+        sequence: 2,
+        occurredAt: '2026-04-24T00:00:01.000Z',
+        intent: 'agent.permission_requested',
+        source: 'provider',
+        summary: 'PermissionRequest',
+        blockingReason: 'permission'
+      })
+      await manager.applySessionStatePatch({
+        sessionId: failedSession.id,
+        sequence: 2,
+        occurredAt: '2026-04-24T00:00:01.000Z',
+        intent: 'agent.turn_failed',
+        source: 'provider',
+        summary: 'Provider error'
+      })
+      await manager.markRuntimeAlive(blockedSession.id, 'claude-real-789')
+      await manager.markRuntimeAlive(failedSession.id, 'claude-real-999')
 
       const updatedBlocked = manager.snapshot().sessions.find(s => s.id === blockedSession.id)!
       const updatedFailed = manager.snapshot().sessions.find(s => s.id === failedSession.id)!
-      expect(updatedBlocked.status).toBe('needs_confirmation')
+      expect(updatedBlocked.agentState).toBe('blocked')
       expect(updatedBlocked.summary).toBe('PermissionRequest')
       expect(updatedBlocked.externalSessionId).toBe('claude-real-789')
-      expect(updatedFailed.status).toBe('error')
+      expect(updatedFailed.agentState).toBe('error')
       expect(updatedFailed.summary).toBe('Provider error')
       expect(updatedFailed.externalSessionId).toBe('claude-real-999')
     })
 
-    test('markSessionExited updates status and summary', async () => {
+    test('markRuntimeExited updates runtime state and summary', async () => {
       const globalStatePath = await createTempGlobalStatePath()
       const projectDir = await createTempProjectDir()
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
       const project = await manager.createProject({ path: projectDir, name: 'test' })
       const session = await manager.createSession({ projectId: project.id, type: 'shell', title: 'S1' })
 
-      await manager.markSessionExited(session.id, 'shell exited (0)')
+      await manager.markRuntimeExited(session.id, 0, 'shell exited (0)')
 
       const updated = manager.snapshot().sessions.find(s => s.id === session.id)!
-      expect(updated.status).toBe('exited')
+      expect(updated.runtimeState).toBe('exited')
+      expect(updated.runtimeExitCode).toBe(0)
+      expect(updated.runtimeExitReason).toBe('clean')
       expect(updated.summary).toBe('shell exited (0)')
     })
 
     test('lifecycle methods are no-ops for unknown session IDs', async () => {
       const globalStatePath = await createTempGlobalStatePath()
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
-      await expect(manager.markSessionStarting('nonexistent', 'x', null)).resolves.toBeUndefined()
-      await expect(manager.markSessionRunning('nonexistent', null)).resolves.toBeUndefined()
-      await expect(manager.markSessionExited('nonexistent', 'x')).resolves.toBeUndefined()
+      await expect(manager.markRuntimeStarting('nonexistent', 'x', null)).resolves.toBeUndefined()
+      await expect(manager.markRuntimeAlive('nonexistent', null)).resolves.toBeUndefined()
+      await expect(manager.markRuntimeExited('nonexistent', null, 'x')).resolves.toBeUndefined()
+      await expect(manager.markRuntimeFailedToStart('nonexistent', 'x')).resolves.toBeUndefined()
+      await expect(manager.markCompletionSeen('nonexistent')).resolves.toBeUndefined()
     })
 
-    test('markSessionStarting persists to project sessions file', async () => {
+    test('markRuntimeStarting persists to project sessions file', async () => {
       const globalStatePath = await createTempGlobalStatePath()
       const projectDir = await createTempProjectDir()
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
       const project = await manager.createProject({ path: projectDir, name: 'test' })
       const session = await manager.createSession({ projectId: project.id, type: 'shell', title: 'S1' })
 
-      await manager.markSessionStarting(session.id, 'starting...', null)
+      await manager.markRuntimeStarting(session.id, 'starting...', null)
 
       const diskSessions = await readProjectSessions(projectDir)
-      expect(diskSessions.sessions[0]!.last_known_status).toBe('starting')
+      expect(diskSessions.sessions[0]!.runtime_state).toBe('starting')
       expect(diskSessions.sessions[0]!.last_summary).toBe('starting...')
     })
   })

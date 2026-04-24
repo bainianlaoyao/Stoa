@@ -101,7 +101,7 @@ describe('state-store', () => {
   test('reads and writes per-project sessions', async () => {
     const projectDir = await createTempProjectDir()
     const data: PersistedProjectSessions = {
-      version: 4,
+      version: 5,
       project_id: 'project_alpha',
       sessions: [
         {
@@ -109,7 +109,13 @@ describe('state-store', () => {
           project_id: 'project_alpha',
           type: 'shell',
           title: 'Local shell',
-          last_known_status: 'running',
+          runtime_state: 'alive',
+          agent_state: 'unknown',
+          has_unseen_completion: false,
+          runtime_exit_code: null,
+          runtime_exit_reason: null,
+          last_state_sequence: 2,
+          blocking_reason: null,
           last_summary: 'attached',
           external_session_id: null,
           created_at: '2026-04-19T00:00:00.000Z',
@@ -124,22 +130,22 @@ describe('state-store', () => {
     await writeProjectSessions(projectDir, data)
 
     const read = await readProjectSessions(projectDir)
-    expect(read.version).toBe(4)
+    expect(read.version).toBe(5)
     expect(read.project_id).toBe('project_alpha')
     expect(read.sessions).toHaveLength(1)
     expect(read.sessions[0]!.session_id).toBe('session_shell_1')
-    expect(read.sessions[0]!.last_known_status).toBe('running')
+    expect(read.sessions[0]!.runtime_state).toBe('alive')
   })
 
   test('overwrites an existing project sessions file on repeated writes', async () => {
     const projectDir = await createTempProjectDir()
     const first: PersistedProjectSessions = {
-      version: 4,
+      version: 5,
       project_id: 'project_alpha',
       sessions: []
     }
     const second: PersistedProjectSessions = {
-      version: 4,
+      version: 5,
       project_id: 'project_beta',
       sessions: []
     }
@@ -153,12 +159,12 @@ describe('state-store', () => {
   test('serializes concurrent writes to the same project sessions file and keeps the last payload', async () => {
     const projectDir = await createTempProjectDir()
     const first: PersistedProjectSessions = {
-      version: 4,
+      version: 5,
       project_id: 'project_alpha',
       sessions: []
     }
     const second: PersistedProjectSessions = {
-      version: 4,
+      version: 5,
       project_id: 'project_beta',
       sessions: []
     }
@@ -171,12 +177,44 @@ describe('state-store', () => {
     await expect(readProjectSessions(projectDir)).resolves.toEqual(second)
   })
 
+  test('readProjectSessions ignores old v4 project session files as a breaking schema reset', async () => {
+    const projectDir = await createTempProjectDir()
+    const sessionsFilePath = getProjectSessionsFilePath(projectDir)
+    await fsPromises.mkdir(join(projectDir, '.stoa'), { recursive: true })
+    await fsPromises.writeFile(sessionsFilePath, JSON.stringify({
+      version: 4,
+      project_id: 'project_legacy',
+      sessions: [
+        {
+          session_id: 'session_legacy',
+          project_id: 'project_legacy',
+          type: 'shell',
+          title: 'Legacy shell',
+          last_known_status: 'running',
+          last_summary: 'attached',
+          external_session_id: null,
+          created_at: '2026-04-19T00:00:00.000Z',
+          updated_at: '2026-04-19T00:00:00.000Z',
+          last_activated_at: '2026-04-19T00:00:00.000Z',
+          recovery_mode: 'fresh-shell',
+          archived: false
+        }
+      ]
+    }), 'utf-8')
+
+    await expect(readProjectSessions(projectDir)).resolves.toEqual({
+      version: 5,
+      project_id: 'project_legacy',
+      sessions: []
+    })
+  })
+
   test('returns versioned empty sessions when project has no sessions file', async () => {
     const projectDir = await createTempProjectDir()
 
     const read = await readProjectSessions(projectDir)
     expect(read).toEqual({
-      version: 4,
+      version: 5,
       project_id: '',
       sessions: []
     })

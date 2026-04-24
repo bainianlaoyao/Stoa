@@ -29,7 +29,7 @@ export const DEFAULT_GLOBAL_STATE: PersistedGlobalStateV3 = {
 }
 
 export const DEFAULT_PROJECT_SESSIONS: PersistedProjectSessions = {
-  version: 4,
+  version: 5,
   project_id: '',
   sessions: []
 }
@@ -107,11 +107,18 @@ function isValidProjectSessions(value: unknown): value is PersistedProjectSessio
   return typeof value === 'object'
     && value !== null
     && 'version' in value
-    && value.version === 4
+    && value.version === 5
     && 'project_id' in value
     && typeof value.project_id === 'string'
     && 'sessions' in value
     && Array.isArray(value.sessions)
+}
+
+function isProjectSessionsWithUnsupportedVersion(value: unknown): value is { version: unknown; project_id?: unknown } {
+  return typeof value === 'object'
+    && value !== null
+    && 'version' in value
+    && value.version !== 5
 }
 
 export function createAtomicTempFilePath(filePath: string): string {
@@ -242,7 +249,15 @@ export async function readProjectSessions(projectPath: string): Promise<Persiste
   return await withFileAccess(filePath, async () => {
     try {
       const raw = await readFile(filePath, 'utf-8')
-      const parsed = JSON.parse(raw) as PersistedProjectSessions
+      const parsed = JSON.parse(raw) as unknown
+      if (isProjectSessionsWithUnsupportedVersion(parsed)) {
+        return {
+          version: 5,
+          project_id: typeof parsed.project_id === 'string' ? parsed.project_id : '',
+          sessions: []
+        }
+      }
+
       if (!isValidProjectSessions(parsed)) {
         throw new StateReadError('Invalid project sessions state', undefined, filePath, false)
       }
@@ -294,7 +309,7 @@ export async function writeProjectSessions(
   const filePath = getProjectSessionsFilePath(projectPath)
 
   await writeJsonAtomically(filePath, {
-    version: 4,
+    version: 5,
     project_id: data.project_id,
     sessions: data.sessions
   } satisfies PersistedProjectSessions)

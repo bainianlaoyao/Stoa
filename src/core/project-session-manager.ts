@@ -9,12 +9,14 @@ import type {
   PersistedProjectSessions,
   PersistedSession,
   ProjectSummary,
-  SessionStatus,
+  SessionStateIntent,
+  SessionStatePatchEvent,
   SessionSummary,
   SessionType
 } from '@shared/project-session'
 import { DEFAULT_SETTINGS } from '@shared/project-session'
 import { getProviderDescriptorBySessionType } from '@shared/provider-descriptors'
+import { reduceSessionState } from '@shared/session-state-reducer'
 import {
   DEFAULT_GLOBAL_STATE,
   StateReadError,
@@ -61,7 +63,13 @@ function toPersistedSession(session: SessionSummary): PersistedSession {
     project_id: session.projectId,
     type: session.type,
     title: session.title,
-    last_known_status: session.status,
+    runtime_state: session.runtimeState,
+    agent_state: session.agentState,
+    has_unseen_completion: session.hasUnseenCompletion,
+    runtime_exit_code: session.runtimeExitCode,
+    runtime_exit_reason: session.runtimeExitReason,
+    last_state_sequence: session.lastStateSequence,
+    blocking_reason: session.blockingReason,
     last_summary: session.summary,
     external_session_id: session.externalSessionId,
     created_at: session.createdAt,
@@ -77,7 +85,14 @@ function toSessionSummary(session: PersistedSession): SessionSummary {
     id: session.session_id,
     projectId: session.project_id,
     type: session.type,
-    status: session.last_known_status,
+    status: 'bootstrapping',
+    runtimeState: session.runtime_state,
+    agentState: session.agent_state,
+    hasUnseenCompletion: session.has_unseen_completion,
+    runtimeExitCode: session.runtime_exit_code,
+    runtimeExitReason: session.runtime_exit_reason,
+    lastStateSequence: session.last_state_sequence,
+    blockingReason: session.blocking_reason,
     title: session.title,
     summary: session.last_summary,
     recoveryMode: session.recovery_mode,
@@ -113,13 +128,6 @@ function createSessionExternalId(type: SessionType, externalSessionId?: string |
     ? randomUUID()
     : null
 }
-
-const NON_REGRESSIBLE_RUNNING_STATUSES = new Set<SessionStatus>([
-  'degraded',
-  'needs_confirmation',
-  'error',
-  'exited'
-])
 
 function resolveActiveProjectId(projects: ProjectSummary[], activeProjectId: string | null): string | null {
   if (!activeProjectId) {
@@ -299,52 +307,46 @@ export class ProjectSessionManager {
     this.state.terminalWebhookPort = port
   }
 
-  async applySessionEvent(
-    sessionId: string,
-    status: SessionStatus,
-    summary: string,
-    externalSessionId?: string | null
-  ): Promise<void> {
-    const session = this.state.sessions.find(s => s.id === sessionId)
+  async applySessionStatePatch(patch: SessionStatePatchEvent): Promise<void> {
+    const session = this.state.sessions.find(s => s.id === patch.sessionId)
     if (!session) return
 
-    session.status = status
-    session.summary = summary
-    if (externalSessionId !== undefined) {
-      session.externalSessionId = externalSessionId
-    }
-    session.updatedAt = new Date().toISOString()
-    await this.persist()
-  }
-
-  async markSessionStarting(sessionId: string, summary: string, externalSessionId: string | null): Promise<void> {
-    await this.applySessionEvent(sessionId, 'starting', summary, externalSessionId)
-  }
-
-  async markSessionRunning(sessionId: string, externalSessionId: string | null): Promise<void> {
-    const session = this.state.sessions.find(s => s.id === sessionId)
-    if (!session) return
-
-    if (NON_REGRESSIBLE_RUNNING_STATUSES.has(session.status)) {
-      if (externalSessionId !== undefined) {
-        session.externalSessionId = externalSessionId
-      }
-      session.updatedAt = new Date().toISOString()
-      await this.persist()
+    const reduced = reduceSessionState(session, patch, new Date().toISOString())
+    if (reduced === session) {
       return
     }
 
-    await this.applySessionEvent(sessionId, 'running', 'Session running', externalSessionId)
+    const summary = shouldApplyPatchSummary(session, patch) ? patch.summary : session.summary
+    Object.assign(session, reduced, { summary })
+    if (patch.externalSessionId !== undefined) {
+      session.externalSessionId = patch.externalSessionId
+    }
+    await this.persist()
   }
 
-  async markSessionExited(sessionId: string, summary: string): Promise<void> {
-    const session = this.state.sessions.find(s => s.id === sessionId)
-    if (!session) return
+  async markRuntimeStarting(sessionId: string, summary: string, externalSessionId: string | null): Promise<void> {
+    await this.applyRuntimePatch(sessionId, 'runtime.starting', summary, { externalSessionId })
+  }
 
-    // If an external event (e.g. webhook) already set a richer status, don't regress
-    if (NON_REGRESSIBLE_RUNNING_STATUSES.has(session.status)) return
+  async markRuntimeAlive(sessionId: string, externalSessionId: string | null): Promise<void> {
+    await this.applyRuntimePatch(sessionId, 'runtime.alive', 'Session running', { externalSessionId })
+  }
 
-    await this.applySessionEvent(sessionId, 'exited', summary)
+  async markRuntimeExited(sessionId: string, exitCode: number | null, summary: string): Promise<void> {
+    await this.applyRuntimePatch(
+      sessionId,
+      exitCode === null || exitCode === 0 ? 'runtime.exited_clean' : 'runtime.exited_failed',
+      summary,
+      { runtimeExitCode: exitCode }
+    )
+  }
+
+  async markRuntimeFailedToStart(sessionId: string, summary: string): Promise<void> {
+    await this.applyRuntimePatch(sessionId, 'runtime.failed_to_start', summary)
+  }
+
+  async markCompletionSeen(sessionId: string): Promise<void> {
+    await this.applyRuntimePatch(sessionId, 'agent.completion_seen', 'Completion seen', { source: 'ui' })
   }
 
   async setActiveProject(projectId: string): Promise<void> {
@@ -359,6 +361,11 @@ export class ProjectSessionManager {
     if (!session) return
     this.state.activeSessionId = sessionId
     this.state.activeProjectId = session.projectId
+    if (session.agentState === 'idle' && session.hasUnseenCompletion) {
+      const patch = this.createSessionStatePatch(session, 'agent.completion_seen', 'Completion seen', { source: 'ui' })
+      const reduced = reduceSessionState(session, patch, new Date().toISOString())
+      Object.assign(session, reduced, { summary: patch.summary })
+    }
     await this.persist()
   }
 
@@ -399,6 +406,13 @@ export class ProjectSessionManager {
       projectId: request.projectId,
       type: request.type,
       status: 'bootstrapping',
+      runtimeState: 'created',
+      agentState: 'unknown',
+      hasUnseenCompletion: false,
+      runtimeExitCode: null,
+      runtimeExitReason: null,
+      lastStateSequence: 0,
+      blockingReason: null,
       title: request.title,
       summary: 'Waiting for session to start',
       recoveryMode: createSessionRecoveryMode(request.type),
@@ -472,7 +486,7 @@ export class ProjectSessionManager {
     for (const project of persistedProjects) {
       const projectSessions = byProject.get(project.project_id) ?? []
       const data: PersistedProjectSessions = {
-        version: 4,
+        version: 5,
         project_id: project.project_id,
         sessions: projectSessions
       }
@@ -495,4 +509,39 @@ export class ProjectSessionManager {
       this.hasPersistedProjects = true
     }
   }
+
+  private async applyRuntimePatch(
+    sessionId: string,
+    intent: SessionStateIntent,
+    summary: string,
+    options: Partial<Pick<SessionStatePatchEvent, 'externalSessionId' | 'runtimeExitCode' | 'source'>> = {}
+  ): Promise<void> {
+    const session = this.state.sessions.find(s => s.id === sessionId)
+    if (!session) return
+
+    await this.applySessionStatePatch(this.createSessionStatePatch(session, intent, summary, options))
+  }
+
+  private createSessionStatePatch(
+    session: SessionSummary,
+    intent: SessionStateIntent,
+    summary: string,
+    options: Partial<Pick<SessionStatePatchEvent, 'externalSessionId' | 'runtimeExitCode' | 'source'>> = {}
+  ): SessionStatePatchEvent {
+    return {
+      sessionId: session.id,
+      sequence: session.lastStateSequence + 1,
+      occurredAt: new Date().toISOString(),
+      intent,
+      source: options.source ?? 'runtime',
+      summary,
+      externalSessionId: options.externalSessionId,
+      runtimeExitCode: options.runtimeExitCode
+    }
+  }
+}
+
+function shouldApplyPatchSummary(session: SessionSummary, patch: SessionStatePatchEvent): boolean {
+  return patch.intent !== 'runtime.alive'
+    || (session.agentState !== 'blocked' && session.agentState !== 'error')
 }
