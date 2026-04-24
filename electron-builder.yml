@@ -13,6 +13,7 @@ publish:
   repo: "${env.GH_REPO}"
   releaseType: release
 win:
+  icon: build/icons/icon.ico
   target:
     - nsis
 npmRebuild: false

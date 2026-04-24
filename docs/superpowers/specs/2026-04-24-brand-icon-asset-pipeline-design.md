@@ -74,7 +74,8 @@ These are the canonical packaging-facing assets.
 
 - Use `glass` as the master visual for application icon output
 - Use `flat` as the base for reusable SVG renderer assets
-- Use `flat` for constrained or small-size usage because it preserves clarity better than the glass treatment
+- Use `flat` for constrained or small-size renderer/UI usage because it preserves clarity better than the glass treatment
+- All Windows application icon outputs, including small embedded ICO sizes, derive from the `glass` application mark unless this spec is explicitly revised
 
 ### Renderer Brand Set
 
@@ -118,6 +119,8 @@ Approved usage rule:
 
 Implementation must wire the new renderer brand assets into an existing low-risk surface so they are proven in live UI. The preferred integration point is `src/renderer/components/TitleBar.vue`, replacing the current placeholder square `S` mark with the new brand symbol asset while preserving the existing layout and design-language constraints.
 
+The horizontal wordmark must also be proven usable by adding an import/build-level test or another lightweight renderer-facing usage that verifies Vite can resolve the asset. It does not need to be visible in the title bar if that would make the UI noisier.
+
 The goal is to prove the assets are real application inputs, not dead files in the repo.
 
 ## Generation Strategy
@@ -128,9 +131,14 @@ Reconstruct clean SVG assets from the approved brand forms rather than treating 
 
 Requirements:
 
-- The symbol SVG must be crisp, simple, and suitable for import by Vite
-- The horizontal wordmark SVG must be self-contained
+- The symbol SVG must use a `viewBox` of `0 0 64 64`
+- The symbol SVG must have a transparent outer background and visible geometry inside a consistent 6px safe area
+- The symbol SVG must use fixed brand fills instead of `currentColor` so it remains a stable brand mark when imported as an image
+- The horizontal wordmark SVG must use the same symbol geometry on the left and fixed vector path geometry for the wordmark on the right
+- The horizontal wordmark SVG must be self-contained and must not depend on runtime fonts
+- Both SVG files must be crisp, simple, and suitable for import by Vite
 - Output should not rely on embedded raster images
+- SVG output should avoid editor metadata and unnecessary hidden layers
 
 ### Application Icon Assets
 
@@ -138,9 +146,12 @@ Generate the application icon from the `glass` mark as a square icon composition
 
 Requirements:
 
-- A high-resolution PNG source must exist
-- A Windows `.ico` file must be generated from that source
-- At least one explicit intermediate PNG size should be kept in-repo for traceability and reuse
+- A high-resolution square PNG source must exist at `build/icons/icon.png`
+- A 256px PNG must exist at `build/icons/icon-256.png`
+- A Windows `.ico` file must be generated at `build/icons/icon.ico`
+- The `.ico` must contain embedded images for `16, 24, 32, 48, 64, 128, 256`
+- Embedded ICO images must preserve alpha transparency
+- At least one validation step must inspect the `.ico` directory entries and confirm the expected sizes are present
 
 If the repository already has a practical local tool path for image conversion, use it. Do not introduce a heavy new runtime dependency unless there is no other reliable option.
 
@@ -170,8 +181,10 @@ Required verification:
 Additional practical verification:
 
 - `npm run build`
+- `npm run package`
+- `npm run verify:packaging`
 - Confirm the new renderer SVG assets resolve through the Vite asset pipeline
-- Confirm Electron Builder sees `build/icons/icon.ico`
+- Confirm `build/icons/icon.ico` contains the expected embedded image sizes
 
 ## Out of Scope for This Spec
 

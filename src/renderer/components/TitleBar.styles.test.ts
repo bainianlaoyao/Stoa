@@ -12,4 +12,12 @@ describe('TitleBar style contracts', () => {
     expect(source).not.toContain('hover:bg-[#e81123]')
     expect(source).not.toContain('duration-150')
   })
+
+  it('uses the renderer brand symbol asset instead of the placeholder mark', () => {
+    const source = readFileSync(titleBarPath, 'utf8')
+
+    expect(source).toContain("import stoaSymbol from '@renderer/assets/brand/stoa-symbol.svg'")
+    expect(source).toContain('<img :src="stoaSymbol" alt="" class="h-8 w-8" aria-hidden="true">')
+    expect(source).not.toContain('>S<')
+  })
 })

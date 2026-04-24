@@ -5,6 +5,7 @@ dist/
 .opencode/
 .worktrees/
 *.png
+!build/icons/*.png
 tmp/
 .claude
 .superpowers
