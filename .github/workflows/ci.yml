@@ -56,3 +56,9 @@ jobs:
 
       - name: Smoke packaged Windows build
         run: pnpm run verify:release-smoke
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Stoa-Setup-win-x64
+          path: release/Stoa Setup *.exe
