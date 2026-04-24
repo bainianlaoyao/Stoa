@@ -163,4 +163,14 @@ describe('ProvidersSettings', () => {
     expect(source).not.toContain('background: var(--shadow-success-ring);')
     expect(source).not.toContain('160ms')
   })
+
+  it('styles the claude permissions toggle with shared control surface tokens', () => {
+    const source = readFileSync(providersSettingsPath, 'utf8')
+
+    expect(source).toContain('border-radius: var(--radius-sm);')
+    expect(source).toContain('background: var(--color-surface-solid);')
+    expect(source).toContain('border: 1px solid var(--color-line);')
+    expect(source).toContain('box-shadow: var(--shadow-soft);')
+    expect(source).not.toContain('border-radius: 16px;')
+  })
 })

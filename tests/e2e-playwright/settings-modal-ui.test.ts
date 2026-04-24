@@ -45,6 +45,29 @@ test.describe('Settings tabs', () => {
     }
   })
 
+  test('Claude permissions switch renders as a visible control in ProvidersSettings', async () => {
+    const app = await launchElectronApp()
+    try {
+      await app.page.locator('[data-activity-item="settings"]').click()
+      await app.page.locator('[data-settings-tab="providers"]').click()
+      await expect(app.page.locator('[aria-label="Provider settings"]')).toBeVisible()
+
+      const contentPanel = app.page.locator('.settings-surface__content-panel')
+      await contentPanel.evaluate((el) => {
+        el.scrollTop = el.scrollHeight
+      })
+
+      const switchControl = app.page.locator(
+        '[data-settings-field="provider-claude-code-dangerously-skip-permissions"] [role="switch"]'
+      )
+      await expect(switchControl).toBeVisible()
+    } finally {
+      const { stateDir } = app
+      await app.close()
+      await cleanupStateDir(stateDir)
+    }
+  })
+
   test('clicking About tab shows AboutSettings', async () => {
     const app = await launchElectronApp()
     try {

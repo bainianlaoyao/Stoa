@@ -238,9 +238,9 @@ function handleClaudeDangerouslySkipPermissionsChange(value: boolean): void {
 
 .settings-toggle {
   padding: 12px 14px;
-  border-radius: 16px;
-  background: var(--color-black-faint);
-  border: 1px solid var(--color-black-soft);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-solid);
+  border: 1px solid var(--color-line);
 }
 
 .settings-toggle__label {
@@ -272,24 +272,29 @@ function handleClaudeDangerouslySkipPermissionsChange(value: boolean): void {
   font-family: var(--font-mono);
 }
 
-.settings-toggle__switch {
+:deep(.settings-toggle__switch) {
   display: inline-flex;
   width: 52px;
   height: 30px;
   padding: 3px;
   border-radius: 999px;
-  background: var(--color-black-soft);
-  box-shadow: inset 0 0 0 1px var(--color-black-soft);
+  background: var(--color-black-faint);
+  box-shadow: inset 0 0 0 1px var(--color-line-strong);
   cursor: pointer;
   transition: all 0.2s ease;
   flex: 0 0 auto;
 }
 
-.settings-toggle__switch--active {
-  background: var(--color-accent);
+:deep(.settings-toggle__switch:hover) {
+  background: var(--color-black-soft);
 }
 
-.settings-toggle__switch:focus-visible {
+:deep(.settings-toggle__switch--active) {
+  background: var(--color-accent);
+  box-shadow: none;
+}
+
+:deep(.settings-toggle__switch:focus-visible) {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
 }
@@ -298,11 +303,13 @@ function handleClaudeDangerouslySkipPermissionsChange(value: boolean): void {
   width: 24px;
   height: 24px;
   border-radius: 999px;
-  background: var(--color-text-strong);
+  background: var(--color-surface-solid);
+  border: 1px solid var(--color-line);
+  box-shadow: var(--shadow-soft);
   transition: all 0.2s ease;
 }
 
-.settings-toggle__switch--active .settings-toggle__thumb {
+:deep(.settings-toggle__switch--active) .settings-toggle__thumb {
   transform: translateX(22px);
 }
 
