@@ -227,21 +227,6 @@ onBeforeUnmount(disposeTerminal)
     <template v-if="project && session">
       <div class="terminal-viewport__xterm" data-testid="terminal-xterm">
         <div class="terminal-viewport__shell" data-testid="terminal-shell">
-          <header class="terminal-viewport__status-bar" :data-status="session.status" data-testid="terminal-status-bar">
-            <div class="terminal-viewport__status-copy">
-              <p class="terminal-viewport__eyebrow">{{ project.name }}</p>
-              <p class="terminal-viewport__session-title">{{ session.title }}</p>
-              <p class="terminal-viewport__session-summary">{{ session.summary }}</p>
-            </div>
-
-            <div class="terminal-viewport__meta">
-              <span class="terminal-viewport__meta-chip">{{ session.type }}</span>
-              <span class="terminal-viewport__meta-chip terminal-viewport__status" :data-status="session.status">
-                {{ session.status }}
-              </span>
-            </div>
-          </header>
-
           <div class="terminal-viewport__xterm-mount" ref="terminalContainer" data-testid="terminal-xterm-mount" />
         </div>
       </div>
@@ -281,9 +266,6 @@ onBeforeUnmount(disposeTerminal)
   height: 100%;
   width: 100%;
   min-height: 0;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: 12px;
   padding: var(--terminal-shell-gap);
   border-radius: var(--radius-md);
   background:
@@ -292,39 +274,6 @@ onBeforeUnmount(disposeTerminal)
   border: 1px solid var(--color-terminal-border);
   box-shadow: inset 0 1px 0 var(--color-terminal-shell-highlight);
   overflow: hidden;
-}
-
-.terminal-viewport__status-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 10px 12px;
-  border: 1px solid var(--color-terminal-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-terminal-chip);
-}
-
-.terminal-viewport__status-copy {
-  min-width: 0;
-  display: grid;
-  gap: 3px;
-}
-
-.terminal-viewport__session-title,
-.terminal-viewport__session-summary {
-  margin: 0;
-}
-
-.terminal-viewport__session-title {
-  color: var(--color-terminal-text);
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.terminal-viewport__session-summary {
-  color: var(--color-terminal-soft);
-  font-size: 12px;
 }
 
 .terminal-viewport__xterm-mount {
@@ -354,44 +303,4 @@ onBeforeUnmount(disposeTerminal)
   height: 0;
 }
 
-.terminal-viewport__eyebrow {
-  margin: 0;
-  color: var(--color-terminal-subtle);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.terminal-viewport__meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--color-terminal-muted);
-}
-
-.terminal-viewport__meta-chip {
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: var(--color-terminal-chip);
-  border: 1px solid var(--color-terminal-border);
-}
-
-.terminal-viewport__status[data-status='running'] {
-  color: var(--color-success);
-}
-
-.terminal-viewport__status[data-status='awaiting_input'],
-.terminal-viewport__status[data-status='turn_complete'],
-.terminal-viewport__status[data-status='degraded'],
-.terminal-viewport__status[data-status='needs_confirmation'] {
-  color: var(--color-warning);
-}
-
-.terminal-viewport__status[data-status='error'],
-.terminal-viewport__status[data-status='exited'] {
-  color: var(--color-error);
-}
 </style>

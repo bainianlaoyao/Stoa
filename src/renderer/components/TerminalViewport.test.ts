@@ -160,19 +160,15 @@ describe('TerminalViewport', () => {
     expect(wrapper.find('.terminal-empty-state').exists()).toBe(true)
   })
 
-  test('renders the status bar alongside the terminal when a session is present', async () => {
+  test('renders the terminal when a session is present', async () => {
     const { default: TerminalViewport } = await import('./TerminalViewport.vue')
     const wrapper = mount(TerminalViewport, {
       props: { project: baseProject, session: baseSession },
     })
     await flushTerminal()
 
-    expect(wrapper.find('[data-testid="terminal-status-bar"]').exists()).toBe(true)
-    expect(wrapper.text()).toContain('Deploy')
-    expect(wrapper.text()).toContain('ready')
-    expect(wrapper.text()).toContain('opencode')
-    expect(wrapper.text()).toContain('running')
     expect(wrapper.find('.terminal-viewport__xterm').exists()).toBe(true)
+    expect(wrapper.find('.terminal-viewport__xterm-mount').exists()).toBe(true)
   })
 
   test('mounts the running xterm surface inside a visual shell when session is running', async () => {
@@ -186,7 +182,7 @@ describe('TerminalViewport', () => {
     expect(wrapper.find('.terminal-viewport__shell').exists()).toBe(true)
     expect(wrapper.find('.terminal-viewport__xterm-mount').exists()).toBe(true)
     expect(wrapper.find('.terminal-viewport__xterm-shell').exists()).toBe(false)
-    expect(wrapper.find('[data-testid="terminal-status-bar"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="terminal-status-bar"]').exists()).toBe(false)
   })
 
   test('running terminal structure keeps the xterm mount inside the visual shell wrapper', async () => {
@@ -490,8 +486,7 @@ describe('TerminalViewport', () => {
     await flushTerminal()
 
     expect(wrapper.find('.terminal-viewport__xterm').exists()).toBe(true)
-    expect(wrapper.find('[data-testid="terminal-status-bar"]').exists()).toBe(true)
-    expect(wrapper.text()).toContain(status)
+    expect(wrapper.find('[data-testid="terminal-status-bar"]').exists()).toBe(false)
   })
 
   test('status-only changes do not rebuild the terminal instance for the same session', async () => {
