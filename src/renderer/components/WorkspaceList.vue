@@ -44,14 +44,17 @@ function updateSessionTitle(event: Event): void {
   emit('update:sessionTitle', (event.target as HTMLInputElement).value)
 }
 
-function updateSessionType(value: string): void {
-  emit('update:sessionType', value as SessionType)
-}
-
 const sessionTypeOptions = listProviderDescriptors().map((descriptor) => ({
   value: descriptor.sessionType,
   label: descriptor.displayName
 }))
+const validSessionTypes = new Set<SessionType>(sessionTypeOptions.map((option) => option.value))
+
+function updateSessionType(value: string): void {
+  if (validSessionTypes.has(value as SessionType)) {
+    emit('update:sessionType', value as SessionType)
+  }
+}
 </script>
 
 <template>

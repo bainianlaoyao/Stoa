@@ -5,6 +5,7 @@
     "types": ["vite/client"]
   },
   "include": [
+    "src/renderer/**/*.d.ts",
     "src/renderer/**/*.ts",
     "src/renderer/**/*.vue",
     "src/extensions/**/*.ts",

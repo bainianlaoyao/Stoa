@@ -2,7 +2,7 @@ import { rm, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterEach, describe, expect, test } from 'vitest'
 import { ProjectSessionManager } from '@core/project-session-manager'
-import { readGlobalState, readProjectSessions } from '@core/state-store'
+import { readGlobalState, readProjectSessions, writeProjectSessions } from '@core/state-store'
 import type { PersistedGlobalStateV3 } from '@shared/project-session'
 import { createTestTempDir } from '../../testing/test-temp'
 
@@ -269,6 +269,43 @@ describe('E2E: Error and Edge Cases', () => {
       const snapshot = freshManager.snapshot()
       expect(snapshot.projects).toHaveLength(0)
       expect(snapshot.activeProjectId).toBeNull()
+    })
+
+    test('clears dangling active session references during bootstrap', async () => {
+      const workspaceDir = await createTempDir('stoa-e2e-dangling-session-')
+      const globalStatePath = await createGlobalStatePath()
+      const now = new Date().toISOString()
+
+      await writeRawStateFile(globalStatePath, JSON.stringify({
+        version: 3,
+        active_project_id: 'project_alpha',
+        active_session_id: 'session_missing',
+        projects: [
+          {
+            project_id: 'project_alpha',
+            name: 'Alpha',
+            path: workspaceDir,
+            default_session_type: 'shell',
+            created_at: now,
+            updated_at: now
+          }
+        ]
+      } satisfies PersistedGlobalStateV3))
+      await writeProjectSessions(workspaceDir, {
+        version: 4,
+        project_id: 'project_alpha',
+        sessions: []
+      })
+
+      const manager = await ProjectSessionManager.create({
+        webhookPort: null,
+        globalStatePath
+      })
+
+      const snapshot = manager.snapshot()
+      expect(snapshot.projects).toHaveLength(1)
+      expect(snapshot.activeProjectId).toBe('project_alpha')
+      expect(snapshot.activeSessionId).toBeNull()
     })
   })
 

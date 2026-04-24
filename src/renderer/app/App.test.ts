@@ -3,8 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount, type VueWrapper } from '@vue/test-utils'
 import { createPinia, setActivePinia, type Pinia } from 'pinia'
 import { useWorkspaceStore } from '@renderer/stores/workspaces'
+import { useUpdateStore } from '@renderer/stores/update'
 import App from './App.vue'
 import type { BootstrapState, ProjectSummary, SessionSummary } from '@shared/project-session'
+import type { UpdateState } from '@shared/update-state'
 
 const mockBootstrapState: BootstrapState = {
   activeProjectId: null,
@@ -37,6 +39,20 @@ const mockCreatedSession: SessionSummary = {
   archived: false
 }
 
+function createUpdateState(overrides: Partial<UpdateState> = {}): UpdateState {
+  return {
+    phase: 'idle',
+    currentVersion: '0.1.0',
+    availableVersion: null,
+    downloadedVersion: null,
+    downloadProgressPercent: null,
+    lastCheckedAt: null,
+    message: null,
+    requiresSessionWarning: false,
+    ...overrides
+  }
+}
+
 async function flush(): Promise<void> {
   await new Promise((r) => setTimeout(r, 0))
   await new Promise((r) => setTimeout(r, 0))
@@ -62,7 +78,8 @@ function setupStoa(overrides?: Partial<typeof window.stoa>) {
       terminalFontSize: 14,
       terminalFontFamily: 'JetBrains Mono',
       providers: {},
-      claudeDangerouslySkipPermissions: false
+      claudeDangerouslySkipPermissions: false,
+      locale: 'en'
     }),
     setSetting: vi.fn().mockResolvedValue(undefined),
     pickFolder: vi.fn().mockResolvedValue(null),
@@ -74,6 +91,12 @@ function setupStoa(overrides?: Partial<typeof window.stoa>) {
     closeWindow: vi.fn().mockResolvedValue(undefined),
     isWindowMaximized: vi.fn().mockResolvedValue(false),
     onWindowMaximizeChange: vi.fn().mockReturnValue(() => {}),
+    getUpdateState: vi.fn().mockResolvedValue(createUpdateState()),
+    checkForUpdates: vi.fn().mockResolvedValue(createUpdateState({ phase: 'up-to-date', message: 'You are up to date.' })),
+    downloadUpdate: vi.fn().mockResolvedValue(createUpdateState({ phase: 'downloaded', downloadedVersion: '0.2.0' })),
+    quitAndInstallUpdate: vi.fn().mockResolvedValue(undefined),
+    dismissUpdate: vi.fn().mockResolvedValue(undefined),
+    onUpdateState: vi.fn().mockReturnValue(() => {}),
     ...overrides
   }
 }
@@ -135,6 +158,64 @@ describe('App (root)', () => {
       await flush()
 
       expect(window.stoa.listArchivedSessions).not.toHaveBeenCalled()
+    })
+
+    it('on mount fetches initial update state', async () => {
+      const initialState = createUpdateState({ phase: 'available', availableVersion: '0.2.0' })
+      setupStoa({ getUpdateState: vi.fn().mockResolvedValue(initialState) })
+
+      wrapper = await mountApp(pinia)
+      await flush()
+
+      expect(window.stoa.getUpdateState).toHaveBeenCalledTimes(2)
+      expect(useUpdateStore(pinia).state.availableVersion).toBe('0.2.0')
+    })
+
+    it('on mount subscribes to pushed update state events', async () => {
+      const onUpdateState = vi.fn().mockReturnValue(() => {})
+      setupStoa({ onUpdateState })
+
+      wrapper = await mountApp(pinia)
+      await flush()
+
+      expect(onUpdateState).toHaveBeenCalledOnce()
+    })
+
+    it('applies pushed update state from the bridge', async () => {
+      let listener: ((state: UpdateState) => void) | undefined
+      setupStoa({
+        onUpdateState: vi.fn().mockImplementation((callback: (state: UpdateState) => void) => {
+          listener = callback
+          return () => {}
+        })
+      })
+
+      wrapper = await mountApp(pinia)
+      await flush()
+      listener?.(createUpdateState({ phase: 'downloaded', downloadedVersion: '0.2.0' }))
+      await flush()
+
+      expect(useUpdateStore(pinia).state.phase).toBe('downloaded')
+      expect(useUpdateStore(pinia).state.downloadedVersion).toBe('0.2.0')
+    })
+
+    it('re-reads update state after subscribing so startup cannot miss a single-fire transition', async () => {
+      const getUpdateState = vi
+        .fn()
+        .mockResolvedValueOnce(createUpdateState({ phase: 'idle' }))
+        .mockResolvedValueOnce(createUpdateState({ phase: 'downloaded', downloadedVersion: '0.2.0' }))
+
+      setupStoa({
+        getUpdateState,
+        onUpdateState: vi.fn().mockReturnValue(() => {})
+      })
+
+      wrapper = await mountApp(pinia)
+      await flush()
+
+      expect(getUpdateState).toHaveBeenCalledTimes(2)
+      expect(useUpdateStore(pinia).state.phase).toBe('downloaded')
+      expect(useUpdateStore(pinia).state.downloadedVersion).toBe('0.2.0')
     })
   })
 
@@ -461,6 +542,22 @@ describe('App (root)', () => {
 
       const store = useWorkspaceStore(pinia)
       expect(store.lastError).toBe('Failed to create session: no response from main process')
+    })
+  })
+
+  describe('cleanup', () => {
+    it('unsubscribes update listeners on unmount', async () => {
+      const unsubscribeUpdate = vi.fn()
+      setupStoa({
+        onUpdateState: vi.fn().mockReturnValue(unsubscribeUpdate)
+      })
+
+      wrapper = await mountApp(pinia)
+      await flush()
+      wrapper.unmount()
+      wrapper = undefined
+
+      expect(unsubscribeUpdate).toHaveBeenCalledOnce()
     })
   })
 })

@@ -1,8 +1,14 @@
 import { randomUUID } from 'node:crypto'
-import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
+import { access, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { homedir } from 'node:os'
-import type { PersistedAppStateV2, PersistedGlobalStateV3, PersistedProject, PersistedProjectSessions, PersistedSession } from '@shared/project-session'
+import type {
+  PersistedAppStateV2,
+  PersistedGlobalStateV3,
+  PersistedProject,
+  PersistedProjectSessions,
+  PersistedSession
+} from '@shared/project-session'
 import { DEFAULT_SETTINGS } from '@shared/project-session'
 
 export const DEFAULT_STATE: PersistedAppStateV2 = {
@@ -20,6 +26,12 @@ export const DEFAULT_GLOBAL_STATE: PersistedGlobalStateV3 = {
   active_session_id: null,
   projects: [],
   settings: { ...DEFAULT_SETTINGS }
+}
+
+export const DEFAULT_PROJECT_SESSIONS: PersistedProjectSessions = {
+  version: 4,
+  project_id: '',
+  sessions: []
 }
 
 export function getStateFilePath(): string {
@@ -94,111 +106,185 @@ function isValidGlobalState(value: unknown): value is PersistedGlobalStateV3 {
 function isValidProjectSessions(value: unknown): value is PersistedProjectSessions {
   return typeof value === 'object'
     && value !== null
+    && 'version' in value
+    && value.version === 4
+    && 'project_id' in value
+    && typeof value.project_id === 'string'
     && 'sessions' in value
     && Array.isArray(value.sessions)
 }
 
-export async function readPersistedState<TState = PersistedAppStateV2>(filePath = getStateFilePath()): Promise<TState> {
+export function createAtomicTempFilePath(filePath: string): string {
+  return `${filePath}.${process.pid}.${Date.now()}.${randomUUID()}.tmp`
+}
+
+const pendingFileAccesses = new Map<string, Promise<void>>()
+
+async function fileExists(filePath: string): Promise<boolean> {
   try {
-    const raw = await readFile(filePath, 'utf-8')
-    const parsed = JSON.parse(raw) as PersistedAppStateV2
-    if (!isValidPersistedState(parsed)) {
-      throw new StateReadError('Invalid persisted app state', undefined, filePath, false)
-    }
-
-    return parsed as TState
-  } catch (error) {
-    if (error instanceof StateReadError) {
-      throw error
-    }
-
-    if (getErrorCode(error) === 'ENOENT') {
-      return structuredClone(DEFAULT_STATE) as TState
-    }
-
-    throw createReadError('Unable to read persisted app state', filePath, error)
+    await access(filePath)
+    return true
+  } catch {
+    return false
   }
 }
 
-export async function readGlobalState(filePath = getGlobalStateFilePath()): Promise<PersistedGlobalStateV3> {
-  try {
-    const raw = await readFile(filePath, 'utf-8')
-    const parsed = JSON.parse(raw) as PersistedGlobalStateV3
-    if (!isValidGlobalState(parsed)) {
-      throw new StateReadError('Invalid global state', undefined, filePath, false)
+function withFileAccess<T>(filePath: string, operation: () => Promise<T>): Promise<T> {
+  const previous = pendingFileAccesses.get(filePath) ?? Promise.resolve()
+  const current = previous.catch(() => {}).then(operation)
+  let tracked: Promise<void>
+  tracked = current.then(
+    () => undefined,
+    () => undefined
+  ).finally(() => {
+    if (pendingFileAccesses.get(filePath) === tracked) {
+      pendingFileAccesses.delete(filePath)
     }
+  })
+  pendingFileAccesses.set(filePath, tracked)
+  return current
+}
 
-    return parsed
+async function replaceFileAtomically(tempFilePath: string, filePath: string): Promise<void> {
+  try {
+    await rename(tempFilePath, filePath)
+    return
   } catch (error) {
-    if (error instanceof StateReadError) {
+    const code = getErrorCode(error)
+    if (code !== 'EEXIST' && code !== 'EPERM') {
       throw error
     }
-
-    if (getErrorCode(error) === 'ENOENT') {
-      return structuredClone(DEFAULT_GLOBAL_STATE)
-    }
-
-    throw createReadError('Unable to read global state', filePath, error)
   }
+
+  const backupPath = `${filePath}.replace.bak`
+  await rm(backupPath, { force: true })
+
+  if (await fileExists(filePath)) {
+    await rename(filePath, backupPath)
+  }
+
+  try {
+    await rename(tempFilePath, filePath)
+    await rm(backupPath, { force: true })
+  } catch (error) {
+    if (!(await fileExists(filePath)) && await fileExists(backupPath)) {
+      await rename(backupPath, filePath)
+    }
+    throw error
+  }
+}
+
+async function writeJsonAtomically(filePath: string, payload: unknown): Promise<void> {
+  await withFileAccess(filePath, async () => {
+    await mkdir(dirname(filePath), { recursive: true })
+    const tempFilePath = createAtomicTempFilePath(filePath)
+
+    try {
+      await writeFile(tempFilePath, JSON.stringify(payload, null, 2), 'utf-8')
+      await replaceFileAtomically(tempFilePath, filePath)
+    } finally {
+      await rm(tempFilePath, { force: true })
+    }
+  })
+}
+
+export async function readPersistedState<TState = PersistedAppStateV2>(filePath = getStateFilePath()): Promise<TState> {
+  return await withFileAccess(filePath, async () => {
+    try {
+      const raw = await readFile(filePath, 'utf-8')
+      const parsed = JSON.parse(raw) as PersistedAppStateV2
+      if (!isValidPersistedState(parsed)) {
+        throw new StateReadError('Invalid persisted app state', undefined, filePath, false)
+      }
+
+      return parsed as TState
+    } catch (error) {
+      if (error instanceof StateReadError) {
+        throw error
+      }
+
+      if (getErrorCode(error) === 'ENOENT') {
+        return structuredClone(DEFAULT_STATE) as TState
+      }
+
+      throw createReadError('Unable to read persisted app state', filePath, error)
+    }
+  })
+}
+
+export async function readGlobalState(filePath = getGlobalStateFilePath()): Promise<PersistedGlobalStateV3> {
+  return await withFileAccess(filePath, async () => {
+    try {
+      const raw = await readFile(filePath, 'utf-8')
+      const parsed = JSON.parse(raw) as PersistedGlobalStateV3
+      if (!isValidGlobalState(parsed)) {
+        throw new StateReadError('Invalid global state', undefined, filePath, false)
+      }
+
+      return parsed
+    } catch (error) {
+      if (error instanceof StateReadError) {
+        throw error
+      }
+
+      if (getErrorCode(error) === 'ENOENT') {
+        return structuredClone(DEFAULT_GLOBAL_STATE)
+      }
+
+      throw createReadError('Unable to read global state', filePath, error)
+    }
+  })
 }
 
 export async function readProjectSessions(projectPath: string): Promise<PersistedProjectSessions> {
   const filePath = getProjectSessionsFilePath(projectPath)
-  try {
-    const raw = await readFile(filePath, 'utf-8')
-    const parsed = JSON.parse(raw) as PersistedProjectSessions
-    if (!isValidProjectSessions(parsed)) {
-      throw new StateReadError('Invalid project sessions state', undefined, filePath, false)
-    }
 
-    return parsed
-  } catch (error) {
-    if (error instanceof StateReadError) {
-      throw error
-    }
+  return await withFileAccess(filePath, async () => {
+    try {
+      const raw = await readFile(filePath, 'utf-8')
+      const parsed = JSON.parse(raw) as PersistedProjectSessions
+      if (!isValidProjectSessions(parsed)) {
+        throw new StateReadError('Invalid project sessions state', undefined, filePath, false)
+      }
 
-    if (getErrorCode(error) === 'ENOENT') {
-      return { project_id: '', sessions: [] }
-    }
+      return parsed
+    } catch (error) {
+      if (error instanceof StateReadError) {
+        throw error
+      }
 
-    throw createReadError('Unable to read project sessions', filePath, error)
-  }
+      if (getErrorCode(error) === 'ENOENT') {
+        return structuredClone(DEFAULT_PROJECT_SESSIONS)
+      }
+
+      throw createReadError('Unable to read project sessions', filePath, error)
+    }
+  })
 }
 
 export async function readAllProjectSessions(projects: PersistedProject[]): Promise<PersistedSession[]> {
   const allSessions: PersistedSession[] = []
+
   for (const project of projects) {
     const persisted = await readProjectSessions(project.path)
     allSessions.push(...persisted.sessions)
   }
+
   return allSessions
-}
-
-async function atomicWriteFile(filePath: string, content: string): Promise<void> {
-  await mkdir(dirname(filePath), { recursive: true })
-  const tempPath = join(dirname(filePath), `.tmp-${randomUUID()}`)
-
-  try {
-    await writeFile(tempPath, content, 'utf-8')
-    await rename(tempPath, filePath)
-  } catch (error) {
-    await unlink(tempPath).catch(() => undefined)
-    throw error
-  }
 }
 
 export async function writePersistedState<TState>(
   state: TState,
   filePath = getStateFilePath()
 ): Promise<void> {
-  await atomicWriteFile(filePath, JSON.stringify(state, null, 2))
+  await writeJsonAtomically(filePath, state)
 }
 
 export async function writeGlobalState(
   state: PersistedGlobalStateV3,
   filePath = getGlobalStateFilePath()
 ): Promise<void> {
-  await atomicWriteFile(filePath, JSON.stringify(state, null, 2))
+  await writeJsonAtomically(filePath, state)
 }
 
 export async function writeProjectSessions(
@@ -206,5 +292,10 @@ export async function writeProjectSessions(
   data: PersistedProjectSessions
 ): Promise<void> {
   const filePath = getProjectSessionsFilePath(projectPath)
-  await atomicWriteFile(filePath, JSON.stringify(data, null, 2))
+
+  await writeJsonAtomically(filePath, {
+    version: 4,
+    project_id: data.project_id,
+    sessions: data.sessions
+  } satisfies PersistedProjectSessions)
 }

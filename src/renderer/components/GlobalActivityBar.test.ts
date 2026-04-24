@@ -2,7 +2,8 @@
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import GlobalActivityBar from './GlobalActivityBar.vue'
-import type { AppSurface } from './GlobalActivityBar.vue'
+
+type AppSurface = 'command' | 'archive' | 'settings'
 
 function mountBar(props: { activeSurface?: AppSurface } = {}) {
   return mount(GlobalActivityBar, {

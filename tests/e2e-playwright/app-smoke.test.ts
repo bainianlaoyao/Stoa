@@ -22,7 +22,8 @@ test.describe('Electron smoke sentinel', () => {
     const app = await launchElectronApp()
 
     try {
-      await expect(app.page.getByTestId('terminal-empty-state')).toBeVisible()
+      await expect(app.page.locator('.terminal-empty-state')).toBeVisible()
+      await expect(app.page.locator('.terminal-empty-state')).toContainText('No session to display')
     } finally {
       const { stateDir } = app
       await app.close()

@@ -7,8 +7,13 @@ files:
   - package.json
 asarUnpack:
   - node_modules/node-pty/**
+publish:
+  provider: github
+  owner: "${env.GH_OWNER}"
+  repo: "${env.GH_REPO}"
+  releaseType: release
 win:
   target:
-    - portable
+    - nsis
 npmRebuild: false
 electronVersion: 37.4.0

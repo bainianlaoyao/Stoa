@@ -135,8 +135,8 @@ describe('E2E: Main Process Config Guard', () => {
       expect(pathPrefs!).toMatch(/sandbox\s*:\s*false/)
     })
 
-    it('preload path in main/index.ts ends with .mjs extension', () => {
-      expect(mainSource).toMatch(/preload[/'"]+index\.mjs['"]\)/)
+    it('preload path in main/index.ts ends with .cjs extension', () => {
+      expect(mainSource).toMatch(/preload[/'"]+index\.cjs['"]\)/)
     })
   })
 
@@ -163,7 +163,12 @@ describe('E2E: Main Process Config Guard', () => {
         ['pickFolder', 'dialogPickFolder'],
         ['pickFile', 'dialogPickFile'],
         ['detectShell', 'settingsDetectShell'],
-        ['detectProvider', 'settingsDetectProvider']
+        ['detectProvider', 'settingsDetectProvider'],
+        ['getUpdateState', 'updateGetState'],
+        ['checkForUpdates', 'updateCheck'],
+        ['downloadUpdate', 'updateDownload'],
+        ['quitAndInstallUpdate', 'updateQuitAndInstall'],
+        ['dismissUpdate', 'updateDismiss']
       ])
 
       for (const method of rendererApiMethods) {
@@ -198,7 +203,7 @@ describe('E2E: Main Process Config Guard', () => {
       const matches = mainSource.match(handlePattern)
 
       expect(matches, 'Expected ipcMain.handle calls to reference IPC_CHANNELS.xxx').not.toBeNull()
-      expect(matches!.length).toBeGreaterThanOrEqual(13)
+      expect(matches!.length).toBeGreaterThanOrEqual(18)
     })
 
     it('IPC handler for project:create calls createProject', () => {
@@ -220,6 +225,20 @@ describe('E2E: Main Process Config Guard', () => {
       const match = mainSource.match(handlerPattern)
       expect(match, 'Could not find handler for projectBootstrap').not.toBeNull()
       expect(match![1]).toMatch(/snapshot/)
+    })
+
+    it('main/index.ts registers all update invoke handlers', () => {
+      const requiredUpdateHandlers = [
+        'updateGetState',
+        'updateCheck',
+        'updateDownload',
+        'updateQuitAndInstall',
+        'updateDismiss'
+      ]
+
+      for (const channel of requiredUpdateHandlers) {
+        expect(mainSource).toMatch(new RegExp(`ipcMain\\.handle\\(\\s*IPC_CHANNELS\\.${channel}\\b`))
+      }
     })
   })
 
@@ -243,6 +262,11 @@ describe('E2E: Main Process Config Guard', () => {
         'archiveSession',
         'restoreSession',
         'listArchivedSessions',
+        'getUpdateState',
+        'checkForUpdates',
+        'downloadUpdate',
+        'quitAndInstallUpdate',
+        'dismissUpdate',
         'minimizeWindow',
         'maximizeWindow',
         'closeWindow',
@@ -284,12 +308,28 @@ describe('E2E: Main Process Config Guard', () => {
       expect(invMap.get('archiveSession')).toBe('session:archive')
       expect(invMap.get('restoreSession')).toBe('session:restore')
       expect(invMap.get('listArchivedSessions')).toBe('session:list-archived')
+      expect(invMap.get('getUpdateState')).toBe('update:get-state')
+      expect(invMap.get('checkForUpdates')).toBe('update:check')
+      expect(invMap.get('downloadUpdate')).toBe('update:download')
+      expect(invMap.get('quitAndInstallUpdate')).toBe('update:quit-and-install')
+      expect(invMap.get('dismissUpdate')).toBe('update:dismiss')
     })
 
     it('window.stoa type declaration exists in shared/index.d.ts', () => {
       expect(sharedTypesSource).toMatch(/stoa/)
       expect(sharedTypesSource).toMatch(/RendererApi/)
       expect(sharedTypesSource).toMatch(/declare\s+global/)
+    })
+
+    it('IPC_CHANNELS defines update bridge constants with expected channel names', () => {
+      const constants = extractChannelConstants(channelsSource)
+
+      expect(constants.get('updateGetState')).toBe('update:get-state')
+      expect(constants.get('updateCheck')).toBe('update:check')
+      expect(constants.get('updateDownload')).toBe('update:download')
+      expect(constants.get('updateQuitAndInstall')).toBe('update:quit-and-install')
+      expect(constants.get('updateDismiss')).toBe('update:dismiss')
+      expect(constants.get('updateState')).toBe('update:state')
     })
   })
 
@@ -300,6 +340,18 @@ describe('E2E: Main Process Config Guard', () => {
 
     it('preload registers listener for session:event channel', () => {
       expect(preloadSource).toMatch(/ipcRenderer\.on\(\s*['"]session:event['"]/)
+    })
+
+    it('preload registers listener for update:state channel', () => {
+      expect(preloadSource).toMatch(/ipcRenderer\.on\(\s*['"]update:state['"]/)
+    })
+
+    it('main process uses webContents.send for update state', () => {
+      expect(mainSource).toMatch(/webContents\.send\(\s*IPC_CHANNELS\.updateState/)
+    })
+
+    it('activate path resends the latest update state after recreating the window', () => {
+      expect(mainSource).toMatch(/app\.on\('activate'[\s\S]*mainWindow\s*=\s*createMainWindow\(\)[\s\S]*(syncUpdateStateToWindow|pushUpdateState)/)
     })
 
     it('main process uses webContents.send for terminal data', () => {

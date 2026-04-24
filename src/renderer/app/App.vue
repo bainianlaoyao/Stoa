@@ -3,11 +3,14 @@ import { onMounted, onBeforeUnmount } from 'vue'
 import { storeToRefs } from 'pinia'
 import type { SessionType, SessionStatusEvent } from '@shared/project-session'
 import AppShell from '@renderer/components/AppShell.vue'
+import UpdatePrompt from '@renderer/components/update/UpdatePrompt.vue'
 import { useWorkspaceStore } from '@renderer/stores/workspaces'
 import { useSettingsStore } from '@renderer/stores/settings'
+import { useUpdateStore } from '@renderer/stores/update'
 
 const workspaceStore = useWorkspaceStore()
 const settingsStore = useSettingsStore()
+const updateStore = useUpdateStore()
 const {
   projectHierarchy,
   activeProjectId,
@@ -15,6 +18,10 @@ const {
   activeProject,
   activeSession
 } = storeToRefs(workspaceStore)
+const {
+  state: updateState,
+  shouldShowPrompt
+} = storeToRefs(updateStore)
 
 function handleProjectSelect(projectId: string): void {
   workspaceStore.setActiveProject(projectId)
@@ -82,11 +89,20 @@ async function handleRestoreSession(sessionId: string): Promise<void> {
 }
 
 let unsubscribeSessionEvent: (() => void) | null = null
+let unsubscribeUpdateState: (() => void) | null = null
 
 onMounted(async () => {
+  unsubscribeUpdateState = window.stoa.onUpdateState((state) => {
+    updateStore.applyState(state)
+  })
+
   const bootstrapState = await window.stoa.getBootstrapState()
   workspaceStore.hydrate(bootstrapState)
-  await settingsStore.loadSettings()
+  await Promise.all([
+    settingsStore.loadSettings(),
+    updateStore.refresh()
+  ])
+  await updateStore.refresh()
 
   unsubscribeSessionEvent = window.stoa?.onSessionEvent?.((event: SessionStatusEvent) => {
     workspaceStore.updateSession(event.sessionId, {
@@ -98,21 +114,31 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   unsubscribeSessionEvent?.()
+  unsubscribeUpdateState?.()
 })
 </script>
 
 <template>
-  <AppShell
-    :hierarchy="projectHierarchy"
-    :active-project-id="activeProjectId"
-    :active-session-id="activeSessionId"
-    :active-project="activeProject"
-    :active-session="activeSession"
-    @select-project="handleProjectSelect"
-    @select-session="handleSessionSelect"
-    @create-project="handleProjectCreate"
-    @create-session="handleSessionCreate"
-    @archive-session="handleArchiveSession"
-    @restore-session="handleRestoreSession"
-  />
+  <div class="app-root">
+    <AppShell
+      :hierarchy="projectHierarchy"
+      :active-project-id="activeProjectId"
+      :active-session-id="activeSessionId"
+      :active-project="activeProject"
+      :active-session="activeSession"
+      @select-project="handleProjectSelect"
+      @select-session="handleSessionSelect"
+      @create-project="handleProjectCreate"
+      @create-session="handleSessionCreate"
+      @archive-session="handleArchiveSession"
+      @restore-session="handleRestoreSession"
+    />
+    <UpdatePrompt
+      :visible="shouldShowPrompt"
+      :state="updateState"
+      @dismiss="void updateStore.dismissUpdate()"
+      @download="void updateStore.downloadUpdate()"
+      @install="void updateStore.quitAndInstallUpdate()"
+    />
+  </div>
 </template>

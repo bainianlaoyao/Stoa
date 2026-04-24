@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterEach, describe, expect, test } from 'vitest'
-import { writeAppLog } from './app-logger'
+import { writeAppLog, writeUpdateLog } from './app-logger'
 import { createTestTempDir } from '../../testing/test-temp'
 
 const tempDirs: string[] = []
@@ -23,6 +23,15 @@ describe('app logger', () => {
 
     const content = await readFile(filePath, 'utf-8')
     expect(content).toContain('runtime started')
+    expect(content).toMatch(/^\d{4}-\d{2}-\d{2}T/)
+  })
+
+  test('writes update log entries to disk', async () => {
+    const filePath = await createTempLogPath()
+    await writeUpdateLog('update available', filePath)
+
+    const content = await readFile(filePath, 'utf-8')
+    expect(content).toContain('update available')
     expect(content).toMatch(/^\d{4}-\d{2}-\d{2}T/)
   })
 })

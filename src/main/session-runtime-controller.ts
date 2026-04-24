@@ -22,13 +22,15 @@ export class SessionRuntimeController implements SessionRuntimeManager {
 
   constructor(
     private readonly manager: ProjectSessionManager,
-    private readonly getWindow: () => RuntimeWindow | null
+    private readonly getWindow: () => RuntimeWindow | null,
+    private readonly onSessionStateChanged?: () => void
   ) {}
 
   async markSessionStarting(sessionId: string, summary: string, externalSessionId: string | null): Promise<void> {
     this.terminalBacklogs.delete(sessionId)
     await this.manager.markSessionStarting(sessionId, summary, externalSessionId)
     this.pushSessionEvent(sessionId, 'starting', summary)
+    this.onSessionStateChanged?.()
   }
 
   async markSessionRunning(sessionId: string, externalSessionId: string | null): Promise<void> {
@@ -39,11 +41,13 @@ export class SessionRuntimeController implements SessionRuntimeManager {
       session?.status ?? 'running',
       session?.summary ?? 'Session running'
     )
+    this.onSessionStateChanged?.()
   }
 
   async markSessionExited(sessionId: string, summary: string): Promise<void> {
     await this.manager.markSessionExited(sessionId, summary)
     this.pushSessionEvent(sessionId, 'exited', summary)
+    this.onSessionStateChanged?.()
   }
 
   async applySessionEvent(event: AppliedSessionEvent): Promise<void> {
@@ -54,6 +58,7 @@ export class SessionRuntimeController implements SessionRuntimeManager {
       event.externalSessionId
     )
     this.pushSessionEvent(event.sessionId, event.status, event.summary)
+    this.onSessionStateChanged?.()
   }
 
   async appendTerminalData(chunk: { sessionId: string; data: string }): Promise<void> {

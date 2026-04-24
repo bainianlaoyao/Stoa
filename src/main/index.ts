@@ -1,28 +1,100 @@
 import { BrowserWindow, Menu, dialog, app, ipcMain } from 'electron'
-import { join } from 'node:path'
+import { appendFile, mkdir } from 'node:fs/promises'
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { autoUpdater } from 'electron-updater'
 import { IPC_CHANNELS } from '@core/ipc-channels'
 import { ProjectSessionManager } from '@core/project-session-manager'
-import { PtyHost } from '@core/pty-host'
 import { detectShell, detectProvider } from '@core/settings-detector'
-import { startSessionRuntime } from '@core/session-runtime'
-import { getProvider } from '@extensions/providers'
 import { getProviderDescriptorByProviderId, getProviderDescriptorBySessionType } from '@shared/provider-descriptors'
 import { SessionRuntimeController } from './session-runtime-controller'
 import { SessionEventBridge } from './session-event-bridge'
 import { launchTrackedSessionRuntime } from './launch-tracked-session-runtime'
+import { UpdateService } from './update-service'
 import type { CreateProjectRequest, CreateSessionRequest } from '@shared/project-session'
+import type { UpdateState } from '@shared/update-state'
+import type { PtyHost } from '@core/pty-host'
 
 let mainWindow: BrowserWindow | null = null
 let projectSessionManager: ProjectSessionManager | null = null
 let ptyHost: PtyHost | null = null
 let runtimeController: SessionRuntimeController | null = null
 let sessionEventBridge: SessionEventBridge | null = null
+let updateService: UpdateService | null = null
 let isQuittingAfterBridgeStop = false
 const pendingE2EPickFolders: Array<string | null> = []
 const isE2EMode = process.env.VIBECODING_E2E === '1'
+
+function readProcessArg(name: string): string | null {
+  const prefix = `--${name}=`
+  const matched = process.argv.find((value) => value.startsWith(prefix))
+  return matched ? matched.slice(prefix.length) : null
+}
+
+function readSmokeSetting(envName: string, argName: string): string | null {
+  const envValue = process.env[envName]?.trim()
+  if (envValue) {
+    return envValue
+  }
+
+  const argValue = readProcessArg(argName)?.trim()
+  return argValue && argValue.length > 0 ? argValue : null
+}
+
+interface PackagedSmokeRequest {
+  smokeFile: string | null
+  projectDir: string | null
+  marker: string | null
+  stateDir: string | null
+}
+
+function readPackagedSmokeRequest(): PackagedSmokeRequest {
+  try {
+    const requestPath = join(dirname(process.execPath), 'stoa-packaged-smoke-request.json')
+    const parsed = JSON.parse(readFileSync(requestPath, 'utf8')) as Partial<PackagedSmokeRequest>
+    return {
+      smokeFile: typeof parsed.smokeFile === 'string' && parsed.smokeFile.trim().length > 0 ? parsed.smokeFile.trim() : null,
+      projectDir: typeof parsed.projectDir === 'string' && parsed.projectDir.trim().length > 0 ? parsed.projectDir.trim() : null,
+      marker: typeof parsed.marker === 'string' && parsed.marker.trim().length > 0 ? parsed.marker.trim() : null,
+      stateDir: typeof parsed.stateDir === 'string' && parsed.stateDir.trim().length > 0 ? parsed.stateDir.trim() : null
+    }
+  } catch {
+    return {
+      smokeFile: null,
+      projectDir: null,
+      marker: null,
+      stateDir: null
+    }
+  }
+}
+
+const packagedSmokeRequest = readPackagedSmokeRequest()
+const packagedSmokeRequestPath = join(dirname(process.execPath), 'stoa-packaged-smoke-request.json')
+
 const e2eGlobalStatePath = process.env.VIBECODING_STATE_DIR
   ? join(process.env.VIBECODING_STATE_DIR, 'global.json')
   : undefined
+const packagedSmokeFilePath =
+  readSmokeSetting('STOA_PACKAGED_SMOKE_FILE', 'stoa-packaged-smoke-file')
+  ?? packagedSmokeRequest.smokeFile
+const packagedSmokeProjectDir =
+  readSmokeSetting('STOA_PACKAGED_SMOKE_PROJECT_DIR', 'stoa-packaged-smoke-project-dir')
+  ?? packagedSmokeRequest.projectDir
+const packagedSmokeMarker =
+  readSmokeSetting('STOA_PACKAGED_SMOKE_MARKER', 'stoa-packaged-smoke-marker')
+  ?? packagedSmokeRequest.marker
+  ?? '__STOA_PACKAGED_SMOKE__'
+const isPackagedSmokeMode = packagedSmokeFilePath !== null
+const packagedSmokeProbePath = existsSync(packagedSmokeRequestPath)
+  ? join(dirname(process.execPath), 'stoa-packaged-smoke-probe.log')
+  : null
+
+if (isPackagedSmokeMode) {
+  const smokeStateDir = process.env.VIBECODING_STATE_DIR ?? packagedSmokeRequest.stateDir
+  if (smokeStateDir) {
+    app.setPath('userData', smokeStateDir)
+  }
+}
 
 interface MainE2EDebugState {
   webhookPort: number | null
@@ -66,10 +138,152 @@ function installMainE2EDebugApi(): void {
   }
 }
 
+async function recordPackagedSmoke(step: string, detail: Record<string, unknown> = {}): Promise<void> {
+  if (!packagedSmokeFilePath) {
+    if (!packagedSmokeProbePath) {
+      return
+    }
+
+    await appendFile(
+      packagedSmokeProbePath,
+      `${JSON.stringify({
+        step,
+        at: new Date().toISOString(),
+        ...detail
+      })}\n`,
+      'utf8'
+    )
+    return
+  }
+
+  await mkdir(dirname(packagedSmokeFilePath), { recursive: true })
+  await appendFile(
+    packagedSmokeFilePath,
+    `${JSON.stringify({
+      step,
+      at: new Date().toISOString(),
+      ...detail
+    })}\n`,
+    'utf8'
+  )
+}
+
+function recordPackagedSmokeSync(step: string, detail: Record<string, unknown> = {}): void {
+  if (!packagedSmokeFilePath) {
+    if (!packagedSmokeProbePath) {
+      return
+    }
+
+    appendFileSync(
+      packagedSmokeProbePath,
+      `${JSON.stringify({
+        step,
+        at: new Date().toISOString(),
+        ...detail
+      })}\n`,
+      'utf8'
+    )
+    return
+  }
+
+  mkdirSync(dirname(packagedSmokeFilePath), { recursive: true })
+  appendFileSync(
+    packagedSmokeFilePath,
+    `${JSON.stringify({
+      step,
+      at: new Date().toISOString(),
+      ...detail
+    })}\n`,
+    'utf8'
+  )
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function waitForValue<T>(
+  readValue: () => Promise<T | null>,
+  description: string,
+  timeoutMs = 30_000,
+  intervalMs = 250
+): Promise<T> {
+  const deadline = Date.now() + timeoutMs
+
+  while (Date.now() < deadline) {
+    const value = await readValue()
+    if (value !== null) {
+      return value
+    }
+
+    await sleep(intervalMs)
+  }
+
+  throw new Error(`Timed out waiting for ${description}.`)
+}
+
+if (isPackagedSmokeMode) {
+  recordPackagedSmokeSync('process-started', {
+    pid: process.pid,
+    packaged: app.isPackaged
+  })
+  process.on('uncaughtException', (error) => {
+    recordPackagedSmokeSync('failed', {
+      message: error instanceof Error ? error.message : String(error),
+      source: 'uncaughtException'
+    })
+  })
+
+  process.on('unhandledRejection', (reason) => {
+    recordPackagedSmokeSync('failed', {
+      message: reason instanceof Error ? reason.message : String(reason),
+      source: 'unhandledRejection'
+    })
+  })
+}
+
 async function stopSessionEventBridge(): Promise<void> {
   const activeBridge = sessionEventBridge
   sessionEventBridge = null
   await activeBridge?.stop()
+}
+
+async function prepareForQuitAndInstall(): Promise<void> {
+  if (isQuittingAfterBridgeStop) {
+    return
+  }
+
+  isQuittingAfterBridgeStop = true
+  await stopSessionEventBridge()
+}
+
+function createDisabledUpdateState(): UpdateState {
+  return {
+    phase: 'disabled',
+    currentVersion: app.getVersion(),
+    availableVersion: null,
+    downloadedVersion: null,
+    downloadProgressPercent: null,
+    lastCheckedAt: null,
+    message: 'Updates are only available in packaged builds.',
+    requiresSessionWarning: false
+  }
+}
+
+function pushUpdateState(state: UpdateState): void {
+  const win = mainWindow
+  if (win && !win.isDestroyed()) {
+    win.webContents.send(IPC_CHANNELS.updateState, state)
+  }
+}
+
+async function syncUpdateStateToWindow(): Promise<void> {
+  if (updateService) {
+    updateService.publishState()
+    return
+  }
+
+  pushUpdateState(createDisabledUpdateState())
 }
 
 function createMainWindow(): BrowserWindow {
@@ -81,7 +295,7 @@ function createMainWindow(): BrowserWindow {
     frame: false,
     backgroundColor: '#f4f5f8',
     webPreferences: {
-      preload: join(__dirname, '../preload/index.mjs'),
+      preload: join(__dirname, '../preload/index.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false
@@ -101,22 +315,54 @@ function createMainWindow(): BrowserWindow {
 }
 
 app.whenReady().then(async () => {
+  if (isPackagedSmokeMode) {
+    await recordPackagedSmoke('ready')
+  }
+
   projectSessionManager = await ProjectSessionManager.create({
     webhookPort: null,
     globalStatePath: e2eGlobalStatePath
   })
 
+  const { PtyHost } = await import('@core/pty-host')
   ptyHost = new PtyHost()
 
   runtimeController = new SessionRuntimeController(
     projectSessionManager,
-    () => mainWindow
+    () => mainWindow,
+    () => {
+      void syncUpdateStateToWindow()
+    }
   )
   sessionEventBridge = new SessionEventBridge(projectSessionManager, runtimeController)
+  updateService = new UpdateService({
+    app,
+    updater: autoUpdater,
+    sessionManager: projectSessionManager,
+    showSessionWarningDialog: async () => {
+      const options = {
+        type: 'warning' as const,
+        buttons: ['Install and Quit Sessions', 'Cancel'],
+        defaultId: 1,
+        cancelId: 1,
+        title: 'Install Update',
+        message: 'Installing the update will close active sessions.',
+        detail: 'Continue only if you are ready to stop running sessions and install the downloaded update.'
+      }
+
+      const result = mainWindow && !mainWindow.isDestroyed()
+        ? await dialog.showMessageBox(mainWindow, options)
+        : await dialog.showMessageBox(options)
+
+      return result.response === 0
+    },
+    prepareToInstall: prepareForQuitAndInstall,
+    onStateChange: pushUpdateState
+  })
   const webhookPort = await sessionEventBridge.start()
   installMainE2EDebugApi()
 
-async function resolveRuntimePaths(sessionType: CreateSessionRequest['type']): Promise<{
+  async function resolveRuntimePaths(sessionType: CreateSessionRequest['type']): Promise<{
     shellPath: string | null
     providerPath: string | null
     claudeDangerouslySkipPermissions: boolean
@@ -147,6 +393,129 @@ async function resolveRuntimePaths(sessionType: CreateSessionRequest['type']): P
     }
   }
 
+  async function launchSessionRuntimeWithGuard(
+    sessionId: string,
+    source: 'session-create' | 'session-restore' | 'bootstrap-recovery' | 'packaged-smoke'
+  ): Promise<boolean> {
+    if (!projectSessionManager || !ptyHost || !runtimeController || !sessionEventBridge) {
+      console.log(`[${source}] Aborted runtime launch for ${sessionId}: manager=${!!projectSessionManager} pty=${!!ptyHost} ctrl=${!!runtimeController} bridge=${!!sessionEventBridge}`)
+      return false
+    }
+
+    try {
+      const launched = await launchTrackedSessionRuntime({
+        sessionId,
+        manager: projectSessionManager,
+        webhookPort,
+        ptyHost,
+        runtimeController,
+        sessionEventBridge,
+        resolveRuntimePaths
+      })
+
+      if (launched) {
+        console.log(`[${source}] Session ${sessionId} started successfully`)
+      } else {
+        console.warn(`[${source}] Session ${sessionId} could not be launched because its state was missing.`)
+      }
+
+      return launched
+    } catch (err: unknown) {
+      console.error(`[${source}] Failed to start session ${sessionId}:`, err)
+      await runtimeController.markSessionExited(sessionId, `启动失败: ${err instanceof Error ? err.message : String(err)}`)
+      return false
+    }
+  }
+
+  async function runPackagedSmoke(): Promise<void> {
+    if (!isPackagedSmokeMode) {
+      return
+    }
+
+    try {
+      if (!app.isPackaged) {
+        throw new Error('Packaged smoke mode requires a packaged Electron app.')
+      }
+
+      if (!packagedSmokeProjectDir) {
+        throw new Error('Missing STOA_PACKAGED_SMOKE_PROJECT_DIR.')
+      }
+
+      if (!mainWindow || !projectSessionManager || !ptyHost || !runtimeController) {
+        throw new Error('Packaged smoke boot dependencies were not initialized.')
+      }
+
+      await recordPackagedSmoke('app-ready', { version: app.getVersion() })
+
+      if (mainWindow.webContents.isLoading()) {
+        await new Promise<void>((resolve) => {
+          mainWindow?.webContents.once('did-finish-load', () => resolve())
+        })
+      }
+      await recordPackagedSmoke('window-ready')
+
+      await mkdir(packagedSmokeProjectDir, { recursive: true })
+      const project = await projectSessionManager.createProject({
+        name: 'Packaged Smoke',
+        path: packagedSmokeProjectDir,
+        defaultSessionType: 'shell'
+      })
+      await recordPackagedSmoke('project-created', { projectId: project.id })
+
+      const session = await projectSessionManager.createSession({
+        projectId: project.id,
+        type: 'shell',
+        title: 'packaged-smoke-shell'
+      })
+      await syncUpdateStateToWindow()
+      await recordPackagedSmoke('session-created', { sessionId: session.id })
+
+      const launched = await launchSessionRuntimeWithGuard(session.id, 'packaged-smoke')
+      if (!launched) {
+        throw new Error(`Unable to launch packaged smoke session ${session.id}.`)
+      }
+
+      const liveStatus = await waitForValue(async () => {
+        const currentSession = projectSessionManager?.snapshot().sessions.find((candidate) => candidate.id === session.id)
+        if (!currentSession) {
+          return null
+        }
+
+        return currentSession.status === 'running' || currentSession.status === 'awaiting_input'
+          ? currentSession.status
+          : null
+      }, 'the packaged smoke shell session to become live')
+      await recordPackagedSmoke('session-live', {
+        sessionId: session.id,
+        status: liveStatus
+      })
+
+      ptyHost.resize(session.id, 120, 32)
+      ptyHost.write(session.id, `echo ${packagedSmokeMarker}\r`)
+
+      const terminalReplay = await waitForValue(async () => {
+        const replay = await runtimeController?.getTerminalReplay(session.id) ?? ''
+        return replay.includes(packagedSmokeMarker) ? replay : null
+      }, 'the packaged smoke marker in terminal replay', 45_000)
+      await recordPackagedSmoke('terminal-marker-observed', {
+        sessionId: session.id,
+        marker: packagedSmokeMarker,
+        replayLength: terminalReplay.length
+      })
+
+      ptyHost.kill(session.id)
+      await recordPackagedSmoke('completed', {
+        sessionId: session.id
+      })
+      app.quit()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      await recordPackagedSmoke('failed', { message })
+      console.error('[packaged-smoke] Failed:', error)
+      app.exit(1)
+    }
+  }
+
   ipcMain.handle(IPC_CHANNELS.projectBootstrap, async () => {
     return projectSessionManager?.snapshot() ?? {
       activeProjectId: null,
@@ -163,49 +532,13 @@ async function resolveRuntimePaths(sessionType: CreateSessionRequest['type']): P
 
   ipcMain.handle(IPC_CHANNELS.sessionCreate, async (_event, payload: CreateSessionRequest) => {
     const session = await projectSessionManager?.createSession(payload)
-    if (!session || !projectSessionManager || !ptyHost || !runtimeController || !sessionEventBridge) {
-      console.log(`[session-create] Aborted: session=${!!session} manager=${!!projectSessionManager} pty=${!!ptyHost} ctrl=${!!runtimeController} bridge=${!!sessionEventBridge}`)
+    await syncUpdateStateToWindow()
+    if (!session) {
+      console.log('[session-create] Aborted: no session was created.')
       return null
     }
 
-    const snapshot = projectSessionManager.snapshot()
-    const project = snapshot.projects.find(p => p.id === session.projectId)
-    if (!project) {
-      console.log(`[session-create] No project found for session ${session.id}`)
-      return session
-    }
-
-    const descriptor = getProviderDescriptorBySessionType(session.type)
-    const provider = getProvider(descriptor.providerId)
-    const sessionSecret = sessionEventBridge.issueSessionSecret(session.id)
-    const { shellPath, providerPath, claudeDangerouslySkipPermissions } = await resolveRuntimePaths(session.type)
-    console.log(`[session-create] Starting ${descriptor.providerId} session ${session.id} in ${project.path}`)
-
-    void startSessionRuntime({
-      session: {
-        id: session.id,
-        projectId: session.projectId,
-        path: project.path,
-        title: session.title,
-        type: session.type,
-        status: session.status,
-        externalSessionId: session.externalSessionId,
-        sessionSecret
-      },
-      webhookPort,
-      provider,
-      ptyHost,
-      manager: runtimeController,
-      shellPath,
-      providerPath,
-      claudeDangerouslySkipPermissions
-    }).then(() => {
-      console.log(`[session-runtime] Session ${session.id} started successfully`)
-    }).catch((err: unknown) => {
-      console.error(`[session-runtime] Failed to start session ${session.id}:`, err)
-      void runtimeController?.markSessionExited(session.id, `启动失败: ${err instanceof Error ? err.message : String(err)}`)
-    })
-
+    void launchSessionRuntimeWithGuard(session.id, 'session-create')
     return session
   })
 
@@ -293,6 +626,7 @@ async function resolveRuntimePaths(sessionType: CreateSessionRequest['type']): P
     if (!projectSessionManager || !ptyHost) return
     ptyHost.kill(sessionId)
     await projectSessionManager.archiveSession(sessionId)
+    await syncUpdateStateToWindow()
   })
 
   ipcMain.handle(IPC_CHANNELS.sessionRestore, async (_event, sessionId: string) => {
@@ -301,26 +635,36 @@ async function resolveRuntimePaths(sessionType: CreateSessionRequest['type']): P
     }
 
     await projectSessionManager.restoreSession(sessionId)
-
-    void launchTrackedSessionRuntime({
-      sessionId,
-      manager: projectSessionManager,
-      webhookPort,
-      ptyHost,
-      runtimeController,
-      sessionEventBridge,
-      resolveRuntimePaths
-    }).catch((err: unknown) => {
-      console.error(`[session-restore] Failed to restore session ${sessionId}:`, err)
-      void runtimeController?.markSessionExited(sessionId, `恢复失败: ${err instanceof Error ? err.message : String(err)}`)
-    })
+    await syncUpdateStateToWindow()
+    void launchSessionRuntimeWithGuard(sessionId, 'session-restore')
   })
 
   ipcMain.handle(IPC_CHANNELS.sessionListArchived, async () => {
     return projectSessionManager?.getArchivedSessions() ?? []
   })
 
+  ipcMain.handle(IPC_CHANNELS.updateGetState, async () => {
+    return updateService?.getState() ?? createDisabledUpdateState()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.updateCheck, async () => {
+    return updateService?.checkForUpdates() ?? createDisabledUpdateState()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.updateDownload, async () => {
+    return updateService?.downloadUpdate() ?? createDisabledUpdateState()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.updateQuitAndInstall, async () => {
+    await updateService?.quitAndInstall()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.updateDismiss, async () => {
+    await updateService?.dismiss()
+  })
+
   mainWindow = createMainWindow()
+  await syncUpdateStateToWindow()
 
   mainWindow.on('maximize', () => {
     mainWindow?.webContents.send('window:maximize-changed', true)
@@ -329,27 +673,25 @@ async function resolveRuntimePaths(sessionType: CreateSessionRequest['type']): P
     mainWindow?.webContents.send('window:maximize-changed', false)
   })
 
+  if (isPackagedSmokeMode) {
+    void runPackagedSmoke()
+  }
+
   for (const plan of projectSessionManager.buildBootstrapRecoveryPlan()) {
-    void launchTrackedSessionRuntime({
-      sessionId: plan.sessionId,
-      manager: projectSessionManager,
-      webhookPort,
-      ptyHost,
-      runtimeController,
-      sessionEventBridge,
-      resolveRuntimePaths
-    }).catch((err: unknown) => {
-      const sessionId = plan.sessionId
-      console.error(`[bootstrap-recovery] Failed to recover session ${sessionId}:`, err)
-      void runtimeController?.markSessionExited(sessionId, `恢复失败: ${err instanceof Error ? err.message : String(err)}`)
-    })
+    void launchSessionRuntimeWithGuard(plan.sessionId, 'bootstrap-recovery')
   }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       mainWindow = createMainWindow()
+      void syncUpdateStateToWindow()
     }
   })
+}).catch(async (error) => {
+  const message = error instanceof Error ? error.message : String(error)
+  await recordPackagedSmoke('failed', { message })
+  console.error('[main] Failed during startup:', error)
+  app.exit(1)
 })
 
 app.on('before-quit', async (event) => {
@@ -358,9 +700,8 @@ app.on('before-quit', async (event) => {
   }
 
   event.preventDefault()
-  isQuittingAfterBridgeStop = true
   try {
-    await stopSessionEventBridge()
+    await prepareForQuitAndInstall()
   } finally {
     app.quit()
   }

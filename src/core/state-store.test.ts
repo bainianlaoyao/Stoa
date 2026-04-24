@@ -1,7 +1,8 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import * as fsPromises from 'node:fs/promises'
 import { join } from 'node:path'
-import { afterEach, describe, expect, test } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
+  createAtomicTempFilePath,
   DEFAULT_GLOBAL_STATE,
   getProjectSessionsFilePath,
   readAllProjectSessions,
@@ -61,14 +62,46 @@ describe('state-store', () => {
     await writeGlobalState(state, globalStatePath)
 
     await expect(readGlobalState(globalStatePath)).resolves.toEqual(state)
-    const raw = JSON.parse(await readFile(globalStatePath, 'utf-8')) as PersistedGlobalStateV3
+    const raw = JSON.parse(await fsPromises.readFile(globalStatePath, 'utf-8')) as PersistedGlobalStateV3
     expect(raw.active_project_id).toBe('project_alpha')
     expect(raw.version).toBe(3)
+  })
+
+  test('serializes concurrent writes to the same global state file and keeps the last payload', async () => {
+    const globalStatePath = await createTempGlobalStatePath()
+    const first: PersistedGlobalStateV3 = {
+      version: 3,
+      active_project_id: 'project_alpha',
+      active_session_id: null,
+      projects: []
+    }
+    const second: PersistedGlobalStateV3 = {
+      version: 3,
+      active_project_id: 'project_beta',
+      active_session_id: null,
+      projects: []
+    }
+
+    await expect(Promise.all([
+      writeGlobalState(first, globalStatePath),
+      writeGlobalState(second, globalStatePath)
+    ])).resolves.toEqual([undefined, undefined])
+
+    await expect(readGlobalState(globalStatePath)).resolves.toEqual(second)
+  })
+
+  test('uses distinct temp files for concurrent atomic global state writes in the same millisecond', async () => {
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1713916800000)
+    const basePath = 'D:/tmp/global.json'
+
+    expect(createAtomicTempFilePath(basePath)).not.toBe(createAtomicTempFilePath(basePath))
+    nowSpy.mockRestore()
   })
 
   test('reads and writes per-project sessions', async () => {
     const projectDir = await createTempProjectDir()
     const data: PersistedProjectSessions = {
+      version: 4,
       project_id: 'project_alpha',
       sessions: [
         {
@@ -91,28 +124,74 @@ describe('state-store', () => {
     await writeProjectSessions(projectDir, data)
 
     const read = await readProjectSessions(projectDir)
+    expect(read.version).toBe(4)
+    expect(read.project_id).toBe('project_alpha')
     expect(read.sessions).toHaveLength(1)
     expect(read.sessions[0]!.session_id).toBe('session_shell_1')
     expect(read.sessions[0]!.last_known_status).toBe('running')
   })
 
-  test('returns empty sessions when project has no sessions file', async () => {
+  test('overwrites an existing project sessions file on repeated writes', async () => {
+    const projectDir = await createTempProjectDir()
+    const first: PersistedProjectSessions = {
+      version: 4,
+      project_id: 'project_alpha',
+      sessions: []
+    }
+    const second: PersistedProjectSessions = {
+      version: 4,
+      project_id: 'project_beta',
+      sessions: []
+    }
+
+    await writeProjectSessions(projectDir, first)
+    await writeProjectSessions(projectDir, second)
+
+    await expect(readProjectSessions(projectDir)).resolves.toEqual(second)
+  })
+
+  test('serializes concurrent writes to the same project sessions file and keeps the last payload', async () => {
+    const projectDir = await createTempProjectDir()
+    const first: PersistedProjectSessions = {
+      version: 4,
+      project_id: 'project_alpha',
+      sessions: []
+    }
+    const second: PersistedProjectSessions = {
+      version: 4,
+      project_id: 'project_beta',
+      sessions: []
+    }
+
+    await expect(Promise.all([
+      writeProjectSessions(projectDir, first),
+      writeProjectSessions(projectDir, second)
+    ])).resolves.toEqual([undefined, undefined])
+
+    await expect(readProjectSessions(projectDir)).resolves.toEqual(second)
+  })
+
+  test('returns versioned empty sessions when project has no sessions file', async () => {
     const projectDir = await createTempProjectDir()
 
     const read = await readProjectSessions(projectDir)
-    expect(read.sessions).toEqual([])
+    expect(read).toEqual({
+      version: 4,
+      project_id: '',
+      sessions: []
+    })
   })
 
   test('throws when global state file contains corrupted JSON', async () => {
     const globalStatePath = await createTempGlobalStatePath()
-    await writeFile(globalStatePath, '{not valid json', 'utf-8')
+    await fsPromises.writeFile(globalStatePath, '{not valid json', 'utf-8')
 
     await expect(readGlobalState(globalStatePath)).rejects.toThrow()
   })
 
   test('throws when global state file uses an unsupported version', async () => {
     const globalStatePath = await createTempGlobalStatePath()
-    await writeFile(globalStatePath, JSON.stringify({
+    await fsPromises.writeFile(globalStatePath, JSON.stringify({
       version: 99,
       active_project_id: null,
       active_session_id: null,
@@ -125,8 +204,8 @@ describe('state-store', () => {
   test('throws when project sessions file contains corrupted JSON', async () => {
     const projectDir = await createTempProjectDir()
     const sessionsFilePath = getProjectSessionsFilePath(projectDir)
-    await mkdir(join(projectDir, '.stoa'), { recursive: true })
-    await writeFile(sessionsFilePath, '{broken sessions', 'utf-8')
+    await fsPromises.mkdir(join(projectDir, '.stoa'), { recursive: true })
+    await fsPromises.writeFile(sessionsFilePath, '{broken sessions', 'utf-8')
 
     await expect(readProjectSessions(projectDir)).rejects.toThrow()
   })
@@ -134,7 +213,7 @@ describe('state-store', () => {
   test('throws when one project sessions file is unreadable instead of silently dropping it', async () => {
     const projectDir = await createTempProjectDir()
     const sessionsFilePath = getProjectSessionsFilePath(projectDir)
-    await mkdir(sessionsFilePath, { recursive: true })
+    await fsPromises.mkdir(sessionsFilePath, { recursive: true })
 
     const projects: PersistedProject[] = [
       {

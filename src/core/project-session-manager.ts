@@ -18,8 +18,8 @@ import { getProviderDescriptorBySessionType } from '@shared/provider-descriptors
 import {
   DEFAULT_GLOBAL_STATE,
   StateReadError,
-  readGlobalState,
   readAllProjectSessions,
+  readGlobalState,
   readProjectSessions,
   writeGlobalState,
   writeProjectSessions
@@ -123,6 +123,50 @@ const NON_REGRESSIBLE_RUNNING_STATUSES = new Set<SessionStatus>([
   'exited'
 ])
 
+function resolveActiveProjectId(projects: ProjectSummary[], activeProjectId: string | null): string | null {
+  if (!activeProjectId) {
+    return null
+  }
+
+  return projects.some((project) => project.id === activeProjectId)
+    ? activeProjectId
+    : null
+}
+
+function resolveActiveSessionId(sessions: SessionSummary[], activeSessionId: string | null): string | null {
+  if (!activeSessionId) {
+    return null
+  }
+
+  return sessions.some((session) => session.id === activeSessionId)
+    ? activeSessionId
+    : null
+}
+
+function resolveBootstrapActiveState(
+  projects: ProjectSummary[],
+  sessions: SessionSummary[],
+  activeProjectId: string | null,
+  activeSessionId: string | null
+): Pick<BootstrapState, 'activeProjectId' | 'activeSessionId'> {
+  const projectIds = new Set(projects.map((project) => project.id))
+  const resolvedActiveSessionId = resolveActiveSessionId(sessions, activeSessionId)
+  if (resolvedActiveSessionId) {
+    const activeSession = sessions.find((session) => session.id === resolvedActiveSessionId)
+    if (activeSession && projectIds.has(activeSession.projectId)) {
+      return {
+        activeProjectId: activeSession.projectId,
+        activeSessionId: resolvedActiveSessionId
+      }
+    }
+  }
+
+  return {
+    activeProjectId: resolveActiveProjectId(projects, activeProjectId),
+    activeSessionId: null
+  }
+}
+
 export class ProjectSessionManager {
   private state: BootstrapState
   private readonly globalStatePath?: string
@@ -153,16 +197,23 @@ export class ProjectSessionManager {
     const projects = persistedGlobal.projects.map(toProjectSummary)
     const allSessions = await readAllProjectSessions(persistedGlobal.projects)
     const sessions = allSessions.map(toSessionSummary)
+    const activeState = resolveBootstrapActiveState(
+      projects,
+      sessions,
+      persistedGlobal.active_project_id,
+      persistedGlobal.active_session_id
+    )
 
     const initialState: BootstrapState = {
-      activeProjectId: persistedGlobal.active_project_id,
-      activeSessionId: persistedGlobal.active_session_id,
+      activeProjectId: activeState.activeProjectId,
+      activeSessionId: activeState.activeSessionId,
       terminalWebhookPort: options.webhookPort,
       projects,
       sessions
     }
 
     const manager = new ProjectSessionManager(initialState, options.globalStatePath, persistedGlobal.settings)
+    await manager.persist()
     return manager
   }
 
@@ -229,12 +280,16 @@ export class ProjectSessionManager {
     }
 
     if (!this.persistDisabled) {
-      const existingSessions = await readProjectSessions(request.path)
-      if (Array.isArray(existingSessions.sessions) && existingSessions.sessions.length > 0) {
-        const mapped = existingSessions.sessions
-          .filter(s => s.project_id && !this.state.sessions.some(existing => existing.id === s.session_id))
-          .map(toSessionSummary)
-        this.state.sessions.push(...mapped)
+      try {
+        const existingSessions = await readProjectSessions(request.path)
+        if (Array.isArray(existingSessions.sessions) && existingSessions.sessions.length > 0) {
+          const mapped = existingSessions.sessions
+            .filter((session) => session.project_id && !this.state.sessions.some((existing) => existing.id === session.session_id))
+            .map(toSessionSummary)
+          this.state.sessions.push(...mapped)
+        }
+      } catch (error) {
+        console.warn('[state-persist] Ignoring unreadable project session cache during project import', error)
       }
     }
 
@@ -400,18 +455,6 @@ export class ProjectSessionManager {
       return
     }
 
-    const globalState: PersistedGlobalStateV3 =
-      this.state.projects.length === 0
-        ? { ...structuredClone(DEFAULT_GLOBAL_STATE), settings: this.settings }
-        : {
-            version: 3,
-            active_project_id: this.state.activeProjectId,
-            active_session_id: this.state.activeSessionId,
-            projects: this.state.projects.map(toPersistedProject),
-            settings: this.settings
-          }
-    await writeGlobalState(globalState, this.globalStatePath)
-
     const persistedProjects = this.state.projects.map(toPersistedProject)
     const persistedSessions = this.state.sessions.map(toPersistedSession)
 
@@ -425,13 +468,26 @@ export class ProjectSessionManager {
     for (const project of persistedProjects) {
       const projectSessions = byProject.get(project.project_id) ?? []
       const data: PersistedProjectSessions = {
+        version: 4,
         project_id: project.project_id,
         sessions: projectSessions
       }
       await writeProjectSessions(project.path, data)
     }
 
-    if (this.state.projects.length > 0) {
+    const globalState: PersistedGlobalStateV3 =
+      persistedProjects.length === 0
+        ? { ...structuredClone(DEFAULT_GLOBAL_STATE), settings: this.settings }
+        : {
+            version: 3,
+            active_project_id: this.state.activeProjectId,
+            active_session_id: this.state.activeSessionId,
+            projects: persistedProjects,
+            settings: this.settings
+          }
+    await writeGlobalState(globalState, this.globalStatePath)
+
+    if (persistedProjects.length > 0) {
       this.hasPersistedProjects = true
     }
   }

@@ -1,0 +1,72 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    env:
+      GH_OWNER: ${{ github.repository_owner }}
+      GH_REPO: ${{ github.event.repository.name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify tag matches package version
+        shell: pwsh
+        run: |
+          $package = Get-Content package.json -Raw | ConvertFrom-Json
+          $expected = "v$($package.version)"
+          if ($env:GITHUB_REF_NAME -ne $expected) {
+            throw "Tag $env:GITHUB_REF_NAME does not match package.json version $expected."
+          }
+
+      - name: Generate deterministic tests
+        run: pnpm run test:generate
+
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      - name: Run Vitest
+        run: pnpm vitest run
+
+      - name: Run Electron Playwright journeys
+        run: pnpm run test:e2e
+
+      - name: Verify behavior coverage
+        run: pnpm run test:behavior-coverage
+
+      - name: Build production bundles
+        run: pnpm run build
+
+      - name: Package Windows artifacts
+        run: pnpm run package
+
+      - name: Verify artifact layout locally
+        run: pnpm run verify:packaging
+
+      - name: Smoke packaged Windows build
+        run: pnpm run verify:release-smoke
+
+      - name: Publish Windows release
+        run: pnpm run package:release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
