@@ -110,14 +110,18 @@ function createCapturingManager(delegate: ProjectSessionManager): CapturingManag
   return {
     terminalData,
     exitSignal,
-    async markSessionStarting(sessionId: string, summary: string, externalSessionId: string | null) {
-      await delegate.markSessionStarting(sessionId, summary, externalSessionId)
+    async markRuntimeStarting(sessionId: string, summary: string, externalSessionId: string | null) {
+      await delegate.markRuntimeStarting(sessionId, summary, externalSessionId)
     },
-    async markSessionRunning(sessionId: string, externalSessionId: string | null) {
-      await delegate.markSessionRunning(sessionId, externalSessionId)
+    async markRuntimeAlive(sessionId: string, externalSessionId: string | null) {
+      await delegate.markRuntimeAlive(sessionId, externalSessionId)
     },
-    async markSessionExited(sessionId: string, summary: string) {
-      await delegate.markSessionExited(sessionId, summary)
+    async markRuntimeExited(sessionId: string, exitCode: number | null, summary: string) {
+      await delegate.markRuntimeExited(sessionId, exitCode, summary)
+      resolveExit!()
+    },
+    async markRuntimeFailedToStart(sessionId: string, summary: string) {
+      await delegate.markRuntimeFailedToStart(sessionId, summary)
       resolveExit!()
     },
     async appendTerminalData(chunk: { sessionId: string; data: string }) {
@@ -155,7 +159,7 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
         title: 'Lifecycle Shell'
       })
 
-      expect(manager.snapshot().sessions[0]!.status).toBe('bootstrapping')
+      expect(manager.snapshot().sessions[0]!.runtimeState).toBe('created')
 
       const ptyHost = new PtyHost()
       activeHosts.push(ptyHost)
@@ -178,13 +182,13 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
       })
 
       let snapshot = manager.snapshot()
-      expect(snapshot.sessions.find(s => s.id === session.id)!.status).toBe('running')
+      expect(snapshot.sessions.find(s => s.id === session.id)!.runtimeState).toBe('alive')
       expect(snapshot.sessions.find(s => s.id === session.id)!.externalSessionId).toBeNull()
 
       await waitForExit(capturing.exitSignal)
 
       snapshot = manager.snapshot()
-      expect(snapshot.sessions.find(s => s.id === session.id)!.status).toBe('exited')
+      expect(snapshot.sessions.find(s => s.id === session.id)!.runtimeState).toBe('exited')
       expect(snapshot.sessions.find(s => s.id === session.id)!.summary).toMatch(/exited/)
     })
 
@@ -268,12 +272,12 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
       })
 
       const diskRunning = await readProjectSessions(workspaceDir)
-      expect(diskRunning.sessions[0]!.last_known_status).toBe('running')
+      expect(diskRunning.sessions[0]!.runtime_state).toBe('alive')
 
       await waitForExit(capturing.exitSignal)
 
       const diskExited = await readProjectSessions(workspaceDir)
-      expect(diskExited.sessions[0]!.last_known_status).toBe('exited')
+      expect(diskExited.sessions[0]!.runtime_state).toBe('exited')
       expect(diskExited.sessions[0]!.last_summary).toMatch(/exited/)
     })
   })
@@ -319,8 +323,8 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
 
       const snapshot = manager.snapshot()
       expect(snapshot.sessions).toHaveLength(2)
-      expect(snapshot.sessions[0]!.status).toBe('exited')
-      expect(snapshot.sessions[1]!.status).toBe('exited')
+      expect(snapshot.sessions[0]!.runtimeState).toBe('exited')
+      expect(snapshot.sessions[1]!.runtimeState).toBe('exited')
       expect(capturing1.terminalData[0]!.sessionId).toBe(session1.id)
       expect(capturing2.terminalData[0]!.sessionId).toBe(session2.id)
     })
@@ -381,7 +385,7 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
       const snapshot = restored.snapshot()
       expect(snapshot.projects).toHaveLength(1)
       expect(snapshot.sessions).toHaveLength(1)
-      expect(snapshot.sessions[0]!.status).toBe('exited')
+      expect(snapshot.sessions[0]!.runtimeState).toBe('exited')
       expect(snapshot.sessions[0]!.summary).toMatch(/exited/)
       expect(snapshot.sessions[0]!.id).toBe(session.id)
       expect(snapshot.sessions[0]!.externalSessionId).toBeNull()
@@ -424,8 +428,8 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
       ])
 
       let snapshot = manager.snapshot()
-      expect(snapshot.sessions.find(s => s.id === session1.id)!.status).toBe('running')
-      expect(snapshot.sessions.find(s => s.id === session2.id)!.status).toBe('running')
+      expect(snapshot.sessions.find(s => s.id === session1.id)!.runtimeState).toBe('alive')
+      expect(snapshot.sessions.find(s => s.id === session2.id)!.runtimeState).toBe('alive')
 
       await Promise.all([
         waitForExit(capturing1.exitSignal),
@@ -433,8 +437,8 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
       ])
 
       snapshot = manager.snapshot()
-      expect(snapshot.sessions.find(s => s.id === session1.id)!.status).toBe('exited')
-      expect(snapshot.sessions.find(s => s.id === session2.id)!.status).toBe('exited')
+      expect(snapshot.sessions.find(s => s.id === session1.id)!.runtimeState).toBe('exited')
+      expect(snapshot.sessions.find(s => s.id === session2.id)!.runtimeState).toBe('exited')
       expect(capturing1.terminalData.some(c => c.data.includes('hello-from-e2e'))).toBe(true)
       expect(capturing2.terminalData.some(c => c.data.includes('hello-from-e2e'))).toBe(true)
     })
@@ -465,7 +469,7 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
       await waitForExit(capturing.exitSignal)
 
       const exitedSession = manager.snapshot().sessions.find(s => s.id === session.id)!
-      expect(exitedSession.status).toBe('exited')
+      expect(exitedSession.runtimeState).toBe('exited')
       expect(exitedSession.summary).toContain('42')
     })
   })

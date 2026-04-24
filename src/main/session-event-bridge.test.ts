@@ -6,7 +6,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 import { InMemoryObservationStore } from '@core/observation-store'
 import { ObservabilityService } from '@core/observability-service'
 import { ProjectSessionManager } from '@core/project-session-manager'
-import type { CanonicalSessionEvent, SessionStatus } from '@shared/project-session'
+import type { CanonicalSessionEvent, SessionStatePatchEvent } from '@shared/project-session'
 import type { ObservationEvent } from '@shared/observability'
 import { createTestTempDir } from '../../testing/test-temp'
 import { SessionEventBridge } from './session-event-bridge'
@@ -128,10 +128,10 @@ describe('SessionEventBridge', () => {
     await Promise.allSettled(tempDirs.splice(0).map(async (dir) => rm(dir, { recursive: true, force: true })))
   })
 
-  test('issuing a secret allows the same session event to reach applySessionEvent', async () => {
+  test('issuing a secret allows the same session event to reach applyProviderStatePatch', async () => {
     const manager = ProjectSessionManager.createForTest()
     const controller = {
-      applySessionEvent: vi.fn(async () => {})
+      applyProviderStatePatch: vi.fn(async () => {})
     }
     const bridge = new SessionEventBridge(manager, controller)
     bridges.push(bridge)
@@ -141,18 +141,23 @@ describe('SessionEventBridge', () => {
     const response = await postEvent(port, createCanonicalEvent(), secret)
 
     expect(response.statusCode).toBe(202)
-    expect(controller.applySessionEvent).toHaveBeenCalledWith({
+    expect(controller.applyProviderStatePatch).toHaveBeenCalledWith({
       sessionId: 'session_1',
+      sequence: 1,
+      occurredAt: expect.any(String),
+      intent: 'agent.turn_completed',
+      source: 'provider',
+      sourceEventType: 'session.idle',
       status: 'awaiting_input',
       summary: 'session.idle',
       externalSessionId: 'opencode-real-123'
     })
   })
 
-  test('canonical turn_complete events reach applySessionEvent unchanged', async () => {
+  test('canonical turn_complete events reach applyProviderStatePatch unchanged', async () => {
     const manager = ProjectSessionManager.createForTest()
     const controller = {
-      applySessionEvent: vi.fn(async () => {})
+      applyProviderStatePatch: vi.fn(async () => {})
     }
     const bridge = new SessionEventBridge(manager, controller)
     bridges.push(bridge)
@@ -162,8 +167,13 @@ describe('SessionEventBridge', () => {
     const response = await postEvent(port, createTurnCompleteEvent(), secret)
 
     expect(response.statusCode).toBe(202)
-    expect(controller.applySessionEvent).toHaveBeenCalledWith({
+    expect(controller.applyProviderStatePatch).toHaveBeenCalledWith({
       sessionId: 'session_1',
+      sequence: 1,
+      occurredAt: expect.any(String),
+      intent: 'agent.turn_completed',
+      source: 'provider',
+      sourceEventType: 'session.idle',
       status: 'turn_complete',
       summary: 'Turn complete',
       externalSessionId: undefined
@@ -173,7 +183,7 @@ describe('SessionEventBridge', () => {
   test('canonical turn_complete events also ingest an observability event', async () => {
     const manager = ProjectSessionManager.createForTest()
     const controller = {
-      applySessionEvent: vi.fn(async () => {})
+      applyProviderStatePatch: vi.fn(async () => {})
     }
     const observability = {
       ingest: vi.fn(() => true)
@@ -189,8 +199,13 @@ describe('SessionEventBridge', () => {
     const response = await postEvent(port, canonical, secret)
 
     expect(response.statusCode).toBe(202)
-    expect(controller.applySessionEvent).toHaveBeenCalledWith({
+    expect(controller.applyProviderStatePatch).toHaveBeenCalledWith({
       sessionId: 'session_1',
+      sequence: 1,
+      occurredAt: expect.any(String),
+      intent: 'agent.turn_completed',
+      source: 'provider',
+      sourceEventType: 'session.idle',
       status: 'turn_complete',
       summary: 'Turn complete',
       externalSessionId: undefined
@@ -238,24 +253,14 @@ describe('SessionEventBridge', () => {
       title: 'S1',
       externalSessionId: null
     })
-    await manager.applySessionEvent(session.id, 'running', 'Running', null)
+    await manager.markRuntimeAlive(session.id, null)
     const observability = new ObservabilityService(new InMemoryObservationStore(), {
       nowIso: () => '2026-01-01T00:00:10.000Z'
     })
     observability.syncSessions(manager.snapshot().sessions, manager.snapshot().activeSessionId)
     const controller = {
-      applySessionEvent: vi.fn(async (appliedEvent: {
-        sessionId: string
-        status: SessionStatus
-        summary: string
-        externalSessionId?: string | null
-      }) => {
-        await manager.applySessionEvent(
-          appliedEvent.sessionId,
-          appliedEvent.status,
-          appliedEvent.summary,
-          appliedEvent.externalSessionId
-        )
+      applyProviderStatePatch: vi.fn(async (patch: SessionStatePatchEvent) => {
+        await manager.applySessionStatePatch(patch)
         const snapshot = manager.snapshot()
         observability.syncSessions(snapshot.sessions, snapshot.activeSessionId)
       })
@@ -274,24 +279,31 @@ describe('SessionEventBridge', () => {
     )
 
     expect(response.statusCode).toBe(202)
-    expect(controller.applySessionEvent).toHaveBeenCalledWith({
+    expect(controller.applyProviderStatePatch).toHaveBeenCalledWith({
       sessionId: session.id,
+      sequence: 2,
+      occurredAt: expect.any(String),
+      intent: 'agent.turn_completed',
+      source: 'provider',
+      sourceEventType: 'session.idle',
       status: 'awaiting_input',
       summary: 'session.idle',
       externalSessionId: 'opencode-real-123'
     })
     expect(observability.getSessionPresence(session.id)).toMatchObject({
       sessionId: session.id,
-      canonicalStatus: 'awaiting_input',
+      runtimeState: 'alive',
+      agentState: 'idle',
+      phase: 'complete',
       confidence: 'authoritative',
       recoveryPointerState: 'trusted'
     })
   })
 
-  test('claude raw Stop hooks are adapted before reaching applySessionEvent', async () => {
+  test('claude raw Stop hooks are adapted before reaching applyProviderStatePatch', async () => {
     const manager = ProjectSessionManager.createForTest()
     const controller = {
-      applySessionEvent: vi.fn(async () => {})
+      applyProviderStatePatch: vi.fn(async () => {})
     }
     const bridge = new SessionEventBridge(manager, controller)
     bridges.push(bridge)
@@ -309,9 +321,14 @@ describe('SessionEventBridge', () => {
     )
 
     expect(response.statusCode).toBe(202)
-    expect(controller.applySessionEvent).toHaveBeenCalledTimes(1)
-    expect(controller.applySessionEvent).toHaveBeenCalledWith({
+    expect(controller.applyProviderStatePatch).toHaveBeenCalledTimes(1)
+    expect(controller.applyProviderStatePatch).toHaveBeenCalledWith({
       sessionId: 'session_1',
+      sequence: 1,
+      occurredAt: expect.any(String),
+      intent: 'agent.turn_completed',
+      source: 'provider',
+      sourceEventType: 'claude-code.Stop',
       status: 'turn_complete',
       summary: 'Stop',
       externalSessionId: undefined
