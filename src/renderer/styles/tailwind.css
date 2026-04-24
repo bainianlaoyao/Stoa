@@ -179,7 +179,7 @@
 @utility settings-panel {
   display: grid;
   gap: 18px;
-  min-height: 100%;
+  min-height: 0;
   padding: 22px;
   align-content: start;
 }

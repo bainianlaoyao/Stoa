@@ -79,10 +79,12 @@ function onTabSelect(tab: SettingsTab) {
 <style scoped>
 .settings-surface {
   display: grid;
+  grid-template-rows: auto 1fr;
   gap: 18px;
-  min-height: 100%;
+  height: 100%;
+  min-height: 0;
   padding: 22px;
-  align-content: start;
+  overflow: hidden;
 }
 
 .settings-surface__hero {
