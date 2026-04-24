@@ -44,3 +44,25 @@ export const sessionTelemetryTurnCompleteBehavior = defineBehavior({
   risk: 'high',
   coverageBudget: 'critical'
 })
+
+export const sessionTelemetryNeedsConfirmationBehavior = defineBehavior({
+  id: 'session.telemetry.needs-confirmation',
+  actor: 'system',
+  goal: 'project provider permission requests into the active session UI without replacing the live terminal',
+  entities: ['project', 'session', 'provider-telemetry', 'renderer-status'],
+  usageModes: ['active_workflow'],
+  preconditions: ['project.exists', 'session.providerManaged', 'session.active'],
+  action: 'telemetry.permissionRequest',
+  expects: [
+    'session.status=needs_confirmation',
+    'terminal.liveSessionPreserved',
+    'command.sessionStatusVisible',
+    'persisted.sessionStatusUpdated'
+  ],
+  invalidPreconditions: ['session.missing', 'webhook.invalidSecret'],
+  interruptions: ['provider.runningEvent.afterPermissionRequest', 'app.relaunch.duringTelemetry'],
+  recovery: ['statusRemainsNeedsConfirmation', 'externalSessionIdentityPreserved'],
+  observationLayers: ['ui', 'main-debug-state', 'persisted-state'],
+  risk: 'high',
+  coverageBudget: 'critical'
+})

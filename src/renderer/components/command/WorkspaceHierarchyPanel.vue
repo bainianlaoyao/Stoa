@@ -1,8 +1,18 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
-import type { SessionType } from '@shared/project-session'
+import type { SessionStatus, SessionType } from '@shared/project-session'
 import { getProviderDescriptorBySessionType } from '@shared/provider-descriptors'
 import type { ProjectHierarchyNode } from '@renderer/stores/workspaces'
+
+interface DetailState {
+  kind: 'project' | 'session'
+  name: string
+  path?: string
+  sessionType?: string
+  status?: string
+  x: number
+  y: number
+}
 import NewProjectModal from './NewProjectModal.vue'
 import ProviderFloatingCard from './ProviderFloatingCard.vue'
 import ProviderRadialMenu from './ProviderRadialMenu.vue'
@@ -22,6 +32,8 @@ const emit = defineEmits<{
 }>()
 
 const showNewProject = ref(false)
+
+const detailState = ref<DetailState | null>(null)
 
 const floatingCardVisible = ref(false)
 const floatingCardProjectId = ref('')
@@ -63,6 +75,28 @@ function closeFloatingCard() {
 
 function closeRadialMenu() {
   radialMenuVisible.value = false
+}
+
+function openDetail(event: MouseEvent, kind: 'project', project: ProjectHierarchyNode): void
+function openDetail(event: MouseEvent, kind: 'session', session: { title: string; type: string; status: SessionStatus }): void
+function openDetail(event: MouseEvent, kind: 'project' | 'session', data: ProjectHierarchyNode | { title: string; type: string; status: SessionStatus }): void {
+  event.stopPropagation()
+  const el = event.currentTarget as HTMLElement
+  const rect = el.getBoundingClientRect()
+  const x = rect.right + 4
+  const y = rect.top
+
+  if (kind === 'project') {
+    const p = data as ProjectHierarchyNode
+    detailState.value = { kind: 'project', name: p.name, path: p.path, x, y }
+  } else {
+    const s = data as { title: string; type: string; status: SessionStatus }
+    detailState.value = { kind: 'session', name: s.title, sessionType: s.type, status: s.status.replace(/_/g, ' '), x, y }
+  }
+}
+
+function closeDetail() {
+  detailState.value = null
 }
 
 function onAddButtonMouseDown(event: MouseEvent, projectId: string) {
@@ -117,12 +151,16 @@ function onProjectRowContextmenu(event: MouseEvent, projectId: string) {
 }
 
 function handleDocumentMouseDown(event: MouseEvent) {
-  if (!floatingCardVisible.value) {
+  const target = event.target
+  if (!(target instanceof HTMLElement)) {
     return
   }
 
-  const target = event.target
-  if (!(target instanceof HTMLElement)) {
+  if (detailState.value && !target.closest('.detail-popover')) {
+    detailState.value = null
+  }
+
+  if (!floatingCardVisible.value) {
     return
   }
 
@@ -180,10 +218,15 @@ onBeforeUnmount(() => {
               type="button"
               @click="emit('selectProject', project.id)"
             >
-              <div class="route-dot idle" />
+              <button class="route-detail-trigger" type="button" aria-label="Project details" @click="openDetail($event, 'project', project)">
+                <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                  <circle cx="8" cy="3.5" r="1.25" fill="currentColor" />
+                  <circle cx="8" cy="8" r="1.25" fill="currentColor" />
+                  <circle cx="8" cy="12.5" r="1.25" fill="currentColor" />
+                </svg>
+              </button>
               <div class="route-copy">
                 <div class="route-name">{{ project.name }}</div>
-                <div class="route-path">{{ project.path }}</div>
               </div>
             </button>
             <div class="route-project-actions">
@@ -218,10 +261,15 @@ onBeforeUnmount(() => {
               type="button"
               @click="emit('selectSession', session.id)"
             >
-              <div class="route-dot" :class="session.status" data-testid="session-status-dot" :data-status="session.status" />
+              <button class="route-detail-trigger" type="button" aria-label="Session details" @click="openDetail($event, 'session', session)">
+                <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                  <circle cx="8" cy="3.5" r="1.25" fill="currentColor" />
+                  <circle cx="8" cy="8" r="1.25" fill="currentColor" />
+                  <circle cx="8" cy="12.5" r="1.25" fill="currentColor" />
+                </svg>
+              </button>
               <div class="route-copy">
                 <div class="route-name">{{ session.title }}</div>
-                <div class="route-time">{{ session.type }}</div>
               </div>
             </button>
             <span class="route-row-actions">
@@ -361,7 +409,8 @@ onBeforeUnmount(() => {
 .route-dot.awaiting_input,
 .route-dot.turn_complete,
 .route-dot.awaiting,
-.route-dot.degraded {
+.route-dot.degraded,
+.route-dot.needs_confirmation {
   background: var(--color-warning);
 }
 

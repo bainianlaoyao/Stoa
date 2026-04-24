@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import {
+  sessionTelemetryNeedsConfirmationBehavior,
   sessionRestoreBehavior,
   sessionTelemetryTurnCompleteBehavior
 } from '../behavior/session.behavior'
 import { defineGeneratedTestMeta } from '../contracts/testing-contracts'
 import { sessionRestoreJourney } from '../journeys/session-restore.journey'
-import { sessionTelemetryTurnCompleteJourney } from '../journeys/session-telemetry.journey'
+import {
+  sessionTelemetryNeedsConfirmationJourney,
+  sessionTelemetryTurnCompleteJourney
+} from '../journeys/session-telemetry.journey'
 import { buildBehaviorCoverageReport } from './behavior-coverage'
 
 describe('behavior coverage report', () => {
@@ -93,6 +97,31 @@ describe('behavior coverage report', () => {
     expect(report.behaviors['session.telemetry.turn-complete']?.maturity).toBe('Hardened')
     expect(report.behaviors['session.telemetry.turn-complete']?.missingObservationLayers).toEqual([])
     expect(report.behaviors['session.telemetry.turn-complete']?.missingInterruptions).toEqual([
+      'app.relaunch.duringTelemetry'
+    ])
+  })
+
+  it('marks needs_confirmation telemetry as Hardened when hook coverage reaches UI and persistence', () => {
+    const report = buildBehaviorCoverageReport({
+      behaviors: [sessionTelemetryNeedsConfirmationBehavior],
+      journeys: [sessionTelemetryNeedsConfirmationJourney],
+      generatedTests: [
+        defineGeneratedTestMeta({
+          id: 'journey.session.telemetry.needs-confirmation',
+          behaviorIds: ['session.telemetry.needs-confirmation'],
+          entities: ['session', 'provider-telemetry', 'renderer-status'],
+          statesCovered: ['session.needs_confirmation', 'session.externalSessionId'],
+          interruptionsCovered: ['provider.runningEvent.afterPermissionRequest'],
+          observationLayers: ['ui', 'main-debug-state', 'persisted-state'],
+          riskBudget: 'critical',
+          regressionSources: ['claude.raw-hook']
+        })
+      ]
+    })
+
+    expect(report.behaviors['session.telemetry.needs-confirmation']?.maturity).toBe('Hardened')
+    expect(report.behaviors['session.telemetry.needs-confirmation']?.missingObservationLayers).toEqual([])
+    expect(report.behaviors['session.telemetry.needs-confirmation']?.missingInterruptions).toEqual([
       'app.relaunch.duringTelemetry'
     ])
   })

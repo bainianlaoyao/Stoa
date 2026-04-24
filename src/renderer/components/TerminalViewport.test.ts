@@ -160,20 +160,19 @@ describe('TerminalViewport', () => {
     expect(wrapper.find('.terminal-empty-state').exists()).toBe(true)
   })
 
-  test('shows metadata overlay when status is not running', async () => {
+  test('renders the status bar alongside the terminal when a session is present', async () => {
     const { default: TerminalViewport } = await import('./TerminalViewport.vue')
-    const session = { ...baseSession, status: 'exited' as const }
     const wrapper = mount(TerminalViewport, {
-      props: { project: baseProject, session },
+      props: { project: baseProject, session: baseSession },
     })
+    await flushTerminal()
 
-    expect(wrapper.find('.terminal-viewport__overlay').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="terminal-status-bar"]').exists()).toBe(true)
     expect(wrapper.text()).toContain('Deploy')
-    expect(wrapper.text()).toContain('alpha')
-    expect(wrapper.text()).toContain('exited')
-    expect(wrapper.text()).toContain('resume-external')
-    expect(wrapper.text()).toContain('ext-123')
-    expect(wrapper.find('.terminal-viewport__xterm').exists()).toBe(false)
+    expect(wrapper.text()).toContain('ready')
+    expect(wrapper.text()).toContain('opencode')
+    expect(wrapper.text()).toContain('running')
+    expect(wrapper.find('.terminal-viewport__xterm').exists()).toBe(true)
   })
 
   test('mounts the running xterm surface inside a visual shell when session is running', async () => {
@@ -187,7 +186,7 @@ describe('TerminalViewport', () => {
     expect(wrapper.find('.terminal-viewport__shell').exists()).toBe(true)
     expect(wrapper.find('.terminal-viewport__xterm-mount').exists()).toBe(true)
     expect(wrapper.find('.terminal-viewport__xterm-shell').exists()).toBe(false)
-    expect(wrapper.find('.terminal-viewport__overlay').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="terminal-status-bar"]').exists()).toBe(true)
   })
 
   test('running terminal structure keeps the xterm mount inside the visual shell wrapper', async () => {
@@ -467,86 +466,70 @@ describe('TerminalViewport', () => {
     expect(instances.at(-1)?.writes).toContain('session-b-frame')
   })
 
-  test('awaiting_input still renders the live terminal instead of the overlay', async () => {
+  test.each([
+    'bootstrapping',
+    'starting',
+    'running',
+    'turn_complete',
+    'awaiting_input',
+    'degraded',
+    'needs_confirmation',
+    'error',
+    'exited',
+  ] as const)('keeps xterm mounted for %s sessions', async (status) => {
     const { default: TerminalViewport } = await import('./TerminalViewport.vue')
     const wrapper = mount(TerminalViewport, {
       props: {
         project: baseProject,
         session: {
           ...baseSession,
-          status: 'awaiting_input'
+          status
         }
       },
     })
     await flushTerminal()
 
     expect(wrapper.find('.terminal-viewport__xterm').exists()).toBe(true)
-    expect(wrapper.find('.terminal-viewport__overlay').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="terminal-status-bar"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain(status)
   })
 
-  test('turn_complete still renders the live terminal instead of the overlay', async () => {
+  test('status-only changes do not rebuild the terminal instance for the same session', async () => {
     const { default: TerminalViewport } = await import('./TerminalViewport.vue')
     const wrapper = mount(TerminalViewport, {
-      props: {
-        project: baseProject,
-        session: {
-          ...baseSession,
-          status: 'turn_complete'
-        }
-      },
+      props: { project: baseProject, session: baseSession },
     })
     await flushTerminal()
 
+    const { Terminal } = await import('@xterm/xterm')
+    const instances = (Terminal as unknown as { instances: Array<{ writes: string[] }> }).instances
+    expect(instances).toHaveLength(1)
+
+    await wrapper.setProps({
+      session: {
+        ...baseSession,
+        status: 'needs_confirmation',
+        summary: 'Waiting for approval'
+      }
+    })
+    await flushTerminal()
+
+    expect(instances).toHaveLength(1)
     expect(wrapper.find('.terminal-viewport__xterm').exists()).toBe(true)
-    expect(wrapper.find('.terminal-viewport__overlay').exists()).toBe(false)
-  })
+    expect(wrapper.text()).toContain('needs_confirmation')
 
-  test('shows overlay for starting status', async () => {
-    const { default: TerminalViewport } = await import('./TerminalViewport.vue')
-    const session = { ...baseSession, status: 'starting' as const }
-    const wrapper = mount(TerminalViewport, {
-      props: { project: baseProject, session },
+    await wrapper.setProps({
+      session: {
+        ...baseSession,
+        status: 'exited',
+        summary: 'shell exited (0)'
+      }
     })
+    await flushTerminal()
 
-    expect(wrapper.find('.terminal-viewport__overlay').exists()).toBe(true)
-    expect(wrapper.text()).toContain('starting')
-  })
-
-  test('shows overlay for error status', async () => {
-    const { default: TerminalViewport } = await import('./TerminalViewport.vue')
-    const session = { ...baseSession, status: 'error' as const, summary: 'crash' }
-    const wrapper = mount(TerminalViewport, {
-      props: { project: baseProject, session },
-    })
-
-    expect(wrapper.find('.terminal-viewport__overlay').exists()).toBe(true)
-    expect(wrapper.text()).toContain('crash')
-  })
-
-  test('renders all metadata fields in overlay', async () => {
-    const { default: TerminalViewport } = await import('./TerminalViewport.vue')
-    const session = { ...baseSession, status: 'bootstrapping' as const }
-    const wrapper = mount(TerminalViewport, {
-      props: { project: baseProject, session },
-    })
-
-    const text = wrapper.text()
-    expect(text).toContain('Deploy')
-    expect(text).toContain('alpha')
-    expect(text).toContain('D:/alpha')
-    expect(text).toContain('resume-external')
-    expect(text).toContain('ext-123')
-    expect(text).toContain('bootstrapping')
-  })
-
-  test('shows "not bound" when no external session id', async () => {
-    const { default: TerminalViewport } = await import('./TerminalViewport.vue')
-    const session = { ...baseSession, status: 'starting' as const, externalSessionId: null }
-    const wrapper = mount(TerminalViewport, {
-      props: { project: baseProject, session },
-    })
-
-    expect(wrapper.text()).toContain('not bound')
+    expect(instances).toHaveLength(1)
+    expect(wrapper.find('.terminal-viewport__xterm').exists()).toBe(true)
+    expect(wrapper.text()).toContain('exited')
   })
 
   test('uses terminalFontSize from settings store for the xterm instance', async () => {

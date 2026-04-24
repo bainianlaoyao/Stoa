@@ -1,25 +1,21 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, onBeforeUnmount, nextTick, computed } from 'vue'
+import { watch, onMounted, onBeforeUnmount, nextTick, useTemplateRef } from 'vue'
 import '@xterm/xterm/css/xterm.css'
 import { createTerminalRuntime } from '@renderer/terminal/xterm-runtime'
 import { useSettingsStore } from '@renderer/stores/settings'
 import { useI18n } from 'vue-i18n'
 import type { FitAddon } from '@xterm/addon-fit'
 import type { Terminal } from '@xterm/xterm'
-import type { ProjectSummary, SessionStatus, SessionSummary, TerminalDataChunk } from '@shared/project-session'
+import type { ProjectSummary, SessionSummary, TerminalDataChunk } from '@shared/project-session'
 
 const props = defineProps<{
   project: ProjectSummary | null
   session: SessionSummary | null
 }>()
 
-const terminalContainer = ref<HTMLDivElement>()
-const LIVE_TERMINAL_STATUSES = new Set<SessionStatus>(['running', 'turn_complete', 'awaiting_input'])
+const terminalContainer = useTemplateRef<HTMLDivElement>('terminalContainer')
 const settingsStore = useSettingsStore()
 const { t } = useI18n()
-const isLiveTerminal = computed(() => {
-  return props.session ? LIVE_TERMINAL_STATUSES.has(props.session.status) : false
-})
 
 let terminal: Terminal | null = null
 let fitAddon: FitAddon | null = null
@@ -62,7 +58,7 @@ function scheduleTerminalSetup() {
       return
     }
 
-    if (props.session && isLiveTerminal.value) {
+    if (props.session) {
       setupTerminal()
     }
   })
@@ -208,17 +204,17 @@ function setupTerminal() {
 }
 
 watch(
-  [() => props.session?.id ?? null, isLiveTerminal, () => settingsStore.terminalFontSize],
-  ([sessionId, liveTerminal]) => {
+  [() => props.session?.id ?? null, () => settingsStore.terminalFontSize, () => settingsStore.terminalFontFamily],
+  ([sessionId]) => {
     disposeTerminal()
-    if (sessionId && liveTerminal) {
+    if (sessionId) {
       scheduleTerminalSetup()
     }
   }
 )
 
 onMounted(() => {
-  if (isLiveTerminal.value) {
+  if (props.session) {
     scheduleTerminalSetup()
   }
 })
@@ -229,44 +225,24 @@ onBeforeUnmount(disposeTerminal)
 <template>
   <section class="terminal-viewport" data-testid="terminal-viewport">
     <template v-if="project && session">
-      <div v-if="isLiveTerminal" class="terminal-viewport__xterm" data-testid="terminal-xterm">
+      <div class="terminal-viewport__xterm" data-testid="terminal-xterm">
         <div class="terminal-viewport__shell" data-testid="terminal-shell">
+          <header class="terminal-viewport__status-bar" :data-status="session.status" data-testid="terminal-status-bar">
+            <div class="terminal-viewport__status-copy">
+              <p class="terminal-viewport__eyebrow">{{ project.name }}</p>
+              <p class="terminal-viewport__session-title">{{ session.title }}</p>
+              <p class="terminal-viewport__session-summary">{{ session.summary }}</p>
+            </div>
+
+            <div class="terminal-viewport__meta">
+              <span class="terminal-viewport__meta-chip">{{ session.type }}</span>
+              <span class="terminal-viewport__meta-chip terminal-viewport__status" :data-status="session.status">
+                {{ session.status }}
+              </span>
+            </div>
+          </header>
+
           <div class="terminal-viewport__xterm-mount" ref="terminalContainer" data-testid="terminal-xterm-mount" />
-        </div>
-      </div>
-
-      <div v-else class="terminal-viewport__overlay" data-testid="terminal-overlay">
-        <header class="terminal-viewport__header">
-          <div>
-            <p class="terminal-viewport__eyebrow">{{ t('terminal.details') }}</p>
-            <h2>{{ session.title }}</h2>
-          </div>
-          <div class="terminal-viewport__meta">
-            <span>{{ session.type }}</span>
-            <span class="terminal-viewport__status">{{ session.status }}</span>
-          </div>
-        </header>
-
-        <div class="terminal-viewport__details">
-          <p>{{ session.summary }}</p>
-          <dl class="terminal-viewport__field-list">
-            <div>
-              <dt>{{ t('terminal.project') }}</dt>
-              <dd>{{ project.name }}</dd>
-            </div>
-            <div>
-              <dt>{{ t('terminal.path') }}</dt>
-              <dd><code>{{ project.path }}</code></dd>
-            </div>
-            <div>
-              <dt>{{ t('terminal.recovery') }}</dt>
-              <dd>{{ session.recoveryMode }}</dd>
-            </div>
-            <div>
-              <dt>{{ t('terminal.externalSession') }}</dt>
-              <dd><code>{{ session.externalSessionId ?? t('terminal.notBound') }}</code></dd>
-            </div>
-          </dl>
         </div>
       </div>
     </template>
@@ -305,6 +281,9 @@ onBeforeUnmount(disposeTerminal)
   height: 100%;
   width: 100%;
   min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
   padding: var(--terminal-shell-gap);
   border-radius: var(--radius-md);
   background:
@@ -313,6 +292,39 @@ onBeforeUnmount(disposeTerminal)
   border: 1px solid var(--color-terminal-border);
   box-shadow: inset 0 1px 0 var(--color-terminal-shell-highlight);
   overflow: hidden;
+}
+
+.terminal-viewport__status-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-terminal-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-terminal-chip);
+}
+
+.terminal-viewport__status-copy {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.terminal-viewport__session-title,
+.terminal-viewport__session-summary {
+  margin: 0;
+}
+
+.terminal-viewport__session-title {
+  color: var(--color-terminal-text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.terminal-viewport__session-summary {
+  color: var(--color-terminal-soft);
+  font-size: 12px;
 }
 
 .terminal-viewport__xterm-mount {
@@ -342,33 +354,8 @@ onBeforeUnmount(disposeTerminal)
   height: 0;
 }
 
-.terminal-viewport__overlay {
-  display: grid;
-  gap: 16px;
-  padding: 20px 24px;
-  border: 1px solid var(--color-terminal-border);
-  border-radius: var(--radius-md);
-  background: var(--color-terminal-bg);
-  color: var(--color-terminal-text);
-  min-height: 0;
-  overflow: auto;
-}
-
-.terminal-viewport__header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 12px;
-}
-
-.terminal-viewport__header h2 {
-  color: var(--color-terminal-text);
-  font-size: 15px;
-  font-weight: 600;
-}
-
 .terminal-viewport__eyebrow {
-  margin: 0 0 6px;
+  margin: 0;
   color: var(--color-terminal-subtle);
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -378,55 +365,33 @@ onBeforeUnmount(disposeTerminal)
 
 .terminal-viewport__meta {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--color-terminal-muted);
 }
 
-.terminal-viewport__status {
-  padding: 2px 6px;
-  border-radius: 4px;
+.terminal-viewport__meta-chip {
+  padding: 2px 8px;
+  border-radius: 999px;
   background: var(--color-terminal-chip);
+  border: 1px solid var(--color-terminal-border);
 }
 
-.terminal-viewport__details p {
-  margin: 0 0 12px;
-  color: var(--color-terminal-soft);
-  font-size: 13px;
+.terminal-viewport__status[data-status='running'] {
+  color: var(--color-success);
 }
 
-.terminal-viewport__field-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 8px 24px;
-  margin: 0;
+.terminal-viewport__status[data-status='awaiting_input'],
+.terminal-viewport__status[data-status='turn_complete'],
+.terminal-viewport__status[data-status='degraded'],
+.terminal-viewport__status[data-status='needs_confirmation'] {
+  color: var(--color-warning);
 }
 
-.terminal-viewport__field-list div {
-  display: grid;
-  gap: 2px;
-}
-
-.terminal-viewport__field-list dt {
-  font-size: 11px;
-  color: var(--color-terminal-faint);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-.terminal-viewport__field-list dd {
-  margin: 0;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--color-terminal-text);
-}
-
-.terminal-viewport__field-list code {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  background: var(--color-terminal-code);
-  padding: 1px 4px;
-  border-radius: 3px;
+.terminal-viewport__status[data-status='error'],
+.terminal-viewport__status[data-status='exited'] {
+  color: var(--color-error);
 }
 </style>

@@ -9,3 +9,13 @@ export const sessionTelemetryTurnCompleteJourney = defineJourney({
   assert: ['command.sessionStatusVisible', 'terminal.liveSessionPreserved', 'persisted.sessionStatusUpdated'],
   variants: ['canonical', 'claude-hook']
 })
+
+export const sessionTelemetryNeedsConfirmationJourney = defineJourney({
+  id: 'journey.session.telemetry.needs-confirmation',
+  behavior: 'session.telemetry.needs-confirmation',
+  usageMode: 'active_workflow',
+  setup: ['project.withProviderSession', 'session.selectedInCommandSurface'],
+  act: ['post.claude.permissionRequestHook'],
+  assert: ['command.sessionStatusVisible', 'terminal.liveSessionPreserved', 'persisted.sessionStatusUpdated'],
+  variants: ['claude-hook']
+})

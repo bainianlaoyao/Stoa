@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { sessionRestoreBehavior, sessionTelemetryTurnCompleteBehavior } from './session.behavior'
+import {
+  sessionRestoreBehavior,
+  sessionTelemetryNeedsConfirmationBehavior,
+  sessionTelemetryTurnCompleteBehavior
+} from './session.behavior'
 
 describe('session behavior assets', () => {
   it('marks session.restore as critical and recovery-oriented', () => {
@@ -26,5 +30,18 @@ describe('session behavior assets', () => {
     expect(sessionTelemetryTurnCompleteBehavior.invalidPreconditions).toContain('webhook.invalidSecret')
     expect(sessionTelemetryTurnCompleteBehavior.interruptions).toContain('provider.runningEvent.afterTurnComplete')
     expect(sessionTelemetryTurnCompleteBehavior.observationLayers).toEqual(['ui', 'main-debug-state', 'persisted-state'])
+  })
+
+  it('declares needs_confirmation telemetry as a critical active-workflow behavior', () => {
+    expect(sessionTelemetryNeedsConfirmationBehavior.id).toBe('session.telemetry.needs-confirmation')
+    expect(sessionTelemetryNeedsConfirmationBehavior.actor).toBe('system')
+    expect(sessionTelemetryNeedsConfirmationBehavior.coverageBudget).toBe('critical')
+    expect(sessionTelemetryNeedsConfirmationBehavior.expects).toContain('session.status=needs_confirmation')
+    expect(sessionTelemetryNeedsConfirmationBehavior.expects).toContain('terminal.liveSessionPreserved')
+    expect(sessionTelemetryNeedsConfirmationBehavior.invalidPreconditions).toContain('webhook.invalidSecret')
+    expect(sessionTelemetryNeedsConfirmationBehavior.interruptions).toContain(
+      'provider.runningEvent.afterPermissionRequest'
+    )
+    expect(sessionTelemetryNeedsConfirmationBehavior.observationLayers).toEqual(['ui', 'main-debug-state', 'persisted-state'])
   })
 })

@@ -276,6 +276,40 @@ describe('WorkspaceHierarchyPanel', () => {
       expect(dot.classes()).toContain('turn_complete')
     })
 
+    it('renders needs_confirmation as a .route-dot CSS class', () => {
+      const wrapper = mountPanel({
+        hierarchy: [{
+          id: 'project_1',
+          name: 'infra-control',
+          path: 'D:/infra-control',
+          active: true,
+          archivedSessions: [],
+          createdAt: '2026-04-24T12:00:00.000Z',
+          updatedAt: '2026-04-24T12:00:00.000Z',
+          sessions: [{
+            id: 'session_permission_request',
+            title: 'permission request',
+            type: 'claude-code',
+            status: 'needs_confirmation',
+            active: true,
+            summary: 'PermissionRequest',
+            projectId: 'project_1',
+            recoveryMode: 'resume-external',
+            externalSessionId: 'ext-1',
+            createdAt: '2026-04-24T12:00:00.000Z',
+            updatedAt: '2026-04-24T12:00:00.000Z',
+            lastActivatedAt: '2026-04-24T12:00:00.000Z',
+            archived: false
+          }]
+        }],
+        activeProjectId: 'project_1',
+        activeSessionId: 'session_permission_request'
+      })
+
+      const dot = wrapper.find('.route-item.child .route-dot')
+      expect(dot.classes()).toContain('needs_confirmation')
+    })
+
     it('renders "+" .route-add-session button per project', () => {
       const wrapper = mountPanel()
       const btns = wrapper.findAll('.route-add-session')

@@ -213,6 +213,53 @@ test.describe('Electron push and webhook journeys', () => {
     }
   })
 
+  test('claude PermissionRequest hook keeps the terminal mounted', async () => {
+    const app = await launchElectronApp()
+
+    try {
+      const projectRow = await createProject(app, {
+        name: 'claude-permission-project',
+        path: join(app.stateDir, 'claude-permission-project')
+      })
+      const session = await createSession(app.page, projectRow, {
+        type: 'claude-code'
+      })
+
+      const debugState = await getMainE2EDebugState(app.electronApp)
+      const sessionState = debugState?.snapshot?.sessions.find(candidate => candidate.title === session.title)
+      const secret = sessionState ? debugState?.sessionSecrets[sessionState.id] : undefined
+
+      const response = await postClaudeHookEvent({
+        port: debugState!.webhookPort!,
+        secret: secret!,
+        sessionId: sessionState!.id,
+        projectId: sessionState!.projectId,
+        body: {
+          hook_event_name: 'PermissionRequest'
+        }
+      })
+
+      expect(response.status).toBe(202)
+      await expect(session.row.locator('[data-testid="session-status-dot"][data-status="needs_confirmation"]')).toBeVisible()
+
+      const terminalViewport = app.page.getByTestId('terminal-viewport')
+      await expect(terminalViewport.getByTestId('terminal-xterm')).toBeVisible()
+      await expect(terminalViewport.getByTestId('terminal-status-bar')).toBeVisible()
+
+      await expect.poll(async () => {
+        const nextDebugState = await getMainE2EDebugState(app.electronApp)
+        return nextDebugState?.snapshot?.sessions.find(candidate => candidate.id === sessionState!.id) ?? null
+      }).toMatchObject({
+        status: 'needs_confirmation',
+        summary: 'PermissionRequest'
+      })
+    } finally {
+      const { stateDir } = app
+      await app.close()
+      await cleanupStateDir(stateDir)
+    }
+  })
+
   test('invalid webhook secret does not update UI', async () => {
     const app = await launchElectronApp()
 

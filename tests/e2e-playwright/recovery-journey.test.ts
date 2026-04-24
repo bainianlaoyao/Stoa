@@ -69,7 +69,7 @@ test.describe('Electron recovery journeys', () => {
       await expect(terminalViewport).toBeVisible()
       await expect(terminalViewport.getByTestId('terminal-empty-state')).toHaveCount(0)
       await expect(terminalViewport.getByTestId('terminal-xterm')).toBeVisible()
-      await expect(terminalViewport.getByTestId('terminal-overlay')).toHaveCount(0)
+      await expect(terminalViewport.getByTestId('terminal-status-bar')).toBeVisible()
 
       await app.page.locator('[data-activity-item="settings"]').click()
       await expect(app.page.locator('[data-surface="settings"]')).toBeVisible()
@@ -116,16 +116,8 @@ test.describe('Electron recovery journeys', () => {
       await expect(recoveredSessionRow).toHaveAttribute('data-session-type', 'opencode')
 
       const terminalViewport = app.page.getByTestId('terminal-viewport')
-      const details = terminalViewport.getByTestId('terminal-overlay')
-
-      if (recoveredSession.status === 'running' || recoveredSession.status === 'awaiting_input') {
-        await expect(terminalViewport.getByTestId('terminal-xterm')).toBeVisible()
-        await expect(details).toHaveCount(0)
-      } else {
-        await expect(details).toBeVisible()
-        // Verify overlay contains recovery info via data attributes
-        await expect(details).toBeVisible()
-      }
+      await expect(terminalViewport.getByTestId('terminal-xterm')).toBeVisible()
+      await expect(terminalViewport.getByTestId('terminal-status-bar')).toBeVisible()
 
       await app.page.locator('[data-activity-item="settings"]').click()
       await expect(app.page.locator('[data-surface="settings"]')).toBeVisible()
