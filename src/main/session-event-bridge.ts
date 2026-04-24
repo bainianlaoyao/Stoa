@@ -94,15 +94,17 @@ export class SessionEventBridge {
 
   private toSessionStatePatch(event: CanonicalSessionEvent): SessionStatePatchEvent {
     const status = event.payload.status ?? 'running'
+    const session = this.manager.snapshot().sessions.find((candidate) => candidate.id === event.session_id)
     return {
       sessionId: event.session_id,
-      sequence: 0,
+      sequence: (session?.lastStateSequence ?? 0) + 1,
       occurredAt: event.timestamp,
       intent: mapStatusToIntent(status),
       source: 'provider',
       sourceEventType: event.event_type,
       summary: event.payload.summary ?? event.event_type,
-      externalSessionId: event.payload.externalSessionId
+      externalSessionId: event.payload.externalSessionId,
+      status
     }
   }
 

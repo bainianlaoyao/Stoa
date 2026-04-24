@@ -1,6 +1,6 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
-import type { BootstrapState, ProjectSummary, SessionStatus, SessionSummary } from '@shared/project-session'
+import type { BootstrapState, ProjectSummary, SessionSummary } from '@shared/project-session'
 import { buildSessionPresenceSnapshot } from '@shared/observability-projection'
 import type {
   AppObservabilitySnapshot,
@@ -235,12 +235,10 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
     syncSessionPresenceFromSummary(session)
   }
 
-  function updateSession(sessionId: string, patch: { status?: SessionStatus; summary?: string; externalSessionId?: string | null }): void {
+  function updateSession(sessionId: string, patch: Partial<SessionSummary>): void {
     const session = sessions.value.find((s) => s.id === sessionId)
     if (!session) return
-    if (patch.status !== undefined) session.status = patch.status
-    if (patch.summary !== undefined) session.summary = patch.summary
-    if (patch.externalSessionId !== undefined) session.externalSessionId = patch.externalSessionId
+    Object.assign(session, patch)
     syncSessionPresenceFromSummary(session)
   }
 

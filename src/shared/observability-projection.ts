@@ -23,6 +23,7 @@ export function mapStatusToPresencePhase(status: SessionStatus): SessionPresence
     case 'running':
       return 'running'
     case 'turn_complete':
+      return 'complete'
     case 'awaiting_input':
       return 'ready'
     case 'needs_confirmation':
@@ -39,9 +40,11 @@ export function mapStatusToPresencePhase(status: SessionStatus): SessionPresence
 export function mapPhaseToTone(phase: SessionPresencePhase): ObservabilityTone {
   switch (phase) {
     case 'ready':
-      return 'accent'
+      return 'neutral'
     case 'running':
       return 'success'
+    case 'complete':
+      return 'accent'
     case 'blocked':
       return 'warning'
     case 'failed':
@@ -64,6 +67,8 @@ export function phaseLabel(phase: SessionPresencePhase): string {
       return 'Working'
     case 'ready':
       return 'Ready'
+    case 'complete':
+      return 'Complete'
     case 'blocked':
       return 'Blocked'
     case 'failed':

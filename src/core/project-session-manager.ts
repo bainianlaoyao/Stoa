@@ -529,6 +529,9 @@ export class ProjectSessionManager {
 
     const summary = shouldApplyPatchSummary(session, patch) ? patch.summary : session.summary
     Object.assign(session, reduced, { summary })
+    if (patch.status !== undefined) {
+      session.status = patch.status
+    }
     if (patch.externalSessionId !== undefined) {
       session.externalSessionId = patch.externalSessionId
     }

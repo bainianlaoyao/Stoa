@@ -53,6 +53,7 @@ export interface SessionStatePatchEvent {
   blockingReason?: BlockingReason | null
   summary: string
   externalSessionId?: string | null
+  status?: SessionStatus
 }
 
 export interface ProjectSummary {
