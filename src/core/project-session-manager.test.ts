@@ -683,7 +683,7 @@ describe('ProjectSessionManager', () => {
       expect(updated.externalSessionId).toBeNull()
     })
 
-    test('markSessionRunning does not downgrade richer canonical states but can still refresh externalSessionId', async () => {
+    test('markSessionRunning replaces ready canonical states when runtime becomes active again', async () => {
       const globalStatePath = await createTempGlobalStatePath()
       const projectDir = await createTempProjectDir()
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
@@ -694,9 +694,32 @@ describe('ProjectSessionManager', () => {
       await manager.markSessionRunning(session.id, 'opencode-real-456')
 
       const updated = manager.snapshot().sessions.find(s => s.id === session.id)!
-      expect(updated.status).toBe('awaiting_input')
-      expect(updated.summary).toBe('session.idle')
+      expect(updated.status).toBe('running')
+      expect(updated.summary).toBe('Session running')
       expect(updated.externalSessionId).toBe('opencode-real-456')
+    })
+
+    test('markSessionRunning preserves blocked and failed states while refreshing externalSessionId', async () => {
+      const globalStatePath = await createTempGlobalStatePath()
+      const projectDir = await createTempProjectDir()
+      const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
+      const project = await manager.createProject({ path: projectDir, name: 'test' })
+      const blockedSession = await manager.createSession({ projectId: project.id, type: 'claude-code', title: 'blocked' })
+      const failedSession = await manager.createSession({ projectId: project.id, type: 'claude-code', title: 'failed' })
+
+      await manager.applySessionEvent(blockedSession.id, 'needs_confirmation', 'PermissionRequest', 'claude-real-123')
+      await manager.applySessionEvent(failedSession.id, 'error', 'Provider error', 'claude-real-456')
+      await manager.markSessionRunning(blockedSession.id, 'claude-real-789')
+      await manager.markSessionRunning(failedSession.id, 'claude-real-999')
+
+      const updatedBlocked = manager.snapshot().sessions.find(s => s.id === blockedSession.id)!
+      const updatedFailed = manager.snapshot().sessions.find(s => s.id === failedSession.id)!
+      expect(updatedBlocked.status).toBe('needs_confirmation')
+      expect(updatedBlocked.summary).toBe('PermissionRequest')
+      expect(updatedBlocked.externalSessionId).toBe('claude-real-789')
+      expect(updatedFailed.status).toBe('error')
+      expect(updatedFailed.summary).toBe('Provider error')
+      expect(updatedFailed.externalSessionId).toBe('claude-real-999')
     })
 
     test('markSessionExited updates status and summary', async () => {

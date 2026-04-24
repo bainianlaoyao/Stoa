@@ -56,6 +56,32 @@ describe('hook event adapter', () => {
     })
   })
 
+  test.each(['UserPromptSubmit', 'PreToolUse'] as const)(
+    'adapts Claude %s hook into running canonical event',
+    (hookEventName) => {
+      const event = adaptClaudeCodeHook(
+        {
+          hook_event_name: hookEventName,
+          tool_name: hookEventName === 'PreToolUse' ? 'Bash' : undefined
+        },
+        {
+          sessionId: 'session_internal_running',
+          projectId: 'project_internal_running'
+        }
+      )
+
+      expect(event).toMatchObject({
+        event_type: `claude-code.${hookEventName}`,
+        session_id: 'session_internal_running',
+        project_id: 'project_internal_running',
+        payload: {
+          status: 'running',
+          summary: hookEventName
+        }
+      })
+    }
+  )
+
   test('adapts Claude PermissionRequest hook into needs_confirmation canonical event', () => {
     const event = adaptClaudeCodeHook(
       {
@@ -110,7 +136,7 @@ describe('hook event adapter', () => {
 
   test('returns null for unsupported Claude hook events', () => {
     const event = adaptClaudeCodeHook(
-      { hook_event_name: 'PreToolUse' },
+      { hook_event_name: 'PostToolUse' },
       {
         sessionId: 'session_internal_3',
         projectId: 'project_internal_3'

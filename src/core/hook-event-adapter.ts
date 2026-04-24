@@ -15,6 +15,8 @@ export function adaptClaudeCodeHook(
 
   const status =
     hookEventName === 'SessionStart'
+      || hookEventName === 'UserPromptSubmit'
+      || hookEventName === 'PreToolUse'
       ? 'running'
       : hookEventName === 'Stop'
       ? 'turn_complete'

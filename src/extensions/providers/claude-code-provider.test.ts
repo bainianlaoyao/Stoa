@@ -134,6 +134,8 @@ describe('claude-code provider', () => {
       expect(content).toContain('STOA_SESSION_ID')
       expect(content).toContain('STOA_PROJECT_ID')
       expect(content).toContain('STOA_SESSION_SECRET')
+      expect(content).toContain('"UserPromptSubmit"')
+      expect(content).toContain('"PreToolUse"')
       expect(content).not.toContain('session_claude_env')
       expect(content).not.toContain('secret-env')
     } finally {

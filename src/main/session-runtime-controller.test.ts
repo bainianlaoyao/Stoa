@@ -214,12 +214,13 @@ describe('SessionRuntimeController', () => {
     ])
     expect(sent[0]!.data).toEqual({
       sessionId: session.id,
-      status: 'awaiting_input',
-      summary: 'session.idle'
+      status: 'running',
+      summary: 'Session running'
     })
     expect(sent[1]!.data).toMatchObject({
       sessionId: session.id,
-      canonicalStatus: 'awaiting_input',
+      canonicalStatus: 'running',
+      phase: 'working',
       confidence: 'authoritative',
       recoveryPointerState: 'trusted'
     })
@@ -292,7 +293,7 @@ describe('SessionRuntimeController', () => {
     })
   })
 
-  test('markSessionRunning pushes the actual preserved manager state when richer status already won', async () => {
+  test('markSessionRunning pushes running when runtime becomes active after ready status', async () => {
     const { window: win, sent } = createMockWindow()
     const project = await manager.createProject({ path: await createTestWorkspace('ctrl-'), name: 'test' })
     const session = await manager.createSession({ projectId: project.id, type: 'opencode', title: 'S1' })
@@ -309,18 +310,18 @@ describe('SessionRuntimeController', () => {
     await controller.markSessionRunning(session.id, 'opencode-real-456')
 
     const updated = manager.snapshot().sessions[0]!
-    expect(updated.status).toBe('awaiting_input')
-    expect(updated.summary).toBe('session.idle')
+    expect(updated.status).toBe('running')
+    expect(updated.summary).toBe('Session running')
     expect(updated.externalSessionId).toBe('opencode-real-456')
     expect(sent).toHaveLength(1)
     expect(sent[0]!.data).toEqual({
       sessionId: session.id,
-      status: 'awaiting_input',
-      summary: 'session.idle'
+      status: 'running',
+      summary: 'Session running'
     })
   })
 
-  test('markSessionRunning does not regress turn_complete sessions back to running', async () => {
+  test('markSessionRunning replaces turn_complete sessions when runtime becomes active again', async () => {
     const { window: win, sent } = createMockWindow()
     const project = await manager.createProject({ path: await createTestWorkspace('ctrl-'), name: 'test' })
     const session = await manager.createSession({ projectId: project.id, type: 'codex', title: 'S1' })
@@ -337,14 +338,14 @@ describe('SessionRuntimeController', () => {
     await controller.markSessionRunning(session.id, 'codex-real-456')
 
     const updated = manager.snapshot().sessions[0]!
-    expect(updated.status).toBe('turn_complete')
-    expect(updated.summary).toBe('Turn complete')
+    expect(updated.status).toBe('running')
+    expect(updated.summary).toBe('Session running')
     expect(updated.externalSessionId).toBe('codex-real-456')
     expect(sent).toHaveLength(1)
     expect(sent[0]!.data).toEqual({
       sessionId: session.id,
-      status: 'turn_complete',
-      summary: 'Turn complete'
+      status: 'running',
+      summary: 'Session running'
     })
   })
 

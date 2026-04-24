@@ -3,6 +3,8 @@ import { join } from 'node:path'
 import type { CanonicalSessionEvent, ProviderCommand, ProviderCommandContext } from '@shared/project-session'
 import type { ProviderDefinition, ProviderRuntimeTarget } from './index'
 
+const CLAUDE_HOOK_EVENTS = ['UserPromptSubmit', 'PreToolUse', 'Stop', 'PermissionRequest'] as const
+
 function claudeCommand(context: ProviderCommandContext): string {
   const configuredPath = context.providerPath?.trim()
   return configuredPath && configuredPath.length > 0 ? configuredPath : 'claude'
@@ -33,46 +35,27 @@ function createCommand(target: ProviderRuntimeTarget, context: ProviderCommandCo
 async function writeSharedClaudeHooks(target: ProviderRuntimeTarget, context: ProviderCommandContext): Promise<void> {
   const claudeDir = join(target.path, '.claude')
   await mkdir(claudeDir, { recursive: true })
+  const httpHook = {
+    matcher: '*',
+    hooks: [{
+      type: 'http',
+      url: `http://127.0.0.1:${context.webhookPort}/hooks/claude-code`,
+      headers: {
+        'x-stoa-session-id': '${STOA_SESSION_ID}',
+        'x-stoa-project-id': '${STOA_PROJECT_ID}',
+        'x-stoa-secret': '${STOA_SESSION_SECRET}'
+      },
+      allowedEnvVars: [
+        'STOA_SESSION_ID',
+        'STOA_PROJECT_ID',
+        'STOA_SESSION_SECRET'
+      ],
+      timeout: 5
+    }]
+  }
 
   const settings = {
-    hooks: {
-      Stop: [{
-        matcher: '*',
-        hooks: [{
-          type: 'http',
-          url: `http://127.0.0.1:${context.webhookPort}/hooks/claude-code`,
-          headers: {
-            'x-stoa-session-id': '${STOA_SESSION_ID}',
-            'x-stoa-project-id': '${STOA_PROJECT_ID}',
-            'x-stoa-secret': '${STOA_SESSION_SECRET}'
-          },
-          allowedEnvVars: [
-            'STOA_SESSION_ID',
-            'STOA_PROJECT_ID',
-            'STOA_SESSION_SECRET'
-          ],
-          timeout: 5
-        }]
-      }],
-      PermissionRequest: [{
-        matcher: '*',
-        hooks: [{
-          type: 'http',
-          url: `http://127.0.0.1:${context.webhookPort}/hooks/claude-code`,
-          headers: {
-            'x-stoa-session-id': '${STOA_SESSION_ID}',
-            'x-stoa-project-id': '${STOA_PROJECT_ID}',
-            'x-stoa-secret': '${STOA_SESSION_SECRET}'
-          },
-          allowedEnvVars: [
-            'STOA_SESSION_ID',
-            'STOA_PROJECT_ID',
-            'STOA_SESSION_SECRET'
-          ],
-          timeout: 5
-        }]
-      }]
-    }
+    hooks: Object.fromEntries(CLAUDE_HOOK_EVENTS.map((eventName) => [eventName, [httpHook]]))
   }
 
   await writeFile(

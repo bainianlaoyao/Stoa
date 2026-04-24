@@ -264,6 +264,63 @@ test.describe('Electron push and webhook journeys', () => {
     }
   })
 
+  test('claude activity hook moves a ready session back to running', async () => {
+    const app = await launchElectronApp()
+
+    try {
+      const projectRow = await createProject(app, {
+        name: 'claude-activity-project',
+        path: join(app.stateDir, 'claude-activity-project')
+      })
+      const session = await createSession(app.page, projectRow, {
+        type: 'claude-code'
+      })
+
+      const initialDebugState = await getMainE2EDebugState(app.electronApp)
+      const initialSessionState = initialDebugState?.snapshot?.sessions.find(candidate => candidate.title === session.title)
+      expect(initialSessionState).toBeDefined()
+      await waitForLiveSessionStatus(app.electronApp, initialSessionState!.id)
+
+      const debugState = await getMainE2EDebugState(app.electronApp)
+      const sessionState = debugState?.snapshot?.sessions.find(candidate => candidate.id === initialSessionState!.id)
+      const secret = sessionState ? debugState?.sessionSecrets[sessionState.id] : undefined
+
+      const stopResponse = await postClaudeHookEvent({
+        port: debugState!.webhookPort!,
+        secret: secret!,
+        sessionId: sessionState!.id,
+        projectId: sessionState!.projectId,
+        body: {
+          hook_event_name: 'Stop'
+        }
+      })
+
+      expect(stopResponse.status).toBe(202)
+      await expect(session.row.locator('[data-testid="session-status-dot"]')).toHaveAttribute('data-phase', 'ready')
+
+      const activityResponse = await postClaudeHookEvent({
+        port: debugState!.webhookPort!,
+        secret: secret!,
+        sessionId: sessionState!.id,
+        projectId: sessionState!.projectId,
+        body: {
+          hook_event_name: 'UserPromptSubmit'
+        }
+      })
+
+      expect(activityResponse.status).toBe(202)
+      const statusDot = session.row.locator('[data-testid="session-status-dot"]')
+      await expect(statusDot).toHaveAttribute('data-status', 'running')
+      await expect(statusDot).toHaveAttribute('data-phase', 'working')
+      await expect(statusDot).toHaveAttribute('data-tone', 'success')
+      await expect(session.row.locator('.route-time')).toContainText('Running')
+    } finally {
+      const { stateDir } = app
+      await app.close()
+      await cleanupStateDir(stateDir)
+    }
+  })
+
   test('claude PermissionRequest hook keeps the terminal mounted', async () => {
     const app = await launchElectronApp()
 
