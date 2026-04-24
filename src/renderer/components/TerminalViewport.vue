@@ -61,7 +61,8 @@ function scheduleTerminalSetup() {
       return
     }
 
-    await (document.fonts?.ready ?? Promise.resolve())
+    const fontStr = `${settingsStore.terminalFontSize}px "${settingsStore.terminalFontFamily}"`
+    await (document.fonts?.load(fontStr) ?? Promise.resolve())
 
     if (props.session) {
       setupTerminal()
