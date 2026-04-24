@@ -69,7 +69,7 @@
   --shadow-success-ring: 0 0 0 2px rgba(16, 185, 129, 0.16);
 
   /* Font tokens */
-  --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans SC', sans-serif;
   --font-mono: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
 
   /* Font size tokens */
