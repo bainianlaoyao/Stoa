@@ -174,8 +174,7 @@ describe('AppShell', () => {
     expect(wrapper.find('[data-command-surface="true"]').exists()).toBe(true)
     expect(wrapper.find('.terminal-empty-state').exists()).toBe(false)
     expect(wrapper.find('[data-testid="terminal-xterm"]').exists()).toBe(true)
-    expect(wrapper.find('[data-testid="terminal-status-bar"]').exists()).toBe(true)
-    expect(wrapper.find('[data-testid="terminal-viewport"] [data-testid="terminal-status-bar"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="terminal-status-bar"]').exists()).toBe(false)
   })
 
   it('switches to archive surface when the archive activity is selected', async () => {

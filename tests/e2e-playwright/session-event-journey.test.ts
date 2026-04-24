@@ -130,8 +130,13 @@ test.describe('Electron push and webhook journeys', () => {
         type: 'opencode'
       })
 
+      const initialDebugState = await getMainE2EDebugState(app.electronApp)
+      const initialSessionState = initialDebugState?.snapshot?.sessions.find(candidate => candidate.title === session.title)
+      expect(initialSessionState).toBeDefined()
+      await waitForLiveSessionStatus(app.electronApp, initialSessionState!.id)
+
       const debugState = await getMainE2EDebugState(app.electronApp)
-      const sessionState = debugState?.snapshot?.sessions.find(candidate => candidate.title === session.title)
+      const sessionState = debugState?.snapshot?.sessions.find(candidate => candidate.id === initialSessionState!.id)
       const secret = sessionState ? debugState?.sessionSecrets[sessionState.id] : undefined
 
       const response = await postWebhookEvent({
@@ -174,8 +179,13 @@ test.describe('Electron push and webhook journeys', () => {
         type: 'codex'
       })
 
+      const initialDebugState = await getMainE2EDebugState(app.electronApp)
+      const initialSessionState = initialDebugState?.snapshot?.sessions.find(candidate => candidate.title === session.title)
+      expect(initialSessionState).toBeDefined()
+      await waitForLiveSessionStatus(app.electronApp, initialSessionState!.id)
+
       const debugState = await getMainE2EDebugState(app.electronApp)
-      const sessionState = debugState?.snapshot?.sessions.find(candidate => candidate.title === session.title)
+      const sessionState = debugState?.snapshot?.sessions.find(candidate => candidate.id === initialSessionState!.id)
       const secret = sessionState ? debugState?.sessionSecrets[sessionState.id] : undefined
 
       const response = await postWebhookEvent({
@@ -218,8 +228,13 @@ test.describe('Electron push and webhook journeys', () => {
         type: 'claude-code'
       })
 
+      const initialDebugState = await getMainE2EDebugState(app.electronApp)
+      const initialSessionState = initialDebugState?.snapshot?.sessions.find(candidate => candidate.title === session.title)
+      expect(initialSessionState).toBeDefined()
+      await waitForLiveSessionStatus(app.electronApp, initialSessionState!.id)
+
       const debugState = await getMainE2EDebugState(app.electronApp)
-      const sessionState = debugState?.snapshot?.sessions.find(candidate => candidate.title === session.title)
+      const sessionState = debugState?.snapshot?.sessions.find(candidate => candidate.id === initialSessionState!.id)
       const secret = sessionState ? debugState?.sessionSecrets[sessionState.id] : undefined
 
       const response = await postClaudeHookEvent({
@@ -261,8 +276,13 @@ test.describe('Electron push and webhook journeys', () => {
         type: 'claude-code'
       })
 
+      const initialDebugState = await getMainE2EDebugState(app.electronApp)
+      const initialSessionState = initialDebugState?.snapshot?.sessions.find(candidate => candidate.title === session.title)
+      expect(initialSessionState).toBeDefined()
+      await waitForLiveSessionStatus(app.electronApp, initialSessionState!.id)
+
       const debugState = await getMainE2EDebugState(app.electronApp)
-      const sessionState = debugState?.snapshot?.sessions.find(candidate => candidate.title === session.title)
+      const sessionState = debugState?.snapshot?.sessions.find(candidate => candidate.id === initialSessionState!.id)
       const secret = sessionState ? debugState?.sessionSecrets[sessionState.id] : undefined
 
       const response = await postClaudeHookEvent({
@@ -280,7 +300,7 @@ test.describe('Electron push and webhook journeys', () => {
       await expect(statusDot).toHaveAttribute('data-status', 'needs_confirmation')
       await expect(statusDot).toHaveAttribute('data-phase', 'blocked')
       await expect(statusDot).toHaveAttribute('data-tone', 'warning')
-      await expect(app.page.getByTestId('terminal-status-bar')).toContainText('Blocked')
+      await expect(app.page.getByTestId('terminal-status-bar')).toHaveCount(0)
 
       const terminalViewport = app.page.getByTestId('terminal-viewport')
       await expect(terminalViewport.getByTestId('terminal-xterm')).toBeVisible()

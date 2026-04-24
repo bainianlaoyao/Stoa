@@ -17,6 +17,16 @@ import type {
 } from '@shared/observability'
 import type { UpdateState } from '@shared/update-state'
 
+interface PreloadKeyboardEvent {
+  key: string
+}
+
+interface PreloadDocument {
+  addEventListener(type: 'keydown', listener: (event: PreloadKeyboardEvent) => void, options?: boolean): void
+}
+
+declare const document: PreloadDocument
+
 const api: RendererApi = {
   async getBootstrapState() {
     return ipcRenderer.invoke(IPC_CHANNELS.projectBootstrap)
@@ -154,7 +164,7 @@ contextBridge.exposeInMainWorld('stoa', api)
   const DEBUG_CODE = '114514'
   let keySequence = ''
 
-  document.addEventListener('keydown', (e) => {
+  document.addEventListener('keydown', (e: PreloadKeyboardEvent) => {
     const ch = e.key
     if (ch.length !== 1 || ch < '0' || ch > '9') {
       keySequence = ''

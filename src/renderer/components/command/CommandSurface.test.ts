@@ -123,7 +123,7 @@ describe('CommandSurface', () => {
     expect(statusDot.attributes('data-tone')).toBe('success')
   })
 
-  it('renders blocked observability in the row dot and active terminal status bar', () => {
+  it('renders blocked observability in the row dot without adding a terminal top bar', () => {
     const pinia = createPinia()
     setActivePinia(pinia)
     const store = useWorkspaceStore(pinia)
@@ -155,14 +155,12 @@ describe('CommandSurface', () => {
     })
 
     const statusDot = wrapper.find('[data-testid="session-status-dot"]')
-    const terminalStatusBar = wrapper.find('[data-testid="terminal-status-bar"]')
     const terminalViewport = wrapper.find('[data-testid="terminal-viewport"]')
 
     expect(statusDot.attributes('data-status')).toBe('running')
     expect(statusDot.attributes('data-phase')).toBe('blocked')
     expect(statusDot.attributes('data-tone')).toBe('warning')
-    expect(terminalStatusBar.exists()).toBe(true)
-    expect(terminalStatusBar.text()).toContain('Blocked')
+    expect(wrapper.find('[data-testid="terminal-status-bar"]').exists()).toBe(false)
     expect(terminalViewport.find('[data-testid="terminal-status-bar"]').exists()).toBe(false)
   })
 
