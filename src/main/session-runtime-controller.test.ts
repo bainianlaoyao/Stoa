@@ -166,6 +166,34 @@ describe('SessionRuntimeController', () => {
     })
   })
 
+  test('markSessionRunning does not regress turn_complete sessions back to running', async () => {
+    const { window: win, sent } = createMockWindow()
+    const project = await manager.createProject({ path: await createTestWorkspace('ctrl-'), name: 'test' })
+    const session = await manager.createSession({ projectId: project.id, type: 'codex', title: 'S1' })
+    const controller = new SessionRuntimeController(manager, () => win)
+
+    await controller.applySessionEvent({
+      sessionId: session.id,
+      status: 'turn_complete',
+      summary: 'Turn complete',
+      externalSessionId: 'codex-real-123'
+    })
+    sent.length = 0
+
+    await controller.markSessionRunning(session.id, 'codex-real-456')
+
+    const updated = manager.snapshot().sessions[0]!
+    expect(updated.status).toBe('turn_complete')
+    expect(updated.summary).toBe('Turn complete')
+    expect(updated.externalSessionId).toBe('codex-real-456')
+    expect(sent).toHaveLength(1)
+    expect(sent[0]!.data).toEqual({
+      sessionId: session.id,
+      status: 'turn_complete',
+      summary: 'Turn complete'
+    })
+  })
+
   test('appendTerminalData pushes terminal data to renderer', async () => {
     const { window: win, sent } = createMockWindow()
 

@@ -1,5 +1,5 @@
 import { createReadStream } from 'node:fs'
-import { readdir, stat } from 'node:fs/promises'
+import { mkdir, readdir, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { createInterface } from 'node:readline'
@@ -18,13 +18,76 @@ function codexCommand(context: ProviderCommandContext): string {
   return configuredPath && configuredPath.length > 0 ? configuredPath : 'codex'
 }
 
+function createProviderEnv(target: ProviderRuntimeTarget, context: ProviderCommandContext): Record<string, string> {
+  return {
+    ...process.env as Record<string, string>,
+    STOA_SESSION_ID: target.session_id,
+    STOA_PROJECT_ID: target.project_id,
+    STOA_SESSION_SECRET: context.sessionSecret,
+    STOA_WEBHOOK_PORT: String(context.webhookPort),
+    STOA_PROVIDER_PORT: String(context.providerPort)
+  }
+}
+
 function createCommand(target: ProviderRuntimeTarget, context: ProviderCommandContext, args: string[]): ProviderCommand {
   return {
     command: codexCommand(context),
     args,
     cwd: target.path,
-    env: process.env as Record<string, string>
+    env: createProviderEnv(target, context)
   }
+}
+
+async function writeSharedNotifySidecar(target: ProviderRuntimeTarget): Promise<void> {
+  const codexDir = join(target.path, '.codex')
+  await mkdir(codexDir, { recursive: true })
+
+  await writeFile(
+    join(codexDir, 'config.toml'),
+    'notify = ["node", ".codex/notify-stoa.mjs"]\n',
+    'utf-8'
+  )
+
+  await writeFile(
+    join(codexDir, 'notify-stoa.mjs'),
+    `const sessionId = process.env.STOA_SESSION_ID
+const projectId = process.env.STOA_PROJECT_ID
+const sessionSecret = process.env.STOA_SESSION_SECRET
+const webhookPort = process.env.STOA_WEBHOOK_PORT
+
+const payload = process.argv[2]
+if (!sessionId || !projectId || !sessionSecret || !webhookPort || !payload) {
+  process.exit(0)
+}
+
+const parsed = JSON.parse(payload)
+if (!parsed || typeof parsed !== 'object' || parsed.type !== 'agent-turn-complete') {
+  process.exit(0)
+}
+
+await fetch(\`http://127.0.0.1:\${webhookPort}/events\`, {
+  method: 'POST',
+  headers: {
+    'content-type': 'application/json',
+    'x-stoa-secret': sessionSecret
+  },
+  body: JSON.stringify({
+    event_version: 1,
+    event_id: String(parsed['turn-id'] ?? parsed['turn_id'] ?? crypto.randomUUID()),
+    event_type: String(parsed.type),
+    timestamp: new Date().toISOString(),
+    session_id: sessionId,
+    project_id: projectId,
+    source: 'provider-adapter',
+    payload: {
+      status: 'turn_complete',
+      summary: String(parsed.type)
+    }
+  })
+})
+`.replaceAll('\n', '\n'),
+    'utf-8'
+  )
 }
 
 function normalizePath(path: string): string {
@@ -137,7 +200,7 @@ export function createCodexProvider(): ProviderDefinition {
       return true
     },
     supportsStructuredEvents() {
-      return false
+      return true
     },
     async buildStartCommand(target, context) {
       return createCommand(target, context, [])
@@ -151,7 +214,9 @@ export function createCodexProvider(): ProviderDefinition {
     resolveSessionId(_event: CanonicalSessionEvent) {
       return null
     },
-    async installSidecar() {},
+    async installSidecar(target) {
+      await writeSharedNotifySidecar(target)
+    },
     async discoverExternalSessionIdAfterStart(target, context) {
       const sessionRoot = join(codexHome(), 'sessions')
       let recentFiles: Array<{ file: string; modifiedAt: number }> = []

@@ -14,7 +14,7 @@ const props = defineProps<{
 }>()
 
 const terminalContainer = ref<HTMLDivElement>()
-const LIVE_TERMINAL_STATUSES = new Set<SessionStatus>(['running', 'awaiting_input'])
+const LIVE_TERMINAL_STATUSES = new Set<SessionStatus>(['running', 'turn_complete', 'awaiting_input'])
 const settingsStore = useSettingsStore()
 const { t } = useI18n()
 const isLiveTerminal = computed(() => {

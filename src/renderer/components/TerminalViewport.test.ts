@@ -479,6 +479,23 @@ describe('TerminalViewport', () => {
     expect(wrapper.find('.terminal-viewport__overlay').exists()).toBe(false)
   })
 
+  test('turn_complete still renders the live terminal instead of the overlay', async () => {
+    const { default: TerminalViewport } = await import('./TerminalViewport.vue')
+    const wrapper = mount(TerminalViewport, {
+      props: {
+        project: baseProject,
+        session: {
+          ...baseSession,
+          status: 'turn_complete'
+        }
+      },
+    })
+    await flushTerminal()
+
+    expect(wrapper.find('.terminal-viewport__xterm').exists()).toBe(true)
+    expect(wrapper.find('.terminal-viewport__overlay').exists()).toBe(false)
+  })
+
   test('shows overlay for starting status', async () => {
     const { default: TerminalViewport } = await import('./TerminalViewport.vue')
     const session = { ...baseSession, status: 'starting' as const }

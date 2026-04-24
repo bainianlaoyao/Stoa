@@ -1,6 +1,7 @@
 import express, { type Express } from 'express'
 import type { AddressInfo } from 'node:net'
 import type { CanonicalSessionEvent } from '@shared/project-session'
+import { adaptClaudeCodeHook } from './hook-event-adapter'
 
 export interface LocalWebhookServerOptions {
   onEvent?: (event: CanonicalSessionEvent) => Promise<void> | void
@@ -56,6 +57,40 @@ export function createLocalWebhookServer(options: LocalWebhookServerOptions = {}
     }
 
     await options.onEvent?.(request.body)
+    response.status(202).json({ accepted: true })
+  })
+
+  app.post('/hooks/claude-code', async (request, response) => {
+    const sessionId = request.header('x-stoa-session-id')
+    const projectId = request.header('x-stoa-project-id')
+
+    if (!sessionId || !projectId) {
+      response.status(400).json({ accepted: false, reason: 'invalid_hook_context' })
+      return
+    }
+
+    const expectedSecret = options.getSessionSecret?.(sessionId) ?? null
+    if (!expectedSecret || request.header('x-stoa-secret') !== expectedSecret) {
+      response.status(401).json({ accepted: false, reason: 'invalid_secret' })
+      return
+    }
+
+    const body = request.body
+    if (!body || typeof body !== 'object') {
+      response.status(400).json({ accepted: false, reason: 'invalid_hook_event' })
+      return
+    }
+
+    const event = adaptClaudeCodeHook(body as Record<string, unknown>, {
+      sessionId,
+      projectId
+    })
+    if (!event) {
+      response.status(202).json({ accepted: true, ignored: true })
+      return
+    }
+
+    await options.onEvent?.(event)
     response.status(202).json({ accepted: true })
   })
 

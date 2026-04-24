@@ -350,6 +350,7 @@ onBeforeUnmount(() => {
 }
 
 .route-dot.awaiting_input,
+.route-dot.turn_complete,
 .route-dot.awaiting,
 .route-dot.degraded {
   background: var(--color-warning);

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type {
   PersistedAppStateV2,
   ProjectSummary,
+  SessionStatus,
   SessionSummary,
   SessionType
 } from './project-session'
@@ -88,5 +89,11 @@ describe('project/session shared contracts', () => {
       'claude-code',
       'shell'
     ])
+  })
+
+  it('supports turn_complete as a session status', () => {
+    const status: SessionStatus = 'turn_complete'
+
+    expect(status).toBe('turn_complete')
   })
 })

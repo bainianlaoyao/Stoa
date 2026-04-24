@@ -4,6 +4,7 @@ export type SessionStatus =
   | 'bootstrapping'
   | 'starting'
   | 'running'
+  | 'turn_complete'
   | 'awaiting_input'
   | 'degraded'
   | 'error'

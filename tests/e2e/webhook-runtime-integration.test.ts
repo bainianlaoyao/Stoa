@@ -23,7 +23,7 @@ interface WebhookHarness {
   session: {
     id: string
     projectId: string
-    type: 'shell' | 'opencode'
+    type: 'shell' | 'opencode' | 'codex' | 'claude-code'
   }
   workspaceDir: string
   globalStatePath: string
@@ -32,7 +32,7 @@ interface WebhookHarness {
 function createCanonicalEvent(
   sessionId: string,
   projectId: string,
-  status: 'running' | 'awaiting_input' | 'exited',
+  status: 'running' | 'awaiting_input' | 'turn_complete' | 'exited',
   summary: string,
   externalSessionId?: string
 ): CanonicalSessionEvent {
@@ -44,6 +44,8 @@ function createCanonicalEvent(
         ? 'session.started'
         : status === 'awaiting_input'
           ? 'session.idle'
+          : status === 'turn_complete'
+            ? 'session.idle'
           : 'session.completed',
     timestamp: new Date().toISOString(),
     session_id: sessionId,
@@ -96,6 +98,14 @@ async function httpPost(
   })
 }
 
+async function postClaudeHook(
+  port: number,
+  body: Record<string, unknown>,
+  headers: Record<string, string>
+): Promise<{ statusCode: number; body: string }> {
+  return await httpPost(port, '/hooks/claude-code', body, headers)
+}
+
 async function waitFor(check: () => boolean | Promise<boolean>, timeoutMs = 10_000): Promise<void> {
   const startedAt = Date.now()
 
@@ -123,7 +133,9 @@ function getSessionState(manager: ProjectSessionManager, sessionId: string) {
   return session
 }
 
-async function createWebhookHarness(): Promise<WebhookHarness> {
+async function createWebhookHarness(
+  sessionType: 'shell' | 'opencode' | 'codex' | 'claude-code' = 'opencode'
+): Promise<WebhookHarness> {
   const workspaceDir = await createTestWorkspace('stoa-e2e-webhook-runtime-')
   const globalStatePath = await createTestGlobalStatePath()
 
@@ -139,8 +151,8 @@ async function createWebhookHarness(): Promise<WebhookHarness> {
 
   const session = await manager.createSession({
     projectId: project.id,
-    type: 'opencode',
-    title: 'Webhook Runtime OpenCode'
+    type: sessionType,
+    title: `Webhook Runtime ${sessionType}`
   })
 
   const { window, sent } = createMockWindow()
@@ -380,5 +392,91 @@ describe('E2E: webhook runtime integration', () => {
     expect(exitedPersistedSession!.external_session_id).toBe('opencode-real-789')
     expect(getSessionState(harness.manager, harness.session.id).status).toBe('exited')
     expect(getSessionState(harness.manager, harness.session.id).externalSessionId).toBe('opencode-real-789')
+  })
+
+  test('canonical turn_complete events persist and emit through the bridge', async () => {
+    const harness = await createWebhookHarness('codex')
+
+    const turnCompleteResponse = await httpPost(
+      harness.port,
+      '/events',
+      createCanonicalEvent(
+        harness.session.id,
+        harness.session.projectId,
+        'turn_complete',
+        'Turn complete',
+        'codex-real-321'
+      ),
+      { 'x-stoa-secret': harness.secret }
+    )
+
+    expect(turnCompleteResponse.statusCode).toBe(202)
+
+    await waitFor(async () => {
+      const diskSessions = await readProjectSessions(harness.workspaceDir)
+      const persistedSession = diskSessions.sessions.find(candidate => candidate.session_id === harness.session.id)
+      return getSessionEvents(harness.sent).length === 1
+        && persistedSession?.last_known_status === 'turn_complete'
+    })
+
+    expect(getSessionEvents(harness.sent)).toEqual([
+      {
+        sessionId: harness.session.id,
+        status: 'turn_complete',
+        summary: 'Turn complete'
+      }
+    ])
+
+    const diskSessions = await readProjectSessions(harness.workspaceDir)
+    const persistedSession = diskSessions.sessions.find(candidate => candidate.session_id === harness.session.id)
+
+    expect(persistedSession).toBeDefined()
+    expect(persistedSession!.last_known_status).toBe('turn_complete')
+    expect(persistedSession!.last_summary).toBe('Turn complete')
+    expect(persistedSession!.external_session_id).toBe('codex-real-321')
+    expect(getSessionState(harness.manager, harness.session.id).status).toBe('turn_complete')
+    expect(getSessionState(harness.manager, harness.session.id).externalSessionId).toBe('codex-real-321')
+  })
+
+  test('claude Stop hooks persist turn_complete through the raw hook route', async () => {
+    const harness = await createWebhookHarness('claude-code')
+    const initialExternalSessionId = getSessionState(harness.manager, harness.session.id).externalSessionId
+
+    const response = await postClaudeHook(
+      harness.port,
+      { hook_event_name: 'Stop' },
+      {
+        'x-stoa-secret': harness.secret,
+        'x-stoa-session-id': harness.session.id,
+        'x-stoa-project-id': harness.session.projectId
+      }
+    )
+
+    expect(response.statusCode).toBe(202)
+
+    await waitFor(async () => {
+      const diskSessions = await readProjectSessions(harness.workspaceDir)
+      const persistedSession = diskSessions.sessions.find(candidate => candidate.session_id === harness.session.id)
+      return getSessionEvents(harness.sent).length === 1
+        && persistedSession?.last_known_status === 'turn_complete'
+    })
+
+    expect(getSessionEvents(harness.sent)).toEqual([
+      {
+        sessionId: harness.session.id,
+        status: 'turn_complete',
+        summary: 'Stop'
+      }
+    ])
+
+    const diskSessions = await readProjectSessions(harness.workspaceDir)
+    const persistedSession = diskSessions.sessions.find(candidate => candidate.session_id === harness.session.id)
+
+    expect(persistedSession).toBeDefined()
+    expect(persistedSession!.last_known_status).toBe('turn_complete')
+    expect(persistedSession!.last_summary).toBe('Stop')
+    expect(persistedSession!.external_session_id).toBe(initialExternalSessionId)
+    expect(getSessionState(harness.manager, harness.session.id).status).toBe('turn_complete')
+    expect(getSessionState(harness.manager, harness.session.id).externalSessionId).toBe(initialExternalSessionId)
   })
 })

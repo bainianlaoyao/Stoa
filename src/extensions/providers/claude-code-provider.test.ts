@@ -1,4 +1,7 @@
 import { describe, expect, test } from 'vitest'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { createClaudeCodeProvider } from './claude-code-provider'
 
 describe('claude-code provider', () => {
@@ -81,5 +84,60 @@ describe('claude-code provider', () => {
     })
 
     expect(command.command).toBe('C:\\Users\\30280\\AppData\\Roaming\\npm\\claude.cmd')
+  })
+
+  test('injects STOA_* environment variables into Claude command env', async () => {
+    const provider = createClaudeCodeProvider()
+
+    const command = await provider.buildStartCommand({
+      session_id: 'session_claude_env',
+      project_id: 'project_alpha',
+      path: 'D:/alpha',
+      title: 'Claude Alpha',
+      type: 'claude-code',
+      external_session_id: 'external-env'
+    }, {
+      webhookPort: 43127,
+      sessionSecret: 'secret-env',
+      providerPort: 43128
+    })
+
+    expect(command.env.STOA_SESSION_ID).toBe('session_claude_env')
+    expect(command.env.STOA_PROJECT_ID).toBe('project_alpha')
+    expect(command.env.STOA_SESSION_SECRET).toBe('secret-env')
+    expect(command.env.STOA_WEBHOOK_PORT).toBe('43127')
+  })
+
+  test('installSidecar writes shared Claude hooks config with env-driven headers', async () => {
+    const workspaceDir = await mkdtemp(join(tmpdir(), 'stoa-claude-sidecar-'))
+    try {
+      const provider = createClaudeCodeProvider()
+
+      await provider.installSidecar({
+        session_id: 'session_claude_env',
+        project_id: 'project_alpha',
+        path: workspaceDir,
+        title: 'Claude Alpha',
+        type: 'claude-code',
+        external_session_id: 'external-env'
+      }, {
+        webhookPort: 43127,
+        sessionSecret: 'secret-env',
+        providerPort: 43128
+      })
+
+      const content = await readFile(join(workspaceDir, '.claude', 'settings.local.json'), 'utf8')
+      expect(content).toContain('http://127.0.0.1:43127/hooks/claude-code')
+      expect(content).toContain('x-stoa-session-id')
+      expect(content).toContain('x-stoa-project-id')
+      expect(content).toContain('x-stoa-secret')
+      expect(content).toContain('STOA_SESSION_ID')
+      expect(content).toContain('STOA_PROJECT_ID')
+      expect(content).toContain('STOA_SESSION_SECRET')
+      expect(content).not.toContain('session_claude_env')
+      expect(content).not.toContain('secret-env')
+    } finally {
+      await rm(workspaceDir, { recursive: true, force: true })
+    }
   })
 })

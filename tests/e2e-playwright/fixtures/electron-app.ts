@@ -232,3 +232,28 @@ export async function postWebhookEvent(options: {
     body
   }
 }
+
+export async function postClaudeHookEvent(options: {
+  port: number
+  secret: string
+  sessionId: string
+  projectId: string
+  body: Record<string, unknown>
+}): Promise<{ status: number; body: unknown }> {
+  const response = await fetch(`http://127.0.0.1:${options.port}/hooks/claude-code`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-stoa-secret': options.secret,
+      'x-stoa-session-id': options.sessionId,
+      'x-stoa-project-id': options.projectId
+    },
+    body: JSON.stringify(options.body)
+  })
+
+  const body = await response.json().catch(() => null)
+  return {
+    status: response.status,
+    body
+  }
+}
