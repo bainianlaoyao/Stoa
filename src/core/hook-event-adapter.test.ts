@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { adaptClaudeCodeHook } from './hook-event-adapter'
+import { adaptClaudeCodeHook, adaptCodexHook } from './hook-event-adapter'
 
 describe('hook event adapter', () => {
   test('adapts Claude Stop hook into turn_complete canonical event', () => {
@@ -29,12 +29,11 @@ describe('hook event adapter', () => {
     })
   })
 
-  test('adapts Claude SessionStart hook into running canonical event with model evidence', () => {
+  test('adapts Claude SessionStart hook into running canonical event', () => {
     const event = adaptClaudeCodeHook(
       {
         hook_event_name: 'SessionStart',
-        session_id: 'claude-external-1',
-        model: 'claude-sonnet-4-5'
+        session_id: 'claude-external-1'
       },
       {
         sessionId: 'session_internal_1',
@@ -50,8 +49,7 @@ describe('hook event adapter', () => {
       source: 'provider-adapter',
       payload: {
         status: 'running',
-        summary: 'SessionStart',
-        model: 'claude-sonnet-4-5'
+        summary: 'SessionStart'
       }
     })
   })
@@ -112,8 +110,7 @@ describe('hook event adapter', () => {
   test('adapts Claude StopFailure hook into error canonical event with error detail', () => {
     const event = adaptClaudeCodeHook(
       {
-        hook_event_name: 'StopFailure',
-        error_details: 'Provider failed to stop cleanly.'
+        hook_event_name: 'StopFailure'
       },
       {
         sessionId: 'session_internal_4',
@@ -129,7 +126,7 @@ describe('hook event adapter', () => {
       payload: {
         status: 'error',
         summary: 'StopFailure',
-        error: 'Provider failed to stop cleanly.'
+        error: 'api_error'
       }
     })
   })
@@ -144,5 +141,161 @@ describe('hook event adapter', () => {
     )
 
     expect(event).toBeNull()
+  })
+})
+
+describe('codex hook adapter', () => {
+  const codexContext = { sessionId: 'codex_session_1', projectId: 'codex_project_1' }
+
+  test('adapts Codex SessionStart hook into running canonical event', () => {
+    const event = adaptCodexHook(
+      {
+        hook_event_name: 'SessionStart',
+        turn_id: 'turn_1',
+        model: 'gpt-4o'
+      },
+      codexContext
+    )
+
+    expect(event).toMatchObject({
+      event_version: 1,
+      event_id: 'turn_1',
+      event_type: 'codex.SessionStart',
+      session_id: 'codex_session_1',
+      project_id: 'codex_project_1',
+      source: 'provider-adapter',
+      payload: {
+        status: 'running',
+        summary: 'SessionStart',
+        model: 'gpt-4o'
+      }
+    })
+  })
+
+  test('adapts Codex UserPromptSubmit hook into running canonical event', () => {
+    const event = adaptCodexHook(
+      {
+        hook_event_name: 'UserPromptSubmit',
+        turn_id: 'turn_2'
+      },
+      codexContext
+    )
+
+    expect(event).toMatchObject({
+      event_version: 1,
+      event_id: 'turn_2',
+      event_type: 'codex.UserPromptSubmit',
+      session_id: 'codex_session_1',
+      project_id: 'codex_project_1',
+      source: 'provider-adapter',
+      payload: {
+        status: 'running',
+        summary: 'UserPromptSubmit'
+      }
+    })
+  })
+
+  test('adapts Codex PreToolUse hook with toolName and toolUseId', () => {
+    const event = adaptCodexHook(
+      {
+        hook_event_name: 'PreToolUse',
+        turn_id: 'turn_3',
+        tool_name: 'Write',
+        tool_use_id: 'tooluse_abc'
+      },
+      codexContext
+    )
+
+    expect(event).toMatchObject({
+      event_version: 1,
+      event_id: 'turn_3',
+      event_type: 'codex.PreToolUse',
+      session_id: 'codex_session_1',
+      project_id: 'codex_project_1',
+      source: 'provider-adapter',
+      payload: {
+        status: 'running',
+        summary: 'PreToolUse',
+        toolName: 'Write',
+        toolUseId: 'tooluse_abc'
+      }
+    })
+  })
+
+  test('adapts Codex PostToolUse hook with toolName and toolUseId', () => {
+    const event = adaptCodexHook(
+      {
+        hook_event_name: 'PostToolUse',
+        turn_id: 'turn_4',
+        tool_name: 'Bash',
+        tool_use_id: 'tooluse_def',
+        model: 'o3'
+      },
+      codexContext
+    )
+
+    expect(event).toMatchObject({
+      event_version: 1,
+      event_id: 'turn_4',
+      event_type: 'codex.PostToolUse',
+      session_id: 'codex_session_1',
+      project_id: 'codex_project_1',
+      source: 'provider-adapter',
+      payload: {
+        status: 'running',
+        summary: 'PostToolUse',
+        model: 'o3',
+        toolName: 'Bash',
+        toolUseId: 'tooluse_def'
+      }
+    })
+  })
+
+  test('adapts Codex Stop hook into turn_complete canonical event', () => {
+    const event = adaptCodexHook(
+      {
+        hook_event_name: 'Stop',
+        turn_id: 'turn_5'
+      },
+      codexContext
+    )
+
+    expect(event).toMatchObject({
+      event_version: 1,
+      event_id: 'turn_5',
+      event_type: 'codex.Stop',
+      session_id: 'codex_session_1',
+      project_id: 'codex_project_1',
+      source: 'provider-adapter',
+      payload: {
+        status: 'turn_complete',
+        summary: 'Stop'
+      }
+    })
+  })
+
+  test('returns null for unknown Codex hook events', () => {
+    const event = adaptCodexHook(
+      {
+        hook_event_name: 'PostToolResult',
+        turn_id: 'turn_99'
+      },
+      codexContext
+    )
+
+    expect(event).toBeNull()
+  })
+
+  test('generates UUID event_id when turn_id is absent', () => {
+    const event = adaptCodexHook(
+      {
+        hook_event_name: 'SessionStart'
+      },
+      codexContext
+    )
+
+    expect(event).not.toBeNull()
+    expect(event!.event_id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-/)
+    expect(event!.event_type).toBe('codex.SessionStart')
   })
 })
