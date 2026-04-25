@@ -17,6 +17,8 @@ const mockProject: ProjectSummary = {
 
 const mockSession: SessionSummary = {
   id: 'session_1', projectId: 'project_1', type: 'opencode', status: 'running',
+  runtimeState: 'alive', agentState: 'working', hasUnseenCompletion: false,
+  runtimeExitCode: null, runtimeExitReason: null, lastStateSequence: 1, blockingReason: null,
   title: 'test session', summary: 'running', recoveryMode: 'resume-external',
   externalSessionId: 'ext-1', createdAt: 'a', updatedAt: 'a', lastActivatedAt: 'a', archived: false
 }
@@ -54,6 +56,8 @@ describe('TerminalMetaBar', () => {
       ...mockSession,
       type: 'claude-code',
       status: 'needs_confirmation',
+      agentState: 'blocked',
+      blockingReason: 'resume-confirmation',
       summary: 'waiting for resume confirmation'
     }
     const blockedPresence = buildSessionPresenceSnapshot(blockedSession, {

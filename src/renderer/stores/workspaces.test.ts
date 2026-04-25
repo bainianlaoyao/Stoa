@@ -776,7 +776,7 @@ describe('project/session renderer store', () => {
           lastStateSequence: 8,
           agentState: 'blocked',
           blockingReason: 'permission',
-          status: 'blocked',
+          status: 'needs_confirmation',
           summary: 'blocked'
         })]
       })
@@ -967,6 +967,94 @@ describe('project/session renderer store', () => {
       delayedSessionPresence.resolve(sessionPresenceFixture({ updatedAt: '2026-04-24T08:00:00.000Z', sourceSequence: 9 }))
       delayedProjectObservability.resolve(projectObservabilityFixture({ updatedAt: '2026-04-24T08:00:00.000Z', sourceSequence: 9 }))
       delayedAppObservability.resolve(appObservabilityFixture({ updatedAt: '2026-04-24T08:00:00.000Z', sourceSequence: 9 }))
+
+      await hydrationPromise
+
+      expect(store.sessionPresenceById.session_op_1).toEqual(pushedSessionPresence)
+      expect(store.projectObservabilityById.project_alpha).toEqual(pushedProjectObservability)
+      expect(store.appObservability).toEqual(pushedAppObservability)
+    })
+
+    test('keeps newer pushed snapshots when equal-sequence initial observability queries resolve later', async () => {
+      let sessionListener: ((snapshot: SessionPresenceSnapshot) => void) | undefined
+      let projectListener: ((snapshot: ProjectObservabilitySnapshot) => void) | undefined
+      let appListener: ((snapshot: AppObservabilitySnapshot) => void) | undefined
+
+      const delayedSessionPresence = deferred<SessionPresenceSnapshot | null>()
+      const delayedProjectObservability = deferred<ProjectObservabilitySnapshot | null>()
+      const delayedAppObservability = deferred<AppObservabilitySnapshot | null>()
+
+      window.stoa = createStoaMock({
+        getSessionPresence: vi.fn().mockReturnValue(delayedSessionPresence.promise),
+        getProjectObservability: vi.fn().mockReturnValue(delayedProjectObservability.promise),
+        getAppObservability: vi.fn().mockReturnValue(delayedAppObservability.promise),
+        onSessionPresenceChanged: vi.fn().mockImplementation((callback: (snapshot: SessionPresenceSnapshot) => void) => {
+          sessionListener = callback
+          return () => {}
+        }),
+        onProjectObservabilityChanged: vi.fn().mockImplementation((callback: (snapshot: ProjectObservabilitySnapshot) => void) => {
+          projectListener = callback
+          return () => {}
+        }),
+        onAppObservabilityChanged: vi.fn().mockImplementation((callback: (snapshot: AppObservabilitySnapshot) => void) => {
+          appListener = callback
+          return () => {}
+        })
+      })
+
+      const store = useWorkspaceStore()
+      store.hydrate({
+        activeProjectId: 'project_alpha',
+        activeSessionId: 'session_op_1',
+        terminalWebhookPort: 43127,
+        projects: [{ id: 'project_alpha', name: 'alpha', path: 'D:/alpha', createdAt: 'a', updatedAt: 'a' }],
+        sessions: [sessionSummaryFixture({
+          id: 'session_op_1',
+          projectId: 'project_alpha',
+          type: 'opencode',
+          status: 'running',
+          title: 'Deploy',
+          summary: 'running',
+          recoveryMode: 'resume-external',
+          externalSessionId: 'ext-1',
+          createdAt: 'a',
+          updatedAt: 'a',
+          lastActivatedAt: 'a',
+          archived: false
+        })]
+      })
+
+      const hydrationPromise = store.hydrateObservability()
+
+      const pushedSessionPresence = sessionPresenceFixture({
+        updatedAt: '2026-04-24T08:00:10.000Z',
+        sourceSequence: 10,
+        phase: 'blocked',
+        blockingReason: 'permission',
+        health: 'degraded'
+      })
+      const pushedProjectObservability = projectObservabilityFixture({
+        updatedAt: '2026-04-24T08:00:10.000Z',
+        sourceSequence: 10,
+        overallHealth: 'degraded',
+        blockedSessionCount: 1,
+        latestAttentionSessionId: 'session_op_1',
+        latestAttentionReason: 'permission'
+      })
+      const pushedAppObservability = appObservabilityFixture({
+        updatedAt: '2026-04-24T08:00:10.000Z',
+        sourceSequence: 10,
+        blockedProjectCount: 1,
+        projectsNeedingAttention: ['project_alpha']
+      })
+
+      sessionListener?.(pushedSessionPresence)
+      projectListener?.(pushedProjectObservability)
+      appListener?.(pushedAppObservability)
+
+      delayedSessionPresence.resolve(sessionPresenceFixture({ updatedAt: '2026-04-24T08:00:00.000Z', sourceSequence: 10 }))
+      delayedProjectObservability.resolve(projectObservabilityFixture({ updatedAt: '2026-04-24T08:00:00.000Z', sourceSequence: 10 }))
+      delayedAppObservability.resolve(appObservabilityFixture({ updatedAt: '2026-04-24T08:00:00.000Z', sourceSequence: 10 }))
 
       await hydrationPromise
 

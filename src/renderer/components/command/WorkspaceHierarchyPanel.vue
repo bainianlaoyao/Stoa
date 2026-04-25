@@ -33,6 +33,14 @@ const emit = defineEmits<{
   archiveSession: [sessionId: string]
 }>()
 
+const routeDotToneClassByTone: Record<SessionRowViewModel['tone'], string | null> = {
+  neutral: 'route-dot--tone-neutral',
+  accent: null,
+  success: 'route-dot--tone-success',
+  warning: 'route-dot--tone-warning',
+  danger: 'route-dot--tone-danger'
+}
+
 const showNewProject = ref(false)
 
 const detailState = ref<DetailState | null>(null)
@@ -93,7 +101,7 @@ function sessionSecondaryLabel(session: ProjectHierarchyNode['sessions'][number]
   return session.type
 }
 
-function sessionTone(session: ProjectHierarchyNode['sessions'][number]): string {
+function sessionTone(session: ProjectHierarchyNode['sessions'][number]): SessionRowViewModel['tone'] {
   return sessionRowViewModel(session.id)?.tone ?? 'neutral'
 }
 
@@ -110,14 +118,11 @@ function sessionAttentionReason(session: ProjectHierarchyNode['sessions'][number
 }
 
 function sessionStatusClasses(session: ProjectHierarchyNode['sessions'][number]): Record<string, boolean> {
-  const tone = sessionTone(session)
+  const toneClass = routeDotToneClassByTone[sessionTone(session)]
   const phase = sessionPhase(session)
 
   return {
-    'route-dot--tone-neutral': tone === 'neutral',
-    'route-dot--tone-success': tone === 'success',
-    'route-dot--tone-warning': tone === 'warning',
-    'route-dot--tone-danger': tone === 'danger',
+    ...(toneClass ? { [toneClass]: true } : {}),
     'route-dot--attention-complete': phase === 'complete',
     'route-dot--attention-blocked': phase === 'blocked',
     'route-dot--attention-failed': phase === 'failed'

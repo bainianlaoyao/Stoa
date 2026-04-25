@@ -14,6 +14,19 @@ export interface ProjectHierarchyNode extends ProjectSummary {
   archivedSessions: Array<SessionSummary & { active: boolean }>
 }
 
+interface SequencedSnapshot {
+  sourceSequence: number
+  updatedAt: string
+}
+
+function isStaleSnapshot(current: SequencedSnapshot, next: SequencedSnapshot): boolean {
+  if (current.sourceSequence > next.sourceSequence) {
+    return true
+  }
+
+  return current.sourceSequence === next.sourceSequence && current.updatedAt >= next.updatedAt
+}
+
 export const useWorkspaceStore = defineStore('workspaces', () => {
   const projects = ref<ProjectSummary[]>([])
   const sessions = ref<SessionSummary[]>([])
@@ -146,7 +159,7 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
 
   function applySessionPresenceSnapshot(snapshot: SessionPresenceSnapshot): void {
     const current = sessionPresenceById.value[snapshot.sessionId]
-    if (backendSessionPresenceIds.has(snapshot.sessionId) && current && current.sourceSequence > snapshot.sourceSequence) {
+    if (current && backendSessionPresenceIds.has(snapshot.sessionId) && isStaleSnapshot(current, snapshot)) {
       return
     }
 
@@ -159,7 +172,7 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
 
   function applyProjectObservabilitySnapshot(snapshot: ProjectObservabilitySnapshot): void {
     const current = projectObservabilityById.value[snapshot.projectId]
-    if (current && current.sourceSequence > snapshot.sourceSequence) {
+    if (current && isStaleSnapshot(current, snapshot)) {
       return
     }
 
@@ -170,7 +183,7 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
   }
 
   function applyAppObservabilitySnapshot(snapshot: AppObservabilitySnapshot): void {
-    if (appObservability.value && appObservability.value.sourceSequence > snapshot.sourceSequence) {
+    if (appObservability.value && isStaleSnapshot(appObservability.value, snapshot)) {
       return
     }
 
@@ -257,7 +270,7 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
       sourceSequence: session.lastStateSequence
     })
 
-    if (current && backendSessionPresenceIds.has(session.id) && current.sourceSequence >= next.sourceSequence) {
+    if (current && backendSessionPresenceIds.has(session.id) && isStaleSnapshot(current, next)) {
       return
     }
 

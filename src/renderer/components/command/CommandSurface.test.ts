@@ -24,6 +24,13 @@ const hierarchy: ProjectHierarchyNode[] = [
         projectId: 'project_alpha',
         type: 'opencode',
         status: 'running',
+        runtimeState: 'alive',
+        agentState: 'working',
+        hasUnseenCompletion: false,
+        runtimeExitCode: null,
+        runtimeExitReason: null,
+        lastStateSequence: 1,
+        blockingReason: null,
         title: 'deploy gateway',
         summary: 'running',
         recoveryMode: 'resume-external',
@@ -51,6 +58,13 @@ const activeSession: SessionSummary = {
   projectId: 'project_alpha',
   type: 'opencode',
   status: 'running',
+  runtimeState: 'alive',
+  agentState: 'working',
+  hasUnseenCompletion: false,
+  runtimeExitCode: null,
+  runtimeExitReason: null,
+  lastStateSequence: 1,
+  blockingReason: null,
   title: 'deploy gateway',
   summary: 'running',
   recoveryMode: 'resume-external',
@@ -68,8 +82,13 @@ function createPresenceSnapshot(overrides: Partial<SessionPresenceSnapshot> = {}
     providerId: 'opencode',
     providerLabel: 'OpenCode',
     modelLabel: 'GPT-5',
-    phase: 'working',
+    phase: 'running',
     canonicalStatus: 'running',
+    runtimeState: 'alive',
+    agentState: 'working',
+    hasUnseenCompletion: false,
+    runtimeExitCode: null,
+    runtimeExitReason: null,
     confidence: 'authoritative',
     health: 'healthy',
     blockingReason: null,
@@ -78,6 +97,7 @@ function createPresenceSnapshot(overrides: Partial<SessionPresenceSnapshot> = {}
     lastEvidenceType: null,
     hasUnreadTurn: false,
     recoveryPointerState: 'trusted',
+    evidenceSequence: 1,
     sourceSequence: 1,
     updatedAt: '2026-04-24T08:00:00.000Z',
     ...overrides
@@ -119,7 +139,7 @@ describe('CommandSurface', () => {
     const statusDot = wrapper.find('[data-testid="session-status-dot"]')
 
     expect(statusDot.attributes('data-status')).toBe('running')
-    expect(statusDot.attributes('data-phase')).toBe('working')
+    expect(statusDot.attributes('data-phase')).toBe('running')
     expect(statusDot.attributes('data-tone')).toBe('success')
   })
 
