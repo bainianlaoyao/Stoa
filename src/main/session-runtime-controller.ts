@@ -67,12 +67,15 @@ export class SessionRuntimeController implements SessionRuntimeManager {
   }
 
   async applySessionEvent(event: AppliedSessionEvent): Promise<void> {
-    await this.manager.applySessionEvent(
+    const result = await this.manager.applySessionEvent(
       event.sessionId,
       event.status,
       event.summary,
       event.externalSessionId
     )
+    if (result.reconciled) {
+      console.info(`[reconcile] session ${event.sessionId} externalId changed`)
+    }
     this.pushSessionEvent(event.sessionId, event.status, event.summary)
     this.pushObservabilitySnapshots(event.sessionId)
     this.onSessionStateChanged?.()
@@ -95,10 +98,13 @@ export class SessionRuntimeController implements SessionRuntimeManager {
   private pushSessionEvent(sessionId: string, status: SessionStatus, summary: string): void {
     const win = this.getWindow()
     if (win && !win.isDestroyed()) {
-      console.log(`[pushSessionEvent] Sending ${status} for ${sessionId} to renderer`)
-      win.webContents.send(IPC_CHANNELS.sessionEvent, { sessionId, status, summary })
-    } else {
-      console.warn(`[pushSessionEvent] No window available for ${sessionId} ${status} (win=${!!win}, destroyed=${win?.isDestroyed()})`)
+      const session = this.manager.snapshot().sessions.find(s => s.id === sessionId)
+      win.webContents.send(IPC_CHANNELS.sessionEvent, {
+        sessionId,
+        status,
+        summary,
+        externalSessionId: session?.externalSessionId ?? null
+      })
     }
   }
 

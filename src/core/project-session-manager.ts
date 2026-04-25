@@ -304,17 +304,24 @@ export class ProjectSessionManager {
     status: SessionStatus,
     summary: string,
     externalSessionId?: string | null
-  ): Promise<void> {
+  ): Promise<{ reconciled: boolean }> {
     const session = this.state.sessions.find(s => s.id === sessionId)
-    if (!session) return
+    if (!session) return { reconciled: false }
 
     session.status = status
     session.summary = summary
-    if (externalSessionId !== undefined) {
+
+    let reconciled = false
+    if (externalSessionId !== undefined && externalSessionId !== null) {
+      if (session.externalSessionId !== null && session.externalSessionId !== externalSessionId) {
+        reconciled = true
+      }
       session.externalSessionId = externalSessionId
     }
+
     session.updatedAt = new Date().toISOString()
     await this.persist()
+    return { reconciled }
   }
 
   async markSessionStarting(sessionId: string, summary: string, externalSessionId: string | null): Promise<void> {

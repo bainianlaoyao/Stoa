@@ -108,7 +108,8 @@ onMounted(async () => {
   unsubscribeSessionEvent = window.stoa?.onSessionEvent?.((event: SessionStatusEvent) => {
     workspaceStore.updateSession(event.sessionId, {
       status: event.status,
-      summary: event.summary
+      summary: event.summary,
+      externalSessionId: event.externalSessionId
     })
   })
 })

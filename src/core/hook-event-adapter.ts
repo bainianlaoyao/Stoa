@@ -49,7 +49,8 @@ export function adaptClaudeCodeHook(
       ...(snippet ? { snippet } : {}),
       ...(toolName ? { toolName } : {}),
       ...(error ? { error } : {}),
-      ...(hookEventName === 'PermissionRequest' ? { blockingReason: 'permission' } : {})
+      ...(hookEventName === 'PermissionRequest' ? { blockingReason: 'permission' } : {}),
+      ...(body.session_id ? { externalSessionId: String(body.session_id) } : {})
     }
   }
 }
