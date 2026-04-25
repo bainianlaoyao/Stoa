@@ -102,8 +102,11 @@ Provider CLI process
 
 `src/main/session-runtime-controller.ts:73-76` (inferred from `sendSessionInput` in RendererApi)
 
-- Raw keystrokes forwarded to PTY
-- No interception or analysis
+- Default behavior: raw keystrokes are forwarded to PTY
+- Provider-specific exception: for Codex on Windows, Stoa normalizes plain-text multi-character input before PTY write
+- Codex control sequences containing `ESC` remain raw and are not split
+- This Codex handling is an ingress workaround only; it does not infer state from terminal text
+- Hook/state correctness still depends on provider-emitted events, not renderer-side parsing
 
 ---
 

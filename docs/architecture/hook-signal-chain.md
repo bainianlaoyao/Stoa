@@ -20,15 +20,34 @@ CLI Provider ──transport──▶ Sidecar Script ──HTTP──▶ Webhook
                                                         Projection           │
                                                                     │         │
                                                                     ▼         ▼
-                                                              ③ IPC push (real-time)
-                                                                IPC_CHANNELS.sessionEvent
-                                                                        │
-                                                                        ▼
-                                                                Renderer (Pinia store)
-                                                                        │
-                                                                        ▼
-                                                                    UI Update
+③ IPC push (real-time)
+  IPC_CHANNELS.sessionEvent
+        │
+        ▼
+Renderer (Pinia store)
+        │
+        ▼
+    UI Update
 ```
+
+## Codex Input Boundary
+
+对 Codex 而言，上面的链路只有在 provider 真的把一次输入接受为 turn submit 后才会发生。
+
+Windows 实测已经确认：
+
+- 直接把整串纯文本 prompt 通过 `PTY write()` 一次性注入，并不可靠。
+- 文本可能只落到 Codex draft line，而不会触发 `SessionStart` / `UserPromptSubmit` / `PreToolUse` / `Stop`。
+- 因此下游状态链路不会动，session 会停在 runtime-only 状态。
+
+Stoa 当前对这个边界的修复策略是：
+
+- 保持 hook / reducer / UI 状态链路不变。
+- 仅在主进程输入入口，对 Codex 的纯文本输入做 provider-specific normalization。
+- 纯文本 chunk 被拆成保序字符流，再进入 PTY。
+- 含 `ESC` 的控制序列保持原样透传，不参与拆分。
+
+这是一层 ingress workaround，不是状态推断逻辑。真实状态仍然必须由 provider-emitted hooks 驱动。
 
 ---
 
@@ -57,6 +76,8 @@ adaptCodexHook(body, context)     [hook-event-adapter.ts:58-105]
 ```
 
 **Events emitted**: SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Stop
+
+**Ingress note**: 在 Windows 上，Codex hook 是否触发取决于输入是否真的被 TUI 接受为 submit。Stoa 目前通过主进程侧的 Codex plain-text input normalization 提高这一层的可靠性；它不修改 hook payload，也不从 terminal 文本反推状态。
 
 ### 2. Codex — Notify (turn-granularity)
 

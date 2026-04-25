@@ -13,6 +13,7 @@ import { getProviderDescriptorByProviderId, getProviderDescriptorBySessionType }
 import { derivePresencePhase } from '@shared/session-state-reducer'
 import { SessionRuntimeController } from './session-runtime-controller'
 import { SessionEventBridge } from './session-event-bridge'
+import { SessionInputRouter } from './session-input-router'
 import { launchTrackedSessionRuntime } from './launch-tracked-session-runtime'
 import { syncObservabilitySessionsFromManager } from './observability-sync'
 import { UpdateService } from './update-service'
@@ -25,6 +26,7 @@ let projectSessionManager: ProjectSessionManager | null = null
 let ptyHost: PtyHost | null = null
 let runtimeController: SessionRuntimeController | null = null
 let sessionEventBridge: SessionEventBridge | null = null
+let sessionInputRouter: SessionInputRouter | null = null
 let observationStore: InMemoryObservationStore | null = null
 let observabilityService: ObservabilityService | null = null
 let updateService: UpdateService | null = null
@@ -279,6 +281,8 @@ async function prepareForQuitAndInstall(): Promise<void> {
   }
 
   isQuittingAfterBridgeStop = true
+  sessionInputRouter?.dispose()
+  sessionInputRouter = null
   await stopSessionEventBridge()
 }
 
@@ -400,6 +404,18 @@ app.whenReady().then(async () => {
 
   const { PtyHost } = await import('@core/pty-host')
   ptyHost = new PtyHost()
+  sessionInputRouter = new SessionInputRouter(
+    {
+      getSessionType(sessionId) {
+        return projectSessionManager?.snapshot().sessions.find((candidate) => candidate.id === sessionId)?.type ?? null
+      }
+    },
+    {
+      write(sessionId, data) {
+        ptyHost?.write(sessionId, data)
+      }
+    }
+  )
 
   runtimeController = new SessionRuntimeController(
     projectSessionManager,
@@ -478,6 +494,7 @@ app.whenReady().then(async () => {
     }
 
     try {
+      sessionInputRouter?.resetSession(sessionId)
       const launched = await launchTrackedSessionRuntime({
         sessionId,
         manager: projectSessionManager,
@@ -672,7 +689,7 @@ app.whenReady().then(async () => {
   })
 
   ipcMain.handle(IPC_CHANNELS.sessionInput, async (_event, sessionId: string, data: string) => {
-    ptyHost?.write(sessionId, data)
+    await sessionInputRouter?.send(sessionId, data)
   })
 
   ipcMain.handle(IPC_CHANNELS.sessionResize, async (_event, sessionId: string, cols: number, rows: number) => {
@@ -741,6 +758,7 @@ app.whenReady().then(async () => {
 
   ipcMain.handle(IPC_CHANNELS.sessionArchive, async (_event, sessionId: string) => {
     if (!projectSessionManager || !ptyHost) return
+    sessionInputRouter?.resetSession(sessionId)
     ptyHost.kill(sessionId)
     await projectSessionManager.archiveSession(sessionId)
     syncObservabilitySessions()
@@ -753,6 +771,7 @@ app.whenReady().then(async () => {
       return
     }
 
+    sessionInputRouter?.resetSession(sessionId)
     await projectSessionManager.restoreSession(sessionId)
     syncObservabilityAndPushForSession(sessionId)
     await syncUpdateStateToWindow()
