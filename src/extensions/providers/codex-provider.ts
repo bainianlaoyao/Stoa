@@ -44,7 +44,7 @@ async function writeSharedNotifySidecar(target: ProviderRuntimeTarget): Promise<
 
   await writeFile(
     join(codexDir, 'config.toml'),
-    '[features]\ncodex_hooks = true\n\nnotify = ["node", ".codex/notify-stoa.mjs"]\n',
+    'notify = ["node", ".codex/notify-stoa.mjs"]\n\n[features]\ncodex_hooks = true\n',
     'utf-8'
   )
 
