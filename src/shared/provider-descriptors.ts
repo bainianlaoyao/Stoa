@@ -42,7 +42,7 @@ const PROVIDER_DESCRIPTORS: Record<SessionType, ProviderDescriptor> = {
     displayName: 'Codex',
     titlePrefix: 'codex',
     supportsResume: true,
-    supportsStructuredEvents: false,
+    supportsStructuredEvents: true,
     seedsExternalSessionId: false,
     prefersShellWrap: true
   },
@@ -53,7 +53,7 @@ const PROVIDER_DESCRIPTORS: Record<SessionType, ProviderDescriptor> = {
     displayName: 'Claude Code',
     titlePrefix: 'claude',
     supportsResume: true,
-    supportsStructuredEvents: false,
+    supportsStructuredEvents: true,
     seedsExternalSessionId: true,
     prefersShellWrap: false
   }
