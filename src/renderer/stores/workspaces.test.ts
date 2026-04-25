@@ -752,7 +752,8 @@ describe('project/session renderer store', () => {
       expect(store.sessionPresenceById.session_op_1).toEqual(backendPresence)
     })
 
-    test('allows newer fallback to replace older backend snapshot', async () => {
+    test('does not let newer fallback overwrite backend snapshot', async () => {
+      let sessionListener: ((snapshot: SessionPresenceSnapshot) => void) | undefined
       const backendPresence = sessionPresenceFixture({
         phase: 'blocked',
         runtimeState: 'alive',
@@ -762,7 +763,11 @@ describe('project/session renderer store', () => {
       })
 
       window.stoa = createStoaMock({
-        getSessionPresence: vi.fn().mockResolvedValue(backendPresence)
+        getSessionPresence: vi.fn().mockResolvedValue(backendPresence),
+        onSessionPresenceChanged: vi.fn().mockImplementation((callback: (snapshot: SessionPresenceSnapshot) => void) => {
+          sessionListener = callback
+          return () => {}
+        })
       })
 
       const store = useWorkspaceStore()
@@ -793,6 +798,16 @@ describe('project/session renderer store', () => {
         lastStateSequence: 12,
         summary: 'local running fallback'
       })
+
+      expect(store.sessionPresenceById.session_op_1).toEqual(backendPresence)
+
+      sessionListener?.(sessionPresenceFixture({
+        phase: 'running',
+        runtimeState: 'alive',
+        agentState: 'working',
+        blockingReason: null,
+        sourceSequence: 12
+      }))
 
       expect(store.sessionPresenceById.session_op_1).toMatchObject({
         phase: 'running',

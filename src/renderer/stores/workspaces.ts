@@ -258,6 +258,10 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
   }
 
   function syncSessionPresenceFromSummary(session: SessionSummary): void {
+    if (backendSessionPresenceIds.has(session.id)) {
+      return
+    }
+
     const current = sessionPresenceById.value[session.id]
     const next = buildSessionPresenceSnapshot(session, {
       activeSessionId: activeSessionId.value,
@@ -270,11 +274,7 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
       sourceSequence: session.lastStateSequence
     })
 
-    if (current && backendSessionPresenceIds.has(session.id) && current.sourceSequence >= next.sourceSequence) {
-      return
-    }
-
-    if (current && !backendSessionPresenceIds.has(session.id) && isStaleSnapshot(current, next)) {
+    if (current && isStaleSnapshot(current, next)) {
       return
     }
 
