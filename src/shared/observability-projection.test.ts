@@ -98,6 +98,7 @@ describe('observability projection', () => {
       lastAssistantSnippet: 'I finished the implementation.',
       lastEvidenceType: 'evidence.assistant_message',
       lastEventAt: '2026-04-24T07:59:00.000Z',
+      evidenceSequence: 17,
       sourceSequence: 42
     })
 
@@ -121,6 +122,7 @@ describe('observability projection', () => {
       lastEvidenceType: 'evidence.assistant_message',
       hasUnreadTurn: false,
       recoveryPointerState: 'trusted',
+      evidenceSequence: 17,
       sourceSequence: 42,
       updatedAt: NOW_ISO
     })
@@ -326,6 +328,55 @@ describe('observability projection', () => {
       lastGlobalEventAt: NOW_ISO,
       sourceSequence: 0,
       updatedAt: NOW_ISO
+    })
+  })
+
+  it('does not promote blocked or complete session phases to degraded aggregate health', () => {
+    const blockedSession = buildSessionPresenceSnapshot(
+      sessionFixture({
+        id: 'blocked-session',
+        projectId: 'project-attention',
+        agentState: 'blocked',
+        blockingReason: 'permission'
+      }),
+      { activeSessionId: 'active-session', nowIso: NOW_ISO, lastAssistantSnippet: 'Approval required.' }
+    )
+    const completeSession = buildSessionPresenceSnapshot(
+      sessionFixture({
+        id: 'complete-session',
+        projectId: 'project-attention',
+        hasUnseenCompletion: true
+      }),
+      { activeSessionId: 'active-session', nowIso: NOW_ISO, lastAssistantSnippet: 'Turn finished.' }
+    )
+    const project = buildProjectObservabilitySnapshot(
+      'project-attention',
+      [
+        { ...blockedSession, health: 'degraded' },
+        { ...completeSession, health: 'degraded' }
+      ],
+      NOW_ISO
+    )
+    const app = buildAppObservabilitySnapshot(
+      [project],
+      [
+        { ...blockedSession, health: 'degraded' },
+        { ...completeSession, health: 'degraded' }
+      ],
+      NOW_ISO
+    )
+
+    expect(project).toMatchObject({
+      overallHealth: 'healthy',
+      blockedSessionCount: 1,
+      degradedSessionCount: 0,
+      failedSessionCount: 0
+    })
+    expect(app).toMatchObject({
+      degradedProjectCount: 0,
+      providerHealthSummary: {
+        'claude-code': 'healthy'
+      }
     })
   })
 })

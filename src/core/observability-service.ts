@@ -21,7 +21,7 @@ interface SessionEvidenceState {
   lastAssistantSnippet: string | null
   lastEvidenceType: string | null
   lastEventAt: string | null
-  sourceSequence: number
+  evidenceSequence: number
 }
 
 export class ObservabilityService {
@@ -55,7 +55,7 @@ export class ObservabilityService {
           lastAssistantSnippet: null,
           lastEvidenceType: null,
           lastEventAt: null,
-          sourceSequence: 0
+          evidenceSequence: 0
         }
       )
     }
@@ -99,7 +99,8 @@ export class ObservabilityService {
       return appended
     }
 
-    const nextEvidence = updateEvidence(this.evidence.get(event.sessionId), event)
+    const session = this.sessions.get(event.sessionId)
+    const nextEvidence = updateEvidence(this.evidence.get(event.sessionId), event, session.lastStateSequence)
 
     this.evidence.set(event.sessionId, nextEvidence)
     this.rebuildSnapshots(this.nowIso())
@@ -134,9 +135,10 @@ export class ObservabilityService {
           lastAssistantSnippet: evidence?.lastAssistantSnippet ?? null,
           lastEvidenceType: evidence?.lastEvidenceType ?? null,
           lastEventAt: evidence?.lastEventAt ?? session.updatedAt,
+          evidenceSequence: evidence?.evidenceSequence ?? 0,
           sourceSequence: Math.max(
             session.lastStateSequence,
-            evidence?.sourceSequence ?? 0
+            evidence?.evidenceSequence ?? 0
           )
         })
       )
@@ -166,20 +168,25 @@ export class ObservabilityService {
   }
 }
 
-function updateEvidence(current: SessionEvidenceState | undefined, event: ObservationEvent): SessionEvidenceState {
+function updateEvidence(
+  current: SessionEvidenceState | undefined,
+  event: ObservationEvent,
+  sessionStateSequence: number
+): SessionEvidenceState {
   const next: SessionEvidenceState = current ?? {
     modelLabel: null,
     lastAssistantSnippet: null,
     lastEvidenceType: null,
     lastEventAt: null,
-    sourceSequence: 0
+    evidenceSequence: 0
   }
-  const isCurrentEvidence = event.sequence >= next.sourceSequence
+  const nextEvidenceSequence = Math.max(next.evidenceSequence, event.sequence)
+  const isCurrentEvidence = event.sequence >= Math.max(next.evidenceSequence, sessionStateSequence)
 
   if (!isCurrentEvidence) {
     return {
       ...next,
-      sourceSequence: Math.max(next.sourceSequence, event.sequence)
+      evidenceSequence: nextEvidenceSequence
     }
   }
 
@@ -191,7 +198,7 @@ function updateEvidence(current: SessionEvidenceState | undefined, event: Observ
     lastAssistantSnippet: snippet ?? next.lastAssistantSnippet,
     lastEvidenceType: event.category === 'evidence' ? event.type : next.lastEvidenceType,
     lastEventAt: event.occurredAt,
-    sourceSequence: Math.max(next.sourceSequence, event.sequence)
+    evidenceSequence: nextEvidenceSequence
   }
 }
 

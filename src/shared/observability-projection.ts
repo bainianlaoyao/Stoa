@@ -64,6 +64,7 @@ export function buildSessionPresenceSnapshot(
     lastAssistantSnippet?: string | null
     lastEvidenceType?: string | null
     lastEventAt?: string | null
+    evidenceSequence?: number
     sourceSequence?: number
   }
 ): SessionPresenceSnapshot {
@@ -100,6 +101,7 @@ export function buildSessionPresenceSnapshot(
     lastEvidenceType: options.lastEvidenceType ?? null,
     hasUnreadTurn,
     recoveryPointerState: recoveryPointerStateForSession(session),
+    evidenceSequence: options.evidenceSequence ?? 0,
     sourceSequence: options.sourceSequence ?? 0,
     updatedAt: options.nowIso
   }
@@ -162,7 +164,7 @@ export function buildProjectObservabilitySnapshot(
 
   return {
     projectId,
-    overallHealth: aggregateHealth(sessions.map((session) => session.health)),
+    overallHealth: aggregateSessionHealth(sessions),
     activeSessionCount: sessions.length,
     blockedSessionCount: sessions.filter((session) => session.phase === 'blocked').length,
     degradedSessionCount: 0,
@@ -232,10 +234,14 @@ function buildProviderHealthSummary(sessions: SessionPresenceSnapshot[]): Record
   const summary: Record<string, ObservabilityHealth> = {}
 
   for (const session of sessions) {
-    summary[session.providerId] = aggregateHealth([summary[session.providerId], session.health].filter(Boolean))
+    summary[session.providerId] = aggregateHealth([summary[session.providerId], healthForPhase(session.phase)].filter(Boolean))
   }
 
   return summary
+}
+
+function aggregateSessionHealth(sessions: SessionPresenceSnapshot[]): ObservabilityHealth {
+  return aggregateHealth(sessions.map((session) => healthForPhase(session.phase)))
 }
 
 function latestAttentionSession(sessions: SessionPresenceSnapshot[]): SessionPresenceSnapshot | null {

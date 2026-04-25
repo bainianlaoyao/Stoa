@@ -70,6 +70,7 @@ export interface SessionPresenceSnapshot {
   lastEvidenceType: string | null
   hasUnreadTurn: boolean
   recoveryPointerState: RecoveryPointerState
+  evidenceSequence: number
   sourceSequence: number
   updatedAt: string
 }
