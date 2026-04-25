@@ -59,6 +59,16 @@ function generateTitle(projectId: string, type: SessionType): string {
   return `${descriptor.titlePrefix}-${projectName}`
 }
 
+function providerIcon(type: SessionType): string {
+  const map: Record<SessionType, string> = {
+    'claude-code': new URL('@renderer/assets/providers/claude-code.svg', import.meta.url).href,
+    'shell': new URL('@renderer/assets/providers/shell.svg', import.meta.url).href,
+    'codex': new URL('@renderer/assets/providers/codex.svg', import.meta.url).href,
+    'opencode': new URL('@renderer/assets/providers/opencode.svg', import.meta.url).href,
+  }
+  return map[type]
+}
+
 function handleFloatingCardCreate(payload: { type: SessionType }) {
   const title = generateTitle(floatingCardProjectId.value, payload.type)
   emit('createSession', { projectId: floatingCardProjectId.value, type: payload.type, title })
@@ -123,7 +133,8 @@ function openDetail(event: MouseEvent | KeyboardEvent, kind: 'project' | 'sessio
     detailState.value = { kind: 'project', name: p.name, path: p.path, x, y }
   } else {
     const s = data as { title: string; type: string; status: SessionStatus }
-    detailState.value = { kind: 'session', name: s.title, sessionType: s.type, status: s.status.replace(/_/g, ' '), x, y }
+    const descriptor = getProviderDescriptorBySessionType(s.type as SessionType)
+    detailState.value = { kind: 'session', name: descriptor.displayName, sessionType: s.type, status: s.status.replace(/_/g, ' '), x, y }
   }
 }
 
@@ -301,14 +312,7 @@ onBeforeUnmount(() => {
                 :data-phase="sessionPhase(session)"
                 :data-attention-reason="sessionAttentionReason(session) ?? undefined"
               />
-              <div class="route-copy">
-                <div class="route-name">{{ session.title }}</div>
-                <div class="route-time">
-                  <span v-if="sessionPrimaryLabel(session)" class="route-time__primary">{{ sessionPrimaryLabel(session) }}</span>
-                  <span v-if="sessionPrimaryLabel(session) && sessionSecondaryLabel(session)" class="route-time__separator" aria-hidden="true"> · </span>
-                  <span class="route-time__secondary">{{ sessionSecondaryLabel(session) }}</span>
-                </div>
-              </div>
+              <img class="route-provider-icon" :src="providerIcon(session.type)" :alt="session.type" />
             </button>
             <span class="route-row-actions">
               <button
@@ -316,7 +320,7 @@ onBeforeUnmount(() => {
                 type="button"
                 data-testid="workspace.archive-session"
                 :data-session-id="session.id"
-                :aria-label="`Archive ${session.title}`"
+                :aria-label="`Archive ${getProviderDescriptorBySessionType(session.type).displayName} session`"
                 title="Archive session"
                 :data-row-archive="session.id"
                 @click.stop="emit('archiveSession', session.id)"
@@ -383,10 +387,10 @@ onBeforeUnmount(() => {
 /* Layout */
 .route-session-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
   min-width: 0;
+  position: relative;
 }
 
 .route-session-row .route-item {
@@ -400,6 +404,20 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 6px;
   flex: none;
+}
+
+.route-row-actions {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.route-session-row:hover .route-row-actions,
+.route-session-row:focus-within .route-row-actions {
+  opacity: 1;
 }
 
 /* Route items */
@@ -472,6 +490,18 @@ onBeforeUnmount(() => {
   display: grid;
   gap: 2px;
   min-width: 0;
+}
+
+.route-copy--session {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.route-provider-icon {
+  flex: none;
+  height: 1em;
+  width: auto;
 }
 
 .route-name {
