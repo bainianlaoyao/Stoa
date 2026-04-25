@@ -24,7 +24,7 @@ const VALID_RUNTIME_STATES = new Set(['created', 'starting', 'alive', 'exited', 
 const VALID_AGENT_STATES = new Set(['unknown', 'idle', 'working', 'blocked', 'error'])
 const VALID_RUNTIME_EXIT_REASONS = new Set(['clean', 'failed'])
 const VALID_BLOCKING_REASONS = new Set(['permission', 'elicitation', 'resume-confirmation', 'provider-error'])
-const OPTIONAL_STRING_FIELDS = ['externalSessionId', 'model', 'snippet', 'toolName', 'error'] as const
+const OPTIONAL_STRING_FIELDS = ['model', 'snippet', 'toolName', 'error'] as const
 
 export interface LocalWebhookServerOptions {
   onEvent?: (event: CanonicalSessionEvent) => Promise<void> | void
@@ -100,9 +100,17 @@ function isCanonicalSessionEvent(value: unknown): value is CanonicalSessionEvent
   }
 
   for (const field of OPTIONAL_STRING_FIELDS) {
-    if (payload[field] !== undefined && payload[field] !== null && typeof payload[field] !== 'string') {
+    if (payload[field] !== undefined && typeof payload[field] !== 'string') {
       return false
     }
+  }
+
+  if (
+    payload.externalSessionId !== undefined
+    && payload.externalSessionId !== null
+    && typeof payload.externalSessionId !== 'string'
+  ) {
+    return false
   }
 
   if (payload.intent === 'agent.permission_resolved' && payload.agentState === 'blocked') {
