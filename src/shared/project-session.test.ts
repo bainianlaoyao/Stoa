@@ -61,7 +61,6 @@ describe('project/session shared contracts', () => {
           project_id: session.projectId,
           type: session.type,
           title: session.title,
-          last_known_status: session.status,
           runtime_state: session.runtimeState,
           agent_state: session.agentState,
           has_unseen_completion: session.hasUnseenCompletion,
@@ -84,7 +83,7 @@ describe('project/session shared contracts', () => {
     expect(state.sessions[0]?.project_id).toBe('project_alpha')
 
     const projectSessions: PersistedProjectSessions = {
-      version: 4,
+      version: 5,
       project_id: project.id,
       sessions: [
         {
@@ -92,7 +91,6 @@ describe('project/session shared contracts', () => {
           project_id: session.projectId,
           type: session.type,
           title: session.title,
-          last_known_status: session.status,
           runtime_state: session.runtimeState,
           agent_state: session.agentState,
           has_unseen_completion: session.hasUnseenCompletion,
@@ -111,9 +109,9 @@ describe('project/session shared contracts', () => {
       ]
     }
 
-    expect(projectSessions.version).toBe(4)
-    expect(projectSessions.sessions[0]?.last_known_status).toBe('running')
+    expect(projectSessions.version).toBe(5)
     expect(projectSessions.sessions[0]?.runtime_state).toBe('alive')
+    expect(projectSessions.sessions[0]?.agent_state).toBe('unknown')
   })
 
   it('supports shell, opencode, codex, and claude-code session types', () => {

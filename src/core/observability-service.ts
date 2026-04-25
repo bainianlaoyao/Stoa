@@ -100,6 +100,10 @@ export class ObservabilityService {
     }
 
     const session = this.sessions.get(event.sessionId)
+    if (!session) {
+      return appended
+    }
+
     const nextEvidence = updateEvidence(this.evidence.get(event.sessionId), event, session.lastStateSequence)
 
     this.evidence.set(event.sessionId, nextEvidence)
