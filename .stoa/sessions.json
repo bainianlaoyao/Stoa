@@ -1,0 +1,46 @@
+{
+  "version": 5,
+  "project_id": "project_0d34c033-3854-4682-814e-6b683fd4eaf6",
+  "sessions": [
+    {
+      "session_id": "session_a2130ff3-0a3f-41e8-8435-57771d7d3f8e",
+      "project_id": "project_0d34c033-3854-4682-814e-6b683fd4eaf6",
+      "type": "claude-code",
+      "title": "claude-ultra_simple_panel",
+      "runtime_state": "alive",
+      "agent_state": "working",
+      "has_unseen_completion": false,
+      "runtime_exit_code": null,
+      "runtime_exit_reason": null,
+      "last_state_sequence": 12,
+      "blocking_reason": null,
+      "last_summary": "PreToolUse",
+      "external_session_id": "49e50166-cac3-4427-a4f8-c6871b830e93",
+      "created_at": "2026-04-25T19:20:07.105Z",
+      "updated_at": "2026-04-25T19:22:54.250Z",
+      "last_activated_at": "2026-04-25T19:20:07.105Z",
+      "recovery_mode": "resume-external",
+      "archived": false
+    },
+    {
+      "session_id": "session_f88aae7e-2563-4083-9ced-12d924e22a05",
+      "project_id": "project_0d34c033-3854-4682-814e-6b683fd4eaf6",
+      "type": "codex",
+      "title": "codex-ultra_simple_panel",
+      "runtime_state": "alive",
+      "agent_state": "idle",
+      "has_unseen_completion": false,
+      "runtime_exit_code": null,
+      "runtime_exit_reason": null,
+      "last_state_sequence": 9,
+      "blocking_reason": null,
+      "last_summary": "Completion seen",
+      "external_session_id": "019dc616-1de9-7621-8aef-9f9d30ad2115",
+      "created_at": "2026-04-25T19:20:31.188Z",
+      "updated_at": "2026-04-25T19:21:36.661Z",
+      "last_activated_at": "2026-04-25T19:20:31.188Z",
+      "recovery_mode": "resume-external",
+      "archived": false
+    }
+  ]
+}

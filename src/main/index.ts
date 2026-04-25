@@ -36,6 +36,7 @@ const isE2EMode = process.env.VIBECODING_E2E === '1'
 
 const DEBUG_CODE = '114514'
 let debugModeActive = false
+const INPUT_DEBUG = process.env.VIBECODING_E2E === '1'
 
 function handleDebugToggleDevTools(): void {
   debugModeActive = !debugModeActive
@@ -689,6 +690,13 @@ app.whenReady().then(async () => {
   })
 
   ipcMain.handle(IPC_CHANNELS.sessionInput, async (_event, sessionId: string, data: string) => {
+    if (INPUT_DEBUG) {
+      console.log('[input-debug] sessionInput', {
+        sessionId,
+        data,
+        codes: [...data].map((char) => char.charCodeAt(0))
+      })
+    }
     await sessionInputRouter?.send(sessionId, data)
   })
 

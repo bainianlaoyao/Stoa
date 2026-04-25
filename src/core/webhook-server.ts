@@ -3,6 +3,8 @@ import type { AddressInfo } from 'node:net'
 import type { CanonicalSessionEvent } from '@shared/project-session'
 import { adaptClaudeCodeHook, adaptCodexHook } from './hook-event-adapter'
 
+const WEBHOOK_DEBUG = process.env.VIBECODING_E2E === '1'
+
 const VALID_SOURCES = new Set(['hook-sidecar', 'provider-adapter', 'system-recovery'])
 const VALID_INTENTS = new Set([
   'runtime.created',
@@ -185,6 +187,17 @@ export function createLocalWebhookServer(options: LocalWebhookServerOptions = {}
     const sessionId = request.header('x-stoa-session-id')
     const projectId = request.header('x-stoa-project-id')
 
+    if (WEBHOOK_DEBUG) {
+      console.log('[webhook-debug] codex hook request', {
+        sessionId,
+        projectId,
+        hookEventName:
+          request.body && typeof request.body === 'object' && 'hook_event_name' in request.body
+            ? (request.body as Record<string, unknown>).hook_event_name
+            : null
+      })
+    }
+
     if (!sessionId || !projectId) {
       response.status(400).json({ accepted: false, reason: 'invalid_hook_context' })
       return
@@ -192,6 +205,9 @@ export function createLocalWebhookServer(options: LocalWebhookServerOptions = {}
 
     const expectedSecret = options.getSessionSecret?.(sessionId) ?? null
     if (!expectedSecret || request.header('x-stoa-secret') !== expectedSecret) {
+      if (WEBHOOK_DEBUG) {
+        console.log('[webhook-debug] codex hook secret rejected', { sessionId, projectId })
+      }
       response.status(401).json({ accepted: false, reason: 'invalid_secret' })
       return
     }
@@ -207,10 +223,28 @@ export function createLocalWebhookServer(options: LocalWebhookServerOptions = {}
       projectId
     })
     if (!event) {
+      if (WEBHOOK_DEBUG) {
+        console.log('[webhook-debug] codex hook ignored', {
+          sessionId,
+          projectId,
+          hookEventName:
+            body && typeof body === 'object' && 'hook_event_name' in body
+              ? (body as Record<string, unknown>).hook_event_name
+              : null
+        })
+      }
       response.status(202).json({ accepted: true, ignored: true })
       return
     }
 
+    if (WEBHOOK_DEBUG) {
+      console.log('[webhook-debug] codex hook accepted', {
+        sessionId,
+        projectId,
+        eventType: event.event_type,
+        intent: event.payload.intent
+      })
+    }
     await options.onEvent?.(event)
     response.status(202).json({ accepted: true })
   })

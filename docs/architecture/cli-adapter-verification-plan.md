@@ -22,7 +22,7 @@ Verify every link in the signal chain from CLI → webhook → adapter → bridg
 | Auth headers | Sidecar adds from env vars | **Claude CLI interpolates `${ENV}`** in headers | Plugin reads `process.env` |
 | Events registered | SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Stop | UserPromptSubmit, PreToolUse, Stop, StopFailure, PermissionRequest | session.idle, permission.asked, permission.replied, session.error |
 | `PostToolUse` support | ✅ | ❌ (not in Claude Code hooks API) | ❌ (plugin only fires on status change) |
-| `externalSessionId` source | body.`session_id` (Codex thread ID) — **not forwarded by adapter** | body.`session_id` — **forwarded as `externalSessionId`** | event.properties.`sessionID` — forwarded |
+| `externalSessionId` source | body.`thread_id` (Codex thread ID) — **forwarded by adapter** | body.`session_id` — **forwarded as `externalSessionId`** | event.properties.`sessionID` — forwarded |
 | Sidecar script | `hook-stoa.mjs` (reads stdin) | **None** (HTTP hooks go direct to webhook) | `stoa-status.ts` (plugin) |
 
 ---
@@ -40,13 +40,23 @@ Hooks already live-captured. Remaining gaps:
 2. Install sidecar files (hook-stoa.mjs + notify-stoa.mjs + hooks.json + config.toml)
 3. Run `codex --no-alt-screen` interactively (not exec mode) with env vars set:
    - `STOA_SESSION_ID`, `STOA_PROJECT_ID`, `STOA_SESSION_SECRET`, `STOA_WEBHOOK_PORT`
-4. Send 2 prompts in sequence via stdin
+4. Send 2 prompts in sequence using tmux send-keys (codex interactive mode is a TUI — cannot pipe stdin directly)
 5. Capture both hook payloads AND notify payloads
-6. Verify: `agent-turn-complete` fires between turns, Stop fires at session end
+6. Verify: `agent-turn-complete` fires between turns, Stop fires at session end (**note**: `agent-turn-complete` is the expected value of `parsed.type` in `notify-stoa.mjs` line 74 — this field name comes from Codex CLI source/docs but has never been verified in interactive mode)
 
 **Expected result**: `notify-stoa.mjs` receives `agent-turn-complete` with `last-assistant-message` field per turn.
 
-**Watch out**: Interactive mode requires stdin interaction. Use tmux or expect-like mechanism.
+**Prerequisites**: Requires tmux or equivalent terminal automation. tmux session workflow:
+```
+tmux new-session -d -s codex-test
+tmux send-keys -t codex-test "codex --no-alt-screen" Enter
+sleep 5  # wait for codex to start
+tmux send-keys -t codex-test "echo first prompt" Enter
+sleep 10  # wait for response
+tmux send-keys -t codex-test "echo second prompt" Enter
+sleep 10
+tmux send-keys -t codex-test "/exit" Enter
+```
 
 ### 1B. Unread Fields Forwarding
 
@@ -97,18 +107,20 @@ Hooks already live-captured. Remaining gaps:
 
 **Architecture note**: Claude Code uses HTTP hooks (not command hooks). The provider (`claude-code-provider.ts`) writes `.claude/settings.local.json` with `type: 'http'` hook definitions. Claude CLI interpolates `${STOA_SESSION_ID}` etc. from environment variables and POSTs directly to the webhook server. **No sidecar script needed.**
 
-### 2A. Capture Real Claude Code HTTP Hook Payloads
+### 2A. Capture Real Claude Code HTTP Hook Payloads + Env Var Interpolation
 
-**Why**: `adaptClaudeCodeHook` was written based on docs but never verified with real payloads.
+**Why**: `adaptClaudeCodeHook` was written based on docs but never verified with real payloads. Claude Code HTTP hooks use `${STOA_SESSION_ID}` in header values — this is a security-sensitive mechanism that must be verified with a single live run.
 
-**Steps**:
-1. Start capture server on fixed port (reuse tmp-capture-server.mjs pattern)
-2. Call `installSidecar` via claude-code provider to write `.claude/settings.local.json`
-3. Verify `.claude/settings.local.json` contains HTTP hooks with correct port
-4. Set env vars: `STOA_SESSION_ID`, `STOA_PROJECT_ID`, `STOA_SESSION_SECRET`, `STOA_WEBHOOK_PORT`
-5. Run: `claude -p "list files in current directory" --dangerously-skip-permissions`
-6. Capture all HTTP hook payloads at webhook server
-7. Verify field naming: `hook_event_name`, `tool_name`, `tool_use_id`, `session_id`, etc.
+**Steps** (all in one CLI execution):
+1. Decide capture port (e.g. 18923). All subsequent steps use this same port.
+2. Start capture server on that port (reuse tmp-capture-server.mjs pattern)
+3. Call `installSidecar` via claude-code provider with `context.webhookPort = <capture port>` to write `.claude/settings.local.json`
+4. Verify `.claude/settings.local.json` contains HTTP hooks with URL containing the capture port
+5. Set env vars with **distinct test values**: `STOA_SESSION_ID=test-session-42`, `STOA_PROJECT_ID=test-project-42`, `STOA_SESSION_SECRET=test-secret-42`
+6. Run: `claude -p "list files in current directory" --dangerously-skip-permissions`
+7. Capture all HTTP hook payloads at webhook server
+8. **Payload shape check**: Verify field naming: `hook_event_name`, `tool_name`, `tool_use_id`, `session_id`, etc.
+9. **Env var interpolation check**: Verify `x-stoa-session-id` header = `test-session-42` (not literal `${STOA_SESSION_ID}`). Verify all 3 headers correctly interpolated, no env var leakage in request body.
 
 **Registered events**: UserPromptSubmit, PreToolUse, Stop, StopFailure, PermissionRequest (no PostToolUse — Claude Code doesn't have it).
 
@@ -117,22 +129,10 @@ Hooks already live-captured. Remaining gaps:
 - `${STOA_SESSION_ID}` template syntax — verify Claude CLI actually expands env vars in header values.
 - The `allowedEnvVars` array must include the env var names for the template expansion to work.
 
-### 2B. Verify HTTP Hook Env Var Interpolation
-
-**Why**: Claude Code HTTP hooks use `${STOA_SESSION_ID}` in header values. This is a security-sensitive mechanism — env vars must be correctly expanded.
-
-**Steps**:
-1. Set specific test values: `STOA_SESSION_ID=test-session-42`, `STOA_PROJECT_ID=test-project-42`, `STOA_SESSION_SECRET=test-secret-42`
-2. Run Claude Code with a prompt
-3. Inspect received headers at capture server
-4. Verify: `x-stoa-session-id` header = `test-session-42` (not literal `${STOA_SESSION_ID}`)
-5. Verify: all 3 headers correctly interpolated
-6. Verify: no env var leakage in request body
-
 ### 2C. Verify adaptClaudeCodeHook Field Mapping
 
 **Steps**:
-1. Take real captured payloads from 2A
+1. Take real captured payloads from 2A (env var interpolation already verified in step 9)
 2. Feed each through `adaptClaudeCodeHook` manually (or via test)
 3. Verify output matches expected `CanonicalSessionEvent` shape
 4. Key fields to verify against real payloads:
@@ -145,14 +145,14 @@ Hooks already live-captured. Remaining gaps:
 
 ### 2D. PermissionRequest Event
 
-**Why**: Claude Code has `PermissionRequest` event type mapped to `needs_confirmation` status. No live capture exists.
+**Why**: Claude Code has `PermissionRequest` event type mapped to `agentState: 'blocked'` with `blockingReason: 'permission'`. No live capture exists.
 
 **Steps**:
 1. Run Claude Code with `--permission-mode default` (not bypass)
 2. Submit a prompt that triggers tool use requiring approval
 3. Capture the `PermissionRequest` hook payload
-4. Verify `adaptClaudeCodeHook` maps it to `status: 'needs_confirmation'` with `blockingReason: 'permission'`
-5. Verify: subsequent user approval triggers `running` status update
+4. Verify `adaptClaudeCodeHook` maps it to `intent: 'agent.permission_requested'`, `agentState: 'blocked'`, `blockingReason: 'permission'`
+5. Verify: subsequent user approval triggers `agentState: 'working'` status update
 
 **Alternative**: If triggering PermissionRequest is difficult in `-p` mode, verify with synthetic test payload shaped from Claude Code docs, then mark as ⬜ for live capture.
 
@@ -185,22 +185,23 @@ Hooks already live-captured. Remaining gaps:
 5. Verify: `POST /events` received with correct `CanonicalSessionEvent` shape
 6. Verify: only explicit state-changing statuses emitted (not every event type)
 
-**Event type mapping** (from plugin source):
-- `session.idle` → `turn_complete`
-- `permission.asked` → `needs_confirmation`
-- `permission.replied` → `running`
-- `session.error` → `error`
+**Event type mapping** (from plugin source `opencode-provider.ts` line 37):
+- `session.idle` → `intent: 'agent.turn_completed'`, `agentState: 'idle'`
+- `permission.asked` → `intent: 'agent.permission_requested'`, `agentState: 'blocked'`
+- `permission.replied` → `intent: 'agent.permission_resolved'`, `agentState: 'working'` (or `'idle'`/`'error'` depending on denial)
+- `session.error` → `intent: 'agent.turn_failed'`, `agentState: 'error'`
 
-### 3B. Verify Plugin Reads Env Vars at Runtime
+### 3B. Verify Plugin Reads Session Identity from Env, Port from Install
 
-**Why**: Plugin should read `STOA_SESSION_ID` etc. from env, not have values baked in.
+**Why**: Plugin reads session identity (`STOA_SESSION_ID`, `STOA_PROJECT_ID`, `STOA_SESSION_SECRET`) from env at runtime, but the webhook port is baked into the fetch URL at `installSidecar` time via template literal `http://127.0.0.1:${context.webhookPort}/events`. Need to verify both mechanisms work correctly.
 
 **Steps**:
 1. Install sidecar via provider
 2. Read plugin file content from disk
-3. Verify: no hardcoded session IDs, port numbers, or secrets
-4. Verify: reads `process.env.STOA_SESSION_ID`, `process.env.STOA_WEBHOOK_PORT` etc. at runtime
-5. Verify: webhook port in fetch URL comes from env, not template literal baked at install time
+3. Verify: no hardcoded session IDs, port numbers, or secrets for session identity fields
+4. Verify: reads `process.env.STOA_SESSION_ID`, `process.env.STOA_PROJECT_ID`, `process.env.STOA_SESSION_SECRET` at runtime
+5. Verify: webhook port in fetch URL is baked at install time (NOT from runtime env) — this is by design since the port is known at install time and doesn't change per session
+6. **Consequence**: changing `webhookPort` requires re-running `installSidecar`. Document this as a known constraint.
 
 **Already verified by test**: `provider-integration.test.ts` has "shared sidecar plugin reads session identity from runtime env instead of baking ids" test that checks this.
 
@@ -217,7 +218,7 @@ Hooks already live-captured. Remaining gaps:
    - Codex notify → `POST /events` (pre-constructed CanonicalSessionEvent)
    - Claude Code → `POST /hooks/claude-code` (raw payload from HTTP hook)
    - OpenCode → `POST /events` (pre-constructed CanonicalSessionEvent)
-3. Verify: all reach `applySessionEvent` with correct (sessionId, status, summary)
+3. Verify: all reach `SessionEventBridge.enqueueSessionEvent` with correct `(sessionId, payload.intent, payload.summary)` via the `onEvent` callback
 4. Verify: unknown events return `{ accepted: true, ignored: true }`
 
 ### 4B. External Session ID Reconciliation (per-provider)
@@ -226,8 +227,8 @@ Hooks already live-captured. Remaining gaps:
 
 **Steps**:
 1. Start full pipeline (webhook → bridge → manager → state-store)
-2. **Codex**: Send PreToolUse hook with `session_id: "codex-thread-1"` in body → adapter ignores it (uses context sessionId) → verify `externalSessionId` is NOT set from body
-3. **Claude Code**: Send PreToolUse hook with `session_id: "claude-session-1"` in body → adapter reads it as `externalSessionId` → verify `externalSessionId = "claude-session-1"` in reconciled state
+2. **Codex**: Send PreToolUse hook with `thread_id: "codex-thread-1"` in body → adapter reads `body.thread_id` (not `body.session_id`) as `externalSessionId` → verify `externalSessionId = "codex-thread-1"` in reconciled state. Note: `body.session_id` is the Codex thread ID but the adapter ignores it — `thread_id` is the correct field.
+3. **Claude Code**: Send PreToolUse hook with `session_id: "claude-session-1"` in body → adapter reads `body.session_id` as `externalSessionId` → verify `externalSessionId = "claude-session-1"` in reconciled state
 4. **OpenCode**: Send event with `payload.externalSessionId: "oc-sess-1"` → verify `externalSessionId = "oc-sess-1"` in reconciled state
 5. For each: send another event with different external session ID → verify reconciliation detects the change
 
@@ -253,17 +254,17 @@ Already well-tested by existing E2E tests. These are confirmation checks, not di
 
 ### 5B. Bridge → Observability Ingest
 
-**Existing test**: `src/main/session-event-bridge.test.ts` (6 tests)
+**Existing test**: `src/main/session-event-bridge.test.ts` (8 tests)
 
-**Confirmation**: Verify observability mapping covers all statuses that can come from adapters:
-- `running` (all providers)
-- `turn_complete` (Codex Stop, Claude Stop, OpenCode session.idle)
-- `needs_confirmation` (Claude PermissionRequest, OpenCode permission.asked)
-- `error` (Claude StopFailure, OpenCode session.error)
+**Confirmation**: Verify observability mapping covers all intent/agentState combinations that can come from adapters:
+- `agent.turn_started` / `agentState: 'working'` (all providers — UserPromptSubmit, PreToolUse)
+- `agent.turn_completed` / `agentState: 'idle'` (Codex Stop, Claude Stop, OpenCode session.idle)
+- `agent.permission_requested` / `agentState: 'blocked'` (Claude PermissionRequest, OpenCode permission.asked)
+- `agent.turn_failed` / `agentState: 'error'` (Claude StopFailure, OpenCode session.error)
 
 ### 5C. IPC → Renderer Store Propagation
 
-**Existing test**: `tests/e2e/frontend-store-projection.test.ts` (14 tests)
+**Existing test**: `tests/e2e/frontend-store-projection.test.ts` (41 tests)
 
 **Confirmation**: Run existing test suite, verify all pass. No new work needed.
 
@@ -273,8 +274,7 @@ Already well-tested by existing E2E tests. These are confirmation checks, not di
 
 | ID | Verification Item | Risk | Effort | Priority |
 |---|---|---|---|---|
-| **2A** | Claude Code live HTTP hook capture | **HIGH** — never verified, uses novel `${ENV}` interpolation mechanism | Low | **P0** |
-| **2B** | Claude Code env var interpolation | **HIGH** — security-sensitive, misconfiguration = auth bypass or failure | Low | **P0** |
+| **2A** | Claude Code live HTTP hook capture + env var interpolation | **HIGH** — never verified, uses novel `${ENV}` interpolation mechanism, security-sensitive auth headers | Low | **P0** |
 | **2C** | Claude adapter field mapping | **HIGH** — field names assumed from docs, never validated against real payloads | Low | **P0** |
 | **1A** | Codex notify in interactive session | Medium — untested mechanism | Medium | **P0** |
 | **2E** | settings.local.json merge behavior | Medium — may silently fail to load hooks | Low | **P1** |
@@ -294,9 +294,9 @@ Already well-tested by existing E2E tests. These are confirmation checks, not di
 
 1. **All 3 CLIs** have at least one live-captured payload set verified against adapter code
 2. **All adapter functions** (`adaptCodexHook`, `adaptClaudeCodeHook`) field names match real payload shapes — no camelCase/snake_case mismatches
-3. **Claude Code HTTP hooks**: `${ENV}` interpolation verified working correctly in header values
+3. **Claude Code HTTP hooks**: `${ENV}` interpolation verified working in header values (tested with distinct values to confirm expansion vs literal)
 4. **All sidecar/config files**: hook-stoa.mjs, notify-stoa.mjs, settings.local.json, config.toml verified parseable by their respective CLIs
-5. **External session ID**: verified per-provider (Codex ignores body.session_id, Claude forwards it, OpenCode uses event property)
+5. **External session ID**: verified per-provider (Codex reads `thread_id`, Claude reads `session_id`, OpenCode uses event property)
 6. **Notify mechanism**: confirmed working in interactive Codex sessions
 7. **All findings** documented in `docs/architecture/hook-signal-chain.md` with updated verification statuses
 

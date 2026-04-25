@@ -1,0 +1,403 @@
+
+> stoa@0.1.0 dev D:\Data\DEV\ultra_simple_panel
+> electron-vite dev
+
+[36mvite v7.3.2 [32mbuilding ssr environment for development...[36m[39m
+transforming...
+[32m✓[39m 233 modules transformed.
+rendering chunks...
+[2mout/main/[22m[36mpty-host-BHQH0Bhu.cjs  [39m[1m[2m  1.14 kB[22m[1m[22m
+[2mout/main/[22m[36mindex.cjs              [39m[1m[33m924.60 kB[39m[22m
+[32m✓ built in 816ms[39m
+[32m
+build the electron main process successfully[39m
+[90m
+-----
+[39m
+[36mvite v7.3.2 [32mbuilding ssr environment for development...[36m[39m
+transforming...
+[32m✓[39m 1 modules transformed.
+rendering chunks...
+[2mout/preload/[22m[36mindex.cjs  [39m[1m[2m3.75 kB[22m[1m[22m
+[32m✓ built in 9ms[39m
+[32m
+build the electron preload files successfully[39m
+[90m
+-----
+[39m
+[32mdev server running for the electron renderer process at:
+[39m
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m5173[22m/[39m
+[2m  [32m➜[39m  [1mNetwork[22m[2m: use [22m[1m--host[22m[2m to expose[22m
+[32m
+start electron app...
+[39m
+
+[session-runtime] installSidecar for session_2297bca9-b986-4941-9828-a2702d6aafc0
+[session-runtime] installSidecar for session_718b2e8f-0d97-4543-a811-b37cce66be50
+[session-runtime] installSidecar for session_8533c567-a0fb-4ccf-8dca-45dcd6fe6ac4
+[session-runtime] installSidecar for session_c5cc86da-add0-4873-8dcb-256d36918851
+[session-runtime] installSidecar for session_7872e56d-3bcd-4aaf-b233-d3485bee2445
+[session-runtime] installSidecar done for session_c5cc86da-add0-4873-8dcb-256d36918851
+[session-runtime] markSessionStarting for session_c5cc86da-add0-4873-8dcb-256d36918851 (command: C:\Users\30280\.local\bin\claude.exe --session-id bdcdd0f3-39b6-40de-9f39-b573b7db0bc7 --dangerously-skip-permissions)
+[session-runtime] installSidecar done for session_2297bca9-b986-4941-9828-a2702d6aafc0
+[session-runtime] markSessionStarting for session_2297bca9-b986-4941-9828-a2702d6aafc0 (command: C:\Users\30280\.local\bin\claude.exe --resume 68b8b9e7-6c19-4965-b346-db4e1cf79491 --dangerously-skip-permissions)
+[session-runtime] installSidecar done for session_718b2e8f-0d97-4543-a811-b37cce66be50
+[session-runtime] markSessionStarting for session_718b2e8f-0d97-4543-a811-b37cce66be50 (command: C:\Users\30280\.local\bin\claude.exe --resume bd65ac12-577b-43df-ac36-be02eba40d7c --dangerously-skip-permissions)
+[session-runtime] installSidecar done for session_7872e56d-3bcd-4aaf-b233-d3485bee2445
+[session-runtime] markSessionStarting for session_7872e56d-3bcd-4aaf-b233-d3485bee2445 (command: C:\Users\30280\.local\bin\claude.exe --resume 9df75e99-b580-40a0-a6a2-f36535d3a805 --dangerously-skip-permissions)
+[session-runtime] installSidecar done for session_8533c567-a0fb-4ccf-8dca-45dcd6fe6ac4
+[session-runtime] markSessionStarting for session_8533c567-a0fb-4ccf-8dca-45dcd6fe6ac4 (command: C:\Users\30280\.local\bin\claude.exe --resume 27620c61-48dc-43fe-b4bd-6c51a5e25cd5 --dangerously-skip-permissions)
+[pushSessionEvent] Sending starting for session_c5cc86da-add0-4873-8dcb-256d36918851 to renderer
+[session-runtime] markSessionStarting done, spawning PTY for session_c5cc86da-add0-4873-8dcb-256d36918851
+[session-runtime] markSessionRunning for session_c5cc86da-add0-4873-8dcb-256d36918851 (runtimeId: session_c5cc86da-add0-4873-8dcb-256d36918851)
+[pushSessionEvent] Sending starting for session_2297bca9-b986-4941-9828-a2702d6aafc0 to renderer
+[session-runtime] markSessionStarting done, spawning PTY for session_2297bca9-b986-4941-9828-a2702d6aafc0
+[session-runtime] markSessionRunning for session_2297bca9-b986-4941-9828-a2702d6aafc0 (runtimeId: session_2297bca9-b986-4941-9828-a2702d6aafc0)
+[pushSessionEvent] Sending starting for session_718b2e8f-0d97-4543-a811-b37cce66be50 to renderer
+[session-runtime] markSessionStarting done, spawning PTY for session_718b2e8f-0d97-4543-a811-b37cce66be50
+[session-runtime] markSessionRunning for session_718b2e8f-0d97-4543-a811-b37cce66be50 (runtimeId: session_718b2e8f-0d97-4543-a811-b37cce66be50)
+[pushSessionEvent] Sending starting for session_7872e56d-3bcd-4aaf-b233-d3485bee2445 to renderer
+[session-runtime] markSessionStarting done, spawning PTY for session_7872e56d-3bcd-4aaf-b233-d3485bee2445
+[session-runtime] markSessionRunning for session_7872e56d-3bcd-4aaf-b233-d3485bee2445 (runtimeId: session_7872e56d-3bcd-4aaf-b233-d3485bee2445)
+[pushSessionEvent] Sending starting for session_8533c567-a0fb-4ccf-8dca-45dcd6fe6ac4 to renderer
+[session-runtime] markSessionStarting done, spawning PTY for session_8533c567-a0fb-4ccf-8dca-45dcd6fe6ac4
+[session-runtime] markSessionRunning for session_8533c567-a0fb-4ccf-8dca-45dcd6fe6ac4 (runtimeId: session_8533c567-a0fb-4ccf-8dca-45dcd6fe6ac4)
+[pushSessionEvent] Sending running for session_c5cc86da-add0-4873-8dcb-256d36918851 to renderer
+[session-runtime] markSessionRunning done for session_c5cc86da-add0-4873-8dcb-256d36918851
+[bootstrap-recovery] Session session_c5cc86da-add0-4873-8dcb-256d36918851 started successfully
+[pushSessionEvent] Sending running for session_2297bca9-b986-4941-9828-a2702d6aafc0 to renderer
+[session-runtime] markSessionRunning done for session_2297bca9-b986-4941-9828-a2702d6aafc0
+[bootstrap-recovery] Session session_2297bca9-b986-4941-9828-a2702d6aafc0 started successfully
+[pushSessionEvent] Sending running for session_718b2e8f-0d97-4543-a811-b37cce66be50 to renderer
+[session-runtime] markSessionRunning done for session_718b2e8f-0d97-4543-a811-b37cce66be50
+[bootstrap-recovery] Session session_718b2e8f-0d97-4543-a811-b37cce66be50 started successfully
+[pushSessionEvent] Sending running for session_7872e56d-3bcd-4aaf-b233-d3485bee2445 to renderer
+[session-runtime] markSessionRunning done for session_7872e56d-3bcd-4aaf-b233-d3485bee2445
+[bootstrap-recovery] Session session_7872e56d-3bcd-4aaf-b233-d3485bee2445 started successfully
+[pushSessionEvent] Sending running for session_8533c567-a0fb-4ccf-8dca-45dcd6fe6ac4 to renderer
+[session-runtime] markSessionRunning done for session_8533c567-a0fb-4ccf-8dca-45dcd6fe6ac4
+[bootstrap-recovery] Session session_8533c567-a0fb-4ccf-8dca-45dcd6fe6ac4 started successfully
+[session-runtime] Process exited for session_c5cc86da-add0-4873-8dcb-256d36918851 with code 1
+[pushSessionEvent] Sending exited for session_c5cc86da-add0-4873-8dcb-256d36918851 to renderer
+[2m11:27:56[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/app/App.vue, /styles/tailwind.css[22m
+[session-runtime] installSidecar for session_6b34d92d-449e-408b-ad09-274e2194203a
+[session-runtime] installSidecar done for session_6b34d92d-449e-408b-ad09-274e2194203a
+[session-runtime] markSessionStarting for session_6b34d92d-449e-408b-ad09-274e2194203a (command: C:\Users\30280\.local\bin\claude.exe --session-id 7558665e-85da-4ac1-a542-05ec8fa83b0e --dangerously-skip-permissions)
+[pushSessionEvent] Sending starting for session_6b34d92d-449e-408b-ad09-274e2194203a to renderer
+[session-runtime] markSessionStarting done, spawning PTY for session_6b34d92d-449e-408b-ad09-274e2194203a
+[session-runtime] markSessionRunning for session_6b34d92d-449e-408b-ad09-274e2194203a (runtimeId: session_6b34d92d-449e-408b-ad09-274e2194203a)
+[pushSessionEvent] Sending running for session_6b34d92d-449e-408b-ad09-274e2194203a to renderer
+[session-runtime] markSessionRunning done for session_6b34d92d-449e-408b-ad09-274e2194203a
+[session-create] Session session_6b34d92d-449e-408b-ad09-274e2194203a started successfully
+[2m11:42:41[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/styles/tailwind.css, /components/TerminalViewport.vue[22m
+[pushSessionEvent] Sending turn_complete for session_6b34d92d-449e-408b-ad09-274e2194203a to renderer
+[pushSessionEvent] Sending turn_complete for session_6b34d92d-449e-408b-ad09-274e2194203a to renderer
+[session-runtime] Process exited for session_2297bca9-b986-4941-9828-a2702d6aafc0 with code -1073741510
+[pushSessionEvent] Sending exited for session_2297bca9-b986-4941-9828-a2702d6aafc0 to renderer
+[session-runtime] installSidecar for session_449f831f-5419-4cf6-9700-cf3bf27b09fe
+[session-runtime] installSidecar done for session_449f831f-5419-4cf6-9700-cf3bf27b09fe
+[session-runtime] markSessionStarting for session_449f831f-5419-4cf6-9700-cf3bf27b09fe (command: C:\WINDOWS\system32\cmd.exe /d /s /c C:\Users\30280\AppData\Roaming\npm\codex)
+[pushSessionEvent] Sending starting for session_449f831f-5419-4cf6-9700-cf3bf27b09fe to renderer
+[session-runtime] markSessionStarting done, spawning PTY for session_449f831f-5419-4cf6-9700-cf3bf27b09fe
+[session-runtime] markSessionRunning for session_449f831f-5419-4cf6-9700-cf3bf27b09fe (runtimeId: session_449f831f-5419-4cf6-9700-cf3bf27b09fe)
+[pushSessionEvent] Sending running for session_449f831f-5419-4cf6-9700-cf3bf27b09fe to renderer
+[session-runtime] markSessionRunning done for session_449f831f-5419-4cf6-9700-cf3bf27b09fe
+[session-create] Session session_449f831f-5419-4cf6-9700-cf3bf27b09fe started successfully
+[session-runtime] Process exited for session_718b2e8f-0d97-4543-a811-b37cce66be50 with code -1073741510
+[pushSessionEvent] Sending exited for session_718b2e8f-0d97-4543-a811-b37cce66be50 to renderer
+[session-runtime] Process exited for session_8533c567-a0fb-4ccf-8dca-45dcd6fe6ac4 with code -1073741510
+[pushSessionEvent] Sending exited for session_8533c567-a0fb-4ccf-8dca-45dcd6fe6ac4 to renderer
+[session-runtime] installSidecar for session_8945e56c-e8f5-4e7c-84e2-62cdecac2e8e
+[session-runtime] installSidecar done for session_8945e56c-e8f5-4e7c-84e2-62cdecac2e8e
+[session-runtime] markSessionStarting for session_8945e56c-e8f5-4e7c-84e2-62cdecac2e8e (command: C:\WINDOWS\system32\cmd.exe /d /s /c C:\Users\30280\AppData\Roaming\npm\codex)
+[pushSessionEvent] Sending starting for session_8945e56c-e8f5-4e7c-84e2-62cdecac2e8e to renderer
+[session-runtime] markSessionStarting done, spawning PTY for session_8945e56c-e8f5-4e7c-84e2-62cdecac2e8e
+[session-runtime] markSessionRunning for session_8945e56c-e8f5-4e7c-84e2-62cdecac2e8e (runtimeId: session_8945e56c-e8f5-4e7c-84e2-62cdecac2e8e)
+[pushSessionEvent] Sending running for session_8945e56c-e8f5-4e7c-84e2-62cdecac2e8e to renderer
+[session-runtime] markSessionRunning done for session_8945e56c-e8f5-4e7c-84e2-62cdecac2e8e
+[session-create] Session session_8945e56c-e8f5-4e7c-84e2-62cdecac2e8e started successfully
+[pushSessionEvent] Sending running for session_8945e56c-e8f5-4e7c-84e2-62cdecac2e8e to renderer
+[pushSessionEvent] Sending turn_complete for session_8945e56c-e8f5-4e7c-84e2-62cdecac2e8e to renderer
+[pushSessionEvent] Sending turn_complete for session_449f831f-5419-4cf6-9700-cf3bf27b09fe to renderer
+[pushSessionEvent] Sending turn_complete for session_8945e56c-e8f5-4e7c-84e2-62cdecac2e8e to renderer
+[pushSessionEvent] Sending turn_complete for session_449f831f-5419-4cf6-9700-cf3bf27b09fe to renderer
+[pushSessionEvent] Sending turn_complete for session_449f831f-5419-4cf6-9700-cf3bf27b09fe to renderer
+[pushSessionEvent] Sending turn_complete for session_8945e56c-e8f5-4e7c-84e2-62cdecac2e8e to renderer
+[pushSessionEvent] Sending turn_complete for session_8945e56c-e8f5-4e7c-84e2-62cdecac2e8e to renderer
+[pushSessionEvent] Sending turn_complete for session_449f831f-5419-4cf6-9700-cf3bf27b09fe to renderer
+[session-runtime] installSidecar for session_1017ce08-965c-441c-9e09-9c9db00cd399
+[session-runtime] installSidecar done for session_1017ce08-965c-441c-9e09-9c9db00cd399
+[session-runtime] markSessionStarting for session_1017ce08-965c-441c-9e09-9c9db00cd399 (command: C:\WINDOWS\system32\cmd.exe /d /s /c C:\Users\30280\AppData\Roaming\npm\codex)
+[pushSessionEvent] Sending starting for session_1017ce08-965c-441c-9e09-9c9db00cd399 to renderer
+[session-runtime] markSessionStarting done, spawning PTY for session_1017ce08-965c-441c-9e09-9c9db00cd399
+[session-runtime] markSessionRunning for session_1017ce08-965c-441c-9e09-9c9db00cd399 (runtimeId: session_1017ce08-965c-441c-9e09-9c9db00cd399)
+[pushSessionEvent] Sending running for session_1017ce08-965c-441c-9e09-9c9db00cd399 to renderer
+[session-runtime] markSessionRunning done for session_1017ce08-965c-441c-9e09-9c9db00cd399
+[session-create] Session session_1017ce08-965c-441c-9e09-9c9db00cd399 started successfully
+[session-runtime] installSidecar for session_36bd4f2e-e4d9-49f1-b5f3-8a7d70d4c5e1
+[session-runtime] installSidecar done for session_36bd4f2e-e4d9-49f1-b5f3-8a7d70d4c5e1
+[session-runtime] markSessionStarting for session_36bd4f2e-e4d9-49f1-b5f3-8a7d70d4c5e1 (command: C:\WINDOWS\system32\cmd.exe /d /s /c C:\Users\30280\AppData\Roaming\npm\codex)
+[pushSessionEvent] Sending starting for session_36bd4f2e-e4d9-49f1-b5f3-8a7d70d4c5e1 to renderer
+[session-runtime] markSessionStarting done, spawning PTY for session_36bd4f2e-e4d9-49f1-b5f3-8a7d70d4c5e1
+[session-runtime] markSessionRunning for session_36bd4f2e-e4d9-49f1-b5f3-8a7d70d4c5e1 (runtimeId: session_36bd4f2e-e4d9-49f1-b5f3-8a7d70d4c5e1)
+[pushSessionEvent] Sending running for session_36bd4f2e-e4d9-49f1-b5f3-8a7d70d4c5e1 to renderer
+[session-runtime] markSessionRunning done for session_36bd4f2e-e4d9-49f1-b5f3-8a7d70d4c5e1
+[session-create] Session session_36bd4f2e-e4d9-49f1-b5f3-8a7d70d4c5e1 started successfully
+[session-runtime] Process exited for session_36bd4f2e-e4d9-49f1-b5f3-8a7d70d4c5e1 with code 0
+[pushSessionEvent] Sending exited for session_36bd4f2e-e4d9-49f1-b5f3-8a7d70d4c5e1 to renderer
+[pushSessionEvent] Sending turn_complete for session_8945e56c-e8f5-4e7c-84e2-62cdecac2e8e to renderer
+[session-runtime] installSidecar for session_8fa7f980-1795-4e1a-811c-90847b39efbe
+[session-runtime] installSidecar done for session_8fa7f980-1795-4e1a-811c-90847b39efbe
+[session-runtime] markSessionStarting for session_8fa7f980-1795-4e1a-811c-90847b39efbe (command: C:\WINDOWS\system32\cmd.exe /d /s /c C:\Users\30280\AppData\Roaming\npm\codex)
+[pushSessionEvent] Sending starting for session_8fa7f980-1795-4e1a-811c-90847b39efbe to renderer
+[session-runtime] markSessionStarting done, spawning PTY for session_8fa7f980-1795-4e1a-811c-90847b39efbe
+[session-runtime] markSessionRunning for session_8fa7f980-1795-4e1a-811c-90847b39efbe (runtimeId: session_8fa7f980-1795-4e1a-811c-90847b39efbe)
+[pushSessionEvent] Sending running for session_8fa7f980-1795-4e1a-811c-90847b39efbe to renderer
+[session-runtime] markSessionRunning done for session_8fa7f980-1795-4e1a-811c-90847b39efbe
+[session-create] Session session_8fa7f980-1795-4e1a-811c-90847b39efbe started successfully
+[pushSessionEvent] Sending turn_complete for session_6b34d92d-449e-408b-ad09-274e2194203a to renderer
+[session-runtime] Process exited for session_8fa7f980-1795-4e1a-811c-90847b39efbe with code 1
+[pushSessionEvent] Sending exited for session_8fa7f980-1795-4e1a-811c-90847b39efbe to renderer
+[session-runtime] installSidecar for session_0ab8b5bc-04d7-48d3-b2ab-252dc4454a67
+[session-runtime] installSidecar done for session_0ab8b5bc-04d7-48d3-b2ab-252dc4454a67
+[session-runtime] markSessionStarting for session_0ab8b5bc-04d7-48d3-b2ab-252dc4454a67 (command: C:\WINDOWS\system32\cmd.exe /d /s /c C:\Users\30280\AppData\Roaming\npm\codex)
+[pushSessionEvent] Sending starting for session_0ab8b5bc-04d7-48d3-b2ab-252dc4454a67 to renderer
+[session-runtime] markSessionStarting done, spawning PTY for session_0ab8b5bc-04d7-48d3-b2ab-252dc4454a67
+[session-runtime] markSessionRunning for session_0ab8b5bc-04d7-48d3-b2ab-252dc4454a67 (runtimeId: session_0ab8b5bc-04d7-48d3-b2ab-252dc4454a67)
+[pushSessionEvent] Sending running for session_0ab8b5bc-04d7-48d3-b2ab-252dc4454a67 to renderer
+[session-runtime] markSessionRunning done for session_0ab8b5bc-04d7-48d3-b2ab-252dc4454a67
+[session-create] Session session_0ab8b5bc-04d7-48d3-b2ab-252dc4454a67 started successfully
+[pushSessionEvent] Sending turn_complete for session_6b34d92d-449e-408b-ad09-274e2194203a to renderer
+[pushSessionEvent] Sending turn_complete for session_449f831f-5419-4cf6-9700-cf3bf27b09fe to renderer
+[pushSessionEvent] Sending turn_complete for session_449f831f-5419-4cf6-9700-cf3bf27b09fe to renderer
+[pushSessionEvent] Sending turn_complete for session_449f831f-5419-4cf6-9700-cf3bf27b09fe to renderer
+[pushSessionEvent] Sending turn_complete for session_8945e56c-e8f5-4e7c-84e2-62cdecac2e8e to renderer
+[pushSessionEvent] Sending turn_complete for session_449f831f-5419-4cf6-9700-cf3bf27b09fe to renderer
+[pushSessionEvent] Sending turn_complete for session_8945e56c-e8f5-4e7c-84e2-62cdecac2e8e to renderer
+[pushSessionEvent] Sending turn_complete for session_449f831f-5419-4cf6-9700-cf3bf27b09fe to renderer
+[pushSessionEvent] Sending turn_complete for session_449f831f-5419-4cf6-9700-cf3bf27b09fe to renderer
+[pushSessionEvent] Sending turn_complete for session_8945e56c-e8f5-4e7c-84e2-62cdecac2e8e to renderer
+[pushSessionEvent] Sending turn_complete for session_449f831f-5419-4cf6-9700-cf3bf27b09fe to renderer
+[pushSessionEvent] Sending turn_complete for session_8945e56c-e8f5-4e7c-84e2-62cdecac2e8e to renderer
+[pushSessionEvent] Sending turn_complete for session_0ab8b5bc-04d7-48d3-b2ab-252dc4454a67 to renderer
+[pushSessionEvent] Sending turn_complete for session_449f831f-5419-4cf6-9700-cf3bf27b09fe to renderer
+[pushSessionEvent] Sending turn_complete for session_449f831f-5419-4cf6-9700-cf3bf27b09fe to renderer
+[pushSessionEvent] Sending turn_complete for session_6b34d92d-449e-408b-ad09-274e2194203a to renderer
+[pushSessionEvent] Sending turn_complete for session_0ab8b5bc-04d7-48d3-b2ab-252dc4454a67 to renderer
+[session-runtime] installSidecar for session_08825e98-5442-4643-b6c5-996c1c4a44a0
+[session-runtime] installSidecar done for session_08825e98-5442-4643-b6c5-996c1c4a44a0
+[session-runtime] markSessionStarting for session_08825e98-5442-4643-b6c5-996c1c4a44a0 (command: C:\WINDOWS\system32\cmd.exe /d /s /c C:\Users\30280\AppData\Roaming\npm\codex)
+[pushSessionEvent] Sending starting for session_08825e98-5442-4643-b6c5-996c1c4a44a0 to renderer
+[session-runtime] markSessionStarting done, spawning PTY for session_08825e98-5442-4643-b6c5-996c1c4a44a0
+[session-runtime] markSessionRunning for session_08825e98-5442-4643-b6c5-996c1c4a44a0 (runtimeId: session_08825e98-5442-4643-b6c5-996c1c4a44a0)
+[pushSessionEvent] Sending running for session_08825e98-5442-4643-b6c5-996c1c4a44a0 to renderer
+[session-runtime] markSessionRunning done for session_08825e98-5442-4643-b6c5-996c1c4a44a0
+[session-create] Session session_08825e98-5442-4643-b6c5-996c1c4a44a0 started successfully
+[session-runtime] Process exited for session_0ab8b5bc-04d7-48d3-b2ab-252dc4454a67 with code 0
+[pushSessionEvent] Sending exited for session_0ab8b5bc-04d7-48d3-b2ab-252dc4454a67 to renderer
+[session-runtime] installSidecar for session_2728e4d3-3f95-4a29-91ea-28a5a44f19f8
+[session-runtime] installSidecar done for session_2728e4d3-3f95-4a29-91ea-28a5a44f19f8
+[session-runtime] markSessionStarting for session_2728e4d3-3f95-4a29-91ea-28a5a44f19f8 (command: C:\WINDOWS\system32\cmd.exe /d /s /c C:\Users\30280\AppData\Roaming\npm\codex)
+[pushSessionEvent] Sending starting for session_2728e4d3-3f95-4a29-91ea-28a5a44f19f8 to renderer
+[session-runtime] markSessionStarting done, spawning PTY for session_2728e4d3-3f95-4a29-91ea-28a5a44f19f8
+[session-runtime] markSessionRunning for session_2728e4d3-3f95-4a29-91ea-28a5a44f19f8 (runtimeId: session_2728e4d3-3f95-4a29-91ea-28a5a44f19f8)
+[pushSessionEvent] Sending running for session_2728e4d3-3f95-4a29-91ea-28a5a44f19f8 to renderer
+[session-runtime] markSessionRunning done for session_2728e4d3-3f95-4a29-91ea-28a5a44f19f8
+[session-create] Session session_2728e4d3-3f95-4a29-91ea-28a5a44f19f8 started successfully
+[session-runtime] Process exited for session_8945e56c-e8f5-4e7c-84e2-62cdecac2e8e with code -1073741510
+[pushSessionEvent] Sending exited for session_8945e56c-e8f5-4e7c-84e2-62cdecac2e8e to renderer
+[session-runtime] installSidecar for session_61e32a8d-0335-4199-92a0-74c65a88b132
+[session-runtime] installSidecar done for session_61e32a8d-0335-4199-92a0-74c65a88b132
+[session-runtime] markSessionStarting for session_61e32a8d-0335-4199-92a0-74c65a88b132 (command: C:\WINDOWS\system32\cmd.exe /d /s /c C:\Users\30280\AppData\Roaming\npm\codex)
+[pushSessionEvent] Sending starting for session_61e32a8d-0335-4199-92a0-74c65a88b132 to renderer
+[session-runtime] markSessionStarting done, spawning PTY for session_61e32a8d-0335-4199-92a0-74c65a88b132
+[session-runtime] markSessionRunning for session_61e32a8d-0335-4199-92a0-74c65a88b132 (runtimeId: session_61e32a8d-0335-4199-92a0-74c65a88b132)
+[pushSessionEvent] Sending running for session_61e32a8d-0335-4199-92a0-74c65a88b132 to renderer
+[session-runtime] markSessionRunning done for session_61e32a8d-0335-4199-92a0-74c65a88b132
+[session-create] Session session_61e32a8d-0335-4199-92a0-74c65a88b132 started successfully
+[pushSessionEvent] Sending turn_complete for session_6b34d92d-449e-408b-ad09-274e2194203a to renderer
+[pushSessionEvent] Sending turn_complete for session_1017ce08-965c-441c-9e09-9c9db00cd399 to renderer
+[pushSessionEvent] Sending turn_complete for session_2728e4d3-3f95-4a29-91ea-28a5a44f19f8 to renderer
+[pushSessionEvent] Sending turn_complete for session_61e32a8d-0335-4199-92a0-74c65a88b132 to renderer
+[pushSessionEvent] Sending turn_complete for session_61e32a8d-0335-4199-92a0-74c65a88b132 to renderer
+[pushSessionEvent] Sending turn_complete for session_6b34d92d-449e-408b-ad09-274e2194203a to renderer
+[session-runtime] Process exited for session_449f831f-5419-4cf6-9700-cf3bf27b09fe with code -1073741510
+[pushSessionEvent] Sending exited for session_449f831f-5419-4cf6-9700-cf3bf27b09fe to renderer
+[session-runtime] installSidecar for session_3c1b82dd-07aa-4c65-ad34-f5752757afcc
+[session-runtime] installSidecar done for session_3c1b82dd-07aa-4c65-ad34-f5752757afcc
+[session-runtime] markSessionStarting for session_3c1b82dd-07aa-4c65-ad34-f5752757afcc (command: C:\WINDOWS\system32\cmd.exe /d /s /c C:\Users\30280\AppData\Roaming\npm\codex)
+[pushSessionEvent] Sending starting for session_3c1b82dd-07aa-4c65-ad34-f5752757afcc to renderer
+[session-runtime] markSessionStarting done, spawning PTY for session_3c1b82dd-07aa-4c65-ad34-f5752757afcc
+[session-runtime] markSessionRunning for session_3c1b82dd-07aa-4c65-ad34-f5752757afcc (runtimeId: session_3c1b82dd-07aa-4c65-ad34-f5752757afcc)
+[pushSessionEvent] Sending running for session_3c1b82dd-07aa-4c65-ad34-f5752757afcc to renderer
+[session-runtime] markSessionRunning done for session_3c1b82dd-07aa-4c65-ad34-f5752757afcc
+[session-create] Session session_3c1b82dd-07aa-4c65-ad34-f5752757afcc started successfully
+[pushSessionEvent] Sending turn_complete for session_3c1b82dd-07aa-4c65-ad34-f5752757afcc to renderer
+[session-runtime] installSidecar for session_bfdac714-a68c-4f4a-bed5-9c8b277af0ec
+[session-runtime] installSidecar done for session_bfdac714-a68c-4f4a-bed5-9c8b277af0ec
+[session-runtime] markSessionStarting for session_bfdac714-a68c-4f4a-bed5-9c8b277af0ec (command: C:\WINDOWS\system32\cmd.exe /d /s /c C:\Users\30280\AppData\Roaming\npm\codex)
+[pushSessionEvent] Sending starting for session_bfdac714-a68c-4f4a-bed5-9c8b277af0ec to renderer
+[session-runtime] markSessionStarting done, spawning PTY for session_bfdac714-a68c-4f4a-bed5-9c8b277af0ec
+[session-runtime] markSessionRunning for session_bfdac714-a68c-4f4a-bed5-9c8b277af0ec (runtimeId: session_bfdac714-a68c-4f4a-bed5-9c8b277af0ec)
+[pushSessionEvent] Sending running for session_bfdac714-a68c-4f4a-bed5-9c8b277af0ec to renderer
+[session-runtime] markSessionRunning done for session_bfdac714-a68c-4f4a-bed5-9c8b277af0ec
+[session-create] Session session_bfdac714-a68c-4f4a-bed5-9c8b277af0ec started successfully
+[session-runtime] Process exited for session_7872e56d-3bcd-4aaf-b233-d3485bee2445 with code -1073741510
+[pushSessionEvent] Sending exited for session_7872e56d-3bcd-4aaf-b233-d3485bee2445 to renderer
+[pushSessionEvent] Sending turn_complete for session_bfdac714-a68c-4f4a-bed5-9c8b277af0ec to renderer
+[pushSessionEvent] Sending turn_complete for session_2728e4d3-3f95-4a29-91ea-28a5a44f19f8 to renderer
+[session-runtime] installSidecar for session_2990c73b-c7c4-44db-be7a-4ef4c6351deb
+[session-runtime] installSidecar done for session_2990c73b-c7c4-44db-be7a-4ef4c6351deb
+[session-runtime] markSessionStarting for session_2990c73b-c7c4-44db-be7a-4ef4c6351deb (command: C:\Users\30280\.local\bin\claude.exe --session-id f61dbdea-c04e-4b55-a1b3-70740fc646ba --dangerously-skip-permissions)
+[pushSessionEvent] Sending starting for session_2990c73b-c7c4-44db-be7a-4ef4c6351deb to renderer
+[session-runtime] markSessionStarting done, spawning PTY for session_2990c73b-c7c4-44db-be7a-4ef4c6351deb
+[session-runtime] markSessionRunning for session_2990c73b-c7c4-44db-be7a-4ef4c6351deb (runtimeId: session_2990c73b-c7c4-44db-be7a-4ef4c6351deb)
+[pushSessionEvent] Sending running for session_2990c73b-c7c4-44db-be7a-4ef4c6351deb to renderer
+[session-runtime] markSessionRunning done for session_2990c73b-c7c4-44db-be7a-4ef4c6351deb
+[session-create] Session session_2990c73b-c7c4-44db-be7a-4ef4c6351deb started successfully
+[pushSessionEvent] Sending turn_complete for session_3c1b82dd-07aa-4c65-ad34-f5752757afcc to renderer
+[pushSessionEvent] Sending turn_complete for session_2728e4d3-3f95-4a29-91ea-28a5a44f19f8 to renderer
+[pushSessionEvent] Sending turn_complete for session_2990c73b-c7c4-44db-be7a-4ef4c6351deb to renderer
+[pushSessionEvent] Sending turn_complete for session_61e32a8d-0335-4199-92a0-74c65a88b132 to renderer
+[2m14:50:44[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/components/TerminalViewport.vue, /styles/tailwind.css[22m
+[2m14:51:15[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/components/TerminalViewport.vue?vue&type=style&index=0&scoped=c19f0363&lang.css, /styles/tailwind.css[22m
+[2m14:51:29[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/components/TerminalViewport.vue?vue&type=style&index=0&scoped=c19f0363&lang.css, /styles/tailwind.css[22m
+[pushSessionEvent] Sending turn_complete for session_61e32a8d-0335-4199-92a0-74c65a88b132 to renderer
+[2m14:51:44[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/components/TerminalViewport.vue?vue&type=style&index=0&scoped=c19f0363&lang.css, /styles/tailwind.css[22m
+[2m14:53:20[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/components/TerminalViewport.vue?vue&type=style&index=0&scoped=c19f0363&lang.css, /styles/tailwind.css[22m
+[pushSessionEvent] Sending turn_complete for session_2990c73b-c7c4-44db-be7a-4ef4c6351deb to renderer
+[pushSessionEvent] Sending turn_complete for session_2990c73b-c7c4-44db-be7a-4ef4c6351deb to renderer
+[pushSessionEvent] Sending turn_complete for session_3c1b82dd-07aa-4c65-ad34-f5752757afcc to renderer
+[pushSessionEvent] Sending turn_complete for session_bfdac714-a68c-4f4a-bed5-9c8b277af0ec to renderer
+[pushSessionEvent] Sending turn_complete for session_3c1b82dd-07aa-4c65-ad34-f5752757afcc to renderer
+[pushSessionEvent] Sending turn_complete for session_3c1b82dd-07aa-4c65-ad34-f5752757afcc to renderer
+[session-runtime] installSidecar for session_a57600a1-9840-4fbd-84ab-3ffb51ad10d8
+[session-runtime] installSidecar done for session_a57600a1-9840-4fbd-84ab-3ffb51ad10d8
+[session-runtime] markSessionStarting for session_a57600a1-9840-4fbd-84ab-3ffb51ad10d8 (command: C:\WINDOWS\system32\cmd.exe /d /s /c C:\Users\30280\AppData\Roaming\npm\codex)
+[pushSessionEvent] Sending starting for session_a57600a1-9840-4fbd-84ab-3ffb51ad10d8 to renderer
+[session-runtime] markSessionStarting done, spawning PTY for session_a57600a1-9840-4fbd-84ab-3ffb51ad10d8
+[session-runtime] markSessionRunning for session_a57600a1-9840-4fbd-84ab-3ffb51ad10d8 (runtimeId: session_a57600a1-9840-4fbd-84ab-3ffb51ad10d8)
+[pushSessionEvent] Sending running for session_a57600a1-9840-4fbd-84ab-3ffb51ad10d8 to renderer
+[session-runtime] markSessionRunning done for session_a57600a1-9840-4fbd-84ab-3ffb51ad10d8
+[session-create] Session session_a57600a1-9840-4fbd-84ab-3ffb51ad10d8 started successfully
+[pushSessionEvent] Sending turn_complete for session_3c1b82dd-07aa-4c65-ad34-f5752757afcc to renderer
+[pushSessionEvent] Sending turn_complete for session_1017ce08-965c-441c-9e09-9c9db00cd399 to renderer
+[pushSessionEvent] Sending turn_complete for session_a57600a1-9840-4fbd-84ab-3ffb51ad10d8 to renderer
+[pushSessionEvent] Sending turn_complete for session_3c1b82dd-07aa-4c65-ad34-f5752757afcc to renderer
+[session-runtime] installSidecar for session_85b0db18-7b74-4a42-be48-3358c4331814
+[session-runtime] installSidecar done for session_85b0db18-7b74-4a42-be48-3358c4331814
+[session-runtime] markSessionStarting for session_85b0db18-7b74-4a42-be48-3358c4331814 (command: C:\WINDOWS\system32\cmd.exe /d /s /c C:\Users\30280\AppData\Roaming\npm\codex)
+[pushSessionEvent] Sending starting for session_85b0db18-7b74-4a42-be48-3358c4331814 to renderer
+[session-runtime] markSessionStarting done, spawning PTY for session_85b0db18-7b74-4a42-be48-3358c4331814
+[session-runtime] markSessionRunning for session_85b0db18-7b74-4a42-be48-3358c4331814 (runtimeId: session_85b0db18-7b74-4a42-be48-3358c4331814)
+[pushSessionEvent] Sending running for session_85b0db18-7b74-4a42-be48-3358c4331814 to renderer
+[session-runtime] markSessionRunning done for session_85b0db18-7b74-4a42-be48-3358c4331814
+[session-create] Session session_85b0db18-7b74-4a42-be48-3358c4331814 started successfully
+[pushSessionEvent] Sending running for session_85b0db18-7b74-4a42-be48-3358c4331814 to renderer
+[pushSessionEvent] Sending turn_complete for session_a57600a1-9840-4fbd-84ab-3ffb51ad10d8 to renderer
+[pushSessionEvent] Sending turn_complete for session_3c1b82dd-07aa-4c65-ad34-f5752757afcc to renderer
+[pushSessionEvent] Sending turn_complete for session_1017ce08-965c-441c-9e09-9c9db00cd399 to renderer
+[pushSessionEvent] Sending turn_complete for session_3c1b82dd-07aa-4c65-ad34-f5752757afcc to renderer
+[pushSessionEvent] Sending turn_complete for session_85b0db18-7b74-4a42-be48-3358c4331814 to renderer
+[pushSessionEvent] Sending turn_complete for session_61e32a8d-0335-4199-92a0-74c65a88b132 to renderer
+[pushSessionEvent] Sending turn_complete for session_a57600a1-9840-4fbd-84ab-3ffb51ad10d8 to renderer
+[session-runtime] Process exited for session_2990c73b-c7c4-44db-be7a-4ef4c6351deb with code -1073741510
+[pushSessionEvent] Sending exited for session_2990c73b-c7c4-44db-be7a-4ef4c6351deb to renderer
+[2m15:12:44[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/components/TitleBar.vue, /styles/tailwind.css[22m
+[pushSessionEvent] Sending turn_complete for session_3c1b82dd-07aa-4c65-ad34-f5752757afcc to renderer
+[pushSessionEvent] Sending turn_complete for session_2728e4d3-3f95-4a29-91ea-28a5a44f19f8 to renderer
+[pushSessionEvent] Sending turn_complete for session_85b0db18-7b74-4a42-be48-3358c4331814 to renderer
+[pushSessionEvent] Sending turn_complete for session_1017ce08-965c-441c-9e09-9c9db00cd399 to renderer
+[pushSessionEvent] Sending turn_complete for session_61e32a8d-0335-4199-92a0-74c65a88b132 to renderer
+[pushSessionEvent] Sending turn_complete for session_bfdac714-a68c-4f4a-bed5-9c8b277af0ec to renderer
+[pushSessionEvent] Sending turn_complete for session_3c1b82dd-07aa-4c65-ad34-f5752757afcc to renderer
+[pushSessionEvent] Sending turn_complete for session_1017ce08-965c-441c-9e09-9c9db00cd399 to renderer
+[pushSessionEvent] Sending turn_complete for session_61e32a8d-0335-4199-92a0-74c65a88b132 to renderer
+[pushSessionEvent] Sending turn_complete for session_3c1b82dd-07aa-4c65-ad34-f5752757afcc to renderer
+[pushSessionEvent] Sending turn_complete for session_85b0db18-7b74-4a42-be48-3358c4331814 to renderer
+[session-runtime] Process exited for session_a57600a1-9840-4fbd-84ab-3ffb51ad10d8 with code 1
+[pushSessionEvent] Sending exited for session_a57600a1-9840-4fbd-84ab-3ffb51ad10d8 to renderer
+[pushSessionEvent] Sending turn_complete for session_1017ce08-965c-441c-9e09-9c9db00cd399 to renderer
+[pushSessionEvent] Sending turn_complete for session_3c1b82dd-07aa-4c65-ad34-f5752757afcc to renderer
+[pushSessionEvent] Sending turn_complete for session_3c1b82dd-07aa-4c65-ad34-f5752757afcc to renderer
+[pushSessionEvent] Sending turn_complete for session_85b0db18-7b74-4a42-be48-3358c4331814 to renderer
+[pushSessionEvent] Sending turn_complete for session_3c1b82dd-07aa-4c65-ad34-f5752757afcc to renderer
+[2m15:29:04[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/components/TitleBar.vue, /styles/tailwind.css[22m
+[session-runtime] installSidecar for session_9cd618c5-c923-4f0d-9d4a-6d8f785c7767
+[session-runtime] installSidecar done for session_9cd618c5-c923-4f0d-9d4a-6d8f785c7767
+[session-runtime] markSessionStarting for session_9cd618c5-c923-4f0d-9d4a-6d8f785c7767 (command: powershell.exe )
+[pushSessionEvent] Sending starting for session_9cd618c5-c923-4f0d-9d4a-6d8f785c7767 to renderer
+[session-runtime] markSessionStarting done, spawning PTY for session_9cd618c5-c923-4f0d-9d4a-6d8f785c7767
+[session-runtime] markSessionRunning for session_9cd618c5-c923-4f0d-9d4a-6d8f785c7767 (runtimeId: session_9cd618c5-c923-4f0d-9d4a-6d8f785c7767)
+[pushSessionEvent] Sending running for session_9cd618c5-c923-4f0d-9d4a-6d8f785c7767 to renderer
+[session-runtime] markSessionRunning done for session_9cd618c5-c923-4f0d-9d4a-6d8f785c7767
+[session-create] Session session_9cd618c5-c923-4f0d-9d4a-6d8f785c7767 started successfully
+[session-runtime] installSidecar for session_baf48afe-af9f-4ea2-aa90-0655c1ce0653
+[session-runtime] installSidecar done for session_baf48afe-af9f-4ea2-aa90-0655c1ce0653
+[session-runtime] markSessionStarting for session_baf48afe-af9f-4ea2-aa90-0655c1ce0653 (command: C:\Users\30280\.local\bin\claude.exe --session-id 9bcbd62b-2e61-4efe-a8e7-5447d4e15758 --dangerously-skip-permissions)
+[pushSessionEvent] Sending starting for session_baf48afe-af9f-4ea2-aa90-0655c1ce0653 to renderer
+[session-runtime] markSessionStarting done, spawning PTY for session_baf48afe-af9f-4ea2-aa90-0655c1ce0653
+[session-runtime] markSessionRunning for session_baf48afe-af9f-4ea2-aa90-0655c1ce0653 (runtimeId: session_baf48afe-af9f-4ea2-aa90-0655c1ce0653)
+[pushSessionEvent] Sending running for session_baf48afe-af9f-4ea2-aa90-0655c1ce0653 to renderer
+[session-runtime] markSessionRunning done for session_baf48afe-af9f-4ea2-aa90-0655c1ce0653
+[session-create] Session session_baf48afe-af9f-4ea2-aa90-0655c1ce0653 started successfully
+[pushSessionEvent] Sending turn_complete for session_3c1b82dd-07aa-4c65-ad34-f5752757afcc to renderer
+[pushSessionEvent] Sending turn_complete for session_61e32a8d-0335-4199-92a0-74c65a88b132 to renderer
+[2m15:33:22[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/components/settings/AboutSettings.vue, /styles/tailwind.css[22m
+[pushSessionEvent] Sending turn_complete for session_baf48afe-af9f-4ea2-aa90-0655c1ce0653 to renderer
+[2m15:34:07[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/components/settings/AboutSettings.vue?vue&type=style&index=0&scoped=4e5bc033&lang.css, /styles/tailwind.css[22m
+[pushSessionEvent] Sending turn_complete for session_61e32a8d-0335-4199-92a0-74c65a88b132 to renderer
+[pushSessionEvent] Sending turn_complete for session_baf48afe-af9f-4ea2-aa90-0655c1ce0653 to renderer
+[pushSessionEvent] Sending turn_complete for session_bfdac714-a68c-4f4a-bed5-9c8b277af0ec to renderer
+[session-runtime] Process exited for session_bfdac714-a68c-4f4a-bed5-9c8b277af0ec with code 0
+[pushSessionEvent] Sending exited for session_bfdac714-a68c-4f4a-bed5-9c8b277af0ec to renderer
+[pushSessionEvent] Sending turn_complete for session_85b0db18-7b74-4a42-be48-3358c4331814 to renderer
+[session-runtime] installSidecar for session_bfdac714-a68c-4f4a-bed5-9c8b277af0ec
+[session-runtime] installSidecar done for session_bfdac714-a68c-4f4a-bed5-9c8b277af0ec
+[session-runtime] markSessionStarting for session_bfdac714-a68c-4f4a-bed5-9c8b277af0ec (command: C:\WINDOWS\system32\cmd.exe /d /s /c C:\Users\30280\AppData\Roaming\npm\codex resume --last)
+[pushSessionEvent] Sending starting for session_bfdac714-a68c-4f4a-bed5-9c8b277af0ec to renderer
+[session-runtime] markSessionStarting done, spawning PTY for session_bfdac714-a68c-4f4a-bed5-9c8b277af0ec
+[session-runtime] markSessionRunning for session_bfdac714-a68c-4f4a-bed5-9c8b277af0ec (runtimeId: session_bfdac714-a68c-4f4a-bed5-9c8b277af0ec)
+[pushSessionEvent] Sending running for session_bfdac714-a68c-4f4a-bed5-9c8b277af0ec to renderer
+[session-runtime] markSessionRunning done for session_bfdac714-a68c-4f4a-bed5-9c8b277af0ec
+[session-restore] Session session_bfdac714-a68c-4f4a-bed5-9c8b277af0ec started successfully
+[pushSessionEvent] Sending turn_complete for session_2728e4d3-3f95-4a29-91ea-28a5a44f19f8 to renderer
+[pushSessionEvent] Sending needs_confirmation for session_baf48afe-af9f-4ea2-aa90-0655c1ce0653 to renderer
+[pushSessionEvent] Sending needs_confirmation for session_baf48afe-af9f-4ea2-aa90-0655c1ce0653 to renderer
+[pushSessionEvent] Sending needs_confirmation for session_baf48afe-af9f-4ea2-aa90-0655c1ce0653 to renderer
+[pushSessionEvent] Sending needs_confirmation for session_baf48afe-af9f-4ea2-aa90-0655c1ce0653 to renderer
+[pushSessionEvent] Sending needs_confirmation for session_baf48afe-af9f-4ea2-aa90-0655c1ce0653 to renderer
+[session-runtime] installSidecar for session_5b98fbe5-ad81-4b15-8b92-9ce88a8a61c5
+[session-runtime] installSidecar done for session_5b98fbe5-ad81-4b15-8b92-9ce88a8a61c5
+[session-runtime] markSessionStarting for session_5b98fbe5-ad81-4b15-8b92-9ce88a8a61c5 (command: C:\Users\30280\.local\bin\claude.exe --session-id 8f7489bb-5178-43d2-bb71-8fa818455427 --dangerously-skip-permissions)
+[pushSessionEvent] Sending starting for session_5b98fbe5-ad81-4b15-8b92-9ce88a8a61c5 to renderer
+[session-runtime] markSessionStarting done, spawning PTY for session_5b98fbe5-ad81-4b15-8b92-9ce88a8a61c5
+[session-runtime] markSessionRunning for session_5b98fbe5-ad81-4b15-8b92-9ce88a8a61c5 (runtimeId: session_5b98fbe5-ad81-4b15-8b92-9ce88a8a61c5)
+[pushSessionEvent] Sending running for session_5b98fbe5-ad81-4b15-8b92-9ce88a8a61c5 to renderer
+[session-runtime] markSessionRunning done for session_5b98fbe5-ad81-4b15-8b92-9ce88a8a61c5
+[session-create] Session session_5b98fbe5-ad81-4b15-8b92-9ce88a8a61c5 started successfully
+[pushSessionEvent] Sending needs_confirmation for session_baf48afe-af9f-4ea2-aa90-0655c1ce0653 to renderer
+[pushSessionEvent] Sending needs_confirmation for session_5b98fbe5-ad81-4b15-8b92-9ce88a8a61c5 to renderer
+[pushSessionEvent] Sending needs_confirmation for session_baf48afe-af9f-4ea2-aa90-0655c1ce0653 to renderer
+[pushSessionEvent] Sending turn_complete for session_5b98fbe5-ad81-4b15-8b92-9ce88a8a61c5 to renderer
+[session-runtime] installSidecar for session_68550376-b69d-43d5-b5c2-6dc6970acdfa
+[session-runtime] installSidecar done for session_68550376-b69d-43d5-b5c2-6dc6970acdfa
+[session-runtime] markSessionStarting for session_68550376-b69d-43d5-b5c2-6dc6970acdfa (command: C:\Users\30280\.local\bin\claude.exe --session-id 5d7c8e87-4796-4d9a-8adf-49efbb500828 --dangerously-skip-permissions)
+[pushSessionEvent] Sending starting for session_68550376-b69d-43d5-b5c2-6dc6970acdfa to renderer
+[session-runtime] markSessionStarting done, spawning PTY for session_68550376-b69d-43d5-b5c2-6dc6970acdfa
+[session-runtime] markSessionRunning for session_68550376-b69d-43d5-b5c2-6dc6970acdfa (runtimeId: session_68550376-b69d-43d5-b5c2-6dc6970acdfa)
+[pushSessionEvent] Sending running for session_68550376-b69d-43d5-b5c2-6dc6970acdfa to renderer
+[session-runtime] markSessionRunning done for session_68550376-b69d-43d5-b5c2-6dc6970acdfa
+[session-create] Session session_68550376-b69d-43d5-b5c2-6dc6970acdfa started successfully
+[pushSessionEvent] Sending turn_complete for session_61e32a8d-0335-4199-92a0-74c65a88b132 to renderer
+[pushSessionEvent] Sending needs_confirmation for session_baf48afe-af9f-4ea2-aa90-0655c1ce0653 to renderer
+[pushSessionEvent] Sending turn_complete for session_3c1b82dd-07aa-4c65-ad34-f5752757afcc to renderer
+[session-runtime] Process exited for session_85b0db18-7b74-4a42-be48-3358c4331814 with code 1
+[pushSessionEvent] Sending exited for session_85b0db18-7b74-4a42-be48-3358c4331814 to renderer
+[pushSessionEvent] Sending turn_complete for session_5b98fbe5-ad81-4b15-8b92-9ce88a8a61c5 to renderer
+[pushSessionEvent] Sending turn_complete for session_3c1b82dd-07aa-4c65-ad34-f5752757afcc to renderer
+[pushSessionEvent] Sending turn_complete for session_5b98fbe5-ad81-4b15-8b92-9ce88a8a61c5 to renderer
+[pushSessionEvent] Sending turn_complete for session_5b98fbe5-ad81-4b15-8b92-9ce88a8a61c5 to renderer
+[pushSessionEvent] Sending turn_complete for session_3c1b82dd-07aa-4c65-ad34-f5752757afcc to renderer
+ ELIFECYCLE  Command failed with exit code 3221225786.

@@ -1,0 +1,112 @@
+Error occurred in handler for 'session:resize': Error: Cannot resize a pty that has already exited
+    at WindowsPtyAgent.resize (D:\Data\DEV\ultra_simple_panel\node_modules\.pnpm\node-pty@1.1.0\node_modules\node-pty\lib\windowsPtyAgent.js:121:23)
+    at WindowsTerminal.<anonymous> (D:\Data\DEV\ultra_simple_panel\node_modules\.pnpm\node-pty@1.1.0\node_modules\node-pty\lib\windowsTerminal.js:130:26)
+    at WindowsTerminal._deferNoArgs (D:\Data\DEV\ultra_simple_panel\node_modules\.pnpm\node-pty@1.1.0\node_modules\node-pty\lib\windowsTerminal.js:161:24)
+    at WindowsTerminal.resize (D:\Data\DEV\ultra_simple_panel\node_modules\.pnpm\node-pty@1.1.0\node_modules\node-pty\lib\windowsTerminal.js:129:14)
+    at PtyHost.resize (D:\Data\DEV\ultra_simple_panel\out\main\pty-host-BHQH0Bhu.cjs:29:37)
+    at D:\Data\DEV\ultra_simple_panel\out\main\index.cjs:19193:14
+    at Session.<anonymous> (node:electron/js2c/browser_init:2:107269)
+    at Session.emit (node:events:519:28)
+D:\Data\DEV\ultra_simple_panel\node_modules\.pnpm\node-pty@1.1.0\node_modules\node-pty\lib\conpty_console_list_agent.js:13
+var consoleProcessList = getConsoleProcessList(shellPid);
+                         ^
+
+Error: AttachConsole failed
+    at Object.<anonymous> (D:\Data\DEV\ultra_simple_panel\node_modules\.pnpm\node-pty@1.1.0\node_modules\node-pty\lib\conpty_console_list_agent.js:13:26)
+    at Module._compile (node:internal/modules/cjs/loader:1714:14)
+    at Module._extensions..js (node:internal/modules/cjs/loader:1848:10)
+    at Module.load (node:internal/modules/cjs/loader:1448:32)
+    at Module._load (node:internal/modules/cjs/loader:1270:12)
+    at c._load (node:electron/js2c/node_init:2:17993)
+    at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:244:24)
+    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:186:5)
+    at node:internal/main/run_main_module:36:49
+
+Node.js v22.21.1
+D:\Data\DEV\ultra_simple_panel\node_modules\.pnpm\node-pty@1.1.0\node_modules\node-pty\lib\conpty_console_list_agent.js:13
+var consoleProcessList = getConsoleProcessList(shellPid);
+                         ^
+
+Error: AttachConsole failed
+    at Object.<anonymous> (D:\Data\DEV\ultra_simple_panel\node_modules\.pnpm\node-pty@1.1.0\node_modules\node-pty\lib\conpty_console_list_agent.js:13:26)
+    at Module._compile (node:internal/modules/cjs/loader:1714:14)
+    at Module._extensions..js (node:internal/modules/cjs/loader:1848:10)
+    at Module.load (node:internal/modules/cjs/loader:1448:32)
+    at Module._load (node:internal/modules/cjs/loader:1270:12)
+    at c._load (node:electron/js2c/node_init:2:17993)
+    at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:244:24)
+    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:186:5)
+    at node:internal/main/run_main_module:36:49
+
+Node.js v22.21.1
+D:\Data\DEV\ultra_simple_panel\node_modules\.pnpm\node-pty@1.1.0\node_modules\node-pty\lib\conpty_console_list_agent.js:13
+var consoleProcessList = getConsoleProcessList(shellPid);
+                         ^
+
+Error: AttachConsole failed
+    at Object.<anonymous> (D:\Data\DEV\ultra_simple_panel\node_modules\.pnpm\node-pty@1.1.0\node_modules\node-pty\lib\conpty_console_list_agent.js:13:26)
+    at Module._compile (node:internal/modules/cjs/loader:1714:14)
+    at Module._extensions..js (node:internal/modules/cjs/loader:1848:10)
+    at Module.load (node:internal/modules/cjs/loader:1448:32)
+    at Module._load (node:internal/modules/cjs/loader:1270:12)
+    at c._load (node:electron/js2c/node_init:2:17993)
+    at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:244:24)
+    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:186:5)
+    at node:internal/main/run_main_module:36:49
+
+Node.js v22.21.1
+D:\Data\DEV\ultra_simple_panel\node_modules\.pnpm\node-pty@1.1.0\node_modules\node-pty\lib\conpty_console_list_agent.js:13
+var consoleProcessList = getConsoleProcessList(shellPid);
+                         ^
+
+Error: AttachConsole failed
+    at Object.<anonymous> (D:\Data\DEV\ultra_simple_panel\node_modules\.pnpm\node-pty@1.1.0\node_modules\node-pty\lib\conpty_console_list_agent.js:13:26)
+    at Module._compile (node:internal/modules/cjs/loader:1714:14)
+    at Module._extensions..js (node:internal/modules/cjs/loader:1848:10)
+    at Module.load (node:internal/modules/cjs/loader:1448:32)
+    at Module._load (node:internal/modules/cjs/loader:1270:12)
+    at c._load (node:electron/js2c/node_init:2:17993)
+    at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:244:24)
+    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:186:5)
+    at node:internal/main/run_main_module:36:49
+
+Node.js v22.21.1
+D:\Data\DEV\ultra_simple_panel\node_modules\.pnpm\node-pty@1.1.0\node_modules\node-pty\lib\conpty_console_list_agent.js:13
+var consoleProcessList = getConsoleProcessList(shellPid);
+                         ^
+
+Error: AttachConsole failed
+    at Object.<anonymous> (D:\Data\DEV\ultra_simple_panel\node_modules\.pnpm\node-pty@1.1.0\node_modules\node-pty\lib\conpty_console_list_agent.js:13:26)
+    at Module._compile (node:internal/modules/cjs/loader:1714:14)
+    at Module._extensions..js (node:internal/modules/cjs/loader:1848:10)
+    at Module.load (node:internal/modules/cjs/loader:1448:32)
+    at Module._load (node:internal/modules/cjs/loader:1270:12)
+    at c._load (node:electron/js2c/node_init:2:17993)
+    at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:244:24)
+    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:186:5)
+    at node:internal/main/run_main_module:36:49
+
+Node.js v22.21.1
+D:\Data\DEV\ultra_simple_panel\node_modules\.pnpm\node-pty@1.1.0\node_modules\node-pty\lib\conpty_console_list_agent.js:13
+var consoleProcessList = getConsoleProcessList(shellPid);
+                         ^
+
+Error: AttachConsole failed
+    at Object.<anonymous> (D:\Data\DEV\ultra_simple_panel\node_modules\.pnpm\node-pty@1.1.0\node_modules\node-pty\lib\conpty_console_list_agent.js:13:26)
+    at Module._compile (node:internal/modules/cjs/loader:1714:14)
+    at Module._extensions..js (node:internal/modules/cjs/loader:1848:10)
+    at Module.load (node:internal/modules/cjs/loader:1448:32)
+    at Module._load (node:internal/modules/cjs/loader:1270:12)
+    at c._load (node:electron/js2c/node_init:2:17993)
+    at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:244:24)
+    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:186:5)
+    at node:internal/main/run_main_module:36:49
+
+Node.js v22.21.1
+^C

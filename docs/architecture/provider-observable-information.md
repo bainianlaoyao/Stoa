@@ -105,6 +105,8 @@ Provider CLI process
 - Default behavior: raw keystrokes are forwarded to PTY
 - Provider-specific exception: for Codex on Windows, Stoa normalizes plain-text multi-character input before PTY write
 - Codex control sequences containing `ESC` remain raw and are not split
+- Important: PTY delivery only proves bytes reached the child process. It does **not** prove the provider accepted those bytes as a real turn submit.
+- Confirmed live gap: on Windows with interactive Codex (`codex-cli 0.125.0`), PTY-written prompt text can appear in the Codex draft input while no `UserPromptSubmit` / `PreToolUse` / `Stop` hook ever fires.
 - This Codex handling is an ingress workaround only; it does not infer state from terminal text
 - Hook/state correctness still depends on provider-emitted events, not renderer-side parsing
 
@@ -261,20 +263,20 @@ jq -c 'select(.type == "tool_use") | {name, input}' "$TRANSCRIPT_PATH"
 
 | Event | Trigger | Extra Fields | Stoa Currently Uses? |
 |-------|---------|-------------|---------------------|
-| `UserPromptSubmit` | User submits a prompt | `prompt` (**full user input text**) | **no** |
+| `UserPromptSubmit` | User submits a prompt | `prompt` (**full user input text**) | **yes (state only; prompt text not projected)** |
 | `UserPromptExpansion` | Slash command expands | `expansion_type`, `command_name`, `command_args`, `command_source`, `prompt` | **no** |
 | `Stop` | Claude finishes responding | `stop_hook_active`, `last_assistant_message` (**Claude's final reply**) | **yes** |
-| `StopFailure` | API error stops turn | `error` (type), `error_details`, `last_assistant_message` | **no** |
+| `StopFailure` | API error stops turn | `error` (type), `error_details`, `last_assistant_message` | **yes (state only; error detail not projected)** |
 
 ##### D.3 Tool-Level Events (Agentic Loop)
 
 | Event | Trigger | Extra Fields | Stoa Currently Uses? |
 |-------|---------|-------------|---------------------|
-| `PreToolUse` | Before tool execution | `tool_name`, `tool_input` (**full parameters**), `tool_use_id` | **no** |
+| `PreToolUse` | Before tool execution | `tool_name`, `tool_input` (**full parameters**), `tool_use_id` | **yes (state only; tool payload not projected)** |
 | `PostToolUse` | After tool succeeds | `tool_name`, `tool_input`, `tool_response` (**tool result**), `tool_use_id` | **no** |
 | `PostToolUseFailure` | After tool fails | `tool_name`, `tool_input`, `error`, `is_interrupt`, `tool_use_id` | **no** |
 | `PostToolBatch` | Parallel tools complete | `tool_calls` (**array of all calls + responses**) | **no** |
-| `PermissionRequest` | Permission dialog shown | `tool_name`, `tool_input`, `permission_suggestions` | **yes** |
+| `PermissionRequest` | Permission dialog shown | `tool_name`, `tool_input`, `permission_suggestions` | **yes (state only; detail fields not projected)** |
 | `PermissionDenied` | Auto-mode denies | `tool_name`, `tool_input`, `reason`, `tool_use_id` | **no** |
 
 ##### D.4 Subagent Events
@@ -387,7 +389,7 @@ Tool events additionally support `if` field with permission rule syntax: `"Bash(
 
 #### J. What This Means for Stoa — Currently Untapped Hook Events
 
-The Stoa adapter currently only registers hooks for `Stop` and `PermissionRequest`. The following events could provide **significant additional observability** if registered:
+The Stoa adapter currently registers five Claude hooks: `UserPromptSubmit`, `PreToolUse`, `Stop`, `StopFailure`, and `PermissionRequest`. However, the current downstream projection only uses them for coarse state transitions plus a small amount of metadata. The following events could provide **significant additional observability** if their richer fields were actually projected, or if additional hook types were registered:
 
 | Untapped Event | New Observability | Business Value |
 |----------------|-------------------|----------------|
@@ -420,7 +422,7 @@ The Stoa adapter currently only registers hooks for `Stop` and `PermissionReques
 
 ### 1.8 Complete List of Observable Information
 
-> Legend: "yes (used)" = currently wired to Stoa adapter; "yes (available)" = exposed by hooks but NOT currently registered/read by Stoa
+> Legend: "yes (used)" = currently wired into some part of Stoa's pipeline; "yes (available)" = exposed by hooks but not yet fully projected to the UI or persistence layer
 
 | Information | Obtainable? | Channel | Location |
 |-------------|-------------|---------|----------|
@@ -431,14 +433,14 @@ The Stoa adapter currently only registers hooks for `Stop` and `PermissionReques
 | Process exit code | yes (used) | PTY `onExit` callback | `session-runtime.ts:111-113` |
 | Raw terminal output | yes (used, opaque text) | PTY `onData` | `session-runtime.ts:107-109` |
 | **Model identity** | **yes (available)** | `SessionStart` hook → `model` field | Currently not registered |
-| **Full user prompt text** | **yes (available)** | `UserPromptSubmit` hook → `prompt` field | Currently not registered |
-| **Last assistant message** | **yes (available)** | `Stop` hook → `last_assistant_message` field | Hook registered but field not extracted |
-| **Tool calls (name + input)** | **yes (available)** | `PreToolUse` hook → `tool_name`, `tool_input` | Currently not registered |
+| **Full user prompt text** | **yes (available)** | `UserPromptSubmit` hook → `prompt` field | Hook registered; prompt field not projected |
+| **Last assistant message** | **yes (available)** | `Stop` hook → `last_assistant_message` field | Hook registered; adapter reads it, but it is not projected downstream |
+| **Tool calls (name + input)** | **yes (available)** | `PreToolUse` hook → `tool_name`, `tool_input` | Hook registered; only coarse working-state transition is used |
 | **Tool results** | **yes (available)** | `PostToolUse` hook → `tool_response` | Currently not registered |
 | **Tool failures + error** | **yes (available)** | `PostToolUseFailure` hook → `error`, `is_interrupt` | Currently not registered |
-| **Bash commands before execution** | **yes (available)** | `PreToolUse` (Bash) → `tool_input.command` | Currently not registered |
-| **Files being written** | **yes (available)** | `PreToolUse` (Write/Edit) → `tool_input.file_path`, `tool_input.content` | Currently not registered |
-| **API error type + details** | **yes (available)** | `StopFailure` hook → `error`, `error_details` | Currently not registered |
+| **Bash commands before execution** | **yes (available)** | `PreToolUse` (Bash) → `tool_input.command` | Hook registered; command field not projected |
+| **Files being written** | **yes (available)** | `PreToolUse` (Write/Edit) → `tool_input.file_path`, `tool_input.content` | Hook registered; file payload not projected |
+| **API error type + details** | **yes (available)** | `StopFailure` hook → `error`, `error_details` | Hook registered; detailed error payload not projected |
 | **Full conversation history** | **yes (available)** | Any hook → `transcript_path` → read JSONL file | Not used |
 | **Compaction summary** | **yes (available)** | `PostCompact` hook → `compact_summary` | Currently not registered |
 | **Subagent lifecycle** | **yes (available)** | `SubagentStart`/`SubagentStop` hooks → `agent_type`, `last_assistant_message` | Currently not registered |
@@ -1341,11 +1343,11 @@ This is available via both hooks and the file-system discovery path already used
 | Information | claude-code (actual) | claude-code (Stoa) | opencode (actual) | opencode (Stoa) | codex (actual) | codex (Stoa) |
 |-------------|------|------|------|------|-------|-------|
 | Model identity | **yes** (`SessionStart.model`) | no | **yes** (SQLite `messages.model`, plugin events) | no | **yes** (hooks `SessionStart.model`, OTel attrs) | no |
-| User prompt | **yes** (`UserPromptSubmit.prompt`) | no | **yes** (plugin `tui.prompt.append`) | no | **yes** (hooks `UserPromptSubmit.prompt`) | no |
-| Tool calls | **yes** (`PreToolUse.tool_name/input`) | no | **yes** (`tool.execute.before`, SQLite `tool_call` parts) | no | **yes** (hooks `PreToolUse`, Bash only) | no |
+| User prompt | **yes** (`UserPromptSubmit.prompt`) | state only; prompt text not projected | **yes** (plugin `tui.prompt.append`) | no | **yes** (hooks `UserPromptSubmit.prompt`) | no |
+| Tool calls | **yes** (`PreToolUse.tool_name/input`) | state only; tool payload not projected | **yes** (`tool.execute.before`, SQLite `tool_call` parts) | no | **yes** (hooks `PreToolUse`, Bash only) | no |
 | Tool results | **yes** (`PostToolUse.tool_response`) | no | **yes** (`tool.execute.after`, SQLite `tool_result` parts) | no | **yes** (hooks `PostToolUse.tool_response`, Bash only) | no |
-| Error details | **yes** (`StopFailure.error/details`) | no | partial (plugin `session.error`) | status only | partial (notify, no error details) | no |
-| Last message | **yes** (`Stop.last_assistant_message`) | no (field not read) | **yes** (SQLite `messages` table, plugin `message.updated`) | no | **yes** (notify `last-assistant-message`) | no |
+| Error details | **yes** (`StopFailure.error/details`) | state only; detail not projected | partial (plugin `session.error`) | status only | partial (notify, no error details) | no |
+| Last message | **yes** (`Stop.last_assistant_message`) | adapter-only; not projected | **yes** (SQLite `messages` table, plugin `message.updated`) | no | **yes** (notify `last-assistant-message`) | no |
 | Full history | **yes** (`transcript_path`) | no | **yes** (SQLite `messages` table) | no | **yes** (`transcript_path`, notify `input-messages`) | no |
 | Token usage | no | no | **yes** (SQLite `sessions.prompt_tokens/completion_tokens/cost`) | no | **yes** (OTel `turn.token_usage`) | no |
 | Reasoning | no | no | **yes** (SQLite `reasoning` content part) | no | no | no |
@@ -1416,7 +1418,7 @@ This is available via both hooks and the file-system discovery path already used
 
 - [x] ~~**Claude-code hook body fields**: Unknown whether Claude CLI includes additional fields in hook POST bodies beyond `hook_event_name`.~~ **RESOLVED**: Claude Code hooks expose extensive fields per event type — see Section 1.6a. The adapter currently only reads `hook_event_name`, discarding all other data.
 
-- [!] **Massive untapped observability in Claude Code**: The Stoa adapter uses only 2 of 30+ available hook events and extracts only 1 field from each. Registering additional hooks (especially `SessionStart`, `PreToolUse`, `PostToolUse`, `StopFailure`) could provide model identity, tool call tracking, file change monitoring, and error details — all currently listed as "unobtainable" in the original assessment.
+- [!] **Massive untapped observability in Claude Code**: The Stoa adapter already registers 5 Claude hooks, but mostly uses them for coarse state transitions. Richer fields and additional hook types (especially `SessionStart`, `PostToolUse`, `PostToolUseFailure`, `SubagentStart`, `SubagentStop`) could provide model identity, tool call tracking, file change monitoring, and error details that are still not projected downstream.
 
 - [!] **Hook registration scaling**: Adding more hooks to `.claude/settings.local.json` increases the data sent to the webhook server on every matching event. The adapter and webhook server need to handle higher event volume and richer payloads.
 
@@ -1433,6 +1435,8 @@ This is available via both hooks and the file-system discovery path already used
 - [?] **Claude Code hook reliability**: Community reports indicate `PreToolUse` and `PostToolUse` hooks sometimes don't fire (GitHub issues anthropics/claude-code#6403, #34573). `SessionStart`, `SessionEnd`, and `Stop` hooks are generally reliable.
 
 - [!] **Codex hooks require feature flag**: Codex hooks are gated by `codex_hooks = true` in `config.toml` `[features]` (`Feature::CodexHooks`, `default_enabled: false`, `Stage::UnderDevelopment`). **This is NOT a platform limitation** — source-code analysis of `codex-rs/hooks/`, `codex-rs/core/src/hook_runtime.rs`, and `codex-rs/features/src/lib.rs` confirms zero `cfg!(windows)` platform checks. All 5 hook events work on all platforms when the flag is enabled. Stoa can automatically write `[features]\ncodex_hooks = true` to `.codex/config.toml` via `installSidecar()`. Historical: Windows was gated until PR #17268 (2026-04-09) removed the gate; user-confirmed working 2026-04-12.
+
+- [!] **Codex interactive ingress is a separate reliability problem from hooks themselves**: Even when hooks are enabled and correctly configured, Stoa still depends on PTY-written user input being accepted by the interactive Codex TUI as a real submit. Live reproductions on Windows (`codex-cli 0.125.0`) show a stricter failure mode: text written through PTY appears in the draft input, but the turn never starts, so no `UserPromptSubmit`, `PreToolUse`, `Stop`, or notify event is emitted. This reproduces both inside Electron and in a standalone Windows `node-pty` script. In other words, “hooks are available” does **not** imply “interactive PTY-driven sessions are observable”.
 
 - [!] **Codex hooks large-payload bug on Windows/Linux**: Hook payloads containing full file content (e.g. `PreToolUse` for Write/Edit) are passed via command-line arguments on Windows/Linux, which can exceed OS limits (`ENAMETOOLONG` on Windows ~32KB, `E2BIG` on Linux ~128KB). macOS uses stdin pipe and is unaffected. This is an open bug (issue #18067), not a design limitation. For Stoa's use case (small JSON payloads to webhook server), this is unlikely to be triggered.
 
