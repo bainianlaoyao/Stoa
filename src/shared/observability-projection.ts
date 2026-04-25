@@ -126,12 +126,12 @@ export function buildSessionRowViewModel(
     title: session.title,
     phase: snapshot.phase,
     primaryLabel: rowPrimaryLabel(snapshot),
-    secondaryLabel: [snapshot.providerLabel, snapshot.modelLabel].filter(Boolean).join(' / '),
+    secondaryLabel: snapshot.modelLabel ?? snapshot.providerLabel ?? '',
     tone: mapPhaseToTone(snapshot.phase),
     hasUnreadTurn: snapshot.hasUnreadTurn,
     needsAttention: Boolean(attentionReason),
     attentionReason,
-    updatedAgoLabel: updatedAgoLabel(snapshot.updatedAt, nowIso)
+    updatedAgoLabel: updatedAgoLabel(snapshot.lastEventAt, nowIso)
   }
 }
 
@@ -156,7 +156,7 @@ export function buildActiveSessionViewModel(
     phaseLabel: phaseLabel(snapshot.phase),
     confidenceLabel: confidenceLabel(snapshot.confidence),
     tone: mapPhaseToTone(snapshot.phase),
-    lastUpdatedLabel: updatedAgoLabel(snapshot.updatedAt, nowIso),
+    lastUpdatedLabel: updatedAgoLabel(snapshot.lastEventAt, nowIso),
     snippet: snapshot.lastAssistantSnippet,
     explanation: session.summary
   }

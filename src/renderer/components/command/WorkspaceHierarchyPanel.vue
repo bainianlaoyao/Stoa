@@ -111,6 +111,15 @@ function sessionPrimaryLabel(session: ProjectHierarchyNode['sessions'][number]):
   return sessionRowViewModel(session.id)?.primaryLabel ?? null
 }
 
+function sessionStatusLabel(session: ProjectHierarchyNode['sessions'][number]): string | null {
+  const vm = sessionRowViewModel(session.id)
+  if (!vm) return null
+  const parts: string[] = []
+  if (vm.primaryLabel) parts.push(vm.primaryLabel)
+  if (vm.updatedAgoLabel) parts.push(vm.updatedAgoLabel)
+  return parts.length ? parts.join(' ') : null
+}
+
 function sessionPhase(session: ProjectHierarchyNode['sessions'][number]): string {
   return sessionRowViewModel(session.id)?.phase ?? 'unknown'
 }
@@ -313,6 +322,7 @@ onBeforeUnmount(() => {
                 :data-attention-reason="sessionAttentionReason(session) ?? undefined"
               />
               <img class="route-provider-icon" :src="providerIcon(session.type)" :alt="session.type" />
+              <span v-if="sessionStatusLabel(session)" class="route-session-label">{{ sessionStatusLabel(session) }}</span>
             </button>
             <span class="route-row-actions">
               <button
@@ -436,10 +446,10 @@ onBeforeUnmount(() => {
   transition: all 0.2s ease;
 }
 
-/* Session rows use the original dot column */
+/* Session rows: dot + icon + label */
 .route-item.child {
-  grid-template-columns: 8px minmax(0, 1fr);
-  gap: 10px;
+  grid-template-columns: 8px auto minmax(0, 1fr);
+  gap: 8px;
   padding: 6px 8px 6px 10px;
   padding-left: 24px;
 }
@@ -502,6 +512,15 @@ onBeforeUnmount(() => {
   flex: none;
   height: 1em;
   width: auto;
+}
+
+.route-session-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-muted);
+  font: var(--text-caption) var(--font-mono);
 }
 
 .route-name {
