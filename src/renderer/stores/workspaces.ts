@@ -177,7 +177,7 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
 
   async function backfillMissedObservability(stoa: typeof window.stoa): Promise<void> {
     for (const session of sessions.value) {
-      const cursor = String(sessionPresenceById.value[session.id]?.sourceSequence ?? 0)
+      const cursor = String(sessionPresenceById.value[session.id]?.evidenceSequence ?? 0)
       const listed = await stoa.listSessionObservationEvents?.(session.id, { cursor, limit: 50 })
       if (!listed?.events.length) {
         continue
@@ -260,6 +260,7 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
         lastEvidenceType: current?.lastEvidenceType ?? next.lastEvidenceType,
         hasUnreadTurn: current?.hasUnreadTurn ?? next.hasUnreadTurn,
         lastEventAt: current?.lastEventAt ?? next.lastEventAt,
+        evidenceSequence: current?.evidenceSequence ?? next.evidenceSequence,
         sourceSequence: current?.sourceSequence ?? next.sourceSequence
       }
     }

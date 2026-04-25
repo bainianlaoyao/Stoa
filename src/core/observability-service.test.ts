@@ -66,6 +66,7 @@ describe('ObservabilityService', () => {
       sessionId: 'session-1',
       projectId: 'project-1',
       phase: 'running',
+      evidenceSequence: 0,
       sourceSequence: 0,
       hasUnreadTurn: false,
       updatedAt: '2026-01-01T00:00:03.000Z'
@@ -163,8 +164,38 @@ describe('ObservabilityService', () => {
     expect(service.getSessionPresence('session-1')).toMatchObject({
       phase: 'running',
       lastAssistantSnippet: null,
+      evidenceSequence: 3,
       sourceSequence: 7,
       updatedAt: '2026-01-01T00:00:04.000Z'
+    })
+  })
+
+  it('ignores assistant evidence older than the authoritative session state floor', () => {
+    const service = new ObservabilityService(new InMemoryObservationStore(), {
+      nowIso: nowValues('2026-01-01T00:00:03.000Z', '2026-01-01T00:00:04.000Z')
+    })
+
+    service.registerSession(session({
+      lastStateSequence: 20,
+      updatedAt: '2026-01-01T00:00:20.000Z'
+    }), 'session-1')
+
+    service.ingest(event({
+      eventId: 'stale-assistant-evidence',
+      sequence: 10,
+      occurredAt: '2026-01-01T00:00:10.000Z',
+      category: 'evidence',
+      type: 'evidence.assistant_message',
+      payload: { model: 'gpt-5-codex', snippet: 'Stale answer.' }
+    }))
+
+    expect(service.getSessionPresence('session-1')).toMatchObject({
+      modelLabel: null,
+      lastAssistantSnippet: null,
+      lastEvidenceType: null,
+      lastEventAt: '2026-01-01T00:00:20.000Z',
+      evidenceSequence: 10,
+      sourceSequence: 20
     })
   })
 
@@ -198,6 +229,7 @@ describe('ObservabilityService', () => {
 
     expect(service.getSessionPresence('session-1')).toMatchObject({
       phase: 'complete',
+      evidenceSequence: 30,
       sourceSequence: 30,
       lastEventAt: '2026-01-01T00:00:11.000Z'
     })

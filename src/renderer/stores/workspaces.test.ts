@@ -128,6 +128,7 @@ function sessionPresenceFixture(patch: Partial<SessionPresenceSnapshot> = {}): S
     lastEvidenceType: null,
     hasUnreadTurn: false,
     recoveryPointerState: 'trusted',
+    evidenceSequence: 1,
     sourceSequence: 1,
     updatedAt: '2026-04-24T07:59:50.000Z',
     ...patch
@@ -220,6 +221,13 @@ describe('project/session renderer store', () => {
           projectId: 'project_alpha',
           type: 'opencode',
           status: 'running',
+          runtimeState: 'alive',
+          agentState: 'working',
+          hasUnseenCompletion: false,
+          runtimeExitCode: null,
+          runtimeExitReason: null,
+          lastStateSequence: 0,
+          blockingReason: null,
           title: 'Deploy',
           summary: 'running',
           recoveryMode: 'resume-external',
@@ -783,6 +791,13 @@ describe('project/session renderer store', () => {
         projectId: 'project_alpha',
         type: 'claude-code',
         status: 'bootstrapping',
+        runtimeState: 'created',
+        agentState: 'unknown',
+        hasUnseenCompletion: false,
+        runtimeExitCode: null,
+        runtimeExitReason: null,
+        lastStateSequence: 0,
+        blockingReason: null,
         title: 'Claude',
         summary: 'Waiting for session to start',
         recoveryMode: 'resume-external',
@@ -796,12 +811,13 @@ describe('project/session renderer store', () => {
 
       store.updateSession('session_claude_1', {
         status: 'running',
+        runtimeState: 'alive',
+        agentState: 'working',
         summary: 'Session running'
       })
 
       expect(store.sessionPresenceById.session_claude_1).toMatchObject({
-        phase: 'working',
-        canonicalStatus: 'running'
+        phase: 'running'
       })
     })
 
@@ -855,12 +871,56 @@ describe('project/session renderer store', () => {
       await store.hydrateObservability()
 
       expect(window.stoa.listSessionObservationEvents).toHaveBeenCalledWith('session_op_1', {
-        cursor: '3',
+        cursor: '1',
         limit: 50
       })
       expect(store.sessionPresenceById.session_op_1).toEqual(refetchedSessionPresence)
       expect(store.projectObservabilityById.project_alpha).toEqual(refetchedProjectObservability)
       expect(store.appObservability).toEqual(refetchedAppObservability)
+    })
+
+    test('backfill uses evidence sequence when authoritative session source sequence is ahead', async () => {
+      window.stoa = createStoaMock({
+        getSessionPresence: vi.fn().mockResolvedValue(sessionPresenceFixture({
+          sourceSequence: 20,
+          evidenceSequence: 10
+        })),
+        getProjectObservability: vi.fn().mockResolvedValue(projectObservabilityFixture({ sourceSequence: 20 })),
+        getAppObservability: vi.fn().mockResolvedValue(appObservabilityFixture({ sourceSequence: 20 })),
+        listSessionObservationEvents: vi.fn().mockResolvedValue({
+          events: [observationEventFixture({ sequence: 11 })],
+          nextCursor: null
+        })
+      })
+
+      const store = useWorkspaceStore()
+      store.hydrate({
+        activeProjectId: 'project_alpha',
+        activeSessionId: 'session_op_1',
+        terminalWebhookPort: 43127,
+        projects: [{ id: 'project_alpha', name: 'alpha', path: 'D:/alpha', createdAt: 'a', updatedAt: 'a' }],
+        sessions: [{
+          id: 'session_op_1',
+          projectId: 'project_alpha',
+          type: 'opencode',
+          status: 'running',
+          title: 'Deploy',
+          summary: 'running',
+          recoveryMode: 'resume-external',
+          externalSessionId: 'ext-1',
+          createdAt: 'a',
+          updatedAt: 'a',
+          lastActivatedAt: 'a',
+          archived: false
+        }]
+      })
+
+      await store.hydrateObservability()
+
+      expect(window.stoa.listSessionObservationEvents).toHaveBeenCalledWith('session_op_1', {
+        cursor: '10',
+        limit: 50
+      })
     })
   })
 })
