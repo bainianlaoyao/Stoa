@@ -72,8 +72,8 @@ export function adaptCodexHook(
       || hookEventName === 'UserPromptSubmit'
       || hookEventName === 'PreToolUse'
       || hookEventName === 'PostToolUse'
-      ? 'running'
-      : hookEventName === 'Stop'
+    ? 'running'
+    : hookEventName === 'Stop'
       ? 'turn_complete'
       : null
 

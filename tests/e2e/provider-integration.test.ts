@@ -1,9 +1,11 @@
 import { readFile, rm, stat } from 'node:fs/promises'
+import { request } from 'node:http'
 import { join } from 'node:path'
 import { afterEach, describe, expect, test } from 'vitest'
 import { getProvider, listProviders } from '@extensions/providers'
-import type { ProviderCommandContext } from '@shared/project-session'
+import type { CanonicalSessionEvent, ProviderCommandContext } from '@shared/project-session'
 import type { ProviderRuntimeTarget } from '@extensions/providers'
+import { createLocalWebhookServer } from '@core/webhook-server'
 import { createTestTempDir } from '../../testing/test-temp'
 
 const tempDirs: string[] = []
@@ -627,6 +629,213 @@ describe('E2E: Provider Integration', () => {
       expect(command.env.STOA_SESSION_SECRET).toBe(context.sessionSecret)
       expect(command.env.STOA_WEBHOOK_PORT).toBe(String(context.webhookPort))
       expect(command.env.STOA_PROVIDER_PORT).toBe(String(context.providerPort))
+    })
+  })
+
+  describe('Codex sidecar full data flow', () => {
+    const acceptedEvents: CanonicalSessionEvent[] = []
+    const webhookServers: Array<ReturnType<typeof createLocalWebhookServer>> = []
+
+    afterEach(async () => {
+      acceptedEvents.length = 0
+      await Promise.allSettled(webhookServers.splice(0).map(s => s.stop()))
+    })
+
+    async function postCodexToServer(
+      port: number,
+      sessionId: string,
+      projectId: string,
+      secret: string,
+      hookBody: Record<string, unknown>
+    ): Promise<{ statusCode: number; body: string }> {
+      const payload = JSON.stringify(hookBody)
+      return new Promise((resolve, reject) => {
+        const req = request(
+          {
+            host: '127.0.0.1',
+            port,
+            path: '/hooks/codex',
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              'content-length': Buffer.byteLength(payload),
+              'x-stoa-session-id': sessionId,
+              'x-stoa-project-id': projectId,
+              'x-stoa-secret': secret
+            }
+          },
+          (res) => {
+            let body = ''
+            res.setEncoding('utf8')
+            res.on('data', (chunk: string) => { body += chunk })
+            res.on('end', () => resolve({ statusCode: res.statusCode ?? 0, body }))
+          }
+        )
+        req.on('error', reject)
+        req.write(payload)
+        req.end()
+      })
+    }
+
+    test('installSidecar writes hooks.json with all 5 codex hook events', async () => {
+      const workspaceDir = await createTempDir('stoa-codex-hooks-json-')
+      const provider = getProvider('codex')
+      const target = createTarget({ path: workspaceDir, type: 'codex' })
+      const context = createContext()
+
+      await provider.installSidecar(target, context)
+
+      const hooksJsonPath = join(workspaceDir, '.codex', 'hooks.json')
+      const hooksContent = await readFile(hooksJsonPath, 'utf8')
+      const parsed = JSON.parse(hooksContent)
+
+      expect(Object.keys(parsed.hooks)).toEqual(
+        expect.arrayContaining(['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'Stop'])
+      )
+      expect(parsed.hooks.SessionStart[0].hooks[0].command).toBe('node .codex/hook-stoa.mjs')
+      expect(parsed.hooks.Stop[0].hooks[0].type).toBe('command')
+      expect(parsed.hooks.UserPromptSubmit[0].hooks).toBeDefined()
+      expect(parsed.hooks.UserPromptSubmit[0].matcher).toBeUndefined()
+      expect(parsed.hooks.SessionStart[0].matcher).toBe('*')
+    })
+
+    test('installSidecar writes config.toml with codex_hooks feature flag', async () => {
+      const workspaceDir = await createTempDir('stoa-codex-config-')
+      const provider = getProvider('codex')
+      const target = createTarget({ path: workspaceDir, type: 'codex' })
+      const context = createContext()
+
+      await provider.installSidecar(target, context)
+
+      const configPath = join(workspaceDir, '.codex', 'config.toml')
+      const configContent = await readFile(configPath, 'utf8')
+
+      expect(configContent).toContain('codex_hooks = true')
+      expect(configContent).toContain('[features]')
+      expect(configContent).toContain('notify = ["node", ".codex/notify-stoa.mjs"]')
+    })
+
+    test('installSidecar writes hook-stoa.mjs that posts to /hooks/codex', async () => {
+      const workspaceDir = await createTempDir('stoa-codex-hook-sidecar-')
+      const provider = getProvider('codex')
+      const target = createTarget({ path: workspaceDir, type: 'codex' })
+      const context = createContext()
+
+      await provider.installSidecar(target, context)
+
+      const hookSidecarPath = join(workspaceDir, '.codex', 'hook-stoa.mjs')
+      const content = await readFile(hookSidecarPath, 'utf8')
+
+      expect(content).toContain('/hooks/codex')
+      expect(content).toContain('process.env.STOA_SESSION_ID')
+      expect(content).toContain('process.env.STOA_WEBHOOK_PORT')
+      expect(content).toContain('x-stoa-session-id')
+      expect(content).toContain('x-stoa-secret')
+    })
+
+    test('notify-stoa.mjs extracts last-assistant-message as snippet', async () => {
+      const workspaceDir = await createTempDir('stoa-codex-notify-snippet-')
+      const provider = getProvider('codex')
+      const target = createTarget({ path: workspaceDir, type: 'codex' })
+      const context = createContext()
+
+      await provider.installSidecar(target, context)
+
+      const notifyPath = join(workspaceDir, '.codex', 'notify-stoa.mjs')
+      const content = await readFile(notifyPath, 'utf8')
+
+      expect(content).toContain("parsed['last-assistant-message']")
+      expect(content).toContain('snippet:')
+    })
+
+    test('full pipeline: webhook server receives and converts Codex PreToolUse hook', async () => {
+      const server = createLocalWebhookServer({
+        getSessionSecret(sessionId) {
+          return sessionId === 'session_flow_001' ? 'flow-secret' : null
+        },
+        onEvent(event) {
+          acceptedEvents.push(event)
+        }
+      })
+      webhookServers.push(server)
+      const port = await server.start()
+
+      const codexHookPayload = {
+        hookEventName: 'PreToolUse',
+        sessionId: 'codex-thread-abc',
+        turnId: 'turn-001',
+        cwd: '/home/user/project',
+        model: 'codex-1',
+        toolName: 'Bash',
+        toolUseId: 'tooluse-001'
+      }
+
+      const { statusCode, body } = await postCodexToServer(
+        port, 'session_flow_001', 'project_flow_001', 'flow-secret', codexHookPayload
+      )
+
+      expect(statusCode).toBe(202)
+      const parsed = JSON.parse(body)
+      expect(parsed.accepted).toBe(true)
+
+      expect(acceptedEvents).toHaveLength(1)
+      const event = acceptedEvents[0]!
+      expect(event.event_type).toBe('codex.PreToolUse')
+      expect(event.event_id).toBe('turn-001')
+      expect(event.session_id).toBe('session_flow_001')
+      expect(event.project_id).toBe('project_flow_001')
+      expect(event.source).toBe('provider-adapter')
+      expect(event.payload.status).toBe('running')
+      expect(event.payload.toolName).toBe('Bash')
+      expect(event.payload.toolUseId).toBe('tooluse-001')
+      expect(event.payload.model).toBe('codex-1')
+    })
+
+    test('full pipeline: Stop event produces turn_complete status', async () => {
+      const server = createLocalWebhookServer({
+        getSessionSecret(sessionId) {
+          return sessionId === 'session_flow_002' ? 'flow-secret-2' : null
+        },
+        onEvent(event) {
+          acceptedEvents.push(event)
+        }
+      })
+      webhookServers.push(server)
+      const port = await server.start()
+
+      const { statusCode } = await postCodexToServer(
+        port, 'session_flow_002', 'project_flow_002', 'flow-secret-2',
+        { hookEventName: 'Stop', sessionId: 'codex-thread-stop', turnId: 'turn-final' }
+      )
+
+      expect(statusCode).toBe(202)
+      expect(acceptedEvents).toHaveLength(1)
+      expect(acceptedEvents[0]!.payload.status).toBe('turn_complete')
+      expect(acceptedEvents[0]!.event_type).toBe('codex.Stop')
+    })
+
+    test('full pipeline: unsupported hook events return ignored', async () => {
+      const server = createLocalWebhookServer({
+        getSessionSecret(sessionId) {
+          return sessionId === 'session_flow_003' ? 'flow-secret-3' : null
+        },
+        onEvent(event) {
+          acceptedEvents.push(event)
+        }
+      })
+      webhookServers.push(server)
+      const port = await server.start()
+
+      const { statusCode, body } = await postCodexToServer(
+        port, 'session_flow_003', 'project_flow_003', 'flow-secret-3',
+        { hookEventName: 'PostToolResult' }
+      )
+
+      expect(statusCode).toBe(202)
+      const parsed = JSON.parse(body)
+      expect(parsed.accepted).toBe(true)
+      expect(parsed.ignored).toBe(true)
+      expect(acceptedEvents).toHaveLength(0)
     })
   })
 })
