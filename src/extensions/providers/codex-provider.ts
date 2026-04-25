@@ -203,13 +203,13 @@ export function createCodexProvider(): ProviderDefinition {
       return true
     },
     async buildStartCommand(target, context) {
-      return createCommand(target, context, [])
+      return createCommand(target, context, ['--no-alt-screen'])
     },
     async buildFallbackResumeCommand(target, context) {
-      return createCommand(target, context, ['resume', '--last'])
+      return createCommand(target, context, ['--no-alt-screen', 'resume', '--last'])
     },
     async buildResumeCommand(target, externalSessionId, context) {
-      return createCommand(target, context, ['resume', externalSessionId])
+      return createCommand(target, context, ['--no-alt-screen', 'resume', externalSessionId])
     },
     resolveSessionId(_event: CanonicalSessionEvent) {
       return null
