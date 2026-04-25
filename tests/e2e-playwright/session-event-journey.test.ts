@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { test, expect } from '@playwright/test'
-import type { CanonicalSessionEvent, SessionStatus } from '@shared/project-session'
+import type { CanonicalSessionEvent, SessionStatePatchPayload, SessionStatus } from '@shared/project-session'
 import {
   cleanupStateDir,
   getMainE2EDebugState,
@@ -17,6 +17,7 @@ function createCanonicalEvent(args: {
   status: SessionStatus
   summary: string
 }): CanonicalSessionEvent {
+  const payload = createPatchPayload(args.status, args.summary)
   return {
     event_version: 1,
     event_id: `evt_${randomUUID()}`,
@@ -25,11 +26,35 @@ function createCanonicalEvent(args: {
     session_id: args.sessionId,
     project_id: args.projectId,
     source: 'hook-sidecar',
-    payload: {
-      status: args.status,
-      summary: args.summary,
-      isProvisional: false
-    }
+    payload
+  }
+}
+
+function createPatchPayload(status: SessionStatus, summary: string): SessionStatePatchPayload {
+  switch (status) {
+    case 'bootstrapping':
+      return { intent: 'runtime.created', runtimeState: 'created', summary }
+    case 'starting':
+      return { intent: 'runtime.starting', runtimeState: 'starting', summary }
+    case 'running':
+      return { intent: 'agent.turn_started', agentState: 'working', summary }
+    case 'turn_complete':
+    case 'awaiting_input':
+      return { intent: 'agent.turn_completed', agentState: 'idle', hasUnseenCompletion: true, summary }
+    case 'degraded':
+      return { intent: 'agent.recovered', agentState: 'idle', summary }
+    case 'error':
+      return { intent: 'agent.turn_failed', agentState: 'error', summary }
+    case 'exited':
+      return {
+        intent: 'runtime.exited_clean',
+        runtimeState: 'exited',
+        runtimeExitCode: 0,
+        runtimeExitReason: 'clean',
+        summary
+      }
+    case 'needs_confirmation':
+      return { intent: 'agent.permission_requested', agentState: 'blocked', blockingReason: 'permission', summary }
   }
 }
 

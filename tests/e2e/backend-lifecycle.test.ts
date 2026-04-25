@@ -66,9 +66,9 @@ function createCanonicalEvent(sessionId: string, projectId: string): CanonicalSe
     project_id: projectId,
     source: 'hook-sidecar',
     payload: {
-      status: 'running',
-      summary: 'event accepted',
-      isProvisional: false
+      intent: 'agent.turn_started',
+      agentState: 'working',
+      summary: 'event accepted'
     }
   }
 }
