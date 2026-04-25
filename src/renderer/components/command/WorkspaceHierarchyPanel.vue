@@ -109,6 +109,21 @@ function sessionAttentionReason(session: ProjectHierarchyNode['sessions'][number
   return sessionRowViewModel(session.id)?.attentionReason ?? null
 }
 
+function sessionStatusClasses(session: ProjectHierarchyNode['sessions'][number]): Record<string, boolean> {
+  const tone = sessionTone(session)
+  const phase = sessionPhase(session)
+
+  return {
+    'route-dot--tone-neutral': tone === 'neutral',
+    'route-dot--tone-success': tone === 'success',
+    'route-dot--tone-warning': tone === 'warning',
+    'route-dot--tone-danger': tone === 'danger',
+    'route-dot--attention-complete': phase === 'complete',
+    'route-dot--attention-blocked': phase === 'blocked',
+    'route-dot--attention-failed': phase === 'failed'
+  }
+}
+
 function openDetail(event: MouseEvent | KeyboardEvent, kind: 'project', project: ProjectHierarchyNode): void
 function openDetail(event: MouseEvent | KeyboardEvent, kind: 'session', session: { title: string; type: string; status: SessionStatus }): void
 function openDetail(event: MouseEvent | KeyboardEvent, kind: 'project' | 'session', data: ProjectHierarchyNode | { title: string; type: string; status: SessionStatus }): void {
@@ -295,6 +310,7 @@ onBeforeUnmount(() => {
             >
               <div
                 class="route-dot"
+                :class="sessionStatusClasses(session)"
                 data-testid="session-status-dot"
                 :data-status="session.status"
                 :data-tone="sessionTone(session)"
@@ -493,35 +509,45 @@ onBeforeUnmount(() => {
   opacity: 0.85;
 }
 
-.route-dot[data-tone='neutral'] {
+.route-dot--tone-neutral {
   background: var(--color-subtle);
+  border-color: var(--color-line);
+  box-shadow: none;
+  opacity: 0.72;
 }
 
-.route-dot[data-tone='success'] {
+.route-dot--tone-success {
   background: var(--color-success);
   box-shadow: var(--shadow-success-ring);
+  opacity: 0.9;
 }
 
-.route-dot[data-tone='accent'] {
-  background: var(--color-accent);
-}
-
-.route-dot[data-tone='warning'] {
+.route-dot--tone-warning {
   background: var(--color-warning);
+  opacity: 0.95;
 }
 
-.route-dot[data-phase='blocked'] {
+.route-dot--attention-complete {
+  background: var(--color-warning);
   border-color: var(--color-line);
   box-shadow: inset 0 0 0 1px var(--color-surface-solid);
   opacity: 1;
 }
 
-.route-dot[data-phase='degraded'] {
-  opacity: 0.7;
+.route-dot--attention-blocked {
+  border-color: var(--color-line);
+  box-shadow: inset 0 0 0 1px var(--color-surface-solid);
+  opacity: 1;
 }
 
-.route-dot[data-tone='danger'] {
+.route-dot--tone-danger {
   background: var(--color-error);
+  opacity: 1;
+}
+
+.route-dot--attention-failed {
+  background: var(--color-error);
+  opacity: 1;
 }
 
 .route-time {

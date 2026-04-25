@@ -47,6 +47,13 @@ function createHierarchy(): ProjectHierarchyNode[] {
           projectId: 'project_alpha',
           type: 'opencode',
           status: 'running',
+          runtimeState: 'alive',
+          agentState: 'working',
+          hasUnseenCompletion: false,
+          runtimeExitCode: null,
+          runtimeExitReason: null,
+          lastStateSequence: 1,
+          blockingReason: null,
           title: 'deploy gateway',
           summary: 'running',
           recoveryMode: 'resume-external',
@@ -62,6 +69,13 @@ function createHierarchy(): ProjectHierarchyNode[] {
           projectId: 'project_alpha',
           type: 'shell',
           status: 'awaiting_input',
+          runtimeState: 'alive',
+          agentState: 'idle',
+          hasUnseenCompletion: false,
+          runtimeExitCode: null,
+          runtimeExitReason: null,
+          lastStateSequence: 1,
+          blockingReason: null,
           title: 'need confirmation',
           summary: 'awaiting',
           recoveryMode: 'resume-external',
@@ -93,6 +107,13 @@ function createTwoProjectHierarchy(): ProjectHierarchyNode[] {
           projectId: 'project_alpha',
           type: 'opencode',
           status: 'running',
+          runtimeState: 'alive',
+          agentState: 'working',
+          hasUnseenCompletion: false,
+          runtimeExitCode: null,
+          runtimeExitReason: null,
+          lastStateSequence: 1,
+          blockingReason: null,
           title: 'deploy gateway',
           summary: 'running',
           recoveryMode: 'resume-external',
@@ -119,6 +140,13 @@ function createTwoProjectHierarchy(): ProjectHierarchyNode[] {
           projectId: 'project_beta',
           type: 'shell',
           status: 'exited',
+          runtimeState: 'exited',
+          agentState: 'idle',
+          hasUnseenCompletion: false,
+          runtimeExitCode: 0,
+          runtimeExitReason: 'clean',
+          lastStateSequence: 1,
+          blockingReason: null,
           title: 'etl run',
           summary: 'done',
           recoveryMode: 'fresh-shell',
@@ -152,8 +180,8 @@ function createSessionRowViewModels(
     session_1: {
       sessionId: 'session_1',
       title: 'deploy gateway',
-      phase: 'working',
-      primaryLabel: 'Working',
+      phase: 'running',
+      primaryLabel: 'Running',
       secondaryLabel: 'OpenCode / GPT-5',
       tone: 'success',
       hasUnreadTurn: false,
@@ -168,7 +196,7 @@ function createSessionRowViewModels(
       phase: 'ready',
       primaryLabel: 'Ready',
       secondaryLabel: 'Claude Code / Sonnet',
-      tone: 'accent',
+      tone: 'neutral',
       hasUnreadTurn: false,
       needsAttention: false,
       attentionReason: null,
@@ -276,7 +304,7 @@ describe('WorkspaceHierarchyPanel', () => {
       const children = wrapper.findAll('.route-item.child')
       const types = children.map(c => c.find('.route-time').text())
       expect(types).toContain('Ready · Claude Code / Sonnet')
-      expect(types).toContain('Working · OpenCode / GPT-5')
+      expect(types).toContain('Running · OpenCode / GPT-5')
     })
 
     it('uses a real projected row view model without duplicating labels', () => {
@@ -307,7 +335,7 @@ describe('WorkspaceHierarchyPanel', () => {
       expect(secondaryLabels).toContain('Ready · Shell / Sonnet')
       expect(projectedViewModel.secondaryLabel).toBe('Shell / Sonnet')
       expect(secondaryLabels.join(' | ')).not.toContain('Ready · Ready')
-      expect(secondaryLabels.join(' | ')).not.toContain('Working · Working')
+      expect(secondaryLabels.join(' | ')).not.toContain('Running · Running')
     })
 
     it('uses tone and phase data attributes from the row view model instead of status group styling', () => {
@@ -324,13 +352,34 @@ describe('WorkspaceHierarchyPanel', () => {
       const children = wrapper.findAll('.route-item.child')
       const dot1 = children[0].find('.route-dot')
       expect(dot1.attributes('data-tone')).toBe('success')
-      expect(dot1.attributes('data-phase')).toBe('working')
+      expect(dot1.attributes('data-phase')).toBe('running')
       const dot2 = children[1].find('.route-dot')
-      expect(dot2.attributes('data-tone')).toBe('accent')
+      expect(dot2.attributes('data-tone')).toBe('neutral')
       expect(dot2.attributes('data-phase')).toBe('ready')
     })
 
-    it('renders turn_complete rows as Ready with accent tone', () => {
+    it('renders running session with medium active tone', () => {
+      const wrapper = mount(WorkspaceHierarchyPanel, {
+        global: { plugins: [createPinia()] },
+        props: {
+          hierarchy: createHierarchy(),
+          activeProjectId: 'project_alpha',
+          activeSessionId: 'session_1',
+          sessionRowViewModels: createSessionRowViewModels()
+        }
+      })
+
+      const dot = wrapper.findAll('.route-item.child')[0]!.find('.route-dot')
+      const source = readFileSync(workspaceHierarchyPanelPath, 'utf8')
+      const runningRule = source.match(/\.route-dot--tone-success\s*\{[^}]*\}/)?.[0] ?? ''
+
+      expect(dot.attributes('data-tone')).toBe('success')
+      expect(dot.attributes('data-phase')).toBe('running')
+      expect(dot.classes()).toContain('route-dot--tone-success')
+      expect(runningRule).toContain('var(--color-success)')
+    })
+
+    it('renders ready session with neutral status tone and no accent class', () => {
       const hierarchy: ProjectHierarchyNode[] = [{
         id: 'project_1',
         name: 'infra-control',
@@ -344,6 +393,13 @@ describe('WorkspaceHierarchyPanel', () => {
           title: 'complete turn',
           type: 'opencode',
           status: 'turn_complete',
+          runtimeState: 'alive',
+          agentState: 'idle',
+          hasUnseenCompletion: false,
+          runtimeExitCode: null,
+          runtimeExitReason: null,
+          lastStateSequence: 2,
+          blockingReason: null,
           active: true,
           summary: 'waiting for user',
           projectId: 'project_1',
@@ -369,7 +425,7 @@ describe('WorkspaceHierarchyPanel', () => {
               phase: 'ready',
               primaryLabel: 'Ready',
               secondaryLabel: 'Claude Code / Sonnet',
-              tone: 'accent',
+              tone: 'neutral',
               hasUnreadTurn: false,
               needsAttention: false,
               attentionReason: null,
@@ -380,9 +436,18 @@ describe('WorkspaceHierarchyPanel', () => {
       })
 
       const row = wrapper.find('.route-item.child')
+      const dot = row.find('.route-dot')
+      const classNames = `${row.classes().join(' ')} ${dot.classes().join(' ')}`
+      const source = readFileSync(workspaceHierarchyPanelPath, 'utf8')
+      const readyRule = source.match(/\.route-dot--tone-neutral\s*\{[^}]*\}/)?.[0] ?? ''
+
       expect(row.find('.route-time').text()).toBe('Ready · Claude Code / Sonnet')
-      expect(row.find('.route-dot').attributes('data-tone')).toBe('accent')
-      expect(row.find('.route-dot').attributes('data-phase')).toBe('ready')
+      expect(dot.attributes('data-tone')).toBe('neutral')
+      expect(dot.attributes('data-phase')).toBe('ready')
+      expect(dot.classes()).toContain('route-dot--tone-neutral')
+      expect(classNames).not.toMatch(/accent|blue/i)
+      expect(readyRule).toContain('var(--color-subtle)')
+      expect(readyRule).not.toMatch(/accent|blue/i)
     })
 
     it('renders needs_confirmation with a distinct approval label and warning tone', () => {
@@ -399,6 +464,13 @@ describe('WorkspaceHierarchyPanel', () => {
           title: 'permission request',
           type: 'claude-code',
           status: 'needs_confirmation',
+          runtimeState: 'alive',
+          agentState: 'blocked',
+          hasUnseenCompletion: false,
+          runtimeExitCode: null,
+          runtimeExitReason: null,
+          lastStateSequence: 3,
+          blockingReason: 'resume-confirmation',
           active: true,
           summary: 'PermissionRequest',
           projectId: 'project_1',
@@ -442,9 +514,11 @@ describe('WorkspaceHierarchyPanel', () => {
       expect(row.find('.route-dot').attributes('data-tone')).toBe('warning')
       expect(row.find('.route-dot').attributes('data-phase')).toBe('blocked')
       expect(row.find('.route-dot').attributes('data-attention-reason')).toBe('resume-confirmation')
+      expect(row.find('.route-dot').classes()).toContain('route-dot--tone-warning')
+      expect(row.find('.route-dot').classes()).toContain('route-dot--attention-blocked')
     })
 
-    it('renders degraded rows distinctly from approval-needed rows while keeping warning tone', () => {
+    it('renders complete session with non-error attention tone', () => {
       const hierarchy: ProjectHierarchyNode[] = [{
         id: 'project_1',
         name: 'infra-control',
@@ -454,12 +528,19 @@ describe('WorkspaceHierarchyPanel', () => {
         createdAt: '2026-04-24T12:00:00.000Z',
         updatedAt: '2026-04-24T12:00:00.000Z',
         sessions: [{
-          id: 'session_degraded',
-          title: 'provider degraded',
+          id: 'session_complete',
+          title: 'turn complete',
           type: 'claude-code',
-          status: 'degraded',
+          status: 'turn_complete',
+          runtimeState: 'alive',
+          agentState: 'idle',
+          hasUnseenCompletion: true,
+          runtimeExitCode: null,
+          runtimeExitReason: null,
+          lastStateSequence: 4,
+          blockingReason: null,
           active: true,
-          summary: 'provider degraded',
+          summary: 'turn complete',
           projectId: 'project_1',
           recoveryMode: 'resume-external',
           externalSessionId: 'ext-1',
@@ -475,18 +556,18 @@ describe('WorkspaceHierarchyPanel', () => {
         props: {
           hierarchy,
           activeProjectId: 'project_1',
-          activeSessionId: 'session_degraded',
+          activeSessionId: 'session_complete',
           sessionRowViewModels: {
-            session_degraded: {
-              sessionId: 'session_degraded',
-              title: 'provider degraded',
-              phase: 'degraded',
-              primaryLabel: 'Degraded',
+            session_complete: {
+              sessionId: 'session_complete',
+              title: 'turn complete',
+              phase: 'complete',
+              primaryLabel: 'Complete',
               secondaryLabel: 'Claude Code / Sonnet',
               tone: 'warning',
               hasUnreadTurn: false,
               needsAttention: true,
-              attentionReason: 'degraded',
+              attentionReason: 'turn-complete',
               updatedAgoLabel: '3s ago'
             }
           }
@@ -494,13 +575,22 @@ describe('WorkspaceHierarchyPanel', () => {
       })
 
       const row = wrapper.find('.route-item.child')
-      expect(row.find('.route-time').text()).toBe('Degraded · Claude Code / Sonnet')
-      expect(row.find('.route-dot').attributes('data-tone')).toBe('warning')
-      expect(row.find('.route-dot').attributes('data-phase')).toBe('degraded')
-      expect(row.find('.route-dot').attributes('data-attention-reason')).toBe('degraded')
+      const dot = row.find('.route-dot')
+      const source = readFileSync(workspaceHierarchyPanelPath, 'utf8')
+      const completeRule = source.match(/\.route-dot--attention-complete\s*\{[^}]*\}/)?.[0] ?? ''
+
+      expect(row.find('.route-time').text()).toBe('Complete · Claude Code / Sonnet')
+      expect(dot.attributes('data-tone')).toBe('warning')
+      expect(dot.attributes('data-phase')).toBe('complete')
+      expect(dot.attributes('data-attention-reason')).toBe('turn-complete')
+      expect(dot.classes()).toContain('route-dot--tone-warning')
+      expect(dot.classes()).toContain('route-dot--attention-complete')
+      expect(dot.classes()).not.toContain('route-dot--tone-danger')
+      expect(completeRule).toContain('var(--color-warning)')
+      expect(completeRule).not.toContain('var(--color-error)')
     })
 
-    it('renders failed rows with danger tone, failed phase, and provider-error attention reason', () => {
+    it('renders failed session with danger tone before other attention states', () => {
       const hierarchy: ProjectHierarchyNode[] = [{
         id: 'project_1',
         name: 'infra-control',
@@ -514,6 +604,13 @@ describe('WorkspaceHierarchyPanel', () => {
           title: 'provider failed',
           type: 'claude-code',
           status: 'error',
+          runtimeState: 'alive',
+          agentState: 'error',
+          hasUnseenCompletion: true,
+          runtimeExitCode: null,
+          runtimeExitReason: null,
+          lastStateSequence: 5,
+          blockingReason: null,
           active: true,
           summary: 'provider failed',
           projectId: 'project_1',
@@ -550,10 +647,20 @@ describe('WorkspaceHierarchyPanel', () => {
       })
 
       const row = wrapper.find('.route-item.child')
+      const dot = row.find('.route-dot')
+      const source = readFileSync(workspaceHierarchyPanelPath, 'utf8')
+      const dangerRule = source.match(/\.route-dot--tone-danger\s*\{[^}]*\}/)?.[0] ?? ''
+
       expect(row.find('.route-time').text()).toBe('Failed · Claude Code / Sonnet')
-      expect(row.find('.route-dot').attributes('data-tone')).toBe('danger')
-      expect(row.find('.route-dot').attributes('data-phase')).toBe('failed')
-      expect(row.find('.route-dot').attributes('data-attention-reason')).toBe('provider-error')
+      expect(dot.attributes('data-tone')).toBe('danger')
+      expect(dot.attributes('data-phase')).toBe('failed')
+      expect(dot.attributes('data-attention-reason')).toBe('provider-error')
+      expect(dot.classes()).toContain('route-dot--tone-danger')
+      expect(dot.classes()).toContain('route-dot--attention-failed')
+      expect(dot.classes()).not.toContain('route-dot--tone-warning')
+      expect(dot.classes()).not.toContain('route-dot--attention-complete')
+      expect(dot.classes()).not.toContain('route-dot--attention-blocked')
+      expect(dangerRule).toContain('var(--color-error)')
     })
 
     it('does not show the raw session.type when a row view model exists', () => {

@@ -17,6 +17,13 @@ function sessionFixture(patch: Partial<SessionSummary> = {}): SessionSummary {
     projectId: 'project-1',
     type: 'claude-code',
     status: 'running',
+    runtimeState: 'alive',
+    agentState: 'working',
+    hasUnseenCompletion: false,
+    runtimeExitCode: null,
+    runtimeExitReason: null,
+    lastStateSequence: 1,
+    blockingReason: null,
     title: 'Implement feature',
     summary: 'Working on feature',
     recoveryMode: 'resume-external',
@@ -36,8 +43,12 @@ function presenceFixture(patch: Partial<SessionPresenceSnapshot> = {}): SessionP
     providerId: 'claude-code',
     providerLabel: 'Claude Code',
     modelLabel: 'Sonnet',
-    phase: 'working',
-    canonicalStatus: 'running',
+    phase: 'running',
+    runtimeState: 'alive',
+    agentState: 'working',
+    hasUnseenCompletion: false,
+    runtimeExitCode: null,
+    runtimeExitReason: null,
     confidence: 'authoritative',
     health: 'healthy',
     blockingReason: null,
@@ -46,6 +57,7 @@ function presenceFixture(patch: Partial<SessionPresenceSnapshot> = {}): SessionP
     lastEvidenceType: 'evidence.assistant_message',
     hasUnreadTurn: false,
     recoveryPointerState: 'trusted',
+    evidenceSequence: 1,
     sourceSequence: 1,
     updatedAt: '2026-04-24T07:59:50.000Z',
     ...patch
@@ -58,7 +70,6 @@ describe('renderer observability view models', () => {
       sessionFixture({ status: 'turn_complete' }),
       presenceFixture({
         phase: 'ready',
-        canonicalStatus: 'turn_complete',
         updatedAt: '2026-04-24T07:58:00.000Z'
       }),
       NOW_ISO
@@ -70,7 +81,7 @@ describe('renderer observability view models', () => {
       phase: 'ready',
       primaryLabel: 'Ready',
       secondaryLabel: 'Claude Code / Sonnet',
-      tone: 'accent',
+      tone: 'neutral',
       hasUnreadTurn: false,
       needsAttention: false,
       attentionReason: null,
@@ -84,21 +95,62 @@ describe('renderer observability view models', () => {
       presenceFixture({
         providerId: 'claude-code',
         providerLabel: 'Claude Code',
-        phase: 'working',
-        canonicalStatus: 'running'
+        phase: 'running'
       }),
       NOW_ISO
     )
 
-    expect(viewModel.phase).toBe('working')
+    expect(viewModel.phase).toBe('running')
     expect(viewModel.tone).toBe('success')
     expect(viewModel.primaryLabel).toBe('Running')
     expect(viewModel.secondaryLabel).toBe('Claude Code / Sonnet')
   })
 
-  it('forwards the semantic phase needed to distinguish blocked and degraded rows', () => {
+  it('maps ready rows to neutral tone', () => {
+    const viewModel = toSessionRowViewModel(
+      sessionFixture(),
+      presenceFixture({ phase: 'ready' }),
+      NOW_ISO
+    )
+
+    expect(viewModel.tone).toBe('neutral')
+    expect(viewModel.needsAttention).toBe(false)
+  })
+
+  it('maps running rows to success tone', () => {
+    const viewModel = toSessionRowViewModel(
+      sessionFixture(),
+      presenceFixture({ phase: 'running' }),
+      NOW_ISO
+    )
+
+    expect(viewModel.tone).toBe('success')
+    expect(viewModel.needsAttention).toBe(false)
+  })
+
+  it('maps complete rows to warning attention', () => {
+    const viewModel = toSessionRowViewModel(
+      sessionFixture({ status: 'turn_complete', agentState: 'idle', hasUnseenCompletion: true }),
+      presenceFixture({
+        phase: 'complete',
+        agentState: 'idle',
+        hasUnseenCompletion: true
+      }),
+      NOW_ISO
+    )
+
+    expect(viewModel.tone).toBe('warning')
+    expect(viewModel.needsAttention).toBe(true)
+    expect(viewModel.attentionReason).toBe('turn-complete')
+  })
+
+  it('maps blocked rows to warning attention', () => {
     const blockedPresence = buildSessionPresenceSnapshot(
-      sessionFixture({ status: 'needs_confirmation' }),
+      sessionFixture({
+        status: 'needs_confirmation',
+        agentState: 'blocked',
+        blockingReason: 'resume-confirmation'
+      }),
       {
         activeSessionId: 'session-1',
         nowIso: NOW_ISO,
@@ -110,22 +162,30 @@ describe('renderer observability view models', () => {
       blockedPresence,
       NOW_ISO
     )
-    const degradedViewModel = toSessionRowViewModel(
-      sessionFixture({ status: 'degraded' }),
+
+    expect(blockedViewModel.tone).toBe('warning')
+    expect(blockedViewModel.needsAttention).toBe(true)
+    expect(blockedViewModel.phase).toBe('blocked')
+    expect(blockedViewModel.attentionReason).toBe('resume-confirmation')
+  })
+
+  it('maps failed rows to danger attention before complete or blocked attention', () => {
+    const viewModel = toSessionRowViewModel(
+      sessionFixture({ status: 'error', agentState: 'error', hasUnseenCompletion: true }),
       presenceFixture({
-        phase: 'degraded',
-        canonicalStatus: 'degraded',
-        health: 'degraded'
+        phase: 'failed',
+        agentState: 'error',
+        hasUnseenCompletion: true,
+        health: 'lost'
       }),
       NOW_ISO
     )
 
-    expect(blockedViewModel.tone).toBe('warning')
-    expect(blockedViewModel.phase).toBe('blocked')
-    expect(blockedViewModel.attentionReason).toBe('resume-confirmation')
-    expect(degradedViewModel.tone).toBe('warning')
-    expect(degradedViewModel.phase).toBe('degraded')
-    expect(degradedViewModel.attentionReason).toBe('degraded')
+    expect(viewModel.tone).toBe('danger')
+    expect(viewModel.needsAttention).toBe(true)
+    expect(viewModel.attentionReason).toBe('provider-error')
+    expect(viewModel.attentionReason).not.toBe('turn-complete')
+    expect(viewModel.attentionReason).not.toBe('blocked')
   })
 
   it.each([
@@ -145,16 +205,15 @@ describe('renderer observability view models', () => {
   it.each([
     ['permission', 'blocked', 'Provider is waiting for permission.'],
     ['resume-confirmation', 'blocked', 'Provider is waiting for confirmation.'],
-    [null, 'degraded', 'Structured provider state is partially unavailable.'],
     ['provider-error', 'failed', 'Provider reported an error.'],
-    [null, 'working', null]
-  ] as const)('maps blocking and degraded/failed states to the expected explanation', (blockingReason, phase, explanation) => {
+    [null, 'running', null]
+  ] as const)('maps blocking and failed states to the expected explanation', (blockingReason, phase, explanation) => {
     const viewModel = toActiveSessionViewModel(
       sessionFixture(),
       presenceFixture({
         blockingReason,
         phase,
-        health: phase === 'failed' ? 'lost' : phase === 'degraded' ? 'degraded' : 'healthy'
+        health: phase === 'failed' ? 'lost' : 'healthy'
       }),
       NOW_ISO
     )

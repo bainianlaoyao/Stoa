@@ -27,6 +27,7 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
   const unsubscribeSessionPresenceChanged = ref<(() => void) | null>(null)
   const unsubscribeProjectObservabilityChanged = ref<(() => void) | null>(null)
   const unsubscribeAppObservabilityChanged = ref<(() => void) | null>(null)
+  const backendSessionPresenceIds = new Set<string>()
 
   const activeProject = computed(() => {
     return projects.value.find((project) => project.id === activeProjectId.value) ?? null
@@ -145,10 +146,11 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
 
   function applySessionPresenceSnapshot(snapshot: SessionPresenceSnapshot): void {
     const current = sessionPresenceById.value[snapshot.sessionId]
-    if (current && current.sourceSequence > snapshot.sourceSequence) {
+    if (backendSessionPresenceIds.has(snapshot.sessionId) && current && current.sourceSequence > snapshot.sourceSequence) {
       return
     }
 
+    backendSessionPresenceIds.add(snapshot.sessionId)
     sessionPresenceById.value = {
       ...sessionPresenceById.value,
       [snapshot.sessionId]: snapshot
@@ -243,26 +245,29 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
   }
 
   function syncSessionPresenceFromSummary(session: SessionSummary): void {
+    if (backendSessionPresenceIds.has(session.id)) {
+      return
+    }
+
     const current = sessionPresenceById.value[session.id]
     const next = buildSessionPresenceSnapshot(session, {
       activeSessionId: activeSessionId.value,
       nowIso: new Date().toISOString(),
-      sourceSequence: current?.sourceSequence ?? 0
+      modelLabel: current?.modelLabel ?? null,
+      lastAssistantSnippet: current?.lastAssistantSnippet ?? null,
+      lastEvidenceType: current?.lastEvidenceType ?? null,
+      lastEventAt: current?.lastEventAt ?? null,
+      evidenceSequence: current?.evidenceSequence ?? 0,
+      sourceSequence: session.lastStateSequence
     })
+
+    if (current && current.sourceSequence > next.sourceSequence) {
+      return
+    }
 
     sessionPresenceById.value = {
       ...sessionPresenceById.value,
-      [session.id]: {
-        ...current,
-        ...next,
-        modelLabel: current?.modelLabel ?? next.modelLabel,
-        lastAssistantSnippet: current?.lastAssistantSnippet ?? next.lastAssistantSnippet,
-        lastEvidenceType: current?.lastEvidenceType ?? next.lastEvidenceType,
-        hasUnreadTurn: current?.hasUnreadTurn ?? next.hasUnreadTurn,
-        lastEventAt: current?.lastEventAt ?? next.lastEventAt,
-        evidenceSequence: current?.evidenceSequence ?? next.evidenceSequence,
-        sourceSequence: current?.sourceSequence ?? next.sourceSequence
-      }
+      [session.id]: next
     }
   }
 
