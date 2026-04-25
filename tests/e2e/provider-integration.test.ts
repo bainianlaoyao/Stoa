@@ -1,5 +1,6 @@
 import { readFile, rm, stat } from 'node:fs/promises'
 import { request } from 'node:http'
+import { spawn } from 'node:child_process'
 import { join } from 'node:path'
 import { afterEach, describe, expect, test } from 'vitest'
 import { getProvider, listProviders } from '@extensions/providers'
@@ -244,7 +245,7 @@ describe('E2E: Provider Integration', () => {
       const command = await provider.buildStartCommand(target, context)
 
       expect(command.command).toBe('codex')
-      expect(command.args).toEqual([])
+      expect(command.args).toEqual(['--no-alt-screen'])
     })
 
     test('buildResumeCommand resumes by external session id', async () => {
@@ -254,7 +255,7 @@ describe('E2E: Provider Integration', () => {
 
       const command = await provider.buildResumeCommand(target, '019c75d6-5db6-7c21-8d2f-f0602da4f64d', context)
 
-      expect(command.args).toEqual(['resume', '019c75d6-5db6-7c21-8d2f-f0602da4f64d'])
+      expect(command.args).toEqual(['--no-alt-screen', 'resume', '019c75d6-5db6-7c21-8d2f-f0602da4f64d'])
     })
 
     test('buildFallbackResumeCommand falls back to resume --last when external session id is unavailable', async () => {
@@ -264,7 +265,7 @@ describe('E2E: Provider Integration', () => {
 
       const command = await provider.buildFallbackResumeCommand?.(target, context)
 
-      expect(command?.args).toEqual(['resume', '--last'])
+      expect(command?.args).toEqual(['--no-alt-screen', 'resume', '--last'])
     })
 
     test('supportsStructuredEvents() returns true', () => {
@@ -761,13 +762,13 @@ describe('E2E: Provider Integration', () => {
       const port = await server.start()
 
       const codexHookPayload = {
-        hookEventName: 'PreToolUse',
-        sessionId: 'codex-thread-abc',
-        turnId: 'turn-001',
+        hook_event_name: 'PreToolUse',
+        session_id: 'codex-thread-abc',
+        turn_id: 'turn-001',
         cwd: '/home/user/project',
         model: 'codex-1',
-        toolName: 'Bash',
-        toolUseId: 'tooluse-001'
+        tool_name: 'Bash',
+        tool_use_id: 'tooluse-001'
       }
 
       const { statusCode, body } = await postCodexToServer(
@@ -805,7 +806,7 @@ describe('E2E: Provider Integration', () => {
 
       const { statusCode } = await postCodexToServer(
         port, 'session_flow_002', 'project_flow_002', 'flow-secret-2',
-        { hookEventName: 'Stop', sessionId: 'codex-thread-stop', turnId: 'turn-final' }
+        { hook_event_name: 'Stop', session_id: 'codex-thread-stop', turn_id: 'turn-final' }
       )
 
       expect(statusCode).toBe(202)
@@ -828,7 +829,7 @@ describe('E2E: Provider Integration', () => {
 
       const { statusCode, body } = await postCodexToServer(
         port, 'session_flow_003', 'project_flow_003', 'flow-secret-3',
-        { hookEventName: 'PostToolResult' }
+        { hook_event_name: 'PostToolResult' }
       )
 
       expect(statusCode).toBe(202)
@@ -836,6 +837,319 @@ describe('E2E: Provider Integration', () => {
       expect(parsed.accepted).toBe(true)
       expect(parsed.ignored).toBe(true)
       expect(acceptedEvents).toHaveLength(0)
+    })
+  })
+
+  describe('Codex hook sidecar spawn trigger', () => {
+    const triggerEvents: CanonicalSessionEvent[] = []
+    const triggerServers: Array<ReturnType<typeof createLocalWebhookServer>> = []
+
+    afterEach(async () => {
+      triggerEvents.length = 0
+      await Promise.allSettled(triggerServers.splice(0).map(s => s.stop()))
+    })
+
+    async function spawnHookSidecar(
+      port: number,
+      sessionId: string,
+      projectId: string,
+      secret: string,
+      stdinPayload: Record<string, unknown>
+    ): Promise<{ exitCode: number | null; stderr: string }> {
+      const workspaceDir = await createTempDir('stoa-trigger-hook-')
+      const provider = getProvider('codex')
+      const target = createTarget({ path: workspaceDir, type: 'codex' })
+      const context = createContext({ webhookPort: port, sessionSecret: secret })
+      await provider.installSidecar(target, context)
+
+      return new Promise((resolve) => {
+        const child = spawn('node', [join(workspaceDir, '.codex', 'hook-stoa.mjs')], {
+          env: {
+            ...process.env as Record<string, string>,
+            STOA_SESSION_ID: sessionId,
+            STOA_PROJECT_ID: projectId,
+            STOA_SESSION_SECRET: secret,
+            STOA_WEBHOOK_PORT: String(port)
+          },
+          stdio: ['pipe', 'pipe', 'pipe']
+        })
+
+        let stderr = ''
+        child.stderr?.on('data', (chunk: Buffer) => { stderr += chunk.toString() })
+        child.stdin?.write(JSON.stringify(stdinPayload))
+        child.stdin?.end()
+
+        child.on('close', (code) => {
+          resolve({ exitCode: code, stderr })
+        })
+      })
+    }
+
+    test('spawning hook-stoa.mjs with SessionStart payload delivers event to webhook', async () => {
+      const server = createLocalWebhookServer({
+        getSessionSecret(id) { return id === 'trigger-sess-1' ? 'trigger-secret-1' : null },
+        onEvent(event) { triggerEvents.push(event) }
+      })
+      triggerServers.push(server)
+      const port = await server.start()
+
+      const { exitCode, stderr } = await spawnHookSidecar(
+        port, 'trigger-sess-1', 'trigger-proj-1', 'trigger-secret-1',
+        {
+          hook_event_name: 'SessionStart',
+          session_id: 'codex-uuid-start',
+          turn_id: 'turn-start-001',
+          cwd: '/home/user/project',
+          model: 'o4-mini',
+          permission_mode: 'default'
+        }
+      )
+
+      expect(exitCode).toBe(0)
+      expect(stderr).toBe('')
+      expect(triggerEvents).toHaveLength(1)
+      expect(triggerEvents[0]).toMatchObject({
+        event_type: 'codex.SessionStart',
+        event_id: 'turn-start-001',
+        session_id: 'trigger-sess-1',
+        project_id: 'trigger-proj-1',
+        source: 'provider-adapter',
+        payload: { status: 'running', summary: 'SessionStart', model: 'o4-mini' }
+      })
+    })
+
+    test('spawning hook-stoa.mjs with PreToolUse payload delivers tool details', async () => {
+      const server = createLocalWebhookServer({
+        getSessionSecret(id) { return id === 'trigger-sess-2' ? 'trigger-secret-2' : null },
+        onEvent(event) { triggerEvents.push(event) }
+      })
+      triggerServers.push(server)
+      const port = await server.start()
+
+      const { exitCode } = await spawnHookSidecar(
+        port, 'trigger-sess-2', 'trigger-proj-2', 'trigger-secret-2',
+        {
+          hook_event_name: 'PreToolUse',
+          session_id: 'codex-uuid-tool',
+          turn_id: 'turn-tool-001',
+          tool_name: 'Bash',
+          tool_use_id: 'tooluse-bash-001',
+          tool_input: { command: 'cargo build' }
+        }
+      )
+
+      expect(exitCode).toBe(0)
+      expect(triggerEvents).toHaveLength(1)
+      expect(triggerEvents[0]).toMatchObject({
+        event_type: 'codex.PreToolUse',
+        event_id: 'turn-tool-001',
+        session_id: 'trigger-sess-2',
+        payload: {
+          status: 'running',
+          summary: 'PreToolUse',
+          toolName: 'Bash',
+          toolUseId: 'tooluse-bash-001'
+        }
+      })
+    })
+
+    test('spawning hook-stoa.mjs with Stop payload produces turn_complete', async () => {
+      const server = createLocalWebhookServer({
+        getSessionSecret(id) { return id === 'trigger-sess-3' ? 'trigger-secret-3' : null },
+        onEvent(event) { triggerEvents.push(event) }
+      })
+      triggerServers.push(server)
+      const port = await server.start()
+
+      const { exitCode } = await spawnHookSidecar(
+        port, 'trigger-sess-3', 'trigger-proj-3', 'trigger-secret-3',
+        {
+          hook_event_name: 'Stop',
+          session_id: 'codex-uuid-stop',
+          turn_id: 'turn-stop-001'
+        }
+      )
+
+      expect(exitCode).toBe(0)
+      expect(triggerEvents).toHaveLength(1)
+      expect(triggerEvents[0]!.payload.status).toBe('turn_complete')
+      expect(triggerEvents[0]!.event_type).toBe('codex.Stop')
+    })
+
+    test('spawning hook-stoa.mjs without env vars exits silently with no events', async () => {
+      const server = createLocalWebhookServer({
+        getSessionSecret() { return null },
+        onEvent(event) { triggerEvents.push(event) }
+      })
+      triggerServers.push(server)
+      const port = await server.start()
+
+      const workspaceDir = await createTempDir('stoa-trigger-noenv-')
+      const provider = getProvider('codex')
+      await provider.installSidecar(
+        createTarget({ path: workspaceDir, type: 'codex' }),
+        createContext({ webhookPort: port, sessionSecret: 'secret' })
+      )
+
+      const { exitCode } = await new Promise<{ exitCode: number | null }>((resolve) => {
+        const child = spawn('node', [join(workspaceDir, '.codex', 'hook-stoa.mjs')], {
+          env: { ...process.env as Record<string, string> },
+          stdio: ['pipe', 'pipe', 'pipe']
+        })
+        child.stdin?.write(JSON.stringify({ hook_event_name: 'SessionStart' }))
+        child.stdin?.end()
+        child.on('close', (code) => resolve({ exitCode: code }))
+      })
+
+      expect(exitCode).toBe(0)
+      expect(triggerEvents).toHaveLength(0)
+    })
+
+    test('spawning hook-stoa.mjs with wrong secret produces no events', async () => {
+      const server = createLocalWebhookServer({
+        getSessionSecret(id) { return id === 'trigger-sess-4' ? 'correct-secret' : null },
+        onEvent(event) { triggerEvents.push(event) }
+      })
+      triggerServers.push(server)
+      const port = await server.start()
+
+      const { exitCode } = await spawnHookSidecar(
+        port, 'trigger-sess-4', 'trigger-proj-4', 'wrong-secret',
+        { hook_event_name: 'SessionStart', turn_id: 'turn-1' }
+      )
+
+      expect(exitCode).toBe(0)
+      expect(triggerEvents).toHaveLength(0)
+    })
+  })
+
+  describe('Codex notify sidecar spawn trigger', () => {
+    const notifyEvents: CanonicalSessionEvent[] = []
+    const notifyServers: Array<ReturnType<typeof createLocalWebhookServer>> = []
+
+    afterEach(async () => {
+      notifyEvents.length = 0
+      await Promise.allSettled(notifyServers.splice(0).map(s => s.stop()))
+    })
+
+    async function spawnNotifySidecar(
+      port: number,
+      sessionId: string,
+      projectId: string,
+      secret: string,
+      notifyPayload: Record<string, unknown>
+    ): Promise<{ exitCode: number | null; stderr: string }> {
+      const workspaceDir = await createTempDir('stoa-trigger-notify-')
+      const provider = getProvider('codex')
+      const target = createTarget({ path: workspaceDir, type: 'codex' })
+      const context = createContext({ webhookPort: port, sessionSecret: secret })
+      await provider.installSidecar(target, context)
+
+      return new Promise((resolve) => {
+        const child = spawn('node', [
+          join(workspaceDir, '.codex', 'notify-stoa.mjs'),
+          JSON.stringify(notifyPayload)
+        ], {
+          env: {
+            ...process.env as Record<string, string>,
+            STOA_SESSION_ID: sessionId,
+            STOA_PROJECT_ID: projectId,
+            STOA_SESSION_SECRET: secret,
+            STOA_WEBHOOK_PORT: String(port)
+          },
+          stdio: ['pipe', 'pipe', 'pipe']
+        })
+
+        let stderr = ''
+        child.stderr?.on('data', (chunk: Buffer) => { stderr += chunk.toString() })
+        child.on('close', (code) => {
+          resolve({ exitCode: code, stderr })
+        })
+      })
+    }
+
+    test('spawning notify-stoa.mjs with agent-turn-complete payload delivers event', async () => {
+      const server = createLocalWebhookServer({
+        getSessionSecret(id) { return id === 'notify-sess-1' ? 'notify-secret-1' : null },
+        onEvent(event) { notifyEvents.push(event) }
+      })
+      notifyServers.push(server)
+      const port = await server.start()
+
+      const { exitCode } = await spawnNotifySidecar(
+        port, 'notify-sess-1', 'notify-proj-1', 'notify-secret-1',
+        {
+          type: 'agent-turn-complete',
+          'thread-id': 'codex-thread-notify-1',
+          'turn-id': 'turn-notify-001',
+          cwd: '/home/user/project',
+          'last-assistant-message': 'Build completed successfully.',
+          'input-messages': ['Run cargo build']
+        }
+      )
+
+      expect(exitCode).toBe(0)
+      expect(notifyEvents).toHaveLength(1)
+      expect(notifyEvents[0]).toMatchObject({
+        event_type: 'agent-turn-complete',
+        event_id: 'turn-notify-001',
+        session_id: 'notify-sess-1',
+        project_id: 'notify-proj-1',
+        source: 'provider-adapter',
+        payload: {
+          status: 'turn_complete',
+          summary: 'agent-turn-complete',
+          externalSessionId: 'codex-thread-notify-1',
+          snippet: 'Build completed successfully.'
+        }
+      })
+    })
+
+    test('spawning notify-stoa.mjs with non-agent-turn-complete payload exits silently', async () => {
+      const server = createLocalWebhookServer({
+        getSessionSecret(id) { return id === 'notify-sess-2' ? 'notify-secret-2' : null },
+        onEvent(event) { notifyEvents.push(event) }
+      })
+      notifyServers.push(server)
+      const port = await server.start()
+
+      const { exitCode } = await spawnNotifySidecar(
+        port, 'notify-sess-2', 'notify-proj-2', 'notify-secret-2',
+        { type: 'unknown-event', 'turn-id': 'turn-x' }
+      )
+
+      expect(exitCode).toBe(0)
+      expect(notifyEvents).toHaveLength(0)
+    })
+
+    test('spawning notify-stoa.mjs without env vars exits silently', async () => {
+      const server = createLocalWebhookServer({
+        getSessionSecret() { return null },
+        onEvent(event) { notifyEvents.push(event) }
+      })
+      notifyServers.push(server)
+      const port = await server.start()
+
+      const workspaceDir = await createTempDir('stoa-trigger-notify-noenv-')
+      const provider = getProvider('codex')
+      await provider.installSidecar(
+        createTarget({ path: workspaceDir, type: 'codex' }),
+        createContext({ webhookPort: port, sessionSecret: 'secret' })
+      )
+
+      const { exitCode } = await new Promise<{ exitCode: number | null }>((resolve) => {
+        const child = spawn('node', [
+          join(workspaceDir, '.codex', 'notify-stoa.mjs'),
+          JSON.stringify({ type: 'agent-turn-complete', 'turn-id': 't1' })
+        ], {
+          env: { ...process.env as Record<string, string> },
+          stdio: ['pipe', 'pipe', 'pipe']
+        })
+        child.on('close', (code) => resolve({ exitCode: code }))
+      })
+
+      expect(exitCode).toBe(0)
+      expect(notifyEvents).toHaveLength(0)
     })
   })
 })

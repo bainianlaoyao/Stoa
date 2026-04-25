@@ -228,7 +228,7 @@ describe('local webhook server', () => {
 
       const response = await postCodexHook(
         port,
-        { hookEventName: 'SessionStart', sessionId: 'codex-external-1' },
+        { hook_event_name: 'SessionStart', session_id: 'codex-external-1' },
         {
           'x-stoa-session-id': 'session_demo_001',
           'x-stoa-project-id': 'project_demo',
@@ -255,7 +255,7 @@ describe('local webhook server', () => {
 
       const response = await postCodexHook(
         port,
-        { hookEventName: 'SessionStart', sessionId: 'codex-external-1' },
+        { hook_event_name: 'SessionStart', session_id: 'codex-external-1' },
         {
           'x-stoa-session-id': 'session_demo_001',
           'x-stoa-project-id': 'project_demo',
@@ -286,7 +286,7 @@ describe('local webhook server', () => {
 
       const response = await postCodexHook(
         port,
-        { hookEventName: 'PostToolResult' },
+        { hook_event_name: 'PostToolResult' },
         {
           'x-stoa-session-id': 'session_demo_001',
           'x-stoa-project-id': 'project_demo',

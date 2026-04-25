@@ -225,10 +225,10 @@ describe('codex hook adapter', () => {
   test('adapts Codex PostToolUse hook with toolName and toolUseId', () => {
     const event = adaptCodexHook(
       {
-        hookEventName: 'PostToolUse',
-        turnId: 'turn_4',
-        toolName: 'Bash',
-        toolUseId: 'tooluse_def',
+        hook_event_name: 'PostToolUse',
+        turn_id: 'turn_4',
+        tool_name: 'Bash',
+        tool_use_id: 'tooluse_def',
         model: 'o3'
       },
       codexContext
@@ -254,8 +254,8 @@ describe('codex hook adapter', () => {
   test('adapts Codex Stop hook into turn_complete canonical event', () => {
     const event = adaptCodexHook(
       {
-        hookEventName: 'Stop',
-        turnId: 'turn_5'
+        hook_event_name: 'Stop',
+        turn_id: 'turn_5'
       },
       codexContext
     )
@@ -277,8 +277,8 @@ describe('codex hook adapter', () => {
   test('returns null for unknown Codex hook events', () => {
     const event = adaptCodexHook(
       {
-        hookEventName: 'PostToolResult',
-        turnId: 'turn_99'
+        hook_event_name: 'PostToolResult',
+        turn_id: 'turn_99'
       },
       codexContext
     )
@@ -286,10 +286,10 @@ describe('codex hook adapter', () => {
     expect(event).toBeNull()
   })
 
-  test('generates UUID event_id when turnId is absent', () => {
+  test('generates UUID event_id when turn_id is absent', () => {
     const event = adaptCodexHook(
       {
-        hookEventName: 'SessionStart'
+        hook_event_name: 'SessionStart'
       },
       codexContext
     )
