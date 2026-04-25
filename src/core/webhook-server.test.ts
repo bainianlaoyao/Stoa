@@ -96,6 +96,43 @@ async function postClaudeHook(
   })
 }
 
+async function postCodexHook(
+  port: number,
+  hookBody: Record<string, unknown>,
+  headers: Record<string, string>
+): Promise<{ statusCode: number; body: string }> {
+  return await new Promise((resolve, reject) => {
+    const payload = JSON.stringify(hookBody)
+    const req = request(
+      {
+        host: '127.0.0.1',
+        port,
+        path: '/hooks/codex',
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'content-length': Buffer.byteLength(payload),
+          ...headers
+        }
+      },
+      (response) => {
+        let body = ''
+        response.setEncoding('utf8')
+        response.on('data', (chunk) => {
+          body += chunk
+        })
+        response.on('end', () => {
+          resolve({ statusCode: response.statusCode ?? 0, body })
+        })
+      }
+    )
+
+    req.on('error', reject)
+    req.write(payload)
+    req.end()
+  })
+}
+
 describe('local webhook server', () => {
   afterEach(async () => {
     await Promise.allSettled(servers.splice(0).map((server) => server.stop()))
@@ -172,6 +209,95 @@ describe('local webhook server', () => {
       payload: {
         status: 'turn_complete'
       }
+    })
+  })
+
+  describe('codex hook endpoint', () => {
+    test('rejects codex hook posts without matching session secret', async () => {
+      const accepted: CanonicalSessionEvent[] = []
+      const server = createLocalWebhookServer({
+        getSessionSecret(sessionId) {
+          return sessionId === 'session_demo_001' ? 'secret-1' : null
+        },
+        onEvent(event) {
+          accepted.push(event)
+        }
+      })
+      servers.push(server)
+      const port = await server.start()
+
+      const response = await postCodexHook(
+        port,
+        { hook_event_name: 'SessionStart', session_id: 'codex-external-1' },
+        {
+          'x-stoa-session-id': 'session_demo_001',
+          'x-stoa-project-id': 'project_demo',
+          'x-stoa-secret': 'wrong-secret'
+        }
+      )
+
+      expect(response.statusCode).toBe(401)
+      expect(accepted).toHaveLength(0)
+    })
+
+    test('accepts codex hook events when session headers and secret match', async () => {
+      const accepted: CanonicalSessionEvent[] = []
+      const server = createLocalWebhookServer({
+        getSessionSecret(sessionId) {
+          return sessionId === 'session_demo_001' ? 'secret-1' : null
+        },
+        onEvent(event) {
+          accepted.push(event)
+        }
+      })
+      servers.push(server)
+      const port = await server.start()
+
+      const response = await postCodexHook(
+        port,
+        { hook_event_name: 'SessionStart', session_id: 'codex-external-1' },
+        {
+          'x-stoa-session-id': 'session_demo_001',
+          'x-stoa-project-id': 'project_demo',
+          'x-stoa-secret': 'secret-1'
+        }
+      )
+
+      expect(response.statusCode).toBe(202)
+      expect(accepted).toHaveLength(1)
+      expect(accepted[0]).toMatchObject({
+        event_type: 'codex.SessionStart',
+        session_id: 'session_demo_001'
+      })
+    })
+
+    test('returns ignored:true for unsupported codex hook events', async () => {
+      const accepted: CanonicalSessionEvent[] = []
+      const server = createLocalWebhookServer({
+        getSessionSecret(sessionId) {
+          return sessionId === 'session_demo_001' ? 'secret-1' : null
+        },
+        onEvent(event) {
+          accepted.push(event)
+        }
+      })
+      servers.push(server)
+      const port = await server.start()
+
+      const response = await postCodexHook(
+        port,
+        { hook_event_name: 'PostToolResult' },
+        {
+          'x-stoa-session-id': 'session_demo_001',
+          'x-stoa-project-id': 'project_demo',
+          'x-stoa-secret': 'secret-1'
+        }
+      )
+
+      expect(response.statusCode).toBe(202)
+      const parsed = JSON.parse(response.body)
+      expect(parsed.ignored).toBe(true)
+      expect(accepted).toHaveLength(0)
     })
   })
 })
