@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
+  sessionPresenceBlockedBehavior,
+  sessionPresenceCompleteBehavior,
+  sessionPresenceFailedBehavior,
+  sessionPresenceReadyBehavior,
+  sessionPresenceRunningBehavior,
   sessionTelemetryNeedsConfirmationBehavior,
   sessionRestoreBehavior,
   sessionTelemetryTurnCompleteBehavior
@@ -7,6 +12,11 @@ import {
 import { defineGeneratedTestMeta } from '../contracts/testing-contracts'
 import { sessionRestoreJourney } from '../journeys/session-restore.journey'
 import {
+  sessionPresenceBlockedJourney,
+  sessionPresenceFailedJourney,
+  sessionPresenceReadyJourney,
+  sessionPresenceRunningJourney,
+  sessionTelemetryClaudeLifecycleJourney,
   sessionTelemetryNeedsConfirmationJourney,
   sessionTelemetryTurnCompleteJourney
 } from '../journeys/session-telemetry.journey'
@@ -124,5 +134,61 @@ describe('behavior coverage report', () => {
     expect(report.behaviors['session.telemetry.needs-confirmation']?.missingInterruptions).toEqual([
       'app.relaunch.duringTelemetry'
     ])
+  })
+
+  it('covers layered session presence behaviors with lifecycle generated metadata', () => {
+    const report = buildBehaviorCoverageReport({
+      behaviors: [
+        sessionPresenceReadyBehavior,
+        sessionPresenceRunningBehavior,
+        sessionPresenceCompleteBehavior,
+        sessionPresenceBlockedBehavior,
+        sessionPresenceFailedBehavior
+      ],
+      journeys: [
+        sessionPresenceReadyJourney,
+        sessionPresenceRunningJourney,
+        sessionTelemetryClaudeLifecycleJourney,
+        sessionPresenceBlockedJourney,
+        sessionPresenceFailedJourney
+      ],
+      generatedTests: [
+        defineGeneratedTestMeta({
+          id: 'journey.session.telemetry.claude-lifecycle',
+          behaviorIds: [
+            'session.presence.ready',
+            'session.presence.running',
+            'session.presence.complete',
+            'session.presence.blocked',
+            'session.presence.failed'
+          ],
+          entities: ['session', 'provider-telemetry', 'renderer-status'],
+          statesCovered: [
+            'presence.ready',
+            'presence.running',
+            'presence.blocked',
+            'presence.complete',
+            'presence.failed'
+          ],
+          interruptionsCovered: [
+            'runtime.alive.withoutAgentTelemetry',
+            'provider.permissionRequest.duringRunning',
+            'user.visitsCompletedSession',
+            'provider.permissionResolved',
+            'runtime.exitedFailed.afterCompletion'
+          ],
+          observationLayers: ['ui', 'renderer-store', 'main-debug-state', 'persisted-state'],
+          riskBudget: 'critical',
+          regressionSources: ['claude.raw-hook', 'session-state-reducer']
+        })
+      ]
+    })
+
+    expect(report.behaviors['session.presence.ready']?.maturity).toBe('Verified')
+    expect(report.behaviors['session.presence.running']?.maturity).toBe('Verified')
+    expect(report.behaviors['session.presence.complete']?.maturity).toBe('Hardened')
+    expect(report.behaviors['session.presence.blocked']?.maturity).toBe('Hardened')
+    expect(report.behaviors['session.presence.failed']?.maturity).toBe('Hardened')
+    expect(report.behaviors['session.presence.failed']?.missingObservationLayers).toEqual([])
   })
 })

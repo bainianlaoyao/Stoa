@@ -9,7 +9,8 @@ import { createLocalWebhookServer } from '@core/webhook-server'
 import type { LocalWebhookServer } from '@core/webhook-server'
 import { startSessionRuntime } from '@core/session-runtime'
 import { getProvider } from '@extensions/providers'
-import type { ProviderCommand, CanonicalSessionEvent } from '@shared/project-session'
+import { buildSessionPresenceSnapshot } from '@shared/observability-projection'
+import type { ProviderCommand, CanonicalSessionEvent, SessionStatePatchEvent } from '@shared/project-session'
 import {
   createTestWorkspace,
   createTestGlobalStatePath,
@@ -71,6 +72,38 @@ function createCanonicalEvent(sessionId: string, projectId: string): CanonicalSe
       summary: 'event accepted'
     }
   }
+}
+
+function toProviderPatch(event: CanonicalSessionEvent, sequence: number): SessionStatePatchEvent {
+  return {
+    sessionId: event.session_id,
+    sequence,
+    occurredAt: event.timestamp,
+    intent: event.payload.intent,
+    source: 'provider',
+    sourceEventType: event.event_type,
+    runtimeState: event.payload.runtimeState,
+    agentState: event.payload.agentState,
+    hasUnseenCompletion: event.payload.hasUnseenCompletion,
+    runtimeExitCode: event.payload.runtimeExitCode,
+    runtimeExitReason: event.payload.runtimeExitReason,
+    blockingReason: event.payload.blockingReason,
+    summary: event.payload.summary,
+    externalSessionId: event.payload.externalSessionId
+  }
+}
+
+function sessionPresence(manager: ProjectSessionManager, sessionId: string) {
+  const snapshot = manager.snapshot()
+  const session = snapshot.sessions.find((candidate) => candidate.id === sessionId)
+  if (!session) {
+    throw new Error(`Missing session ${sessionId}`)
+  }
+
+  return buildSessionPresenceSnapshot(session, {
+    activeSessionId: snapshot.activeSessionId,
+    nowIso: '2026-04-25T00:00:00.000Z'
+  })
 }
 
 async function httpGet(port: number, path: string): Promise<{ statusCode: number; body: string }> {
@@ -694,6 +727,198 @@ describe('E2E: Backend Full User Lifecycle', () => {
       const response = await httpPost(port, '/events', { garbage: true })
 
       expect(response.statusCode).toBe(400)
+    })
+
+    test('Claude runtime alive derives ready until agent telemetry starts work', async () => {
+      const workspaceDir = await createTestWorkspace('stoa-e2e-claude-ready-')
+      const globalStatePath = await createTestGlobalStatePath()
+      const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
+      const project = await manager.createProject({ path: workspaceDir, name: 'claude-ready' })
+      const session = await manager.createSession({ projectId: project.id, type: 'claude-code', title: 'Claude Ready' })
+
+      await manager.markRuntimeAlive(session.id, session.externalSessionId)
+
+      expect(sessionPresence(manager, session.id)).toMatchObject({
+        phase: 'ready',
+        runtimeState: 'alive',
+        agentState: 'unknown',
+        hasUnseenCompletion: false
+      })
+    })
+
+    test('Claude hooks project Ready -> Running -> Blocked -> Running -> Complete -> Ready', async () => {
+      const workspaceDir = await createTestWorkspace('stoa-e2e-claude-hooks-')
+      const globalStatePath = await createTestGlobalStatePath()
+      const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
+      const project = await manager.createProject({ path: workspaceDir, name: 'claude-hooks' })
+      const session = await manager.createSession({ projectId: project.id, type: 'claude-code', title: 'Claude Hooks' })
+      await manager.markRuntimeAlive(session.id, session.externalSessionId)
+
+      let sequence = manager.snapshot().sessions.find(candidate => candidate.id === session.id)!.lastStateSequence
+      const server = createLocalWebhookServer({
+        getSessionSecret(sessionId) {
+          return sessionId === session.id ? 'claude-secret' : null
+        },
+        async onEvent(event) {
+          await manager.applySessionStatePatch(toProviderPatch(event, ++sequence))
+        }
+      })
+      activeServers.push(server)
+      const port = await server.start()
+      const headers = {
+        'x-stoa-session-id': session.id,
+        'x-stoa-project-id': project.id,
+        'x-stoa-secret': 'claude-secret'
+      }
+
+      expect(sessionPresence(manager, session.id).phase).toBe('ready')
+
+      await httpPost(port, '/hooks/claude-code', { hook_event_name: 'UserPromptSubmit' }, headers)
+      expect(sessionPresence(manager, session.id)).toMatchObject({ phase: 'running', agentState: 'working' })
+
+      await httpPost(port, '/hooks/claude-code', { hook_event_name: 'PermissionRequest' }, headers)
+      expect(sessionPresence(manager, session.id)).toMatchObject({
+        phase: 'blocked',
+        agentState: 'blocked',
+        blockingReason: 'permission'
+      })
+
+      await manager.applySessionStatePatch({
+        sessionId: session.id,
+        sequence: ++sequence,
+        occurredAt: new Date().toISOString(),
+        intent: 'agent.permission_resolved',
+        source: 'provider',
+        sourceEventType: 'claude-code.PermissionResolved',
+        agentState: 'working',
+        summary: 'Permission resolved'
+      })
+      expect(sessionPresence(manager, session.id)).toMatchObject({ phase: 'running', agentState: 'working' })
+
+      await httpPost(port, '/hooks/claude-code', { hook_event_name: 'Stop' }, headers)
+      expect(sessionPresence(manager, session.id)).toMatchObject({
+        phase: 'complete',
+        agentState: 'idle',
+        hasUnseenCompletion: true
+      })
+
+      await manager.setActiveSession(session.id)
+      expect(sessionPresence(manager, session.id)).toMatchObject({
+        phase: 'ready',
+        agentState: 'idle',
+        hasUnseenCompletion: false
+      })
+    })
+
+    test('Claude PreToolUse projects running from ready state', async () => {
+      const workspaceDir = await createTestWorkspace('stoa-e2e-claude-pretool-')
+      const globalStatePath = await createTestGlobalStatePath()
+      const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
+      const project = await manager.createProject({ path: workspaceDir, name: 'claude-pretool' })
+      const session = await manager.createSession({ projectId: project.id, type: 'claude-code', title: 'Claude PreTool' })
+      await manager.markRuntimeAlive(session.id, session.externalSessionId)
+
+      let sequence = manager.snapshot().sessions.find(candidate => candidate.id === session.id)!.lastStateSequence
+      const server = createLocalWebhookServer({
+        getSessionSecret(sessionId) {
+          return sessionId === session.id ? 'claude-secret' : null
+        },
+        async onEvent(event) {
+          await manager.applySessionStatePatch(toProviderPatch(event, ++sequence))
+        }
+      })
+      activeServers.push(server)
+      const port = await server.start()
+
+      await httpPost(port, '/hooks/claude-code', { hook_event_name: 'PreToolUse' }, {
+        'x-stoa-session-id': session.id,
+        'x-stoa-project-id': project.id,
+        'x-stoa-secret': 'claude-secret'
+      })
+
+      expect(sessionPresence(manager, session.id)).toMatchObject({ phase: 'running', agentState: 'working' })
+    })
+
+    test('runtime starting after restore derives preparing and clears stale agent state', async () => {
+      const workspaceDir = await createTestWorkspace('stoa-e2e-restore-starting-')
+      const globalStatePath = await createTestGlobalStatePath()
+      const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
+      const project = await manager.createProject({ path: workspaceDir, name: 'restore-starting' })
+      const session = await manager.createSession({ projectId: project.id, type: 'claude-code', title: 'Restored Claude' })
+
+      await manager.markRuntimeAlive(session.id, session.externalSessionId)
+      await manager.applySessionStatePatch({
+        sessionId: session.id,
+        sequence: 2,
+        occurredAt: new Date().toISOString(),
+        intent: 'agent.turn_completed',
+        source: 'provider',
+        sourceEventType: 'claude-code.Stop',
+        agentState: 'idle',
+        hasUnseenCompletion: true,
+        summary: 'Stop'
+      })
+      await manager.markRuntimeStarting(session.id, 'Restoring Claude', session.externalSessionId)
+
+      expect(sessionPresence(manager, session.id)).toMatchObject({
+        phase: 'preparing',
+        runtimeState: 'starting',
+        agentState: 'unknown',
+        hasUnseenCompletion: false
+      })
+    })
+
+    test('failed exit derives failed before blocked or complete attention states', async () => {
+      const workspaceDir = await createTestWorkspace('stoa-e2e-failed-priority-')
+      const globalStatePath = await createTestGlobalStatePath()
+      const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
+      const project = await manager.createProject({ path: workspaceDir, name: 'failed-priority' })
+      const blockedSession = await manager.createSession({ projectId: project.id, type: 'claude-code', title: 'Failed Blocked Priority' })
+      const completeSession = await manager.createSession({ projectId: project.id, type: 'claude-code', title: 'Failed Complete Priority' })
+
+      await manager.markRuntimeAlive(blockedSession.id, blockedSession.externalSessionId)
+      await manager.applySessionStatePatch({
+        sessionId: blockedSession.id,
+        sequence: 2,
+        occurredAt: new Date().toISOString(),
+        intent: 'agent.permission_requested',
+        source: 'provider',
+        sourceEventType: 'claude-code.PermissionRequest',
+        agentState: 'blocked',
+        blockingReason: 'permission',
+        summary: 'PermissionRequest'
+      })
+      await manager.markRuntimeExited(blockedSession.id, 42, 'claude failed (42)')
+
+      expect(sessionPresence(manager, blockedSession.id)).toMatchObject({
+        phase: 'failed',
+        runtimeState: 'exited',
+        runtimeExitReason: 'failed',
+        agentState: 'blocked',
+        blockingReason: 'permission'
+      })
+
+      await manager.markRuntimeAlive(completeSession.id, completeSession.externalSessionId)
+      await manager.applySessionStatePatch({
+        sessionId: completeSession.id,
+        sequence: 2,
+        occurredAt: new Date().toISOString(),
+        intent: 'agent.turn_completed',
+        source: 'provider',
+        sourceEventType: 'claude-code.Stop',
+        agentState: 'idle',
+        hasUnseenCompletion: true,
+        summary: 'Stop'
+      })
+      await manager.markRuntimeExited(completeSession.id, 42, 'claude failed (42)')
+
+      expect(sessionPresence(manager, completeSession.id)).toMatchObject({
+        phase: 'failed',
+        runtimeState: 'exited',
+        runtimeExitReason: 'failed',
+        agentState: 'idle',
+        hasUnseenCompletion: true
+      })
     })
   })
 

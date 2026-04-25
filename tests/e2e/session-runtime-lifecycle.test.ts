@@ -4,6 +4,7 @@ import { ProjectSessionManager } from '@core/project-session-manager'
 import { startSessionRuntime } from '@core/session-runtime'
 import type { SessionRuntimeManager } from '@core/session-runtime'
 import type { ProviderCommand } from '@shared/project-session'
+import { buildSessionPresenceSnapshot } from '@shared/observability-projection'
 import type { ProviderDefinition } from '@extensions/providers'
 import { createTestWorkspace, createTestGlobalStatePath } from './helpers'
 import { readProjectSessions } from '@core/state-store'
@@ -182,8 +183,17 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
       })
 
       let snapshot = manager.snapshot()
-      expect(snapshot.sessions.find(s => s.id === session.id)!.runtimeState).toBe('alive')
-      expect(snapshot.sessions.find(s => s.id === session.id)!.externalSessionId).toBeNull()
+      const aliveSession = snapshot.sessions.find(s => s.id === session.id)!
+      expect(aliveSession.runtimeState).toBe('alive')
+      expect(aliveSession.externalSessionId).toBeNull()
+      expect(buildSessionPresenceSnapshot(aliveSession, {
+        activeSessionId: snapshot.activeSessionId,
+        nowIso: '2026-04-25T00:00:00.000Z'
+      })).toMatchObject({
+        phase: 'running',
+        runtimeState: 'alive',
+        agentState: 'unknown'
+      })
 
       await waitForExit(capturing.exitSignal)
 
@@ -471,6 +481,15 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
       const exitedSession = manager.snapshot().sessions.find(s => s.id === session.id)!
       expect(exitedSession.runtimeState).toBe('exited')
       expect(exitedSession.summary).toContain('42')
+      expect(buildSessionPresenceSnapshot(exitedSession, {
+        activeSessionId: session.id,
+        nowIso: '2026-04-25T00:00:00.000Z'
+      })).toMatchObject({
+        phase: 'failed',
+        runtimeState: 'exited',
+        runtimeExitReason: 'failed',
+        runtimeExitCode: 42
+      })
     })
   })
 })

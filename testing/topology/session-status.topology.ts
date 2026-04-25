@@ -5,6 +5,14 @@ export const sessionStatusTopology = defineTopology({
   testIds: {
     root: 'workspace-hierarchy-panel',
     routeBody: 'route-body',
-    routeActions: 'route-actions'
+    routeActions: 'route-actions',
+    statusDot: 'session-status-dot',
+    statusPhaseAttribute: 'data-session-status-testid',
+    ready: 'session-status-ready',
+    running: 'session-status-running',
+    complete: 'session-status-complete',
+    blocked: 'session-status-blocked',
+    failed: 'session-status-failed',
+    exited: 'session-status-exited'
   }
 })

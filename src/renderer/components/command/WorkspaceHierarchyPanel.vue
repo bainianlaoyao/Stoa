@@ -317,6 +317,7 @@ onBeforeUnmount(() => {
                 class="route-dot"
                 :class="sessionStatusClasses(session)"
                 data-testid="session-status-dot"
+                :data-session-status-testid="`session-status-${sessionPhase(session)}`"
                 :data-status="session.status"
                 :data-tone="sessionTone(session)"
                 :data-phase="sessionPhase(session)"

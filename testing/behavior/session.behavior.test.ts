@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
+  sessionPresenceBlockedBehavior,
+  sessionPresenceCompleteBehavior,
+  sessionPresenceFailedBehavior,
+  sessionPresenceReadyBehavior,
+  sessionPresenceRunningBehavior,
   sessionRestoreBehavior,
   sessionTelemetryNeedsConfirmationBehavior,
   sessionTelemetryTurnCompleteBehavior
@@ -43,5 +48,43 @@ describe('session behavior assets', () => {
       'provider.runningEvent.afterPermissionRequest'
     )
     expect(sessionTelemetryNeedsConfirmationBehavior.observationLayers).toEqual(['ui', 'main-debug-state', 'persisted-state'])
+  })
+
+  it('declares ready presence as calm non-accent renderer status', () => {
+    expect(sessionPresenceReadyBehavior.id).toBe('session.presence.ready')
+    expect(sessionPresenceReadyBehavior.expects).toContain('session.presence.phase=ready')
+    expect(sessionPresenceReadyBehavior.expects).toContain('session.presence.tone=neutral')
+    expect(sessionPresenceReadyBehavior.expects).toContain('command.sessionStatusNonAccent')
+    expect(sessionPresenceReadyBehavior.recovery).toContain('readyDoesNotImplyWorking')
+  })
+
+  it('declares running presence as active but medium priority', () => {
+    expect(sessionPresenceRunningBehavior.id).toBe('session.presence.running')
+    expect(sessionPresenceRunningBehavior.expects).toContain('session.presence.phase=running')
+    expect(sessionPresenceRunningBehavior.expects).toContain('session.presence.priority=medium')
+    expect(sessionPresenceRunningBehavior.invalidPreconditions).toContain('session.agentState=blocked')
+  })
+
+  it('declares complete presence as UI-only unread completion', () => {
+    expect(sessionPresenceCompleteBehavior.id).toBe('session.presence.complete')
+    expect(sessionPresenceCompleteBehavior.coverageBudget).toBe('critical')
+    expect(sessionPresenceCompleteBehavior.expects).toContain('session.presence.phase=complete')
+    expect(sessionPresenceCompleteBehavior.expects).toContain('session.presence.uiOnly=true')
+    expect(sessionPresenceCompleteBehavior.recovery).toContain('visitedCompletionBecomesReady')
+  })
+
+  it('declares blocked presence as requiring user intervention', () => {
+    expect(sessionPresenceBlockedBehavior.id).toBe('session.presence.blocked')
+    expect(sessionPresenceBlockedBehavior.expects).toContain('session.presence.phase=blocked')
+    expect(sessionPresenceBlockedBehavior.expects).toContain('session.presence.requiresUserIntervention=true')
+    expect(sessionPresenceBlockedBehavior.interruptions).toContain('provider.permissionResolved')
+  })
+
+  it('declares failed presence as highest priority over complete and blocked', () => {
+    expect(sessionPresenceFailedBehavior.id).toBe('session.presence.failed')
+    expect(sessionPresenceFailedBehavior.expects).toContain('session.presence.phase=failed')
+    expect(sessionPresenceFailedBehavior.expects).toContain('session.presence.priority=highest')
+    expect(sessionPresenceFailedBehavior.expects).toContain('session.presence.overrides=complete')
+    expect(sessionPresenceFailedBehavior.expects).toContain('session.presence.overrides=blocked')
   })
 })
