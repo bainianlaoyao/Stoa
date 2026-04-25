@@ -485,4 +485,54 @@ describe('E2E: webhook runtime integration', () => {
     expect(getSessionState(harness.manager, harness.session.id).status).toBe('turn_complete')
     expect(getSessionState(harness.manager, harness.session.id).externalSessionId).toBe(initialExternalSessionId)
   })
+
+  test('reconciles externalSessionId when provider switches sessions mid-conversation', async () => {
+    const harness = await createWebhookHarness('opencode')
+
+    // First event: provider starts with external ID "original-session"
+    await httpPost(
+      harness.port,
+      '/events',
+      createCanonicalEvent(
+        harness.session.id,
+        harness.session.projectId,
+        'running',
+        'initial session',
+        'original-session'
+      ),
+      { 'x-stoa-secret': harness.secret }
+    )
+
+    await waitFor(() => getSessionEvents(harness.sent).length === 1)
+    expect(getSessionState(harness.manager, harness.session.id).externalSessionId).toBe('original-session')
+
+    // User runs /resume or /clear inside the CLI — provider sends new external ID
+    await httpPost(
+      harness.port,
+      '/events',
+      createCanonicalEvent(
+        harness.session.id,
+        harness.session.projectId,
+        'running',
+        'session resumed',
+        'resumed-session-abc'
+      ),
+      { 'x-stoa-secret': harness.secret }
+    )
+
+    await waitFor(() => getSessionEvents(harness.sent).length === 2)
+
+    // Verify: manager state updated to new ID
+    expect(getSessionState(harness.manager, harness.session.id).externalSessionId).toBe('resumed-session-abc')
+
+    // Verify: IPC pushes carry the reconciled external ID
+    const events = getSessionEvents(harness.sent)
+    expect(events[0].externalSessionId).toBe('original-session')
+    expect(events[1].externalSessionId).toBe('resumed-session-abc')
+
+    // Verify: persisted to disk
+    const diskSessions = await readProjectSessions(harness.workspaceDir)
+    const persistedSession = diskSessions.sessions.find(candidate => candidate.session_id === harness.session.id)
+    expect(persistedSession!.external_session_id).toBe('resumed-session-abc')
+  })
 })
