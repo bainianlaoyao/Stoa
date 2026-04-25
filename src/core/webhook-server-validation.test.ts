@@ -324,6 +324,54 @@ describe('webhook event validation', () => {
 
       expect(response.statusCode).toBe(400)
     })
+
+    test.each([
+      ['invalid intent', { intent: 'agent.teleported' }],
+      ['invalid agentState', { agentState: 'paused' }],
+      ['invalid runtimeState', { runtimeState: 'sleeping' }],
+      ['invalid blockingReason', { blockingReason: 'approval' }],
+      ['invalid hasUnseenCompletion type', { hasUnseenCompletion: 'true' }],
+      ['invalid runtimeExitCode type', { runtimeExitCode: '1' }],
+      ['invalid runtimeExitReason', { runtimeExitReason: 'timeout' }],
+      ['invalid externalSessionId type', { externalSessionId: 123 }],
+      ['invalid model type', { model: 123 }],
+      ['invalid snippet type', { snippet: false }],
+      ['invalid toolName type', { toolName: [] }],
+      ['invalid error type', { error: { message: 'nope' } }]
+    ])('rejects %s', async (_name, payloadOverrides) => {
+      const { server } = createTestServer()
+      const port = await server.start()
+      const event = createValidEvent({
+        payload: {
+          intent: 'agent.turn_started',
+          agentState: 'working',
+          summary: 'event rejected',
+          ...payloadOverrides
+        }
+      })
+
+      const response = await postJson(port, event, 'secret-1')
+
+      expect(response.statusCode).toBe(400)
+      expect(JSON.parse(response.body)).toEqual({ accepted: false, reason: 'invalid_event' })
+    })
+
+    test('rejects permission resolved events targeting blocked agent state', async () => {
+      const { server } = createTestServer()
+      const port = await server.start()
+      const event = createValidEvent({
+        payload: {
+          intent: 'agent.permission_resolved',
+          agentState: 'blocked',
+          summary: 'invalid target'
+        }
+      })
+
+      const response = await postJson(port, event, 'secret-1')
+
+      expect(response.statusCode).toBe(400)
+      expect(JSON.parse(response.body)).toEqual({ accepted: false, reason: 'invalid_event' })
+    })
   })
 
   describe('secret validation branches', () => {

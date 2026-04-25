@@ -169,11 +169,15 @@ function applyExternalSessionId(next: SessionSummary, patch: SessionStatePatchEv
 }
 
 function getPermissionResolvedAgentState(agentState: SessionStatePatchEvent['agentState']): SessionAgentState {
+  if (agentState === undefined) {
+    return 'working'
+  }
+
   if (agentState === 'working' || agentState === 'idle' || agentState === 'error') {
     return agentState
   }
 
-  return 'working'
+  return 'error'
 }
 
 function markAgentWorkingIfRuntimeAlive(current: SessionSummary, next: SessionSummary): void {

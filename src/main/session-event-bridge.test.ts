@@ -234,6 +234,67 @@ describe('SessionEventBridge', () => {
     )
   })
 
+  test('same-session provider events apply in arrival order when the first apply is delayed', async () => {
+    const manager = ProjectSessionManager.createForTest()
+    const applyOrder: number[] = []
+    let releaseFirstApply!: () => void
+    let firstApplyStartedResolver!: () => void
+    const firstApplyStarted = new Promise<void>((resolve) => {
+      firstApplyStartedResolver = resolve
+    })
+    const controller = {
+      applyProviderStatePatch: vi.fn(async (patch: SessionStatePatchEvent) => {
+        applyOrder.push(patch.sequence)
+        if (patch.sequence === 1) {
+          firstApplyStartedResolver()
+          await new Promise<void>((release) => {
+            releaseFirstApply = release
+          })
+        }
+      })
+    }
+    const bridge = new SessionEventBridge(manager, controller)
+    bridges.push(bridge)
+
+    const port = await bridge.start()
+    const secret = bridge.issueSessionSecret('session_1')
+    const firstResponsePromise = postEvent(
+      port,
+      createCanonicalEvent({ event_id: 'evt_1', timestamp: '2026-01-01T00:00:01.000Z' }),
+      secret
+    )
+    await firstApplyStarted
+    const secondResponsePromise = postEvent(
+      port,
+      createCanonicalEvent({ event_id: 'evt_2', timestamp: '2026-01-01T00:00:02.000Z' }),
+      secret
+    )
+
+    await new Promise((resolve) => setTimeout(resolve, 25))
+    expect(applyOrder).toEqual([1])
+
+    releaseFirstApply()
+    const [firstResponse, secondResponse] = await Promise.all([firstResponsePromise, secondResponsePromise])
+
+    expect(firstResponse.statusCode).toBe(202)
+    expect(secondResponse.statusCode).toBe(202)
+    expect(applyOrder).toEqual([1, 2])
+    expect(controller.applyProviderStatePatch).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining<Partial<SessionStatePatchEvent>>({
+        sessionId: 'session_1',
+        sequence: 1
+      })
+    )
+    expect(controller.applyProviderStatePatch).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining<Partial<SessionStatePatchEvent>>({
+        sessionId: 'session_1',
+        sequence: 2
+      })
+    )
+  })
+
   test('canonical turn_complete events also ingest an observability event', async () => {
     const manager = ProjectSessionManager.createForTest()
     const controller = {

@@ -60,7 +60,12 @@ if (!sessionId || !projectId || !sessionSecret || !webhookPort || !payload) {
   process.exit(0)
 }
 
-const parsed = JSON.parse(payload)
+let parsed
+try {
+  parsed = JSON.parse(payload)
+} catch {
+  process.exit(0)
+}
 if (!parsed || typeof parsed !== 'object') {
   process.exit(0)
 }

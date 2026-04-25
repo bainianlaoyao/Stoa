@@ -90,6 +90,12 @@ describe('opencode provider', () => {
       expect(content).toContain("intent: 'agent.turn_failed'")
       expect(content).toContain("agentState: denied ? (failed ? 'error' : 'idle') : 'working'")
       expect(content).toContain('hasUnseenCompletion: true')
+      expect(content).toContain("'x-stoa-secret': sessionSecret")
+      expect(content).toContain('session_id: sessionId')
+      expect(content).toContain('project_id: projectId')
+      expect(content).not.toContain("'x-stoa-secret': process.env.STOA_SESSION_SECRET")
+      expect(content).not.toContain('session_id: process.env.STOA_SESSION_ID')
+      expect(content).not.toContain('project_id: process.env.STOA_PROJECT_ID')
       expect(content).not.toContain("status = 'running'")
       expect(content).not.toContain("status = 'turn_complete'")
     } finally {

@@ -19,6 +19,7 @@ interface SessionEventBridgeOptions {
 export class SessionEventBridge {
   private readonly sessionSecrets = new Map<string, string>()
   private readonly providerPatchSequences = new Map<string, number>()
+  private readonly sessionEventQueues = new Map<string, Promise<void>>()
   private readonly nowIso: () => string
   private server: ReturnType<typeof createLocalWebhookServer> | null = null
   private port: number | null = null
@@ -43,8 +44,7 @@ export class SessionEventBridge {
           return this.sessionSecrets.get(sessionId) ?? null
         },
         onEvent: async (event) => {
-          this.observability?.ingest(this.toObservationEvent(event))
-          await this.controller.applyProviderStatePatch(this.toSessionStatePatch(event))
+          await this.enqueueSessionEvent(event)
         }
       })
     }
@@ -52,6 +52,28 @@ export class SessionEventBridge {
     this.port = await this.server.start()
     await this.manager.setTerminalWebhookPort(this.port)
     return this.port
+  }
+
+  private async enqueueSessionEvent(event: CanonicalSessionEvent): Promise<void> {
+    const previous = this.sessionEventQueues.get(event.session_id) ?? Promise.resolve()
+    const next = previous
+      .catch(() => {
+        // Preserve per-session ordering even if a previous event failed.
+      })
+      .then(async () => {
+        this.observability?.ingest(this.toObservationEvent(event))
+        await this.controller.applyProviderStatePatch(this.toSessionStatePatch(event))
+      })
+
+    this.sessionEventQueues.set(event.session_id, next)
+    const cleanup = () => {
+      if (this.sessionEventQueues.get(event.session_id) === next) {
+        this.sessionEventQueues.delete(event.session_id)
+      }
+    }
+    next.then(cleanup, cleanup)
+
+    return await next
   }
 
   private toObservationEvent(event: CanonicalSessionEvent): ObservationEvent {
@@ -128,6 +150,7 @@ export class SessionEventBridge {
     this.server = null
     this.sessionSecrets.clear()
     this.providerPatchSequences.clear()
+    this.sessionEventQueues.clear()
     this.port = null
     await this.manager.setTerminalWebhookPort(null)
   }
