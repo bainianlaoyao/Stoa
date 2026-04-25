@@ -803,6 +803,52 @@ describe('project/session renderer store', () => {
       })
     })
 
+    test('does not let equal sourceSequence fallback overwrite backend snapshot', async () => {
+      const backendPresence = sessionPresenceFixture({
+        phase: 'blocked',
+        runtimeState: 'alive',
+        agentState: 'blocked',
+        blockingReason: 'permission',
+        sourceSequence: 12,
+        updatedAt: '2026-04-24T08:00:00.000Z'
+      })
+
+      window.stoa = createStoaMock({
+        getSessionPresence: vi.fn().mockResolvedValue(backendPresence)
+      })
+
+      const store = useWorkspaceStore()
+      store.hydrate({
+        activeProjectId: 'project_alpha',
+        activeSessionId: 'session_op_1',
+        terminalWebhookPort: 43127,
+        projects: [{ id: 'project_alpha', name: 'alpha', path: 'D:/alpha', createdAt: 'a', updatedAt: 'a' }],
+        sessions: [sessionSummaryFixture({
+          id: 'session_op_1',
+          lastStateSequence: 12,
+          agentState: 'blocked',
+          blockingReason: 'permission',
+          status: 'needs_confirmation',
+          summary: 'blocked'
+        })]
+      })
+
+      await store.hydrateObservability()
+      expect(store.sessionPresenceById.session_op_1).toEqual(backendPresence)
+
+      store.updateSession('session_op_1', {
+        status: 'running',
+        runtimeState: 'alive',
+        agentState: 'working',
+        hasUnseenCompletion: false,
+        blockingReason: null,
+        lastStateSequence: 12,
+        summary: 'same sequence fallback'
+      })
+
+      expect(store.sessionPresenceById.session_op_1).toEqual(backendPresence)
+    })
+
     test('updates active complete session to ready after backend completion_seen patch', async () => {
       let sessionListener: ((snapshot: SessionPresenceSnapshot) => void) | undefined
 
@@ -1122,7 +1168,7 @@ describe('project/session renderer store', () => {
       expect(store.appObservability).toEqual(newerApp)
     })
 
-    test('session status updates replace provisional presence derived from session creation', () => {
+    test('session state updates replace provisional presence derived from session creation', () => {
       const store = useWorkspaceStore()
       store.hydrate({
         activeProjectId: 'project_alpha',
@@ -1159,6 +1205,7 @@ describe('project/session renderer store', () => {
         status: 'running',
         runtimeState: 'alive',
         agentState: 'working',
+        lastStateSequence: 1,
         summary: 'Session running'
       })
 

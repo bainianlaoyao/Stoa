@@ -270,11 +270,11 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
       sourceSequence: session.lastStateSequence
     })
 
-    if (current && backendSessionPresenceIds.has(session.id) && isStaleSnapshot(current, next)) {
+    if (current && backendSessionPresenceIds.has(session.id) && current.sourceSequence >= next.sourceSequence) {
       return
     }
 
-    if (current && !backendSessionPresenceIds.has(session.id) && current.sourceSequence > next.sourceSequence) {
+    if (current && !backendSessionPresenceIds.has(session.id) && isStaleSnapshot(current, next)) {
       return
     }
 
