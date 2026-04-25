@@ -13,7 +13,7 @@ export const sessionRestoreBehavior = defineBehavior({
     'command.sessionVisible',
     'persisted.sessionRestored',
     'session.archived=false',
-    'session.status in [starting, running]'
+    'session.runtimeState in [starting, alive]'
   ],
   invalidPreconditions: ['session.notArchived', 'session.missing', 'project.missing'],
   interruptions: ['duplicateAction', 'app.relaunch.duringAction', 'webhook.lateStatusEvent'],
@@ -23,30 +23,30 @@ export const sessionRestoreBehavior = defineBehavior({
   coverageBudget: 'critical'
 })
 
-export const sessionTelemetryTurnCompleteBehavior = defineBehavior({
-  id: 'session.telemetry.turn-complete',
+export const sessionTelemetryCompleteBehavior = defineBehavior({
+  id: 'session.telemetry.complete',
   actor: 'system',
-  goal: 'project provider turn completion into the active session UI without collapsing the live terminal',
+  goal: 'project provider completion events into the active session UI without collapsing the live terminal',
   entities: ['project', 'session', 'provider-telemetry', 'renderer-status'],
   usageModes: ['active_workflow'],
   preconditions: ['project.exists', 'session.providerManaged', 'session.active'],
-  action: 'telemetry.turnComplete',
+  action: 'telemetry.complete',
   expects: [
-    'session.status=turn_complete',
+    'session.presence.phase=complete',
     'terminal.liveSessionPreserved',
-    'command.sessionStatusVisible',
-    'persisted.sessionStatusUpdated'
+    'command.sessionStatusCompleteVisible',
+    'persisted.sessionPresenceUpdated'
   ],
   invalidPreconditions: ['session.missing', 'webhook.invalidSecret'],
-  interruptions: ['provider.runningEvent.afterTurnComplete', 'app.relaunch.duringTelemetry'],
-  recovery: ['statusRemainsTurnComplete', 'externalSessionIdentityPreserved'],
+  interruptions: ['provider.runningEvent.afterCompletion', 'app.relaunch.duringTelemetry'],
+  recovery: ['completeRemainsVisibleUntilVisited', 'externalSessionIdentityPreserved'],
   observationLayers: ['ui', 'main-debug-state', 'persisted-state'],
   risk: 'high',
   coverageBudget: 'critical'
 })
 
-export const sessionTelemetryNeedsConfirmationBehavior = defineBehavior({
-  id: 'session.telemetry.needs-confirmation',
+export const sessionTelemetryBlockedBehavior = defineBehavior({
+  id: 'session.telemetry.blocked',
   actor: 'system',
   goal: 'project provider permission requests into the active session UI without replacing the live terminal',
   entities: ['project', 'session', 'provider-telemetry', 'renderer-status'],
@@ -54,14 +54,14 @@ export const sessionTelemetryNeedsConfirmationBehavior = defineBehavior({
   preconditions: ['project.exists', 'session.providerManaged', 'session.active'],
   action: 'telemetry.permissionRequest',
   expects: [
-    'session.status=needs_confirmation',
+    'session.presence.phase=blocked',
     'terminal.liveSessionPreserved',
-    'command.sessionStatusVisible',
-    'persisted.sessionStatusUpdated'
+    'command.sessionStatusBlockedVisible',
+    'persisted.sessionPresenceUpdated'
   ],
   invalidPreconditions: ['session.missing', 'webhook.invalidSecret'],
   interruptions: ['provider.runningEvent.afterPermissionRequest', 'app.relaunch.duringTelemetry'],
-  recovery: ['statusRemainsNeedsConfirmation', 'externalSessionIdentityPreserved'],
+  recovery: ['blockedRemainsVisibleUntilResolved', 'externalSessionIdentityPreserved'],
   observationLayers: ['ui', 'main-debug-state', 'persisted-state'],
   risk: 'high',
   coverageBudget: 'critical'

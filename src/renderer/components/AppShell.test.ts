@@ -17,7 +17,6 @@ const baseSession: SessionSummary = {
   id: 'session-1',
   projectId: 'project-1',
   type: 'shell',
-  status: 'starting',
   runtimeState: 'starting',
   agentState: 'unknown',
   hasUnseenCompletion: false,
@@ -62,7 +61,6 @@ describe('AppShell', () => {
       getAppObservability: vi.fn().mockResolvedValue({
         blockedProjectCount: 0,
         failedProjectCount: 0,
-        degradedProjectCount: 0,
         totalUnreadTurns: 0,
         projectsNeedingAttention: [],
         providerHealthSummary: {},

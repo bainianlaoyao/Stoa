@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import type { SessionRowViewModel } from '@shared/observability'
-import type { SessionStatus, SessionType } from '@shared/project-session'
+import type { SessionType } from '@shared/project-session'
 import { getProviderDescriptorBySessionType } from '@shared/provider-descriptors'
 import type { ProjectHierarchyNode } from '@renderer/stores/workspaces'
 import NewProjectModal from './NewProjectModal.vue'
@@ -13,7 +13,7 @@ interface DetailState {
   name: string
   path?: string
   sessionType?: string
-  status?: string
+  phase?: string
   x: number
   y: number
 }
@@ -109,7 +109,7 @@ function sessionPrimaryLabel(session: ProjectHierarchyNode['sessions'][number]):
   return sessionRowViewModel(session.id)?.primaryLabel ?? null
 }
 
-function sessionPhase(session: ProjectHierarchyNode['sessions'][number]): string {
+function sessionPhase(session: ProjectHierarchyNode['sessions'][number]): SessionRowViewModel['phase'] | 'unknown' {
   return sessionRowViewModel(session.id)?.phase ?? 'unknown'
 }
 
@@ -130,8 +130,8 @@ function sessionStatusClasses(session: ProjectHierarchyNode['sessions'][number])
 }
 
 function openDetail(event: MouseEvent | KeyboardEvent, kind: 'project', project: ProjectHierarchyNode): void
-function openDetail(event: MouseEvent | KeyboardEvent, kind: 'session', session: { title: string; type: string; status: SessionStatus }): void
-function openDetail(event: MouseEvent | KeyboardEvent, kind: 'project' | 'session', data: ProjectHierarchyNode | { title: string; type: string; status: SessionStatus }): void {
+function openDetail(event: MouseEvent | KeyboardEvent, kind: 'session', session: { title: string; type: string; phase: string }): void
+function openDetail(event: MouseEvent | KeyboardEvent, kind: 'project' | 'session', data: ProjectHierarchyNode | { title: string; type: string; phase: string }): void {
   event.stopPropagation()
   const el = event.currentTarget as HTMLElement
   const rect = el.getBoundingClientRect()
@@ -142,8 +142,8 @@ function openDetail(event: MouseEvent | KeyboardEvent, kind: 'project' | 'sessio
     const p = data as ProjectHierarchyNode
     detailState.value = { kind: 'project', name: p.name, path: p.path, x, y }
   } else {
-    const s = data as { title: string; type: string; status: SessionStatus }
-    detailState.value = { kind: 'session', name: s.title, sessionType: s.type, status: s.status.replace(/_/g, ' '), x, y }
+    const s = data as { title: string; type: string; phase: string }
+    detailState.value = { kind: 'session', name: s.title, sessionType: s.type, phase: s.phase.replace(/_/g, ' '), x, y }
   }
 }
 
@@ -312,13 +312,13 @@ onBeforeUnmount(() => {
               :data-session-type="session.type"
               type="button"
               @click="emit('selectSession', session.id)"
+              @contextmenu.prevent="openDetail($event, 'session', { title: session.title, type: session.type, phase: sessionPrimaryLabel(session) ?? sessionPhase(session) })"
             >
               <div
                 class="route-dot"
                 :class="sessionStatusClasses(session)"
                 data-testid="session-status-dot"
                 :data-session-status-testid="`session-status-${sessionPhase(session)}`"
-                :data-status="session.status"
                 :data-tone="sessionTone(session)"
                 :data-phase="sessionPhase(session)"
                 :data-attention-reason="sessionAttentionReason(session) ?? undefined"
@@ -396,7 +396,7 @@ onBeforeUnmount(() => {
       <div class="detail-popover__name">{{ detailState.name }}</div>
       <div v-if="detailState.path" class="detail-popover__info">{{ detailState.path }}</div>
       <div v-if="detailState.sessionType" class="detail-popover__info">{{ detailState.sessionType }}</div>
-      <div v-if="detailState.status" class="detail-popover__info">{{ detailState.status }}</div>
+      <div v-if="detailState.phase" class="detail-popover__info">{{ detailState.phase }}</div>
     </div>
   </Teleport>
 </template>

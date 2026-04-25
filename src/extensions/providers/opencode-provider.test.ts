@@ -97,7 +97,7 @@ describe('opencode provider', () => {
       expect(content).not.toContain('session_id: process.env.STOA_SESSION_ID')
       expect(content).not.toContain('project_id: process.env.STOA_PROJECT_ID')
       expect(content).not.toContain("status = 'running'")
-      expect(content).not.toContain("status = 'turn_complete'")
+      expect(content).not.toContain("status = 'completed'")
     } finally {
       await rm(workspaceDir, { recursive: true, force: true })
     }

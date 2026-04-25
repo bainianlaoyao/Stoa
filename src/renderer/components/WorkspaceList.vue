@@ -2,6 +2,7 @@
 import { useI18n } from 'vue-i18n'
 import type { SessionType } from '@shared/project-session'
 import { listProviderDescriptors } from '@shared/provider-descriptors'
+import { derivePresencePhase } from '@shared/session-state-reducer'
 import type { ProjectHierarchyNode } from '@renderer/stores/workspaces'
 import GlassListbox from './primitives/GlassListbox.vue'
 
@@ -28,8 +29,15 @@ const emit = defineEmits<{
   'update:sessionType': [value: SessionType]
 }>()
 
-function statusLabel(status: string): string {
-  return status.replace(/_/g, ' ')
+function presenceLabel(session: ProjectHierarchyNode['sessions'][number]): string {
+  return derivePresencePhase({
+    runtimeState: session.runtimeState,
+    agentState: session.agentState,
+    hasUnseenCompletion: session.hasUnseenCompletion,
+    runtimeExitCode: session.runtimeExitCode,
+    runtimeExitReason: session.runtimeExitReason,
+    provider: session.type
+  }).replace(/_/g, ' ')
 }
 
 function updateProjectName(event: Event): void {
@@ -136,11 +144,11 @@ function updateSessionType(value: string): void {
         type="button"
         @click="emit('selectSession', session.id)"
       >
-        <span class="workspace-card__status" :data-status="session.status" />
+        <span class="workspace-card__status" :data-phase="presenceLabel(session)" />
         <div class="workspace-card__content">
           <div class="workspace-card__heading">
             <strong>{{ session.title }}</strong>
-            <small>{{ statusLabel(session.status) }}</small>
+            <small>{{ presenceLabel(session) }}</small>
           </div>
           <p>{{ session.summary }}</p>
           <code>{{ session.type }}</code>

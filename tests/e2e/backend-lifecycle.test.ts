@@ -937,7 +937,8 @@ describe('E2E: Backend Full User Lifecycle', () => {
           path: 'D:/demo',
           title: 'Test',
           type: 'opencode',
-          status: 'bootstrapping',
+          runtimeState: 'created',
+          agentState: 'unknown',
           externalSessionId: null
         },
         webhookPort: 43127,
@@ -966,7 +967,8 @@ describe('E2E: Backend Full User Lifecycle', () => {
           path: 'D:/demo',
           title: 'Shell Test',
           type: 'shell',
-          status: 'bootstrapping',
+          runtimeState: 'created',
+          agentState: 'unknown',
           externalSessionId: null
         },
         webhookPort: 43127,
@@ -993,7 +995,8 @@ describe('E2E: Backend Full User Lifecycle', () => {
           path: 'D:/demo',
           title: 'OpenCode Test',
           type: 'opencode',
-          status: 'bootstrapping',
+          runtimeState: 'created',
+          agentState: 'unknown',
           externalSessionId: null
         },
         webhookPort: 43127,
@@ -1019,7 +1022,8 @@ describe('E2E: Backend Full User Lifecycle', () => {
           path: 'D:/demo',
           title: 'OpenCode Resume',
           type: 'opencode',
-          status: 'running',
+          runtimeState: 'alive',
+          agentState: 'idle',
           externalSessionId: 'ext-123'
         },
         webhookPort: 43127,
@@ -1044,7 +1048,8 @@ describe('E2E: Backend Full User Lifecycle', () => {
           path: 'D:/demo',
           title: 'OpenCode Test',
           type: 'opencode',
-          status: 'bootstrapping',
+          runtimeState: 'created',
+          agentState: 'unknown',
           externalSessionId: null
         },
         webhookPort: 43127,
@@ -1071,7 +1076,8 @@ describe('E2E: Backend Full User Lifecycle', () => {
           path: 'D:/demo',
           title: 'OpenCode Test',
           type: 'opencode',
-          status: 'bootstrapping',
+          runtimeState: 'created',
+          agentState: 'unknown',
           externalSessionId: null
         },
         webhookPort: 43127,
@@ -1101,7 +1107,8 @@ describe('E2E: Backend Full User Lifecycle', () => {
           path: 'D:/demo',
           title: 'OpenCode Test',
           type: 'opencode',
-          status: 'needs_confirmation',
+          runtimeState: 'alive',
+          agentState: 'blocked',
           externalSessionId: 'stale-ext'
         },
         webhookPort: 43127,
@@ -1136,7 +1143,8 @@ describe('E2E: Backend Full User Lifecycle', () => {
           path: 'D:/demo',
           title: 'Shell Test',
           type: 'shell',
-          status: 'bootstrapping',
+          runtimeState: 'created',
+          agentState: 'unknown',
           externalSessionId: null
         },
         webhookPort: 43127,

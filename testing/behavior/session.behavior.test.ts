@@ -6,8 +6,8 @@ import {
   sessionPresenceReadyBehavior,
   sessionPresenceRunningBehavior,
   sessionRestoreBehavior,
-  sessionTelemetryNeedsConfirmationBehavior,
-  sessionTelemetryTurnCompleteBehavior
+  sessionTelemetryBlockedBehavior,
+  sessionTelemetryCompleteBehavior
 } from './session.behavior'
 
 describe('session behavior assets', () => {
@@ -21,33 +21,34 @@ describe('session behavior assets', () => {
     expect(sessionRestoreBehavior.observationLayers).toEqual(['ui', 'main-debug-state', 'persisted-state'])
   })
 
-  it('declares turn_complete telemetry as a critical active-workflow behavior', () => {
-    expect(sessionTelemetryTurnCompleteBehavior.id).toBe('session.telemetry.turn-complete')
-    expect(sessionTelemetryTurnCompleteBehavior.actor).toBe('system')
-    expect(sessionTelemetryTurnCompleteBehavior.coverageBudget).toBe('critical')
-    expect(sessionTelemetryTurnCompleteBehavior.entities).toEqual([
+  it('declares completion telemetry as a critical active-workflow behavior', () => {
+    expect(sessionTelemetryCompleteBehavior.id).toBe('session.telemetry.complete')
+    expect(sessionTelemetryCompleteBehavior.actor).toBe('system')
+    expect(sessionTelemetryCompleteBehavior.coverageBudget).toBe('critical')
+    expect(sessionTelemetryCompleteBehavior.entities).toEqual([
       'project',
       'session',
       'provider-telemetry',
       'renderer-status'
     ])
-    expect(sessionTelemetryTurnCompleteBehavior.expects).toContain('terminal.liveSessionPreserved')
-    expect(sessionTelemetryTurnCompleteBehavior.invalidPreconditions).toContain('webhook.invalidSecret')
-    expect(sessionTelemetryTurnCompleteBehavior.interruptions).toContain('provider.runningEvent.afterTurnComplete')
-    expect(sessionTelemetryTurnCompleteBehavior.observationLayers).toEqual(['ui', 'main-debug-state', 'persisted-state'])
+    expect(sessionTelemetryCompleteBehavior.expects).toContain('session.presence.phase=complete')
+    expect(sessionTelemetryCompleteBehavior.expects).toContain('terminal.liveSessionPreserved')
+    expect(sessionTelemetryCompleteBehavior.invalidPreconditions).toContain('webhook.invalidSecret')
+    expect(sessionTelemetryCompleteBehavior.interruptions).toContain('provider.runningEvent.afterCompletion')
+    expect(sessionTelemetryCompleteBehavior.observationLayers).toEqual(['ui', 'main-debug-state', 'persisted-state'])
   })
 
-  it('declares needs_confirmation telemetry as a critical active-workflow behavior', () => {
-    expect(sessionTelemetryNeedsConfirmationBehavior.id).toBe('session.telemetry.needs-confirmation')
-    expect(sessionTelemetryNeedsConfirmationBehavior.actor).toBe('system')
-    expect(sessionTelemetryNeedsConfirmationBehavior.coverageBudget).toBe('critical')
-    expect(sessionTelemetryNeedsConfirmationBehavior.expects).toContain('session.status=needs_confirmation')
-    expect(sessionTelemetryNeedsConfirmationBehavior.expects).toContain('terminal.liveSessionPreserved')
-    expect(sessionTelemetryNeedsConfirmationBehavior.invalidPreconditions).toContain('webhook.invalidSecret')
-    expect(sessionTelemetryNeedsConfirmationBehavior.interruptions).toContain(
+  it('declares blocked telemetry as a critical active-workflow behavior', () => {
+    expect(sessionTelemetryBlockedBehavior.id).toBe('session.telemetry.blocked')
+    expect(sessionTelemetryBlockedBehavior.actor).toBe('system')
+    expect(sessionTelemetryBlockedBehavior.coverageBudget).toBe('critical')
+    expect(sessionTelemetryBlockedBehavior.expects).toContain('session.presence.phase=blocked')
+    expect(sessionTelemetryBlockedBehavior.expects).toContain('terminal.liveSessionPreserved')
+    expect(sessionTelemetryBlockedBehavior.invalidPreconditions).toContain('webhook.invalidSecret')
+    expect(sessionTelemetryBlockedBehavior.interruptions).toContain(
       'provider.runningEvent.afterPermissionRequest'
     )
-    expect(sessionTelemetryNeedsConfirmationBehavior.observationLayers).toEqual(['ui', 'main-debug-state', 'persisted-state'])
+    expect(sessionTelemetryBlockedBehavior.observationLayers).toEqual(['ui', 'main-debug-state', 'persisted-state'])
   })
 
   it('declares ready presence as calm non-accent renderer status', () => {

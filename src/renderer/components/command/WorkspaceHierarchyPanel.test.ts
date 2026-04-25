@@ -46,7 +46,6 @@ function createHierarchy(): ProjectHierarchyNode[] {
           id: 'session_1',
           projectId: 'project_alpha',
           type: 'opencode',
-          status: 'running',
           runtimeState: 'alive',
           agentState: 'working',
           hasUnseenCompletion: false,
@@ -68,7 +67,6 @@ function createHierarchy(): ProjectHierarchyNode[] {
           id: 'session_2',
           projectId: 'project_alpha',
           type: 'shell',
-          status: 'awaiting_input',
           runtimeState: 'alive',
           agentState: 'idle',
           hasUnseenCompletion: false,
@@ -106,7 +104,6 @@ function createTwoProjectHierarchy(): ProjectHierarchyNode[] {
           id: 'session_1',
           projectId: 'project_alpha',
           type: 'opencode',
-          status: 'running',
           runtimeState: 'alive',
           agentState: 'working',
           hasUnseenCompletion: false,
@@ -139,7 +136,6 @@ function createTwoProjectHierarchy(): ProjectHierarchyNode[] {
           id: 'session_3',
           projectId: 'project_beta',
           type: 'shell',
-          status: 'exited',
           runtimeState: 'exited',
           agentState: 'idle',
           hasUnseenCompletion: false,
@@ -392,10 +388,9 @@ describe('WorkspaceHierarchyPanel', () => {
         createdAt: '2026-04-22T12:00:00.000Z',
         updatedAt: '2026-04-22T12:00:00.000Z',
         sessions: [{
-          id: 'session_turn_complete',
+          id: 'session_complete',
           title: 'complete turn',
           type: 'opencode',
-          status: 'turn_complete',
           runtimeState: 'alive',
           agentState: 'idle',
           hasUnseenCompletion: false,
@@ -420,10 +415,10 @@ describe('WorkspaceHierarchyPanel', () => {
         props: {
           hierarchy,
           activeProjectId: 'project_1',
-          activeSessionId: 'session_turn_complete',
+          activeSessionId: 'session_complete',
           sessionRowViewModels: {
-            session_turn_complete: {
-              sessionId: 'session_turn_complete',
+            session_complete: {
+              sessionId: 'session_complete',
               title: 'complete turn',
               phase: 'ready',
               primaryLabel: 'Ready',
@@ -454,7 +449,7 @@ describe('WorkspaceHierarchyPanel', () => {
       expect(readyRule).not.toMatch(/accent|blue/i)
     })
 
-    it('renders needs_confirmation with a distinct approval label and warning tone', () => {
+    it('renders blocked permission state with a distinct approval label and warning tone', () => {
       const hierarchy: ProjectHierarchyNode[] = [{
         id: 'project_1',
         name: 'infra-control',
@@ -467,7 +462,6 @@ describe('WorkspaceHierarchyPanel', () => {
           id: 'session_permission_request',
           title: 'permission request',
           type: 'claude-code',
-          status: 'needs_confirmation',
           runtimeState: 'alive',
           agentState: 'blocked',
           hasUnseenCompletion: false,
@@ -536,7 +530,6 @@ describe('WorkspaceHierarchyPanel', () => {
           id: 'session_complete',
           title: 'turn complete',
           type: 'claude-code',
-          status: 'turn_complete',
           runtimeState: 'alive',
           agentState: 'idle',
           hasUnseenCompletion: true,
@@ -609,7 +602,6 @@ describe('WorkspaceHierarchyPanel', () => {
           id: 'session_failed',
           title: 'provider failed',
           type: 'claude-code',
-          status: 'error',
           runtimeState: 'alive',
           agentState: 'error',
           hasUnseenCompletion: true,

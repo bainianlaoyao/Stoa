@@ -48,7 +48,8 @@ function createBaseSession(
     path: 'D:/demo',
     title: 'Deploy',
     type: 'opencode' as const,
-    status: 'running' as const,
+    runtimeState: 'alive' as const,
+    agentState: 'working' as const,
     externalSessionId: null as string | null,
     sessionSecret: 'secret-1',
     providerPort: 43128,
@@ -405,7 +406,7 @@ describe('session runtime callbacks and defaults', () => {
       const provider = createProvider({ buildStartCommand, buildResumeCommand })
 
       await startSessionRuntime({
-        session: createBaseSession({ type: 'shell', externalSessionId: 'ext-1', status: 'running' }),
+        session: createBaseSession({ type: 'shell', externalSessionId: 'ext-1' }),
         webhookPort: 43127,
         provider,
         ptyHost: { start: vi.fn(() => ({ runtimeId: 'session_op_1' })) } as never,
@@ -422,7 +423,7 @@ describe('session runtime callbacks and defaults', () => {
       expect(buildResumeCommand).not.toHaveBeenCalled()
     })
 
-    test('opencode with needs_confirmation status does not resume', async () => {
+    test('opencode with blocked agent state does not resume', async () => {
       const buildStartCommand = vi.fn(async () => ({
         command: 'opencode', args: [], cwd: 'D:/demo', env: {}
       }))
@@ -432,7 +433,7 @@ describe('session runtime callbacks and defaults', () => {
       const provider = createProvider({ buildStartCommand, buildResumeCommand })
 
       await startSessionRuntime({
-        session: createBaseSession({ type: 'opencode', externalSessionId: 'ext-1', status: 'needs_confirmation' }),
+        session: createBaseSession({ type: 'opencode', externalSessionId: 'ext-1', agentState: 'blocked' }),
         webhookPort: 43127,
         provider,
         ptyHost: { start: vi.fn(() => ({ runtimeId: 'session_op_1' })) } as never,
@@ -459,7 +460,7 @@ describe('session runtime callbacks and defaults', () => {
       const provider = createProvider({ buildStartCommand, buildResumeCommand })
 
       await startSessionRuntime({
-        session: createBaseSession({ type: 'opencode', externalSessionId: null, status: 'running' }),
+        session: createBaseSession({ type: 'opencode', externalSessionId: null }),
         webhookPort: 43127,
         provider,
         ptyHost: { start: vi.fn(() => ({ runtimeId: 'session_op_1' })) } as never,
@@ -489,7 +490,7 @@ describe('session runtime callbacks and defaults', () => {
       })
 
       await startSessionRuntime({
-        session: createBaseSession({ type: 'codex', externalSessionId: null, status: 'running' }),
+        session: createBaseSession({ type: 'codex', externalSessionId: null }),
         webhookPort: 43127,
         provider,
         ptyHost: { start: vi.fn(() => ({ runtimeId: 'session_op_1' })) } as never,
@@ -516,7 +517,7 @@ describe('session runtime callbacks and defaults', () => {
       const provider = createProvider({ buildStartCommand, buildResumeCommand, supportsResume: () => false })
 
       await startSessionRuntime({
-        session: createBaseSession({ type: 'opencode', externalSessionId: 'ext-1', status: 'running' }),
+        session: createBaseSession({ type: 'opencode', externalSessionId: 'ext-1' }),
         webhookPort: 43127,
         provider,
         ptyHost: { start: vi.fn(() => ({ runtimeId: 'session_op_1' })) } as never,
@@ -543,7 +544,7 @@ describe('session runtime callbacks and defaults', () => {
       const provider = createProvider({ buildStartCommand, buildResumeCommand, supportsResume: () => true })
 
       await startSessionRuntime({
-        session: createBaseSession({ type: 'opencode', externalSessionId: 'ext-1', status: 'running' }),
+        session: createBaseSession({ type: 'opencode', externalSessionId: 'ext-1' }),
         webhookPort: 43127,
         provider,
         ptyHost: { start: vi.fn(() => ({ runtimeId: 'session_op_1' })) } as never,
@@ -567,7 +568,7 @@ describe('session runtime callbacks and defaults', () => {
       const start = vi.fn(() => ({ runtimeId: 'session_op_1' }))
 
       await startSessionRuntime({
-        session: createBaseSession({ type: 'opencode', externalSessionId: null, status: 'running' }),
+        session: createBaseSession({ type: 'opencode', externalSessionId: null }),
         webhookPort: 43127,
         provider: createProvider(),
         ptyHost: { start } as never,
@@ -587,7 +588,7 @@ describe('session runtime callbacks and defaults', () => {
       const markRuntimeAlive = vi.fn(async () => {})
 
       await startSessionRuntime({
-        session: createBaseSession({ type: 'shell', externalSessionId: null, status: 'running' }),
+        session: createBaseSession({ type: 'shell', externalSessionId: null }),
         webhookPort: 43127,
         provider: createProvider({ supportsResume: () => true }),
         ptyHost: { start: vi.fn(() => ({ runtimeId: 'session_op_1' })) } as never,
@@ -607,7 +608,7 @@ describe('session runtime callbacks and defaults', () => {
       const markRuntimeAlive = vi.fn(async () => {})
 
       await startSessionRuntime({
-        session: createBaseSession({ type: 'opencode', externalSessionId: 'ext-1', status: 'running' }),
+        session: createBaseSession({ type: 'opencode', externalSessionId: 'ext-1' }),
         webhookPort: 43127,
         provider: createProvider({ supportsResume: () => true }),
         ptyHost: { start: vi.fn(() => ({ runtimeId: 'session_op_1' })) } as never,

@@ -5,9 +5,9 @@ import {
   sessionPresenceFailedBehavior,
   sessionPresenceReadyBehavior,
   sessionPresenceRunningBehavior,
-  sessionTelemetryNeedsConfirmationBehavior,
+  sessionTelemetryBlockedBehavior,
   sessionRestoreBehavior,
-  sessionTelemetryTurnCompleteBehavior
+  sessionTelemetryCompleteBehavior
 } from '../behavior/session.behavior'
 import { defineGeneratedTestMeta } from '../contracts/testing-contracts'
 import { sessionRestoreJourney } from '../journeys/session-restore.journey'
@@ -17,8 +17,8 @@ import {
   sessionPresenceReadyJourney,
   sessionPresenceRunningJourney,
   sessionTelemetryClaudeLifecycleJourney,
-  sessionTelemetryNeedsConfirmationJourney,
-  sessionTelemetryTurnCompleteJourney
+  sessionTelemetryBlockedJourney,
+  sessionTelemetryCompleteJourney
 } from '../journeys/session-telemetry.journey'
 import { buildBehaviorCoverageReport } from './behavior-coverage'
 
@@ -86,17 +86,17 @@ describe('behavior coverage report', () => {
     expect(report.summary.hardened).toBe(1)
   })
 
-  it('marks turn_complete telemetry as Hardened when canonical and hook coverage reach UI and persistence', () => {
+  it('marks completion telemetry as Hardened when canonical and hook coverage reach UI and persistence', () => {
     const report = buildBehaviorCoverageReport({
-      behaviors: [sessionTelemetryTurnCompleteBehavior],
-      journeys: [sessionTelemetryTurnCompleteJourney],
+      behaviors: [sessionTelemetryCompleteBehavior],
+      journeys: [sessionTelemetryCompleteJourney],
       generatedTests: [
         defineGeneratedTestMeta({
-          id: 'journey.session.telemetry.turn-complete',
-          behaviorIds: ['session.telemetry.turn-complete'],
+          id: 'journey.session.telemetry.complete',
+          behaviorIds: ['session.telemetry.complete'],
           entities: ['session', 'provider-telemetry', 'renderer-status'],
-          statesCovered: ['session.turn_complete', 'session.externalSessionId'],
-          interruptionsCovered: ['provider.runningEvent.afterTurnComplete'],
+          statesCovered: ['presence.complete', 'session.externalSessionId'],
+          interruptionsCovered: ['provider.runningEvent.afterCompletion'],
           observationLayers: ['ui', 'main-debug-state', 'persisted-state'],
           riskBudget: 'critical',
           regressionSources: ['claude.raw-hook', 'canonical.webhook']
@@ -104,23 +104,23 @@ describe('behavior coverage report', () => {
       ]
     })
 
-    expect(report.behaviors['session.telemetry.turn-complete']?.maturity).toBe('Hardened')
-    expect(report.behaviors['session.telemetry.turn-complete']?.missingObservationLayers).toEqual([])
-    expect(report.behaviors['session.telemetry.turn-complete']?.missingInterruptions).toEqual([
+    expect(report.behaviors['session.telemetry.complete']?.maturity).toBe('Hardened')
+    expect(report.behaviors['session.telemetry.complete']?.missingObservationLayers).toEqual([])
+    expect(report.behaviors['session.telemetry.complete']?.missingInterruptions).toEqual([
       'app.relaunch.duringTelemetry'
     ])
   })
 
-  it('marks needs_confirmation telemetry as Hardened when hook coverage reaches UI and persistence', () => {
+  it('marks blocked telemetry as Hardened when hook coverage reaches UI and persistence', () => {
     const report = buildBehaviorCoverageReport({
-      behaviors: [sessionTelemetryNeedsConfirmationBehavior],
-      journeys: [sessionTelemetryNeedsConfirmationJourney],
+      behaviors: [sessionTelemetryBlockedBehavior],
+      journeys: [sessionTelemetryBlockedJourney],
       generatedTests: [
         defineGeneratedTestMeta({
-          id: 'journey.session.telemetry.needs-confirmation',
-          behaviorIds: ['session.telemetry.needs-confirmation'],
+          id: 'journey.session.telemetry.blocked',
+          behaviorIds: ['session.telemetry.blocked'],
           entities: ['session', 'provider-telemetry', 'renderer-status'],
-          statesCovered: ['session.needs_confirmation', 'session.externalSessionId'],
+          statesCovered: ['presence.blocked', 'session.externalSessionId'],
           interruptionsCovered: ['provider.runningEvent.afterPermissionRequest'],
           observationLayers: ['ui', 'main-debug-state', 'persisted-state'],
           riskBudget: 'critical',
@@ -129,9 +129,9 @@ describe('behavior coverage report', () => {
       ]
     })
 
-    expect(report.behaviors['session.telemetry.needs-confirmation']?.maturity).toBe('Hardened')
-    expect(report.behaviors['session.telemetry.needs-confirmation']?.missingObservationLayers).toEqual([])
-    expect(report.behaviors['session.telemetry.needs-confirmation']?.missingInterruptions).toEqual([
+    expect(report.behaviors['session.telemetry.blocked']?.maturity).toBe('Hardened')
+    expect(report.behaviors['session.telemetry.blocked']?.missingObservationLayers).toEqual([])
+    expect(report.behaviors['session.telemetry.blocked']?.missingInterruptions).toEqual([
       'app.relaunch.duringTelemetry'
     ])
   })

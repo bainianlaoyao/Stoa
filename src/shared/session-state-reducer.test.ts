@@ -9,7 +9,6 @@ function session(overrides: Partial<SessionSummary> = {}): SessionSummary {
     id: 'session_1',
     projectId: 'project_1',
     type: 'codex',
-    status: 'running',
     runtimeState: 'alive',
     agentState: 'idle',
     hasUnseenCompletion: false,

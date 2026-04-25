@@ -48,7 +48,7 @@ const emit = defineEmits<{
               <code class="archive-card__path">{{ session.projectPath }}</code>
             </div>
 
-            <p class="archive-card__summary">{{ session.summary || session.status }}</p>
+            <p class="archive-card__summary">{{ session.summary || `${session.runtimeState} / ${session.agentState}` }}</p>
           </div>
 
           <button

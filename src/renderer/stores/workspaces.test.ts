@@ -42,7 +42,6 @@ function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
     getAppObservability: vi.fn().mockResolvedValue({
       blockedProjectCount: 0,
       failedProjectCount: 0,
-      degradedProjectCount: 0,
       totalUnreadTurns: 0,
       projectsNeedingAttention: [],
       providerHealthSummary: {},
@@ -147,7 +146,6 @@ function projectObservabilityFixture(
     overallHealth: 'healthy',
     activeSessionCount: 1,
     blockedSessionCount: 0,
-    degradedSessionCount: 0,
     failedSessionCount: 0,
     unreadTurnCount: 0,
     latestAttentionSessionId: null,
@@ -163,7 +161,6 @@ function appObservabilityFixture(patch: Partial<AppObservabilitySnapshot> = {}):
   return {
     blockedProjectCount: 0,
     failedProjectCount: 0,
-    degradedProjectCount: 0,
     totalUnreadTurns: 0,
     projectsNeedingAttention: [],
     providerHealthSummary: {},
@@ -186,9 +183,9 @@ function observationEventFixture(patch: Partial<ObservationEvent> = {}): Observa
     sessionId: 'session_op_1',
     providerId: 'claude-code',
     category: 'presence',
-    type: 'presence.turn_complete',
-    severity: 'info',
-    retention: 'operational',
+    type: 'presence.complete',
+    severity: 'attention',
+    retention: 'critical',
     source: 'provider-adapter',
     correlationId: null,
     dedupeKey: null,
@@ -202,7 +199,6 @@ function sessionSummaryFixture(patch: Partial<SessionSummary> = {}): SessionSumm
     id: 'session_op_1',
     projectId: 'project_alpha',
     type: 'opencode',
-    status: 'running',
     runtimeState: 'alive',
     agentState: 'working',
     hasUnseenCompletion: false,
@@ -249,7 +245,6 @@ describe('project/session renderer store', () => {
           id: 'session_op_1',
           projectId: 'project_alpha',
           type: 'opencode',
-          status: 'running',
           runtimeState: 'alive',
           agentState: 'working',
           hasUnseenCompletion: false,
@@ -303,7 +298,6 @@ describe('project/session renderer store', () => {
           id: 'session_shell_1',
           projectId: 'project_alpha',
           type: 'shell',
-          status: 'running',
           summary: 'running',
           title: 'Shell 1',
           recoveryMode: 'fresh-shell',
@@ -317,7 +311,6 @@ describe('project/session renderer store', () => {
           id: 'session_op_2',
           projectId: 'project_beta',
           type: 'opencode',
-          status: 'bootstrapping',
           runtimeState: 'created',
           agentState: 'unknown',
           summary: 'waiting',
@@ -360,7 +353,6 @@ describe('project/session renderer store', () => {
           id: 'session_op_1',
           projectId: 'project_alpha',
           type: 'opencode',
-          status: 'running',
           title: 'deploy gateway',
           summary: 'deploy gateway',
           recoveryMode: 'resume-external',
@@ -374,7 +366,6 @@ describe('project/session renderer store', () => {
           id: 'session_op_2',
           projectId: 'project_alpha',
           type: 'opencode',
-          status: 'awaiting_input',
           title: 'need confirmation',
           summary: 'need confirmation',
           recoveryMode: 'resume-external',
@@ -419,7 +410,6 @@ describe('project/session renderer store', () => {
             id: 'session_shell_1',
             projectId: 'project_alpha',
             type: 'shell',
-            status: 'running',
             summary: 'running',
             title: 'Shell 1',
             recoveryMode: 'fresh-shell',
@@ -433,7 +423,6 @@ describe('project/session renderer store', () => {
             id: 'session_archived',
             projectId: 'project_alpha',
             type: 'shell',
-            status: 'exited',
             runtimeState: 'exited',
             agentState: 'idle',
             runtimeExitCode: 0,
@@ -469,7 +458,6 @@ describe('project/session renderer store', () => {
             id: 'session_shell_1',
             projectId: 'project_alpha',
             type: 'shell',
-            status: 'running',
             summary: 'running',
             title: 'Shell 1',
             recoveryMode: 'fresh-shell',
@@ -504,7 +492,6 @@ describe('project/session renderer store', () => {
             id: 'session_archived',
             projectId: 'project_alpha',
             type: 'shell',
-            status: 'exited',
             runtimeState: 'exited',
             agentState: 'idle',
             runtimeExitCode: 0,
@@ -557,7 +544,6 @@ describe('project/session renderer store', () => {
             id: 'session_op_1',
             projectId: 'project_alpha',
             type: 'opencode',
-            status: 'running',
             title: 'Deploy',
             summary: 'running',
             recoveryMode: 'resume-external',
@@ -620,7 +606,6 @@ describe('project/session renderer store', () => {
             id: 'session_op_1',
             projectId: 'project_alpha',
             type: 'opencode',
-            status: 'running',
             title: 'Deploy',
             summary: 'running',
             recoveryMode: 'resume-external',
@@ -638,11 +623,11 @@ describe('project/session renderer store', () => {
       const sessionPresence = sessionPresenceFixture({
         phase: 'blocked',
         blockingReason: 'permission',
-        health: 'degraded',
+        health: 'healthy',
         hasUnreadTurn: true
       })
       const projectObservability = projectObservabilityFixture({
-        overallHealth: 'degraded',
+        overallHealth: 'healthy',
         blockedSessionCount: 1,
         unreadTurnCount: 1,
         latestAttentionSessionId: 'session_op_1',
@@ -731,7 +716,6 @@ describe('project/session renderer store', () => {
           lastStateSequence: 10,
           agentState: 'idle',
           hasUnseenCompletion: true,
-          status: 'turn_complete',
           summary: 'complete'
         })]
       })
@@ -740,7 +724,6 @@ describe('project/session renderer store', () => {
       expect(store.sessionPresenceById.session_op_1).toEqual(backendPresence)
 
       store.updateSession('session_op_1', {
-        status: 'running',
         runtimeState: 'alive',
         agentState: 'working',
         hasUnseenCompletion: false,
@@ -781,7 +764,6 @@ describe('project/session renderer store', () => {
           lastStateSequence: 8,
           agentState: 'blocked',
           blockingReason: 'permission',
-          status: 'needs_confirmation',
           summary: 'blocked'
         })]
       })
@@ -790,7 +772,6 @@ describe('project/session renderer store', () => {
       expect(store.sessionPresenceById.session_op_1).toEqual(backendPresence)
 
       store.updateSession('session_op_1', {
-        status: 'running',
         runtimeState: 'alive',
         agentState: 'working',
         hasUnseenCompletion: false,
@@ -843,7 +824,6 @@ describe('project/session renderer store', () => {
           lastStateSequence: 12,
           agentState: 'blocked',
           blockingReason: 'permission',
-          status: 'needs_confirmation',
           summary: 'blocked'
         })]
       })
@@ -852,7 +832,6 @@ describe('project/session renderer store', () => {
       expect(store.sessionPresenceById.session_op_1).toEqual(backendPresence)
 
       store.updateSession('session_op_1', {
-        status: 'running',
         runtimeState: 'alive',
         agentState: 'working',
         hasUnseenCompletion: false,
@@ -885,7 +864,6 @@ describe('project/session renderer store', () => {
       store.addSession(sessionSummaryFixture({
         id: 'session_claude_complete',
         type: 'claude-code',
-        status: 'turn_complete',
         runtimeState: 'alive',
         agentState: 'idle',
         hasUnseenCompletion: true,
@@ -929,7 +907,6 @@ describe('project/session renderer store', () => {
       store.addSession(sessionSummaryFixture({
         id: 'session_claude_1',
         type: 'claude-code',
-        status: 'running',
         runtimeState: 'alive',
         agentState: 'unknown',
         lastStateSequence: 4,
@@ -984,7 +961,6 @@ describe('project/session renderer store', () => {
             id: 'session_op_1',
             projectId: 'project_alpha',
             type: 'opencode',
-            status: 'running',
             title: 'Deploy',
             summary: 'running',
             recoveryMode: 'resume-external',
@@ -1004,12 +980,12 @@ describe('project/session renderer store', () => {
         sourceSequence: 10,
         phase: 'blocked',
         blockingReason: 'permission',
-        health: 'degraded'
+        health: 'healthy'
       })
       const pushedProjectObservability = projectObservabilityFixture({
         updatedAt: '2026-04-24T08:00:10.000Z',
         sourceSequence: 10,
-        overallHealth: 'degraded',
+        overallHealth: 'healthy',
         blockedSessionCount: 1,
         latestAttentionSessionId: 'session_op_1',
         latestAttentionReason: 'permission'
@@ -1073,7 +1049,6 @@ describe('project/session renderer store', () => {
           id: 'session_op_1',
           projectId: 'project_alpha',
           type: 'opencode',
-          status: 'running',
           title: 'Deploy',
           summary: 'running',
           recoveryMode: 'resume-external',
@@ -1092,12 +1067,12 @@ describe('project/session renderer store', () => {
         sourceSequence: 10,
         phase: 'blocked',
         blockingReason: 'permission',
-        health: 'degraded'
+        health: 'healthy'
       })
       const pushedProjectObservability = projectObservabilityFixture({
         updatedAt: '2026-04-24T08:00:10.000Z',
         sourceSequence: 10,
-        overallHealth: 'degraded',
+        overallHealth: 'healthy',
         blockedSessionCount: 1,
         latestAttentionSessionId: 'session_op_1',
         latestAttentionReason: 'permission'
@@ -1158,7 +1133,6 @@ describe('project/session renderer store', () => {
           id: 'session_op_1',
           projectId: 'project_alpha',
           type: 'opencode',
-          status: 'running',
           title: 'Deploy',
           summary: 'running',
           recoveryMode: 'resume-external',
@@ -1197,7 +1171,6 @@ describe('project/session renderer store', () => {
         id: 'session_claude_1',
         projectId: 'project_alpha',
         type: 'claude-code',
-        status: 'bootstrapping',
         runtimeState: 'created',
         agentState: 'unknown',
         hasUnseenCompletion: false,
@@ -1217,7 +1190,6 @@ describe('project/session renderer store', () => {
       expect(store.sessionPresenceById.session_claude_1?.phase).toBe('preparing')
 
       store.updateSession('session_claude_1', {
-        status: 'running',
         runtimeState: 'alive',
         agentState: 'working',
         lastStateSequence: 1,
@@ -1263,7 +1235,6 @@ describe('project/session renderer store', () => {
           id: 'session_op_1',
           projectId: 'project_alpha',
           type: 'opencode',
-          status: 'running',
           title: 'Deploy',
           summary: 'running',
           recoveryMode: 'resume-external',
@@ -1310,7 +1281,6 @@ describe('project/session renderer store', () => {
           id: 'session_op_1',
           projectId: 'project_alpha',
           type: 'opencode',
-          status: 'running',
           title: 'Deploy',
           summary: 'running',
           recoveryMode: 'resume-external',

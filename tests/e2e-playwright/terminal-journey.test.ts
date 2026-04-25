@@ -10,15 +10,16 @@ import {
 } from './fixtures/electron-app'
 import { createProject, createSession } from './helpers/ui-actions'
 
-async function waitForSessionStatus(
+async function waitForSessionState(
   app: Awaited<ReturnType<typeof launchElectronApp>>,
   title: string,
-  status: 'running'
+  predicate: (session: { runtimeState?: string; agentState?: string }) => boolean
 ): Promise<void> {
   await expect.poll(async () => {
     const debugState = await getMainE2EDebugState(app.electronApp)
-    return debugState?.snapshot?.sessions.find((session) => session.title === title)?.status ?? null
-  }).toBe(status)
+    const session = debugState?.snapshot?.sessions.find((candidate) => candidate.title === title) ?? null
+    return session && predicate(session) ? session : null
+  }).not.toBeNull()
 }
 
 async function waitForSessionByTitle(
@@ -51,7 +52,7 @@ test.describe('Electron terminal journeys', () => {
         type: 'shell'
       })
 
-      await waitForSessionStatus(app, session.title, 'running')
+      await waitForSessionState(app, session.title, (candidate) => candidate.runtimeState === 'alive')
       const sessionState = await waitForSessionByTitle(app, session.title)
       const terminalViewport = app.page.getByTestId('terminal-viewport')
       await expect(terminalViewport).toBeVisible()
@@ -70,7 +71,7 @@ test.describe('Electron terminal journeys', () => {
     }
   })
 
-  test('claude running session shows Running in the row status', async () => {
+  test('claude live session without agent telemetry shows Ready in the row status', async () => {
     const app = await launchElectronApp()
 
     try {
@@ -82,13 +83,13 @@ test.describe('Electron terminal journeys', () => {
         type: 'claude-code'
       })
 
-      await waitForSessionStatus(app, session.title, 'running')
+      await waitForSessionState(app, session.title, (candidate) => candidate.runtimeState === 'alive')
 
       const statusDot = session.row.locator('[data-testid="session-status-dot"]')
-      await expect(statusDot).toHaveAttribute('data-status', 'running')
-      await expect(statusDot).toHaveAttribute('data-phase', 'working')
-      await expect(statusDot).toHaveAttribute('data-tone', 'success')
-      await expect(session.row.locator('.route-time')).toContainText('Running')
+      await expect(statusDot).toHaveAttribute('data-session-status-testid', 'session-status-ready')
+      await expect(statusDot).toHaveAttribute('data-phase', 'ready')
+      await expect(statusDot).toHaveAttribute('data-tone', 'neutral')
+      await expect(session.row.locator('.route-time')).toContainText('Ready')
     } finally {
       const { stateDir } = app
       await app.close()
@@ -111,8 +112,8 @@ test.describe('Electron terminal journeys', () => {
         type: 'shell'
       })
 
-      await waitForSessionStatus(app, sessionA.title, 'running')
-      await waitForSessionStatus(app, sessionB.title, 'running')
+      await waitForSessionState(app, sessionA.title, (candidate) => candidate.runtimeState === 'alive')
+      await waitForSessionState(app, sessionB.title, (candidate) => candidate.runtimeState === 'alive')
       const sessionAState = await waitForSessionByTitle(app, sessionA.title)
       const sessionBState = await waitForSessionByTitle(app, sessionB.title)
 
@@ -162,7 +163,7 @@ test.describe('Electron terminal journeys', () => {
         type: 'shell'
       })
 
-      await waitForSessionStatus(app, session.title, 'running')
+      await waitForSessionState(app, session.title, (candidate) => candidate.runtimeState === 'alive')
       const sessionState = await waitForSessionByTitle(app, session.title)
       await appendTerminalData(app.electronApp, sessionState.id, '\r\n__PLAYWRIGHT_VISUAL__\r\n')
       await waitForTerminalBufferText(app.electronApp, sessionState.id, '__PLAYWRIGHT_VISUAL__')

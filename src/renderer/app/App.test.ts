@@ -30,7 +30,6 @@ function createSessionSummary(overrides: Partial<SessionSummary> = {}): SessionS
     id: 's1',
     projectId: 'p1',
     type: 'shell',
-    status: 'running',
     runtimeState: 'alive',
     agentState: 'unknown',
     hasUnseenCompletion: false,
@@ -69,7 +68,6 @@ function createSessionPresenceSnapshot(
     providerLabel: 'Claude Code',
     modelLabel: 'Sonnet',
     phase: 'running',
-    canonicalStatus: 'running',
     runtimeState: 'alive',
     agentState: 'working',
     hasUnseenCompletion: false,
@@ -129,7 +127,6 @@ function setupStoa(overrides?: Partial<typeof window.stoa>) {
     getAppObservability: vi.fn().mockResolvedValue({
       blockedProjectCount: 0,
       failedProjectCount: 0,
-      degradedProjectCount: 0,
       totalUnreadTurns: 0,
       projectsNeedingAttention: [],
       providerHealthSummary: {},
@@ -338,7 +335,6 @@ describe('App (root)', () => {
 
       sessionPresenceListener(createSessionPresenceSnapshot({
         phase: 'blocked',
-        canonicalStatus: 'needs_confirmation',
         blockingReason: 'permission',
         sourceSequence: 3,
         updatedAt: '2026-04-24T08:00:01.000Z'

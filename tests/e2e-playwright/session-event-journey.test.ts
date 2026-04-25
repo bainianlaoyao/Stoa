@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { test, expect } from '@playwright/test'
-import type { CanonicalSessionEvent, SessionStatePatchPayload, SessionStatus } from '@shared/project-session'
+import type { CanonicalSessionEvent, SessionStatePatchPayload } from '@shared/project-session'
 import {
   cleanupStateDir,
   getMainE2EDebugState,
@@ -14,47 +14,18 @@ import { createProject, createSession } from './helpers/ui-actions'
 function createCanonicalEvent(args: {
   sessionId: string
   projectId: string
-  status: SessionStatus
-  summary: string
+  eventType: string
+  payload: SessionStatePatchPayload
 }): CanonicalSessionEvent {
-  const payload = createPatchPayload(args.status, args.summary)
   return {
     event_version: 1,
     event_id: `evt_${randomUUID()}`,
-    event_type: args.status === 'exited' ? 'session.completed' : 'session.status_changed',
+    event_type: args.eventType,
     timestamp: new Date().toISOString(),
     session_id: args.sessionId,
     project_id: args.projectId,
     source: 'hook-sidecar',
-    payload
-  }
-}
-
-function createPatchPayload(status: SessionStatus, summary: string): SessionStatePatchPayload {
-  switch (status) {
-    case 'bootstrapping':
-      return { intent: 'runtime.created', runtimeState: 'created', summary }
-    case 'starting':
-      return { intent: 'runtime.starting', runtimeState: 'starting', summary }
-    case 'running':
-      return { intent: 'agent.turn_started', agentState: 'working', summary }
-    case 'turn_complete':
-    case 'awaiting_input':
-      return { intent: 'agent.turn_completed', agentState: 'idle', hasUnseenCompletion: true, summary }
-    case 'degraded':
-      return { intent: 'agent.recovered', agentState: 'idle', summary }
-    case 'error':
-      return { intent: 'agent.turn_failed', agentState: 'error', summary }
-    case 'exited':
-      return {
-        intent: 'runtime.exited_clean',
-        runtimeState: 'exited',
-        runtimeExitCode: 0,
-        runtimeExitReason: 'clean',
-        summary
-      }
-    case 'needs_confirmation':
-      return { intent: 'agent.permission_requested', agentState: 'blocked', blockingReason: 'permission', summary }
+    payload: args.payload
   }
 }
 
@@ -74,20 +45,31 @@ async function waitForSessionSnapshot(app: Parameters<typeof getMainE2EDebugStat
   throw new Error(`Timed out waiting for session snapshot ${sessionId}`)
 }
 
-async function waitForLiveSessionStatus(app: Parameters<typeof getMainE2EDebugState>[0], sessionId: string) {
+async function waitForSessionState(
+  app: Parameters<typeof getMainE2EDebugState>[0],
+  sessionId: string,
+  predicate: (
+    session: {
+      runtimeState?: string
+      agentState?: string
+      hasUnseenCompletion?: boolean
+      runtimeExitReason?: string | null
+    }
+  ) => boolean
+) {
   const deadline = Date.now() + 10_000
 
   while (Date.now() < deadline) {
     const nextDebugState = await getMainE2EDebugState(app)
-    const status = nextDebugState?.snapshot?.sessions.find(candidate => candidate.id === sessionId)?.status ?? null
-    if (status === 'running' || status === 'awaiting_input') {
-      return
+    const session = nextDebugState?.snapshot?.sessions.find(candidate => candidate.id === sessionId) ?? null
+    if (session && predicate(session)) {
+      return session
     }
 
     await new Promise((resolve) => setTimeout(resolve, 100))
   }
 
-  throw new Error(`Timed out waiting for session ${sessionId} to become live`)
+  throw new Error(`Timed out waiting for session ${sessionId} state predicate`)
 }
 
 test.describe('Electron push and webhook journeys', () => {
@@ -108,7 +90,7 @@ test.describe('Electron push and webhook journeys', () => {
       expect(initialDebugState?.webhookPort).toBeTruthy()
       expect(initialSessionState).toBeDefined()
 
-      await waitForLiveSessionStatus(app.electronApp, initialSessionState!.id)
+      await waitForSessionState(app.electronApp, initialSessionState!.id, candidate => candidate.runtimeState === 'alive')
 
       const debugState = await getMainE2EDebugState(app.electronApp)
       const sessionState = debugState?.snapshot?.sessions.find(candidate => candidate.id === initialSessionState!.id)
@@ -121,19 +103,29 @@ test.describe('Electron push and webhook journeys', () => {
         event: createCanonicalEvent({
           sessionId: sessionState!.id,
           projectId: sessionState!.projectId,
-          status: 'awaiting_input',
-          summary: 'session.idle'
+          eventType: 'session.completed',
+          payload: {
+            intent: 'agent.turn_completed',
+            agentState: 'idle',
+            hasUnseenCompletion: true,
+            summary: 'session.idle'
+          }
         })
       })
 
       expect(response.status).toBe(202)
-      await expect(session.row.locator('[data-testid="session-status-dot"][data-status="awaiting_input"]')).toBeVisible()
+      await expect(session.row.locator('[data-testid="session-status-dot"]')).toHaveAttribute(
+        'data-session-status-testid',
+        'session-status-complete'
+      )
 
       await expect.poll(async () => {
         const nextDebugState = await getMainE2EDebugState(app.electronApp)
         return nextDebugState?.snapshot?.sessions.find(candidate => candidate.id === sessionState!.id) ?? null
       }).toMatchObject({
-        status: 'awaiting_input',
+        runtimeState: 'alive',
+        agentState: 'idle',
+        hasUnseenCompletion: true,
         summary: 'session.idle'
       })
     } finally {
@@ -158,7 +150,7 @@ test.describe('Electron push and webhook journeys', () => {
       const initialDebugState = await getMainE2EDebugState(app.electronApp)
       const initialSessionState = initialDebugState?.snapshot?.sessions.find(candidate => candidate.title === session.title)
       expect(initialSessionState).toBeDefined()
-      await waitForLiveSessionStatus(app.electronApp, initialSessionState!.id)
+      await waitForSessionState(app.electronApp, initialSessionState!.id, candidate => candidate.runtimeState === 'alive')
 
       const debugState = await getMainE2EDebugState(app.electronApp)
       const sessionState = debugState?.snapshot?.sessions.find(candidate => candidate.id === initialSessionState!.id)
@@ -170,19 +162,29 @@ test.describe('Electron push and webhook journeys', () => {
         event: createCanonicalEvent({
           sessionId: sessionState!.id,
           projectId: sessionState!.projectId,
-          status: 'exited',
-          summary: 'session.completed'
+          eventType: 'session.completed',
+          payload: {
+            intent: 'runtime.exited_clean',
+            runtimeState: 'exited',
+            runtimeExitCode: 0,
+            runtimeExitReason: 'clean',
+            summary: 'session.completed'
+          }
         })
       })
 
       expect(response.status).toBe(202)
-      await expect(session.row.locator('[data-testid="session-status-dot"][data-status="exited"]')).toBeVisible()
+      await expect(session.row.locator('[data-testid="session-status-dot"]')).toHaveAttribute(
+        'data-session-status-testid',
+        'session-status-exited'
+      )
 
       await expect.poll(async () => {
         const nextDebugState = await getMainE2EDebugState(app.electronApp)
         return nextDebugState?.snapshot?.sessions.find(candidate => candidate.id === sessionState!.id) ?? null
       }).toMatchObject({
-        status: 'exited',
+        runtimeState: 'exited',
+        runtimeExitReason: 'clean',
         summary: 'session.completed'
       })
     } finally {
@@ -192,7 +194,7 @@ test.describe('Electron push and webhook journeys', () => {
     }
   })
 
-  test('turn_complete webhook projection', async () => {
+  test('completion webhook projection', async () => {
     const app = await launchElectronApp()
 
     try {
@@ -207,7 +209,7 @@ test.describe('Electron push and webhook journeys', () => {
       const initialDebugState = await getMainE2EDebugState(app.electronApp)
       const initialSessionState = initialDebugState?.snapshot?.sessions.find(candidate => candidate.title === session.title)
       expect(initialSessionState).toBeDefined()
-      await waitForLiveSessionStatus(app.electronApp, initialSessionState!.id)
+      await waitForSessionState(app.electronApp, initialSessionState!.id, candidate => candidate.runtimeState === 'alive')
 
       const debugState = await getMainE2EDebugState(app.electronApp)
       const sessionState = debugState?.snapshot?.sessions.find(candidate => candidate.id === initialSessionState!.id)
@@ -219,19 +221,29 @@ test.describe('Electron push and webhook journeys', () => {
         event: createCanonicalEvent({
           sessionId: sessionState!.id,
           projectId: sessionState!.projectId,
-          status: 'turn_complete',
-          summary: 'Turn complete'
+          eventType: 'session.completed',
+          payload: {
+            intent: 'agent.turn_completed',
+            agentState: 'idle',
+            hasUnseenCompletion: true,
+            summary: 'Turn complete'
+          }
         })
       })
 
       expect(response.status).toBe(202)
-      await expect(session.row.locator('[data-testid="session-status-dot"][data-status="turn_complete"]')).toBeVisible()
+      await expect(session.row.locator('[data-testid="session-status-dot"]')).toHaveAttribute(
+        'data-session-status-testid',
+        'session-status-complete'
+      )
 
       await expect.poll(async () => {
         const nextDebugState = await getMainE2EDebugState(app.electronApp)
         return nextDebugState?.snapshot?.sessions.find(candidate => candidate.id === sessionState!.id) ?? null
       }).toMatchObject({
-        status: 'turn_complete',
+        runtimeState: 'alive',
+        agentState: 'idle',
+        hasUnseenCompletion: true,
         summary: 'Turn complete'
       })
     } finally {
@@ -256,7 +268,7 @@ test.describe('Electron push and webhook journeys', () => {
       const initialDebugState = await getMainE2EDebugState(app.electronApp)
       const initialSessionState = initialDebugState?.snapshot?.sessions.find(candidate => candidate.title === session.title)
       expect(initialSessionState).toBeDefined()
-      await waitForLiveSessionStatus(app.electronApp, initialSessionState!.id)
+      await waitForSessionState(app.electronApp, initialSessionState!.id, candidate => candidate.runtimeState === 'alive')
 
       const debugState = await getMainE2EDebugState(app.electronApp)
       const sessionState = debugState?.snapshot?.sessions.find(candidate => candidate.id === initialSessionState!.id)
@@ -273,13 +285,18 @@ test.describe('Electron push and webhook journeys', () => {
       })
 
       expect(response.status).toBe(202)
-      await expect(session.row.locator('[data-testid="session-status-dot"][data-status="turn_complete"]')).toBeVisible()
+      await expect(session.row.locator('[data-testid="session-status-dot"]')).toHaveAttribute(
+        'data-session-status-testid',
+        'session-status-complete'
+      )
 
       await expect.poll(async () => {
         const nextDebugState = await getMainE2EDebugState(app.electronApp)
         return nextDebugState?.snapshot?.sessions.find(candidate => candidate.id === sessionState!.id) ?? null
       }).toMatchObject({
-        status: 'turn_complete',
+        runtimeState: 'alive',
+        agentState: 'idle',
+        hasUnseenCompletion: true,
         summary: 'Stop'
       })
     } finally {
@@ -304,11 +321,14 @@ test.describe('Electron push and webhook journeys', () => {
       const initialDebugState = await getMainE2EDebugState(app.electronApp)
       const initialSessionState = initialDebugState?.snapshot?.sessions.find(candidate => candidate.title === session.title)
       expect(initialSessionState).toBeDefined()
-      await waitForLiveSessionStatus(app.electronApp, initialSessionState!.id)
+      await waitForSessionState(app.electronApp, initialSessionState!.id, candidate => candidate.runtimeState === 'alive')
 
       const debugState = await getMainE2EDebugState(app.electronApp)
       const sessionState = debugState?.snapshot?.sessions.find(candidate => candidate.id === initialSessionState!.id)
       const secret = sessionState ? debugState?.sessionSecrets[sessionState.id] : undefined
+
+      const statusDot = session.row.locator('[data-testid="session-status-dot"]')
+      await expect(statusDot).toHaveAttribute('data-session-status-testid', 'session-status-ready')
 
       const stopResponse = await postClaudeHookEvent({
         port: debugState!.webhookPort!,
@@ -321,7 +341,9 @@ test.describe('Electron push and webhook journeys', () => {
       })
 
       expect(stopResponse.status).toBe(202)
-      await expect(session.row.locator('[data-testid="session-status-dot"]')).toHaveAttribute('data-phase', 'ready')
+      await expect(statusDot).toHaveAttribute('data-session-status-testid', 'session-status-complete')
+      await session.row.click()
+      await expect(statusDot).toHaveAttribute('data-session-status-testid', 'session-status-ready')
 
       const activityResponse = await postClaudeHookEvent({
         port: debugState!.webhookPort!,
@@ -334,9 +356,8 @@ test.describe('Electron push and webhook journeys', () => {
       })
 
       expect(activityResponse.status).toBe(202)
-      const statusDot = session.row.locator('[data-testid="session-status-dot"]')
-      await expect(statusDot).toHaveAttribute('data-status', 'running')
-      await expect(statusDot).toHaveAttribute('data-phase', 'working')
+      await expect(statusDot).toHaveAttribute('data-session-status-testid', 'session-status-running')
+      await expect(statusDot).toHaveAttribute('data-phase', 'running')
       await expect(statusDot).toHaveAttribute('data-tone', 'success')
       await expect(session.row.locator('.route-time')).toContainText('Running')
     } finally {
@@ -361,7 +382,7 @@ test.describe('Electron push and webhook journeys', () => {
       const initialDebugState = await getMainE2EDebugState(app.electronApp)
       const initialSessionState = initialDebugState?.snapshot?.sessions.find(candidate => candidate.title === session.title)
       expect(initialSessionState).toBeDefined()
-      await waitForLiveSessionStatus(app.electronApp, initialSessionState!.id)
+      await waitForSessionState(app.electronApp, initialSessionState!.id, candidate => candidate.runtimeState === 'alive')
 
       const debugState = await getMainE2EDebugState(app.electronApp)
       const sessionState = debugState?.snapshot?.sessions.find(candidate => candidate.id === initialSessionState!.id)
@@ -379,7 +400,7 @@ test.describe('Electron push and webhook journeys', () => {
 
       expect(response.status).toBe(202)
       const statusDot = session.row.locator('[data-testid="session-status-dot"]')
-      await expect(statusDot).toHaveAttribute('data-status', 'needs_confirmation')
+      await expect(statusDot).toHaveAttribute('data-session-status-testid', 'session-status-blocked')
       await expect(statusDot).toHaveAttribute('data-phase', 'blocked')
       await expect(statusDot).toHaveAttribute('data-tone', 'warning')
       await expect(app.page.getByTestId('terminal-status-bar')).toHaveCount(0)
@@ -392,7 +413,8 @@ test.describe('Electron push and webhook journeys', () => {
         const nextDebugState = await getMainE2EDebugState(app.electronApp)
         return nextDebugState?.snapshot?.sessions.find(candidate => candidate.id === sessionState!.id) ?? null
       }).toMatchObject({
-        status: 'needs_confirmation',
+        runtimeState: 'alive',
+        agentState: 'blocked',
         summary: 'PermissionRequest'
       })
     } finally {
@@ -417,13 +439,15 @@ test.describe('Electron push and webhook journeys', () => {
       const initialDebugState = await getMainE2EDebugState(app.electronApp)
       const initialSessionState = initialDebugState?.snapshot?.sessions.find(candidate => candidate.title === session.title)
       expect(initialSessionState).toBeDefined()
-      await waitForLiveSessionStatus(app.electronApp, initialSessionState!.id)
+      await waitForSessionState(app.electronApp, initialSessionState!.id, candidate => candidate.runtimeState === 'alive')
 
       const debugState = await getMainE2EDebugState(app.electronApp)
       const sessionState = debugState?.snapshot?.sessions.find(candidate => candidate.id === initialSessionState!.id)
       expect(sessionState).toBeDefined()
       const sessionBefore = await waitForSessionSnapshot(app.electronApp, sessionState!.id)
-      const statusBefore = sessionBefore.status
+      const statusDot = session.row.locator('[data-testid="session-status-dot"]')
+      const statusBefore = await statusDot.getAttribute('data-session-status-testid')
+      expect(statusBefore).toBeTruthy()
 
       const response = await postWebhookEvent({
         port: debugState!.webhookPort!,
@@ -431,13 +455,18 @@ test.describe('Electron push and webhook journeys', () => {
         event: createCanonicalEvent({
           sessionId: sessionState!.id,
           projectId: sessionState!.projectId,
-          status: 'awaiting_input',
-          summary: 'should-not-apply'
+          eventType: 'session.completed',
+          payload: {
+            intent: 'agent.turn_completed',
+            agentState: 'idle',
+            hasUnseenCompletion: true,
+            summary: 'should-not-apply'
+          }
         })
       })
 
       expect(response.status).toBe(401)
-      await expect(session.row.locator('[data-testid="session-status-dot"]')).toHaveAttribute('data-status', statusBefore!)
+      await expect(statusDot).toHaveAttribute('data-session-status-testid', statusBefore!)
       await expect.poll(async () => {
         const nextDebugState = await getMainE2EDebugState(app.electronApp)
         return nextDebugState?.snapshot?.sessions.find(candidate => candidate.id === sessionState!.id) ?? null

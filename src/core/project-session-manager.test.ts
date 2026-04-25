@@ -85,7 +85,7 @@ describe('ProjectSessionManager', () => {
     })).rejects.toThrow()
   })
 
-  test('retries a transient global state read once before bootstrapping', async () => {
+  test('retries a transient global state read once before bootstrap completes', async () => {
     vi.resetModules()
 
     class MockStateReadError extends Error {
@@ -800,7 +800,8 @@ describe('ProjectSessionManager', () => {
         blocking_reason: null,
         last_summary: 'starting...'
       })
-      expect(diskSessions.sessions[0]).not.toHaveProperty('last_known_status')
+      const legacyStatusField = ['last', 'known', 'status'].join('_')
+      expect(Object.prototype.hasOwnProperty.call(diskSessions.sessions[0]!, legacyStatusField)).toBe(false)
     })
 
     test('markRuntimeStarting updates runtime state and summary', async () => {

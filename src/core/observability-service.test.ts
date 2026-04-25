@@ -14,7 +14,6 @@ const session = (overrides: Partial<SessionSummary> = {}): SessionSummary => ({
   id: 'session-1',
   projectId: 'project-1',
   type: 'codex',
-  status: 'running',
   title: 'Codex session',
   summary: 'Working',
   runtimeState: 'alive',
@@ -81,7 +80,6 @@ describe('ObservabilityService', () => {
     expect(service.getAppObservability()).toMatchObject({
       blockedProjectCount: 0,
       failedProjectCount: 0,
-      degradedProjectCount: 0,
       totalUnreadTurns: 0
     })
   })
@@ -140,7 +138,6 @@ describe('ObservabilityService', () => {
     expect(service.getAppObservability()).toMatchObject({
       blockedProjectCount: 0,
       failedProjectCount: 0,
-      degradedProjectCount: 0,
       totalUnreadTurns: 0
     })
   })
@@ -157,7 +154,7 @@ describe('ObservabilityService', () => {
     expect(service.ingest(event({
       eventId: 'turn-complete',
       sequence: 3,
-      type: 'presence.turn_complete',
+      type: 'presence.complete',
       payload: { snippet: 'Turn complete evidence.' }
     }))).toBe(true)
 
@@ -217,7 +214,7 @@ describe('ObservabilityService', () => {
     service.ingest(event({
       eventId: 'ready-event',
       sequence: 10,
-      type: 'presence.turn_complete',
+      type: 'presence.complete',
       occurredAt: '2026-01-01T00:00:10.000Z'
     }))
     service.ingest(event({
@@ -260,7 +257,7 @@ describe('ObservabilityService', () => {
       event({
         eventId: 'awaiting-input',
         occurredAt: '2026-01-01T00:00:20.000Z',
-        type: 'presence.awaiting_input',
+        type: 'presence.ready',
         payload: {}
       })
     )
@@ -330,7 +327,7 @@ describe('ObservabilityService', () => {
     service.ingest(event({
       eventId: 'presence-summary',
       sequence: 10,
-      type: 'presence.turn_complete',
+      type: 'presence.complete',
       payload: { summary: 'Presence summary.' }
     }))
     service.ingest(event({
@@ -394,7 +391,7 @@ describe('ObservabilityService', () => {
     })
     const duplicate = event({
       eventId: 'same-event',
-      type: 'presence.needs_confirmation',
+      type: 'presence.blocked',
       payload: { snippet: 'Approval required.' }
     })
 
@@ -402,7 +399,7 @@ describe('ObservabilityService', () => {
     expect(service.ingest(duplicate)).toBe(true)
     const afterFirstIngest = service.getSessionPresence('session-1')
 
-    expect(service.ingest({ ...duplicate, type: 'presence.error', payload: { snippet: 'Should not project.' } })).toBe(false)
+    expect(service.ingest({ ...duplicate, type: 'presence.failed', payload: { snippet: 'Should not project.' } })).toBe(false)
 
     expect(service.getSessionPresence('session-1')).toEqual(afterFirstIngest)
     expect(store.listSessionEvents('session-1', { limit: 10 }).events).toEqual([{ ...duplicate, sequence: 1 }])
@@ -501,14 +498,12 @@ describe('ObservabilityService', () => {
       overallHealth: 'lost',
       activeSessionCount: 2,
       blockedSessionCount: 1,
-      degradedSessionCount: 0,
       failedSessionCount: 1,
       unreadTurnCount: 1
     })
     expect(service.getAppObservability()).toMatchObject({
       blockedProjectCount: 1,
       failedProjectCount: 1,
-      degradedProjectCount: 0,
       totalUnreadTurns: 1
     })
   })

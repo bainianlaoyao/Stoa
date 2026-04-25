@@ -239,7 +239,11 @@ describe('E2E: webhook runtime integration', () => {
 
     expect(initialPersistedSession).toBeDefined()
     expect(initialPersistedSession!.runtime_state).toBe('created')
-    expect(getSessionState(harness.manager, harness.session.id).status).toBe('bootstrapping')
+    expect(getSessionState(harness.manager, harness.session.id)).toMatchObject({
+      runtimeState: 'created',
+      agentState: 'unknown',
+      summary: 'Waiting for session to start'
+    })
 
     const wrongSecretResponse = await httpPost(
       harness.port,
@@ -280,7 +284,11 @@ describe('E2E: webhook runtime integration', () => {
     expect(JSON.parse(missingSecretResponse.body)).toEqual({ accepted: false, reason: 'invalid_secret' })
 
     expect(getSessionEvents(harness.sent)).toHaveLength(0)
-    expect(getSessionState(harness.manager, harness.session.id).status).toBe('bootstrapping')
+    expect(getSessionState(harness.manager, harness.session.id)).toMatchObject({
+      runtimeState: 'created',
+      agentState: 'unknown',
+      summary: 'Waiting for session to start'
+    })
 
     const diskSessions = await readProjectSessions(harness.workspaceDir)
     const persistedSession = diskSessions.sessions.find(candidate => candidate.session_id === harness.session.id)

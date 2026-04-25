@@ -7,15 +7,16 @@ import {
 } from './fixtures/electron-app'
 import { createProject, createSession } from './helpers/ui-actions'
 
-async function waitForSessionStatus(
+async function waitForSessionState(
   app: LaunchedElectronApp,
   title: string,
-  status: 'running' | 'starting' | 'exited'
+  predicate: (session: { runtimeState?: string; agentState?: string }) => boolean
 ): Promise<void> {
   await expect.poll(async () => {
     const debugState = await getMainE2EDebugState(app.electronApp)
-    return debugState?.snapshot?.sessions.find((session) => session.title === title)?.status ?? null
-  }).toBe(status)
+    const session = debugState?.snapshot?.sessions.find((candidate) => candidate.title === title) ?? null
+    return session && predicate(session) ? session : null
+  }).not.toBeNull()
 }
 
 async function waitForSessionByTitle(app: LaunchedElectronApp, title: string) {
@@ -46,7 +47,7 @@ test.describe('Electron recovery journeys', () => {
       })
 
       await expect(session.row).toHaveAttribute('aria-current', 'true')
-      await waitForSessionStatus(app, session.title, 'running')
+      await waitForSessionState(app, session.title, (candidate) => candidate.runtimeState === 'alive')
 
       const sessionBeforeRestart = await waitForSessionByTitle(app, session.title)
       expect(sessionBeforeRestart.recoveryMode).toBe('fresh-shell')
@@ -63,7 +64,7 @@ test.describe('Electron recovery journeys', () => {
       const recoveredSession = await waitForSessionByTitle(app, session.title)
       expect(recoveredSession.id).toBe(sessionBeforeRestart.id)
       expect(recoveredSession.recoveryMode).toBe('fresh-shell')
-      await waitForSessionStatus(app, session.title, 'running')
+      await waitForSessionState(app, session.title, (candidate) => candidate.runtimeState === 'alive')
 
       const terminalViewport = app.page.getByTestId('terminal-viewport')
       await expect(terminalViewport).toBeVisible()

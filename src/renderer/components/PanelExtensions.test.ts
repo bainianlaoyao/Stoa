@@ -26,7 +26,6 @@ const mockSession: SessionSummary = {
   id: 's1',
   projectId: 'p1',
   type: 'shell',
-  status: 'running',
   runtimeState: 'alive',
   agentState: 'unknown',
   hasUnseenCompletion: false,

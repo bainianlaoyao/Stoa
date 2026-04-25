@@ -32,7 +32,6 @@ function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
     getAppObservability: vi.fn().mockResolvedValue({
       blockedProjectCount: 0,
       failedProjectCount: 0,
-      degradedProjectCount: 0,
       totalUnreadTurns: 0,
       projectsNeedingAttention: [],
       providerHealthSummary: {},

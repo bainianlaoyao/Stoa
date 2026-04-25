@@ -308,7 +308,7 @@ describe('E2E: Frontend Store Projection', () => {
       expect(node!.updatedAt).toBe(project.updatedAt)
     })
 
-    test('hierarchy sessions contain full data (type, status, title, summary, recoveryMode)', async () => {
+    test('hierarchy sessions contain full data (type, runtimeState, agentState, title, summary, recoveryMode)', async () => {
       const workspaceDir = await createTestWorkspace('stoa-store-p2a-')
       const globalStatePath = await createTestGlobalStatePath()
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
@@ -324,7 +324,8 @@ describe('E2E: Frontend Store Projection', () => {
       expect(hierarchySession).toBeDefined()
       expect(hierarchySession!.id).toBe(shellSession.id)
       expect(hierarchySession!.type).toBe('shell')
-      expect(hierarchySession!.status).toBe('bootstrapping')
+      expect(hierarchySession!.runtimeState).toBe('created')
+      expect(hierarchySession!.agentState).toBe('unknown')
       expect(hierarchySession!.title).toBe('Shell Full')
       expect(hierarchySession!.summary).toBe(shellSession.summary)
       expect(hierarchySession!.recoveryMode).toBe('fresh-shell')
@@ -504,7 +505,8 @@ describe('E2E: Frontend Store Projection', () => {
       expect(store.sessions[0]!.projectId).toBe(project.id)
       expect(store.sessions[0]!.type).toBe('shell')
       expect(store.sessions[0]!.title).toBe('IPC Shell')
-      expect(store.sessions[0]!.status).toBe('bootstrapping')
+      expect(store.sessions[0]!.runtimeState).toBe('created')
+      expect(store.sessions[0]!.agentState).toBe('unknown')
       expect(store.sessions[0]!.recoveryMode).toBe('fresh-shell')
     })
 
@@ -794,7 +796,7 @@ describe('E2E: Frontend Store Projection', () => {
       expect(store.activeSession!.id).toBe(session.id)
     })
 
-    test('multiple sessions with same status all render correctly in hierarchy', async () => {
+    test('multiple sessions with same initial runtime and agent state all render correctly in hierarchy', async () => {
       const workspaceDir = await createTestWorkspace('stoa-store-p6-')
       const globalStatePath = await createTestGlobalStatePath()
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
@@ -817,9 +819,10 @@ describe('E2E: Frontend Store Projection', () => {
       expect(ids).toContain(session2.id)
       expect(ids).toContain(session3.id)
 
-      // All sessions have bootstrapping status since just created
+      // All sessions are freshly created and should start from the same base state.
       for (const s of hierarchy[0]!.sessions) {
-        expect(s.status).toBe('bootstrapping')
+        expect(s.runtimeState).toBe('created')
+        expect(s.agentState).toBe('unknown')
       }
     })
   })

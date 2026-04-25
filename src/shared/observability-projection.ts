@@ -167,7 +167,6 @@ export function buildProjectObservabilitySnapshot(
     overallHealth: aggregateSessionHealth(sessions),
     activeSessionCount: sessions.length,
     blockedSessionCount: sessions.filter((session) => session.phase === 'blocked').length,
-    degradedSessionCount: 0,
     failedSessionCount: sessions.filter((session) => session.phase === 'failed').length,
     unreadTurnCount: sessions.filter((session) => session.hasUnreadTurn).length,
     latestAttentionSessionId: attentionSession?.sessionId ?? null,
@@ -186,7 +185,6 @@ export function buildAppObservabilitySnapshot(
   return {
     blockedProjectCount: projects.filter((project) => project.blockedSessionCount > 0).length,
     failedProjectCount: projects.filter((project) => project.failedSessionCount > 0).length,
-    degradedProjectCount: projects.filter((project) => project.degradedSessionCount > 0).length,
     totalUnreadTurns: projects.reduce((total, project) => total + project.unreadTurnCount, 0),
     projectsNeedingAttention: projects
       .filter((project) => project.latestAttentionSessionId !== null)
@@ -221,10 +219,6 @@ function recoveryPointerStateForSession(session: SessionSummary): RecoveryPointe
 function aggregateHealth(healthValues: ObservabilityHealth[]): ObservabilityHealth {
   if (healthValues.includes('lost')) {
     return 'lost'
-  }
-
-  if (healthValues.includes('degraded')) {
-    return 'degraded'
   }
 
   return 'healthy'

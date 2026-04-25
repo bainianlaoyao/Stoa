@@ -16,7 +16,7 @@ const mockProject: ProjectSummary = {
 }
 
 const mockSession: SessionSummary = {
-  id: 'session_1', projectId: 'project_1', type: 'opencode', status: 'running',
+  id: 'session_1', projectId: 'project_1', type: 'opencode',
   runtimeState: 'alive', agentState: 'working', hasUnseenCompletion: false,
   runtimeExitCode: null, runtimeExitReason: null, lastStateSequence: 1, blockingReason: null,
   title: 'test session', summary: 'running', recoveryMode: 'resume-external',
@@ -55,7 +55,6 @@ describe('TerminalMetaBar', () => {
     const blockedSession: SessionSummary = {
       ...mockSession,
       type: 'claude-code',
-      status: 'needs_confirmation',
       agentState: 'blocked',
       blockingReason: 'resume-confirmation',
       summary: 'waiting for resume confirmation'
@@ -91,7 +90,7 @@ describe('TerminalMetaBar', () => {
     expect(wrapper.text()).toContain('project_1')
     expect(wrapper.text()).toContain('session_1')
     expect(wrapper.text()).toContain('opencode')
-    expect(wrapper.text()).toContain('running')
+    expect(wrapper.text()).toContain('alive / working')
   })
 
   it('with project null: renders nothing', () => {

@@ -1,22 +1,22 @@
 import { defineJourney } from '../contracts/testing-contracts'
 
-export const sessionTelemetryTurnCompleteJourney = defineJourney({
-  id: 'journey.session.telemetry.turn-complete',
-  behavior: 'session.telemetry.turn-complete',
+export const sessionTelemetryCompleteJourney = defineJourney({
+  id: 'journey.session.telemetry.complete',
+  behavior: 'session.telemetry.complete',
   usageMode: 'active_workflow',
   setup: ['project.withProviderSession', 'session.selectedInCommandSurface'],
-  act: ['post.session.turnComplete', 'post.claude.stopHook'],
-  assert: ['command.sessionStatusVisible', 'terminal.liveSessionPreserved', 'persisted.sessionStatusUpdated'],
+  act: ['post.session.complete', 'post.claude.stopHook'],
+  assert: ['command.sessionStatusCompleteVisible', 'terminal.liveSessionPreserved', 'persisted.sessionPresenceUpdated'],
   variants: ['canonical', 'claude-hook']
 })
 
-export const sessionTelemetryNeedsConfirmationJourney = defineJourney({
-  id: 'journey.session.telemetry.needs-confirmation',
-  behavior: 'session.telemetry.needs-confirmation',
+export const sessionTelemetryBlockedJourney = defineJourney({
+  id: 'journey.session.telemetry.blocked',
+  behavior: 'session.telemetry.blocked',
   usageMode: 'active_workflow',
   setup: ['project.withProviderSession', 'session.selectedInCommandSurface'],
   act: ['post.claude.permissionRequestHook'],
-  assert: ['command.sessionStatusVisible', 'terminal.liveSessionPreserved', 'persisted.sessionStatusUpdated'],
+  assert: ['command.sessionStatusBlockedVisible', 'terminal.liveSessionPreserved', 'persisted.sessionPresenceUpdated'],
   variants: ['claude-hook']
 })
 

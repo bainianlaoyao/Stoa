@@ -34,10 +34,10 @@ function createCanonicalEvent(overrides: Partial<CanonicalSessionEvent> = {}): C
   }
 }
 
-function createTurnCompleteEvent(): CanonicalSessionEvent {
+function createCompletionEvent(): CanonicalSessionEvent {
   return {
     event_version: 1,
-    event_id: 'evt_turn_complete',
+    event_id: 'evt_completion',
     event_type: 'session.idle',
     timestamp: new Date().toISOString(),
     session_id: 'session_1',
@@ -163,7 +163,7 @@ describe('SessionEventBridge', () => {
     })
   })
 
-  test('canonical turn_complete events reach applyProviderStatePatch unchanged', async () => {
+  test('canonical completion events reach applyProviderStatePatch unchanged', async () => {
     const manager = ProjectSessionManager.createForTest()
     const controller = {
       applyProviderStatePatch: vi.fn(async () => {})
@@ -173,7 +173,7 @@ describe('SessionEventBridge', () => {
 
     const port = await bridge.start()
     const secret = bridge.issueSessionSecret('session_1')
-    const response = await postEvent(port, createTurnCompleteEvent(), secret)
+    const response = await postEvent(port, createCompletionEvent(), secret)
 
     expect(response.statusCode).toBe(202)
     expect(controller.applyProviderStatePatch).toHaveBeenCalledWith({
@@ -295,7 +295,7 @@ describe('SessionEventBridge', () => {
     )
   })
 
-  test('canonical turn_complete events also ingest an observability event', async () => {
+  test('canonical completion events also ingest an observability event', async () => {
     const manager = ProjectSessionManager.createForTest()
     const controller = {
       applyProviderStatePatch: vi.fn(async () => {})
@@ -310,7 +310,7 @@ describe('SessionEventBridge', () => {
 
     const port = await bridge.start()
     const secret = bridge.issueSessionSecret('session_1')
-    const canonical = createTurnCompleteEvent()
+    const canonical = createCompletionEvent()
     const response = await postEvent(port, canonical, secret)
 
     expect(response.statusCode).toBe(202)
@@ -332,7 +332,7 @@ describe('SessionEventBridge', () => {
     })
     expect(observability.ingest).toHaveBeenCalledWith(
       expect.objectContaining<Partial<ObservationEvent>>({
-        eventId: 'evt_turn_complete',
+        eventId: 'evt_completion',
         eventVersion: 1,
         occurredAt: canonical.timestamp,
         ingestedAt: '2026-01-01T00:00:10.000Z',
@@ -341,9 +341,10 @@ describe('SessionEventBridge', () => {
         sessionId: 'session_1',
         providerId: null,
         category: 'presence',
-        type: 'presence.turn_complete',
-        severity: 'info',
-        retention: 'operational',
+        type: 'presence.complete',
+        severity: 'attention',
+        retention: 'critical',
+        sequence: 0,
         source: 'hook-sidecar',
         correlationId: null,
         dedupeKey: null,

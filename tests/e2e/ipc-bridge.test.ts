@@ -85,7 +85,6 @@ const defaultProjectObservability: ProjectObservabilitySnapshot = {
   overallHealth: 'healthy',
   activeSessionCount: 1,
   blockedSessionCount: 0,
-  degradedSessionCount: 0,
   failedSessionCount: 0,
   unreadTurnCount: 0,
   latestAttentionSessionId: null,
@@ -98,7 +97,6 @@ const defaultProjectObservability: ProjectObservabilitySnapshot = {
 const defaultAppObservability: AppObservabilitySnapshot = {
   blockedProjectCount: 0,
   failedProjectCount: 0,
-  degradedProjectCount: 0,
   totalUnreadTurns: 0,
   projectsNeedingAttention: [],
   providerHealthSummary: {},

@@ -62,7 +62,8 @@ describe('launchTrackedSessionRuntime', () => {
           path: project.path,
           title: 'Restored shell',
           type: 'shell',
-          status: 'bootstrapping',
+          runtimeState: 'created',
+          agentState: 'unknown',
           externalSessionId: null,
           sessionSecret: 'secret-1'
         }),

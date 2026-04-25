@@ -5,27 +5,27 @@ import {
   sessionPresenceReadyJourney,
   sessionPresenceRunningJourney,
   sessionTelemetryClaudeLifecycleJourney,
-  sessionTelemetryNeedsConfirmationJourney,
-  sessionTelemetryTurnCompleteJourney
+  sessionTelemetryBlockedJourney,
+  sessionTelemetryCompleteJourney
 } from './session-telemetry.journey'
 
 describe('session telemetry journey', () => {
-  it('links the turn_complete journey to telemetry behavior coverage', () => {
-    expect(sessionTelemetryTurnCompleteJourney.id).toBe('journey.session.telemetry.turn-complete')
-    expect(sessionTelemetryTurnCompleteJourney.behavior).toBe('session.telemetry.turn-complete')
-    expect(sessionTelemetryTurnCompleteJourney.usageMode).toBe('active_workflow')
-    expect(sessionTelemetryTurnCompleteJourney.act).toEqual(['post.session.turnComplete', 'post.claude.stopHook'])
-    expect(sessionTelemetryTurnCompleteJourney.assert).toContain('terminal.liveSessionPreserved')
-    expect(sessionTelemetryTurnCompleteJourney.variants).toContain('claude-hook')
+  it('links the completion journey to telemetry behavior coverage', () => {
+    expect(sessionTelemetryCompleteJourney.id).toBe('journey.session.telemetry.complete')
+    expect(sessionTelemetryCompleteJourney.behavior).toBe('session.telemetry.complete')
+    expect(sessionTelemetryCompleteJourney.usageMode).toBe('active_workflow')
+    expect(sessionTelemetryCompleteJourney.act).toEqual(['post.session.complete', 'post.claude.stopHook'])
+    expect(sessionTelemetryCompleteJourney.assert).toContain('terminal.liveSessionPreserved')
+    expect(sessionTelemetryCompleteJourney.variants).toContain('claude-hook')
   })
 
-  it('links the needs_confirmation journey to telemetry behavior coverage', () => {
-    expect(sessionTelemetryNeedsConfirmationJourney.id).toBe('journey.session.telemetry.needs-confirmation')
-    expect(sessionTelemetryNeedsConfirmationJourney.behavior).toBe('session.telemetry.needs-confirmation')
-    expect(sessionTelemetryNeedsConfirmationJourney.usageMode).toBe('active_workflow')
-    expect(sessionTelemetryNeedsConfirmationJourney.act).toEqual(['post.claude.permissionRequestHook'])
-    expect(sessionTelemetryNeedsConfirmationJourney.assert).toContain('terminal.liveSessionPreserved')
-    expect(sessionTelemetryNeedsConfirmationJourney.variants).toEqual(['claude-hook'])
+  it('links the blocked journey to telemetry behavior coverage', () => {
+    expect(sessionTelemetryBlockedJourney.id).toBe('journey.session.telemetry.blocked')
+    expect(sessionTelemetryBlockedJourney.behavior).toBe('session.telemetry.blocked')
+    expect(sessionTelemetryBlockedJourney.usageMode).toBe('active_workflow')
+    expect(sessionTelemetryBlockedJourney.act).toEqual(['post.claude.permissionRequestHook'])
+    expect(sessionTelemetryBlockedJourney.assert).toContain('terminal.liveSessionPreserved')
+    expect(sessionTelemetryBlockedJourney.variants).toEqual(['claude-hook'])
   })
 
   it('maps the Claude lifecycle from ready through running blocked complete and back to ready', () => {

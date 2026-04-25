@@ -9,16 +9,6 @@ import type { BlockingReason } from '@shared/observability'
 
 export type SessionType = 'shell' | 'opencode' | 'codex' | 'claude-code'
 export type SessionRecoveryMode = 'fresh-shell' | 'resume-external'
-export type SessionStatus =
-  | 'bootstrapping'
-  | 'starting'
-  | 'running'
-  | 'turn_complete'
-  | 'awaiting_input'
-  | 'degraded'
-  | 'error'
-  | 'exited'
-  | 'needs_confirmation'
 export type SessionRuntimeState = 'created' | 'starting' | 'alive' | 'exited' | 'failed_to_start'
 export type SessionAgentState = 'unknown' | 'idle' | 'working' | 'blocked' | 'error'
 export type SessionStateSource = 'runtime' | 'provider' | 'ui'
@@ -84,7 +74,6 @@ export interface SessionSummary {
   id: string
   projectId: string
   type: SessionType
-  status: SessionStatus
   runtimeState: SessionRuntimeState
   agentState: SessionAgentState
   hasUnseenCompletion: boolean

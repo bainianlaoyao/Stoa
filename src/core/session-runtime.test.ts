@@ -52,7 +52,8 @@ describe('session runtime', () => {
         path: 'D:/demo',
         title: 'Deploy',
         type: 'opencode',
-        status: 'running',
+        runtimeState: 'alive',
+        agentState: 'working',
         externalSessionId: null,
         sessionSecret: 'secret-1',
         providerPort: 43128
@@ -100,7 +101,8 @@ describe('session runtime', () => {
         path: 'D:/demo',
         title: 'Shell',
         type: 'shell',
-        status: 'running',
+        runtimeState: 'alive',
+        agentState: 'working',
         externalSessionId: null,
         sessionSecret: 'secret-1',
         providerPort: 43128
@@ -149,7 +151,8 @@ describe('session runtime', () => {
         path: 'D:/demo',
         title: 'Deploy',
         type: 'opencode',
-        status: 'running',
+        runtimeState: 'alive',
+        agentState: 'working',
         externalSessionId: 'ext-123',
         sessionSecret: 'secret-1',
         providerPort: 43128
@@ -198,7 +201,8 @@ describe('session runtime', () => {
         path: 'D:/demo',
         title: 'Fast exit',
         type: 'opencode',
-        status: 'running',
+        runtimeState: 'alive',
+        agentState: 'working',
         externalSessionId: null,
         sessionSecret: 'secret-1',
         providerPort: 43128
@@ -238,7 +242,8 @@ describe('session runtime', () => {
         path: 'D:/demo',
         title: 'Deploy',
         type: 'opencode',
-        status: 'needs_confirmation',
+        runtimeState: 'alive',
+        agentState: 'blocked',
         externalSessionId: null,
         sessionSecret: 'secret-1',
         providerPort: 43128
@@ -287,7 +292,8 @@ describe('session runtime', () => {
         path: 'D:/demo',
         title: 'Deploy',
         type: 'opencode',
-        status: 'needs_confirmation',
+        runtimeState: 'alive',
+        agentState: 'blocked',
         externalSessionId: 'stale-ext-1',
         sessionSecret: 'secret-1',
         providerPort: 43128
@@ -336,7 +342,8 @@ describe('session runtime', () => {
         path: 'D:/demo',
         title: 'Claude',
         type: 'claude-code',
-        status: 'bootstrapping',
+        runtimeState: 'created',
+        agentState: 'unknown',
         externalSessionId: 'claude-seeded-1',
         sessionSecret: 'secret-1',
         providerPort: 43128
@@ -382,7 +389,8 @@ describe('session runtime', () => {
         path: 'D:/demo',
         title: 'Codex',
         type: 'codex',
-        status: 'bootstrapping',
+        runtimeState: 'created',
+        agentState: 'unknown',
         externalSessionId: null,
         sessionSecret: 'secret-1',
         providerPort: 43128
@@ -437,7 +445,8 @@ describe('session runtime', () => {
         path: 'D:/demo',
         title: 'Codex recovered',
         type: 'codex',
-        status: 'running',
+        runtimeState: 'alive',
+        agentState: 'working',
         externalSessionId: null,
         sessionSecret: 'secret-1',
         providerPort: 43128
@@ -490,7 +499,8 @@ describe('session runtime', () => {
         path: 'D:/demo',
         title: 'Codex resume',
         type: 'codex',
-        status: 'running',
+        runtimeState: 'alive',
+        agentState: 'working',
         externalSessionId: 'codex-known-123',
         sessionSecret: 'secret-1',
         providerPort: 43128
@@ -536,7 +546,8 @@ describe('session runtime', () => {
         path: 'D:/demo',
         title: 'Claude boot',
         type: 'claude-code',
-        status: 'bootstrapping',
+        runtimeState: 'created',
+        agentState: 'unknown',
         externalSessionId: 'claude-seeded-boot',
         sessionSecret: 'secret-1',
         providerPort: 43128

@@ -30,7 +30,8 @@ interface CompositionHarness {
     path: string
     title: string
     type: 'shell' | 'opencode'
-    status: string
+    runtimeState: 'created' | 'starting' | 'alive' | 'exited' | 'failed_to_start'
+    agentState: 'unknown' | 'idle' | 'working' | 'blocked' | 'error'
     externalSessionId: string | null
   }
   globalStatePath: string
@@ -102,7 +103,8 @@ async function createCompositionHarness(activeHosts: PtyHost[]): Promise<Composi
       path: workspaceDir,
       title: session.title,
       type: session.type,
-      status: session.status,
+      runtimeState: session.runtimeState,
+      agentState: session.agentState,
       externalSessionId: session.externalSessionId
     },
     webhookPort: 43127,
@@ -121,7 +123,8 @@ async function createCompositionHarness(activeHosts: PtyHost[]): Promise<Composi
       path: workspaceDir,
       title: session.title,
       type: session.type,
-      status: session.status,
+      runtimeState: session.runtimeState,
+      agentState: session.agentState,
       externalSessionId: session.externalSessionId
     },
     globalStatePath
@@ -240,7 +243,8 @@ describe('E2E: Composition seam', () => {
         path: workspaceDir,
         title: session.title,
         type: session.type,
-        status: session.status,
+        runtimeState: session.runtimeState,
+        agentState: session.agentState,
         externalSessionId: session.externalSessionId
       },
       webhookPort: 43127,

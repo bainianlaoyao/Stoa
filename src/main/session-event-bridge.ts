@@ -167,19 +167,19 @@ function mapIntentToObservation(intent: CanonicalSessionEvent['payload']['intent
     case 'agent.tool_started':
       return { category: 'presence', type: 'presence.running', severity: 'info', retention: 'operational' }
     case 'agent.turn_completed':
-      return { category: 'presence', type: 'presence.turn_complete', severity: 'info', retention: 'operational' }
+      return { category: 'presence', type: 'presence.complete', severity: 'attention', retention: 'critical' }
     case 'agent.permission_requested':
-      return { category: 'presence', type: 'presence.needs_confirmation', severity: 'attention', retention: 'critical' }
+      return { category: 'presence', type: 'presence.blocked', severity: 'attention', retention: 'critical' }
     case 'agent.permission_resolved':
     case 'agent.recovered':
-      return { category: 'presence', type: 'presence.degraded', severity: 'warning', retention: 'critical' }
+      return { category: 'presence', type: 'presence.ready', severity: 'info', retention: 'operational' }
     case 'agent.turn_failed':
-      return { category: 'presence', type: 'presence.error', severity: 'error', retention: 'critical' }
+      return { category: 'presence', type: 'presence.failed', severity: 'error', retention: 'critical' }
     case 'runtime.exited_clean':
     case 'runtime.exited_failed':
       return { category: 'lifecycle', type: 'lifecycle.session_exited', severity: 'info', retention: 'operational' }
     case 'runtime.created':
-      return { category: 'lifecycle', type: 'lifecycle.session_bootstrapping', severity: 'info', retention: 'ephemeral' }
+      return { category: 'lifecycle', type: 'lifecycle.session_created', severity: 'info', retention: 'ephemeral' }
     case 'runtime.starting':
     case 'runtime.alive':
     case 'runtime.failed_to_start':

@@ -18,7 +18,6 @@ function sessionFixture(patch: Partial<SessionSummary> = {}): SessionSummary {
     id: 'session-1',
     projectId: 'project-1',
     type: 'claude-code',
-    status: 'running',
     title: 'Implement feature',
     summary: 'Working on feature',
     runtimeState: 'alive',
@@ -88,7 +87,6 @@ describe('observability projection', () => {
 
   it('builds a session presence snapshot with the approved contract', () => {
     const snapshot = buildSessionPresenceSnapshot(sessionFixture({
-      status: 'turn_complete',
       agentState: 'idle',
       hasUnseenCompletion: true
     }), {
@@ -141,7 +139,6 @@ describe('observability projection', () => {
 
   it('builds session row view models with approved labels and attention state', () => {
     const session = sessionFixture({
-      status: 'needs_confirmation',
       agentState: 'blocked',
       blockingReason: 'resume-confirmation'
     })
@@ -171,7 +168,6 @@ describe('observability projection', () => {
 
   it('builds active session view models with descriptor labels', () => {
     const session = sessionFixture({
-      status: 'turn_complete',
       agentState: 'idle',
       hasUnseenCompletion: true
     })
@@ -202,7 +198,6 @@ describe('observability projection', () => {
     const session = sessionFixture({
       id: 'shell-session',
       type: 'shell',
-      status: 'turn_complete',
       agentState: 'idle',
       hasUnseenCompletion: true,
       externalSessionId: null
@@ -276,7 +271,6 @@ describe('observability projection', () => {
       overallHealth: 'lost',
       activeSessionCount: 3,
       blockedSessionCount: 1,
-      degradedSessionCount: 0,
       failedSessionCount: 1,
       unreadTurnCount: 1,
       latestAttentionSessionId: 'failed',
@@ -292,7 +286,6 @@ describe('observability projection', () => {
       sessionFixture({
         id: 'blocked-session',
         projectId: 'project-blocked',
-        status: 'needs_confirmation',
         agentState: 'blocked',
         blockingReason: 'resume-confirmation'
       }),
@@ -302,7 +295,6 @@ describe('observability projection', () => {
       sessionFixture({
         id: 'failed-session',
         projectId: 'project-failed',
-        status: 'error',
         type: 'codex',
         agentState: 'error'
       }),
@@ -318,7 +310,6 @@ describe('observability projection', () => {
     expect(app).toEqual({
       blockedProjectCount: 1,
       failedProjectCount: 1,
-      degradedProjectCount: 0,
       totalUnreadTurns: 1,
       projectsNeedingAttention: ['project-blocked', 'project-failed'],
       providerHealthSummary: {
@@ -331,7 +322,7 @@ describe('observability projection', () => {
     })
   })
 
-  it('does not promote blocked or complete session phases to degraded aggregate health', () => {
+  it('keeps blocked and complete session phases on healthy aggregate health', () => {
     const blockedSession = buildSessionPresenceSnapshot(
       sessionFixture({
         id: 'blocked-session',
@@ -352,16 +343,16 @@ describe('observability projection', () => {
     const project = buildProjectObservabilitySnapshot(
       'project-attention',
       [
-        { ...blockedSession, health: 'degraded' },
-        { ...completeSession, health: 'degraded' }
+        blockedSession,
+        completeSession
       ],
       NOW_ISO
     )
     const app = buildAppObservabilitySnapshot(
       [project],
       [
-        { ...blockedSession, health: 'degraded' },
-        { ...completeSession, health: 'degraded' }
+        blockedSession,
+        completeSession
       ],
       NOW_ISO
     )
@@ -369,11 +360,9 @@ describe('observability projection', () => {
     expect(project).toMatchObject({
       overallHealth: 'healthy',
       blockedSessionCount: 1,
-      degradedSessionCount: 0,
       failedSessionCount: 0
     })
     expect(app).toMatchObject({
-      degradedProjectCount: 0,
       providerHealthSummary: {
         'claude-code': 'healthy'
       }

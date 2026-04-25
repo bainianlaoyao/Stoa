@@ -33,7 +33,6 @@ function createSessionSummary(patch: Partial<SessionSummary> = {}): SessionSumma
     id: 'session_op_1',
     projectId: 'project_alpha',
     type: 'opencode',
-    status: 'bootstrapping',
     runtimeState: 'created',
     agentState: 'unknown',
     hasUnseenCompletion: false,
@@ -91,7 +90,6 @@ describe('E2E: IPC Push Harness', () => {
 
     bus.push(IPC_CHANNELS.sessionEvent, {
       session: createSessionSummary({
-        status: 'starting',
         summary: 'booting sidecar',
         runtimeState: 'starting',
         lastStateSequence: 1
@@ -100,18 +98,18 @@ describe('E2E: IPC Push Harness', () => {
 
     bus.push(IPC_CHANNELS.sessionEvent, {
       session: createSessionSummary({
-        status: 'running',
         summary: 'attached',
         runtimeState: 'alive',
+        agentState: 'working',
         lastStateSequence: 2
       })
     })
 
     bus.push(IPC_CHANNELS.sessionEvent, {
       session: createSessionSummary({
-        status: 'exited',
         summary: 'process exited',
         runtimeState: 'exited',
+        agentState: 'idle',
         runtimeExitCode: 0,
         runtimeExitReason: 'clean',
         lastStateSequence: 3
@@ -121,7 +119,6 @@ describe('E2E: IPC Push Harness', () => {
     expect(received).toEqual([
       {
         session: createSessionSummary({
-          status: 'starting',
           summary: 'booting sidecar',
           runtimeState: 'starting',
           lastStateSequence: 1
@@ -129,17 +126,17 @@ describe('E2E: IPC Push Harness', () => {
       },
       {
         session: createSessionSummary({
-          status: 'running',
           summary: 'attached',
           runtimeState: 'alive',
+          agentState: 'working',
           lastStateSequence: 2
         })
       },
       {
         session: createSessionSummary({
-          status: 'exited',
           summary: 'process exited',
           runtimeState: 'exited',
+          agentState: 'idle',
           runtimeExitCode: 0,
           runtimeExitReason: 'clean',
           lastStateSequence: 3
@@ -159,7 +156,6 @@ describe('E2E: IPC Push Harness', () => {
 
     bus.push(IPC_CHANNELS.sessionEvent, {
       session: createSessionSummary({
-        status: 'starting',
         summary: 'booting',
         runtimeState: 'starting',
         lastStateSequence: 1
@@ -168,9 +164,9 @@ describe('E2E: IPC Push Harness', () => {
     unsubscribe()
     bus.push(IPC_CHANNELS.sessionEvent, {
       session: createSessionSummary({
-        status: 'running',
         summary: 'ready',
         runtimeState: 'alive',
+        agentState: 'working',
         lastStateSequence: 2
       })
     })
@@ -178,7 +174,6 @@ describe('E2E: IPC Push Harness', () => {
     expect(received).toEqual([
       {
         session: createSessionSummary({
-          status: 'starting',
           summary: 'booting',
           runtimeState: 'starting',
           lastStateSequence: 1
@@ -216,32 +211,36 @@ describe('E2E: IPC Push Harness', () => {
 
     bus.push(IPC_CHANNELS.sessionEvent, {
       session: createSessionSummary({
-        status: 'running',
         summary: 'attached',
         runtimeState: 'alive',
+        agentState: 'working',
         lastStateSequence: 1
       })
     })
 
-    expect(store.sessions[0]?.status).toBe('running')
+    expect(store.sessions[0]?.runtimeState).toBe('alive')
+    expect(store.sessions[0]?.agentState).toBe('working')
     expect(store.sessions[0]?.summary).toBe('attached')
-    expect(store.activeSession?.status).toBe('running')
+    expect(store.activeSession?.runtimeState).toBe('alive')
+    expect(store.activeSession?.agentState).toBe('working')
     expect(store.activeSession?.summary).toBe('attached')
 
     bus.push(IPC_CHANNELS.sessionEvent, {
       session: createSessionSummary({
-        status: 'exited',
         summary: 'process exited',
         runtimeState: 'exited',
+        agentState: 'idle',
         runtimeExitCode: 0,
         runtimeExitReason: 'clean',
         lastStateSequence: 2
       })
     })
 
-    expect(store.sessions[0]?.status).toBe('exited')
+    expect(store.sessions[0]?.runtimeState).toBe('exited')
+    expect(store.sessions[0]?.agentState).toBe('idle')
     expect(store.sessions[0]?.summary).toBe('process exited')
-    expect(store.activeSession?.status).toBe('exited')
+    expect(store.activeSession?.runtimeState).toBe('exited')
+    expect(store.activeSession?.agentState).toBe('idle')
     expect(store.activeSession?.summary).toBe('process exited')
   })
 })

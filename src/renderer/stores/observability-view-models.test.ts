@@ -16,7 +16,6 @@ function sessionFixture(patch: Partial<SessionSummary> = {}): SessionSummary {
     id: 'session-1',
     projectId: 'project-1',
     type: 'claude-code',
-    status: 'running',
     runtimeState: 'alive',
     agentState: 'working',
     hasUnseenCompletion: false,
@@ -67,7 +66,7 @@ function presenceFixture(patch: Partial<SessionPresenceSnapshot> = {}): SessionP
 describe('renderer observability view models', () => {
   it('builds session row labels from the shared projection semantics', () => {
     const viewModel = toSessionRowViewModel(
-      sessionFixture({ status: 'turn_complete' }),
+      sessionFixture({ agentState: 'idle' }),
       presenceFixture({
         phase: 'ready',
         updatedAt: '2026-04-24T07:58:00.000Z'
@@ -91,7 +90,7 @@ describe('renderer observability view models', () => {
 
   it('labels running Claude sessions as Running in the session row', () => {
     const viewModel = toSessionRowViewModel(
-      sessionFixture({ type: 'claude-code', status: 'running' }),
+      sessionFixture({ type: 'claude-code' }),
       presenceFixture({
         providerId: 'claude-code',
         providerLabel: 'Claude Code',
@@ -130,7 +129,7 @@ describe('renderer observability view models', () => {
 
   it('maps complete rows to warning attention', () => {
     const viewModel = toSessionRowViewModel(
-      sessionFixture({ status: 'turn_complete', agentState: 'idle', hasUnseenCompletion: true }),
+      sessionFixture({ agentState: 'idle', hasUnseenCompletion: true }),
       presenceFixture({
         phase: 'complete',
         agentState: 'idle',
@@ -147,7 +146,6 @@ describe('renderer observability view models', () => {
   it('maps blocked rows to warning attention', () => {
     const blockedPresence = buildSessionPresenceSnapshot(
       sessionFixture({
-        status: 'needs_confirmation',
         agentState: 'blocked',
         blockingReason: 'resume-confirmation'
       }),
@@ -158,7 +156,7 @@ describe('renderer observability view models', () => {
       }
     )
     const blockedViewModel = toSessionRowViewModel(
-      sessionFixture({ status: 'needs_confirmation' }),
+      sessionFixture({ agentState: 'blocked', blockingReason: 'resume-confirmation' }),
       blockedPresence,
       NOW_ISO
     )
@@ -171,7 +169,7 @@ describe('renderer observability view models', () => {
 
   it('maps failed rows to danger attention before complete or blocked attention', () => {
     const viewModel = toSessionRowViewModel(
-      sessionFixture({ status: 'error', agentState: 'error', hasUnseenCompletion: true }),
+      sessionFixture({ agentState: 'error', hasUnseenCompletion: true }),
       presenceFixture({
         phase: 'failed',
         agentState: 'error',

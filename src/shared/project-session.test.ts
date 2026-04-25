@@ -24,7 +24,6 @@ describe('project/session shared contracts', () => {
       id: 'session_shell_1',
       projectId: 'project_alpha',
       type: 'shell' satisfies SessionType,
-      status: 'running',
       runtimeState: 'alive',
       agentState: 'unknown',
       hasUnseenCompletion: false,

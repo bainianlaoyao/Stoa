@@ -28,7 +28,7 @@ export interface ObservationEvent {
 
 export type SessionPresencePhase = 'preparing' | 'ready' | 'running' | 'complete' | 'blocked' | 'failed' | 'exited'
 export type ObservabilityConfidence = 'authoritative' | 'provisional' | 'stale'
-export type ObservabilityHealth = 'healthy' | 'degraded' | 'lost'
+export type ObservabilityHealth = 'healthy' | 'lost'
 export type BlockingReason = 'permission' | 'elicitation' | 'resume-confirmation' | 'provider-error'
 export type RecoveryPointerState = 'trusted' | 'suspect' | 'missing'
 export type ObservabilityTone = 'neutral' | 'accent' | 'success' | 'warning' | 'danger'
@@ -80,7 +80,6 @@ export interface ProjectObservabilitySnapshot {
   overallHealth: ObservabilityHealth
   activeSessionCount: number
   blockedSessionCount: number
-  degradedSessionCount: number
   failedSessionCount: number
   unreadTurnCount: number
   latestAttentionSessionId: string | null
@@ -93,7 +92,6 @@ export interface ProjectObservabilitySnapshot {
 export interface AppObservabilitySnapshot {
   blockedProjectCount: number
   failedProjectCount: number
-  degradedProjectCount: number
   totalUnreadTurns: number
   projectsNeedingAttention: string[]
   providerHealthSummary: Record<string, ObservabilityHealth>

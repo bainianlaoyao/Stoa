@@ -114,7 +114,7 @@ describe('E2E: Store Lifecycle Synchronization', () => {
   })
 
   describe('Single session: full lifecycle through store', () => {
-    test('store tracks session through bootstrapping → starting → running → exited', async () => {
+    test('store tracks session through created → starting → alive → exited', async () => {
       const workspaceDir = await createTestWorkspace('stoa-sync-lifecycle-')
       const globalStatePath = await createTestGlobalStatePath()
 
@@ -127,19 +127,18 @@ describe('E2E: Store Lifecycle Synchronization', () => {
       store.hydrate(snapshot)
 
       expect(store.sessions).toHaveLength(1)
-      expect(store.sessions[0]!.status).toBe('bootstrapping')
-      expect(store.activeSession!.status).toBe('bootstrapping')
+      expect(store.sessions[0]!.runtimeState).toBe('created')
+      expect(store.sessions[0]!.agentState).toBe('unknown')
+      expect(store.activeSession!.runtimeState).toBe('created')
+      expect(store.activeSession!.agentState).toBe('unknown')
+      expect(store.activeSession!.summary).toBe('Waiting for session to start')
 
       const ptyHost = new PtyHost()
       activeHosts.push(ptyHost)
       const capturing = createStoreCapturingManager(manager)
 
       await startSessionRuntime({
-        session: {
-          id: session.id, projectId: session.projectId, path: workspaceDir,
-          title: session.title, type: session.type, status: session.status,
-          externalSessionId: session.externalSessionId
-        },
+        session: { ...session, path: workspaceDir },
         webhookPort: 43127, provider: createEchoProvider(), ptyHost, manager: capturing
       })
 
@@ -158,7 +157,7 @@ describe('E2E: Store Lifecycle Synchronization', () => {
       expect(store.activeSession!.runtimeState).toBe('exited')
     })
 
-    test('projectHierarchy reflects status changes through lifecycle', async () => {
+    test('projectHierarchy reflects runtime changes through lifecycle', async () => {
       const workspaceDir = await createTestWorkspace('stoa-sync-hierarchy-')
       const globalStatePath = await createTestGlobalStatePath()
 
@@ -174,11 +173,7 @@ describe('E2E: Store Lifecycle Synchronization', () => {
       const capturing = createStoreCapturingManager(manager)
 
       await startSessionRuntime({
-        session: {
-          id: session.id, projectId: session.projectId, path: workspaceDir,
-          title: session.title, type: session.type, status: session.status,
-          externalSessionId: session.externalSessionId
-        },
+        session: { ...session, path: workspaceDir },
         webhookPort: 43127, provider: createEchoProvider(), ptyHost, manager: capturing
       })
 
@@ -210,11 +205,7 @@ describe('E2E: Store Lifecycle Synchronization', () => {
       const capturing = createStoreCapturingManager(manager)
 
       await startSessionRuntime({
-        session: {
-          id: session.id, projectId: session.projectId, path: workspaceDir,
-          title: session.title, type: session.type, status: session.status,
-          externalSessionId: session.externalSessionId
-        },
+        session: { ...session, path: workspaceDir },
         webhookPort: 43127, provider: createEchoProvider(), ptyHost, manager: capturing
       })
 
@@ -251,11 +242,7 @@ describe('E2E: Store Lifecycle Synchronization', () => {
       const capturing = createStoreCapturingManager(manager)
 
       await startSessionRuntime({
-        session: {
-          id: session.id, projectId: session.projectId, path: workspaceDir,
-          title: session.title, type: session.type, status: session.status,
-          externalSessionId: session.externalSessionId
-        },
+        session: { ...session, path: workspaceDir },
         webhookPort: 43127, provider: createEchoProvider(), ptyHost, manager: capturing
       })
 
@@ -269,7 +256,7 @@ describe('E2E: Store Lifecycle Synchronization', () => {
   })
 
   describe('Event sequence validation', () => {
-    test('events arrive in correct order: starting → running → exited', async () => {
+    test('events arrive in correct order: starting → alive → exited', async () => {
       const workspaceDir = await createTestWorkspace('stoa-sync-order-')
       const globalStatePath = await createTestGlobalStatePath()
 
@@ -282,11 +269,7 @@ describe('E2E: Store Lifecycle Synchronization', () => {
       const capturing = createStoreCapturingManager(manager)
 
       await startSessionRuntime({
-        session: {
-          id: session.id, projectId: session.projectId, path: workspaceDir,
-          title: session.title, type: session.type, status: session.status,
-          externalSessionId: session.externalSessionId
-        },
+        session: { ...session, path: workspaceDir },
         webhookPort: 43127, provider: createEchoProvider(), ptyHost, manager: capturing
       })
 
@@ -311,11 +294,7 @@ describe('E2E: Store Lifecycle Synchronization', () => {
       const capturing = createStoreCapturingManager(manager)
 
       await startSessionRuntime({
-        session: {
-          id: session.id, projectId: session.projectId, path: workspaceDir,
-          title: session.title, type: session.type, status: session.status,
-          externalSessionId: session.externalSessionId
-        },
+        session: { ...session, path: workspaceDir },
         webhookPort: 43127, provider: createEchoProvider(), ptyHost, manager: capturing
       })
 
@@ -343,11 +322,7 @@ describe('E2E: Store Lifecycle Synchronization', () => {
       const capturing = createStoreCapturingManager(manager)
 
       await startSessionRuntime({
-        session: {
-          id: session.id, projectId: session.projectId, path: workspaceDir,
-          title: session.title, type: session.type, status: session.status,
-          externalSessionId: session.externalSessionId
-        },
+        session: { ...session, path: workspaceDir },
         webhookPort: 43127, provider: createEchoProvider(), ptyHost, manager: capturing
       })
 
@@ -382,19 +357,11 @@ describe('E2E: Store Lifecycle Synchronization', () => {
 
       await Promise.all([
         startSessionRuntime({
-          session: {
-            id: session1.id, projectId: session1.projectId, path: workspaceDir,
-            title: session1.title, type: session1.type, status: session1.status,
-            externalSessionId: session1.externalSessionId
-          },
+          session: { ...session1, path: workspaceDir },
           webhookPort: 43127, provider, ptyHost, manager: capturing1
         }),
         startSessionRuntime({
-          session: {
-            id: session2.id, projectId: session2.projectId, path: workspaceDir,
-            title: session2.title, type: session2.type, status: session2.status,
-            externalSessionId: session2.externalSessionId
-          },
+          session: { ...session2, path: workspaceDir },
           webhookPort: 43127, provider, ptyHost, manager: capturing2
         })
       ])
@@ -435,7 +402,8 @@ describe('E2E: Store Lifecycle Synchronization', () => {
 
       store.setActiveSession(session1.id)
       expect(store.activeSessionId).toBe(session1.id)
-      expect(store.activeSession!.status).toBe('bootstrapping')
+      expect(store.activeSession!.runtimeState).toBe('created')
+      expect(store.activeSession!.agentState).toBe('unknown')
 
       const ptyHost = new PtyHost()
       activeHosts.push(ptyHost)
@@ -445,19 +413,11 @@ describe('E2E: Store Lifecycle Synchronization', () => {
 
       await Promise.all([
         startSessionRuntime({
-          session: {
-            id: session1.id, projectId: session1.projectId, path: workspaceDir,
-            title: session1.title, type: session1.type, status: session1.status,
-            externalSessionId: session1.externalSessionId
-          },
+          session: { ...session1, path: workspaceDir },
           webhookPort: 43127, provider, ptyHost, manager: capturing1
         }),
         startSessionRuntime({
-          session: {
-            id: session2.id, projectId: session2.projectId, path: workspaceDir,
-            title: session2.title, type: session2.type, status: session2.status,
-            externalSessionId: session2.externalSessionId
-          },
+          session: { ...session2, path: workspaceDir },
           webhookPort: 43127, provider, ptyHost, manager: capturing2
         })
       ])
@@ -505,11 +465,7 @@ describe('E2E: Store Lifecycle Synchronization', () => {
       const capturing = createStoreCapturingManager(manager)
 
       await startSessionRuntime({
-        session: {
-          id: session.id, projectId: session.projectId, path: workspaceDir,
-          title: session.title, type: session.type, status: session.status,
-          externalSessionId: session.externalSessionId
-        },
+        session: { ...session, path: workspaceDir },
         webhookPort: 43127, provider: createEchoProvider(), ptyHost, manager: capturing
       })
 

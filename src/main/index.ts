@@ -10,6 +10,7 @@ import { ObservabilityService } from '@core/observability-service'
 import { ProjectSessionManager } from '@core/project-session-manager'
 import { detectShell, detectProvider } from '@core/settings-detector'
 import { getProviderDescriptorByProviderId, getProviderDescriptorBySessionType } from '@shared/provider-descriptors'
+import { derivePresencePhase } from '@shared/session-state-reducer'
 import { SessionRuntimeController } from './session-runtime-controller'
 import { SessionEventBridge } from './session-event-bridge'
 import { launchTrackedSessionRuntime } from './launch-tracked-session-runtime'
@@ -556,8 +557,17 @@ app.whenReady().then(async () => {
           return null
         }
 
-        return currentSession.status === 'running' || currentSession.status === 'awaiting_input'
-          ? currentSession.status
+        const phase = derivePresencePhase({
+          runtimeState: currentSession.runtimeState,
+          agentState: currentSession.agentState,
+          hasUnseenCompletion: currentSession.hasUnseenCompletion,
+          runtimeExitCode: currentSession.runtimeExitCode,
+          runtimeExitReason: currentSession.runtimeExitReason,
+          provider: currentSession.type
+        })
+
+        return phase === 'running' || phase === 'ready'
+          ? phase
           : null
       }, 'the packaged smoke shell session to become live')
       await recordPackagedSmoke('session-live', {

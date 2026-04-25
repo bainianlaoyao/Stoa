@@ -23,7 +23,6 @@ const hierarchy: ProjectHierarchyNode[] = [
         id: 'session_1',
         projectId: 'project_alpha',
         type: 'opencode',
-        status: 'running',
         runtimeState: 'alive',
         agentState: 'working',
         hasUnseenCompletion: false,
@@ -57,7 +56,6 @@ const activeSession: SessionSummary = {
   id: 'session_1',
   projectId: 'project_alpha',
   type: 'opencode',
-  status: 'running',
   runtimeState: 'alive',
   agentState: 'working',
   hasUnseenCompletion: false,
@@ -83,7 +81,6 @@ function createPresenceSnapshot(overrides: Partial<SessionPresenceSnapshot> = {}
     providerLabel: 'OpenCode',
     modelLabel: 'GPT-5',
     phase: 'running',
-    canonicalStatus: 'running',
     runtimeState: 'alive',
     agentState: 'working',
     hasUnseenCompletion: false,
@@ -138,7 +135,6 @@ describe('CommandSurface', () => {
 
     const statusDot = wrapper.find('[data-testid="session-status-dot"]')
 
-    expect(statusDot.attributes('data-status')).toBe('running')
     expect(statusDot.attributes('data-phase')).toBe('running')
     expect(statusDot.attributes('data-tone')).toBe('success')
   })
@@ -157,7 +153,6 @@ describe('CommandSurface', () => {
     store.sessionPresenceById = {
       session_1: createPresenceSnapshot({
         phase: 'blocked',
-        canonicalStatus: 'needs_confirmation',
         blockingReason: 'permission',
         sourceSequence: 3
       })
@@ -177,7 +172,6 @@ describe('CommandSurface', () => {
     const statusDot = wrapper.find('[data-testid="session-status-dot"]')
     const terminalViewport = wrapper.find('[data-testid="terminal-viewport"]')
 
-    expect(statusDot.attributes('data-status')).toBe('running')
     expect(statusDot.attributes('data-phase')).toBe('blocked')
     expect(statusDot.attributes('data-tone')).toBe('warning')
     expect(wrapper.find('[data-testid="terminal-status-bar"]').exists()).toBe(false)

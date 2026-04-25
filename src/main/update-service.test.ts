@@ -26,7 +26,6 @@ function createSessionSummary(overrides: Partial<SessionSummary> = {}): SessionS
     id: 'session-1',
     projectId: 'project-1',
     type: 'shell',
-    status: 'running',
     runtimeState: 'alive',
     agentState: 'unknown',
     hasUnseenCompletion: false,

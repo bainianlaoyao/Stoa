@@ -39,7 +39,7 @@ const hasFallbackMeta = computed(() => Boolean(props.project && props.session))
       </div>
       <div class="terminal-meta__group terminal-meta__group--secondary">
         <span>{{ session.type }}</span>
-        <span>{{ session.status }}</span>
+        <span>{{ session.runtimeState }} / {{ session.agentState }}</span>
       </div>
     </template>
   </div>

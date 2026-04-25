@@ -50,7 +50,8 @@ export async function launchTrackedSessionRuntime(options: LaunchTrackedSessionR
       path: project.path,
       title: session.title,
       type: session.type,
-      status: session.status,
+      runtimeState: session.runtimeState,
+      agentState: session.agentState,
       externalSessionId: session.externalSessionId,
       sessionSecret
     },

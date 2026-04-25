@@ -21,7 +21,6 @@ describe('WorkspaceList', () => {
                 id: 'session_op_1',
                 projectId: 'project_alpha',
                 type: 'opencode',
-                status: 'running',
                 runtimeState: 'alive',
                 agentState: 'working',
                 hasUnseenCompletion: false,
