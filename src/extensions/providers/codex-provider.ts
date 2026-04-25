@@ -81,7 +81,8 @@ await fetch(\`http://127.0.0.1:\${webhookPort}/events\`, {
     source: 'provider-adapter',
     payload: {
       status: 'turn_complete',
-      summary: String(parsed.type)
+      summary: String(parsed.type),
+      externalSessionId: parsed['thread-id'] ?? undefined
     }
   })
 })

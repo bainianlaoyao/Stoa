@@ -736,6 +736,72 @@ describe('ProjectSessionManager', () => {
       expect(updated.summary).toBe('shell exited (0)')
     })
 
+    test('applySessionEvent returns { reconciled: false } on first externalId assignment', async () => {
+      const globalStatePath = await createTempGlobalStatePath()
+      const projectDir = await createTempProjectDir()
+      const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
+      const project = await manager.createProject({ path: projectDir, name: 'test' })
+      const session = await manager.createSession({ projectId: project.id, type: 'opencode', title: 'S1' })
+
+      const result = await manager.applySessionEvent(session.id, 'running', 'Running', 'opencode-abc')
+
+      expect(result.reconciled).toBe(false)
+      const updated = manager.snapshot().sessions.find(s => s.id === session.id)!
+      expect(updated.externalSessionId).toBe('opencode-abc')
+    })
+
+    test('applySessionEvent returns { reconciled: true } when externalId changes', async () => {
+      const globalStatePath = await createTempGlobalStatePath()
+      const projectDir = await createTempProjectDir()
+      const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
+      const project = await manager.createProject({ path: projectDir, name: 'test' })
+      const session = await manager.createSession({ projectId: project.id, type: 'claude-code', title: 'S1' })
+
+      // First event sets the ID via seeded UUID
+      await manager.applySessionEvent(session.id, 'running', 'Running', 'original-id')
+      // Second event with a different ID triggers reconciliation
+      const result = await manager.applySessionEvent(session.id, 'running', 'Running', 'new-id-after-resume')
+
+      expect(result.reconciled).toBe(true)
+      const updated = manager.snapshot().sessions.find(s => s.id === session.id)!
+      expect(updated.externalSessionId).toBe('new-id-after-resume')
+    })
+
+    test('applySessionEvent returns { reconciled: false } when externalId matches', async () => {
+      const globalStatePath = await createTempGlobalStatePath()
+      const projectDir = await createTempProjectDir()
+      const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
+      const project = await manager.createProject({ path: projectDir, name: 'test' })
+      const session = await manager.createSession({ projectId: project.id, type: 'opencode', title: 'S1' })
+
+      await manager.applySessionEvent(session.id, 'running', 'Running', 'stable-id')
+      const result = await manager.applySessionEvent(session.id, 'turn_complete', 'Stop', 'stable-id')
+
+      expect(result.reconciled).toBe(false)
+      const updated = manager.snapshot().sessions.find(s => s.id === session.id)!
+      expect(updated.externalSessionId).toBe('stable-id')
+    })
+
+    test('applySessionEvent does not overwrite externalId when undefined or null is passed', async () => {
+      const globalStatePath = await createTempGlobalStatePath()
+      const projectDir = await createTempProjectDir()
+      const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
+      const project = await manager.createProject({ path: projectDir, name: 'test' })
+      const session = await manager.createSession({ projectId: project.id, type: 'opencode', title: 'S1' })
+
+      await manager.applySessionEvent(session.id, 'running', 'Running', 'original-id')
+
+      // undefined: should not overwrite
+      const resultUndef = await manager.applySessionEvent(session.id, 'turn_complete', 'Stop')
+      expect(resultUndef.reconciled).toBe(false)
+      expect(manager.snapshot().sessions.find(s => s.id === session.id)!.externalSessionId).toBe('original-id')
+
+      // null: should not overwrite
+      const resultNull = await manager.applySessionEvent(session.id, 'running', 'Running', null)
+      expect(resultNull.reconciled).toBe(false)
+      expect(manager.snapshot().sessions.find(s => s.id === session.id)!.externalSessionId).toBe('original-id')
+    })
+
     test('lifecycle methods are no-ops for unknown session IDs', async () => {
       const globalStatePath = await createTempGlobalStatePath()
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })

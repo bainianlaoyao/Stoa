@@ -206,7 +206,8 @@ describe('E2E: webhook runtime integration', () => {
       {
         sessionId: harness.session.id,
         status: 'running',
-        summary: 'event accepted'
+        summary: 'event accepted',
+        externalSessionId: 'opencode-real-123'
       }
     ])
 
@@ -303,7 +304,8 @@ describe('E2E: webhook runtime integration', () => {
     expect(getSessionEvents(harness.sent)[0]).toEqual({
       sessionId: harness.session.id,
       status: 'awaiting_input',
-      summary: 'session.idle'
+      summary: 'session.idle',
+      externalSessionId: 'opencode-real-456'
     })
 
     const idleDiskSessions = await readProjectSessions(harness.workspaceDir)
@@ -372,12 +374,14 @@ describe('E2E: webhook runtime integration', () => {
       {
         sessionId: harness.session.id,
         status: 'running',
-        summary: 'session.started'
+        summary: 'session.started',
+        externalSessionId: 'opencode-real-789'
       },
       {
         sessionId: harness.session.id,
         status: 'exited',
-        summary: 'session.completed'
+        summary: 'session.completed',
+        externalSessionId: 'opencode-real-789'
       }
     ])
 
@@ -423,7 +427,8 @@ describe('E2E: webhook runtime integration', () => {
       {
         sessionId: harness.session.id,
         status: 'turn_complete',
-        summary: 'Turn complete'
+        summary: 'Turn complete',
+        externalSessionId: 'codex-real-321'
       }
     ])
 
@@ -465,7 +470,8 @@ describe('E2E: webhook runtime integration', () => {
       {
         sessionId: harness.session.id,
         status: 'turn_complete',
-        summary: 'Stop'
+        summary: 'Stop',
+        externalSessionId: initialExternalSessionId
       }
     ])
 

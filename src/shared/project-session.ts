@@ -140,6 +140,7 @@ export interface SessionStatusEvent {
   sessionId: string
   status: SessionStatus
   summary: string
+  externalSessionId: string | null
 }
 
 export interface ObservationEventListOptions {

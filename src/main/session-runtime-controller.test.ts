@@ -77,7 +77,8 @@ describe('SessionRuntimeController', () => {
     expect(sent[0]!.data).toEqual({
       sessionId: session.id,
       status: 'starting',
-      summary: 'starting shell'
+      summary: 'starting shell',
+      externalSessionId: null
     })
   })
 
@@ -95,7 +96,8 @@ describe('SessionRuntimeController', () => {
     expect(sent[0]!.data).toEqual({
       sessionId: session.id,
       status: 'running',
-      summary: 'Session running'
+      summary: 'Session running',
+      externalSessionId: 'pty-123'
     })
   })
 
@@ -112,7 +114,8 @@ describe('SessionRuntimeController', () => {
     expect(sent[0]!.data).toEqual({
       sessionId: session.id,
       status: 'exited',
-      summary: 'shell exited (0)'
+      summary: 'shell exited (0)',
+      externalSessionId: null
     })
   })
 
@@ -137,7 +140,8 @@ describe('SessionRuntimeController', () => {
     expect(sent[0]!.data).toEqual({
       sessionId: session.id,
       status: 'awaiting_input',
-      summary: 'session.idle'
+      summary: 'session.idle',
+      externalSessionId: 'opencode-real-123'
     })
   })
 
@@ -167,7 +171,8 @@ describe('SessionRuntimeController', () => {
     expect(sent[0]!.data).toEqual({
       sessionId: session.id,
       status: 'turn_complete',
-      summary: 'Turn complete'
+      summary: 'Turn complete',
+      externalSessionId: 'opencode-real-123'
     })
     expect(sent[1]!.data).toMatchObject({
       sessionId: session.id,
@@ -215,7 +220,8 @@ describe('SessionRuntimeController', () => {
     expect(sent[0]!.data).toEqual({
       sessionId: session.id,
       status: 'running',
-      summary: 'Session running'
+      summary: 'Session running',
+      externalSessionId: 'opencode-real-456'
     })
     expect(sent[1]!.data).toMatchObject({
       sessionId: session.id,
@@ -317,7 +323,8 @@ describe('SessionRuntimeController', () => {
     expect(sent[0]!.data).toEqual({
       sessionId: session.id,
       status: 'running',
-      summary: 'Session running'
+      summary: 'Session running',
+      externalSessionId: 'opencode-real-456'
     })
   })
 
@@ -345,7 +352,8 @@ describe('SessionRuntimeController', () => {
     expect(sent[0]!.data).toEqual({
       sessionId: session.id,
       status: 'running',
-      summary: 'Session running'
+      summary: 'Session running',
+      externalSessionId: 'codex-real-456'
     })
   })
 
