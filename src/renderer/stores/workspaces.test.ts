@@ -752,6 +752,57 @@ describe('project/session renderer store', () => {
       expect(store.sessionPresenceById.session_op_1).toEqual(backendPresence)
     })
 
+    test('allows newer fallback to replace older backend snapshot', async () => {
+      const backendPresence = sessionPresenceFixture({
+        phase: 'blocked',
+        runtimeState: 'alive',
+        agentState: 'blocked',
+        blockingReason: 'permission',
+        sourceSequence: 9
+      })
+
+      window.stoa = createStoaMock({
+        getSessionPresence: vi.fn().mockResolvedValue(backendPresence)
+      })
+
+      const store = useWorkspaceStore()
+      store.hydrate({
+        activeProjectId: 'project_alpha',
+        activeSessionId: 'session_op_1',
+        terminalWebhookPort: 43127,
+        projects: [{ id: 'project_alpha', name: 'alpha', path: 'D:/alpha', createdAt: 'a', updatedAt: 'a' }],
+        sessions: [sessionSummaryFixture({
+          id: 'session_op_1',
+          lastStateSequence: 8,
+          agentState: 'blocked',
+          blockingReason: 'permission',
+          status: 'blocked',
+          summary: 'blocked'
+        })]
+      })
+
+      await store.hydrateObservability()
+      expect(store.sessionPresenceById.session_op_1).toEqual(backendPresence)
+
+      store.updateSession('session_op_1', {
+        status: 'running',
+        runtimeState: 'alive',
+        agentState: 'working',
+        hasUnseenCompletion: false,
+        blockingReason: null,
+        lastStateSequence: 12,
+        summary: 'local running fallback'
+      })
+
+      expect(store.sessionPresenceById.session_op_1).toMatchObject({
+        phase: 'running',
+        runtimeState: 'alive',
+        agentState: 'working',
+        blockingReason: null,
+        sourceSequence: 12
+      })
+    })
+
     test('updates active complete session to ready after backend completion_seen patch', async () => {
       let sessionListener: ((snapshot: SessionPresenceSnapshot) => void) | undefined
 
