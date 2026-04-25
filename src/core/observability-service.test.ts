@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ObservationEvent } from '../shared/observability'
-import type { SessionStatus, SessionSummary } from '../shared/project-session'
+import type { SessionSummary } from '../shared/project-session'
 import { InMemoryObservationStore } from './observation-store'
 import { ObservabilityService } from './observability-service'
 
@@ -14,9 +14,15 @@ const session = (overrides: Partial<SessionSummary> = {}): SessionSummary => ({
   id: 'session-1',
   projectId: 'project-1',
   type: 'codex',
-  status: 'running',
   title: 'Codex session',
   summary: 'Working',
+  runtimeState: 'alive',
+  agentState: 'working',
+  hasUnseenCompletion: false,
+  runtimeExitCode: null,
+  runtimeExitReason: null,
+  lastStateSequence: 0,
+  blockingReason: null,
   recoveryMode: 'resume-external',
   externalSessionId: 'external-1',
   createdAt: '2026-01-01T00:00:00.000Z',
@@ -47,19 +53,6 @@ const event = (overrides: Partial<ObservationEvent> = {}): ObservationEvent => (
   ...overrides
 })
 
-const presenceStatusCases: Array<{
-  eventType: string
-  canonicalStatus: SessionStatus
-}> = [
-  { eventType: 'presence.running', canonicalStatus: 'running' },
-  { eventType: 'presence.turn_complete', canonicalStatus: 'turn_complete' },
-  { eventType: 'presence.awaiting_input', canonicalStatus: 'awaiting_input' },
-  { eventType: 'presence.needs_confirmation', canonicalStatus: 'needs_confirmation' },
-  { eventType: 'presence.degraded', canonicalStatus: 'degraded' },
-  { eventType: 'presence.error', canonicalStatus: 'error' },
-  { eventType: 'lifecycle.session_exited', canonicalStatus: 'exited' }
-]
-
 describe('ObservabilityService', () => {
   it('registration creates baseline session, project, and app snapshots', () => {
     const service = new ObservabilityService(new InMemoryObservationStore(), {
@@ -71,8 +64,8 @@ describe('ObservabilityService', () => {
     expect(service.getSessionPresence('session-1')).toMatchObject({
       sessionId: 'session-1',
       projectId: 'project-1',
-      canonicalStatus: 'running',
-      phase: 'working',
+      phase: 'running',
+      evidenceSequence: 0,
       sourceSequence: 0,
       hasUnreadTurn: false,
       updatedAt: '2026-01-01T00:00:03.000Z'
@@ -87,7 +80,6 @@ describe('ObservabilityService', () => {
     expect(service.getAppObservability()).toMatchObject({
       blockedProjectCount: 0,
       failedProjectCount: 0,
-      degradedProjectCount: 0,
       totalUnreadTurns: 0
     })
   })
@@ -146,49 +138,65 @@ describe('ObservabilityService', () => {
     expect(service.getAppObservability()).toMatchObject({
       blockedProjectCount: 0,
       failedProjectCount: 0,
-      degradedProjectCount: 0,
       totalUnreadTurns: 0
     })
   })
 
-  it('presence.turn_complete updates the session to ready and turn_complete', () => {
+  it('presence events update evidence only and keep phase derived from session state', () => {
     const service = new ObservabilityService(new InMemoryObservationStore(), {
       nowIso: nowValues('2026-01-01T00:00:03.000Z', '2026-01-01T00:00:04.000Z')
     })
 
-    service.registerSession(session(), 'session-1')
-    expect(service.ingest(event({ eventId: 'turn-complete', type: 'presence.turn_complete' }))).toBe(true)
+    service.registerSession(session({
+      agentState: 'working',
+      lastStateSequence: 7
+    }), 'session-1')
+    expect(service.ingest(event({
+      eventId: 'turn-complete',
+      sequence: 3,
+      type: 'presence.complete',
+      payload: { snippet: 'Turn complete evidence.' }
+    }))).toBe(true)
 
     expect(service.getSessionPresence('session-1')).toMatchObject({
-      canonicalStatus: 'turn_complete',
-      phase: 'ready',
+      phase: 'running',
+      lastAssistantSnippet: null,
+      evidenceSequence: 3,
+      sourceSequence: 7,
       updatedAt: '2026-01-01T00:00:04.000Z'
     })
   })
 
-  it.each(presenceStatusCases)(
-    'maps $eventType to canonical status $canonicalStatus',
-    ({ eventType, canonicalStatus }) => {
-      const service = new ObservabilityService(new InMemoryObservationStore(), {
-        nowIso: nowValues('2026-01-01T00:00:03.000Z', '2026-01-01T00:00:04.000Z')
-      })
+  it('ignores assistant evidence older than the authoritative session state floor', () => {
+    const service = new ObservabilityService(new InMemoryObservationStore(), {
+      nowIso: nowValues('2026-01-01T00:00:03.000Z', '2026-01-01T00:00:04.000Z')
+    })
 
-      service.registerSession(session({ id: 'session_1' }), 'session_1')
-      expect(
-        service.ingest(
-          event({
-            eventId: eventType,
-            sessionId: 'session_1',
-            type: eventType
-          })
-        )
-      ).toBe(true)
+    service.registerSession(session({
+      lastStateSequence: 20,
+      updatedAt: '2026-01-01T00:00:20.000Z'
+    }), 'session-1')
 
-      expect(service.getSessionPresence('session_1')?.canonicalStatus).toBe(canonicalStatus)
-    }
-  )
+    service.ingest(event({
+      eventId: 'stale-assistant-evidence',
+      sequence: 10,
+      occurredAt: '2026-01-01T00:00:10.000Z',
+      category: 'evidence',
+      type: 'evidence.assistant_message',
+      payload: { model: 'gpt-5-codex', snippet: 'Stale answer.' }
+    }))
 
-  it('carries latest accepted event sequence into snapshots and rejects stale presence events', () => {
+    expect(service.getSessionPresence('session-1')).toMatchObject({
+      modelLabel: null,
+      lastAssistantSnippet: null,
+      lastEvidenceType: null,
+      lastEventAt: '2026-01-01T00:00:20.000Z',
+      evidenceSequence: 10,
+      sourceSequence: 20
+    })
+  })
+
+  it('uses max of authoritative session state sequence and evidence sequence in snapshots', () => {
     const service = new ObservabilityService(new InMemoryObservationStore(), {
       nowIso: nowValues(
         '2026-01-01T00:00:03.000Z',
@@ -198,28 +206,32 @@ describe('ObservabilityService', () => {
       )
     })
 
-    service.registerSession(session({ status: 'running' }), 'session-1')
+    service.registerSession(session({
+      agentState: 'idle',
+      hasUnseenCompletion: true,
+      lastStateSequence: 20
+    }), 'session-1')
     service.ingest(event({
       eventId: 'ready-event',
-      sequence: 20,
-      type: 'presence.turn_complete',
+      sequence: 10,
+      type: 'presence.complete',
       occurredAt: '2026-01-01T00:00:10.000Z'
     }))
     service.ingest(event({
-      eventId: 'stale-running-event',
-      sequence: 10,
+      eventId: 'newer-evidence-event',
+      sequence: 30,
       type: 'presence.running',
-      occurredAt: '2026-01-01T00:00:09.000Z'
+      occurredAt: '2026-01-01T00:00:11.000Z'
     }))
 
     expect(service.getSessionPresence('session-1')).toMatchObject({
-      canonicalStatus: 'turn_complete',
-      phase: 'ready',
-      sourceSequence: 20,
-      lastEventAt: '2026-01-01T00:00:10.000Z'
+      phase: 'complete',
+      evidenceSequence: 30,
+      sourceSequence: 30,
+      lastEventAt: '2026-01-01T00:00:11.000Z'
     })
-    expect(service.getProjectObservability('project-1')?.sourceSequence).toBe(20)
-    expect(service.getAppObservability().sourceSequence).toBe(20)
+    expect(service.getProjectObservability('project-1')?.sourceSequence).toBe(30)
+    expect(service.getAppObservability().sourceSequence).toBe(30)
   })
 
   it('assistant evidence snippet on inactive session creates an unread turn and preserves evidence across later presence events', () => {
@@ -245,19 +257,94 @@ describe('ObservabilityService', () => {
       event({
         eventId: 'awaiting-input',
         occurredAt: '2026-01-01T00:00:20.000Z',
-        type: 'presence.awaiting_input',
+        type: 'presence.ready',
         payload: {}
       })
     )
 
     expect(service.getSessionPresence('session-1')).toMatchObject({
-      canonicalStatus: 'awaiting_input',
-      phase: 'ready',
+      phase: 'running',
       modelLabel: 'gpt-5-codex',
       lastAssistantSnippet: 'I found the failing contract.',
       lastEvidenceType: 'evidence.assistant_message',
       lastEventAt: '2026-01-01T00:00:20.000Z',
       hasUnreadTurn: true
+    })
+  })
+
+  it('lower-sequence events do not overwrite newer evidence fields while preserving max source sequence', () => {
+    const service = new ObservabilityService(new InMemoryObservationStore(), {
+      nowIso: nowValues(
+        '2026-01-01T00:00:03.000Z',
+        '2026-01-01T00:00:04.000Z',
+        '2026-01-01T00:00:05.000Z'
+      )
+    })
+
+    service.registerSession(session(), 'active-session')
+    service.ingest(event({
+      eventId: 'newer-assistant-evidence',
+      sequence: 30,
+      occurredAt: '2026-01-01T00:00:30.000Z',
+      category: 'evidence',
+      type: 'evidence.assistant_message',
+      payload: {
+        model: 'gpt-5-codex',
+        snippet: 'Current answer.'
+      }
+    }))
+    service.ingest(event({
+      eventId: 'stale-assistant-evidence',
+      sequence: 10,
+      occurredAt: '2026-01-01T00:00:10.000Z',
+      category: 'evidence',
+      type: 'evidence.assistant_message',
+      payload: {
+        model: 'old-model',
+        snippet: 'Stale answer.'
+      }
+    }))
+
+    expect(service.getSessionPresence('session-1')).toMatchObject({
+      modelLabel: 'gpt-5-codex',
+      lastAssistantSnippet: 'Current answer.',
+      lastEvidenceType: 'evidence.assistant_message',
+      lastEventAt: '2026-01-01T00:00:30.000Z',
+      sourceSequence: 30
+    })
+  })
+
+  it('presence and runtime summaries do not become assistant snippets or unread turns', () => {
+    const service = new ObservabilityService(new InMemoryObservationStore(), {
+      nowIso: nowValues(
+        '2026-01-01T00:00:03.000Z',
+        '2026-01-01T00:00:04.000Z',
+        '2026-01-01T00:00:05.000Z'
+      )
+    })
+
+    service.registerSession(session(), 'active-session')
+    service.ingest(event({
+      eventId: 'presence-summary',
+      sequence: 10,
+      type: 'presence.complete',
+      payload: { summary: 'Presence summary.' }
+    }))
+    service.ingest(event({
+      eventId: 'runtime-summary',
+      sequence: 20,
+      occurredAt: '2026-01-01T00:00:20.000Z',
+      category: 'system',
+      type: 'runtime.summary',
+      payload: { summary: 'Runtime summary.' }
+    }))
+
+    expect(service.getSessionPresence('session-1')).toMatchObject({
+      lastAssistantSnippet: null,
+      hasUnreadTurn: false,
+      lastEvidenceType: null,
+      lastEventAt: '2026-01-01T00:00:20.000Z',
+      sourceSequence: 20
     })
   })
 
@@ -304,7 +391,7 @@ describe('ObservabilityService', () => {
     })
     const duplicate = event({
       eventId: 'same-event',
-      type: 'presence.needs_confirmation',
+      type: 'presence.blocked',
       payload: { snippet: 'Approval required.' }
     })
 
@@ -312,7 +399,7 @@ describe('ObservabilityService', () => {
     expect(service.ingest(duplicate)).toBe(true)
     const afterFirstIngest = service.getSessionPresence('session-1')
 
-    expect(service.ingest({ ...duplicate, type: 'presence.error', payload: { snippet: 'Should not project.' } })).toBe(false)
+    expect(service.ingest({ ...duplicate, type: 'presence.failed', payload: { snippet: 'Should not project.' } })).toBe(false)
 
     expect(service.getSessionPresence('session-1')).toEqual(afterFirstIngest)
     expect(store.listSessionEvents('session-1', { limit: 10 }).events).toEqual([{ ...duplicate, sequence: 1 }])
@@ -388,10 +475,15 @@ describe('ObservabilityService', () => {
       )
     })
 
-    service.registerSession(session({ id: 'blocked-session', status: 'running' }), 'active-session')
-    service.registerSession(session({ id: 'failed-session', status: 'running' }), 'active-session')
-    service.ingest(event({ eventId: 'blocked-event', sessionId: 'blocked-session', type: 'presence.needs_confirmation' }))
-    service.ingest(event({ eventId: 'failed-event', sessionId: 'failed-session', type: 'presence.error' }))
+    service.registerSession(session({
+      id: 'blocked-session',
+      agentState: 'blocked',
+      blockingReason: 'permission'
+    }), 'active-session')
+    service.registerSession(session({
+      id: 'failed-session',
+      agentState: 'error'
+    }), 'active-session')
     service.ingest(
       event({
         eventId: 'unread-event',
@@ -412,7 +504,6 @@ describe('ObservabilityService', () => {
     expect(service.getAppObservability()).toMatchObject({
       blockedProjectCount: 1,
       failedProjectCount: 1,
-      degradedProjectCount: 0,
       totalUnreadTurns: 1
     })
   })

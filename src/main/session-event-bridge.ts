@@ -1,16 +1,11 @@
 import { randomUUID } from 'node:crypto'
 import { createLocalWebhookServer } from '@core/webhook-server'
 import type { ProjectSessionManager } from '@core/project-session-manager'
-import type { CanonicalSessionEvent, SessionStatus } from '@shared/project-session'
+import type { CanonicalSessionEvent, SessionStatePatchEvent } from '@shared/project-session'
 import type { ObservationCategory, ObservationEvent, ObservationRetention, ObservationSeverity } from '@shared/observability'
 
 interface SessionEventApplier {
-  applySessionEvent: (event: {
-    sessionId: string
-    status: SessionStatus
-    summary: string
-    externalSessionId?: string | null
-  }) => Promise<void>
+  applyProviderStatePatch: (patch: SessionStatePatchEvent) => Promise<void>
 }
 
 interface ObservabilityIngester {
@@ -23,6 +18,8 @@ interface SessionEventBridgeOptions {
 
 export class SessionEventBridge {
   private readonly sessionSecrets = new Map<string, string>()
+  private readonly providerPatchSequences = new Map<string, number>()
+  private readonly sessionEventQueues = new Map<string, Promise<void>>()
   private readonly nowIso: () => string
   private server: ReturnType<typeof createLocalWebhookServer> | null = null
   private port: number | null = null
@@ -47,13 +44,7 @@ export class SessionEventBridge {
           return this.sessionSecrets.get(sessionId) ?? null
         },
         onEvent: async (event) => {
-          this.observability?.ingest(this.toObservationEvent(event))
-          await this.controller.applySessionEvent({
-            sessionId: event.session_id,
-            status: event.payload.status ?? 'running',
-            summary: event.payload.summary ?? event.event_type,
-            externalSessionId: event.payload.externalSessionId
-          })
+          await this.enqueueSessionEvent(event)
         }
       })
     }
@@ -63,13 +54,32 @@ export class SessionEventBridge {
     return this.port
   }
 
-  private toObservationEvent(event: CanonicalSessionEvent): ObservationEvent {
-    const status = event.payload.status ?? 'running'
-    const mapping = mapStatusToObservation(status)
-    const payload: Record<string, unknown> = {}
+  private async enqueueSessionEvent(event: CanonicalSessionEvent): Promise<void> {
+    const previous = this.sessionEventQueues.get(event.session_id) ?? Promise.resolve()
+    const next = previous
+      .catch(() => {
+        // Preserve per-session ordering even if a previous event failed.
+      })
+      .then(async () => {
+        this.observability?.ingest(this.toObservationEvent(event))
+        await this.controller.applyProviderStatePatch(this.toSessionStatePatch(event))
+      })
 
-    if (event.payload.summary !== undefined) {
-      payload.summary = event.payload.summary
+    this.sessionEventQueues.set(event.session_id, next)
+    const cleanup = () => {
+      if (this.sessionEventQueues.get(event.session_id) === next) {
+        this.sessionEventQueues.delete(event.session_id)
+      }
+    }
+    next.then(cleanup, cleanup)
+
+    return await next
+  }
+
+  private toObservationEvent(event: CanonicalSessionEvent): ObservationEvent {
+    const mapping = mapIntentToObservation(event.payload.intent)
+    const payload: Record<string, unknown> = {
+      summary: event.payload.summary
     }
 
     if (event.payload.externalSessionId !== undefined) {
@@ -97,6 +107,34 @@ export class SessionEventBridge {
     }
   }
 
+  private toSessionStatePatch(event: CanonicalSessionEvent): SessionStatePatchEvent {
+    return {
+      sessionId: event.session_id,
+      sequence: this.allocateProviderPatchSequence(event.session_id),
+      occurredAt: event.timestamp,
+      intent: event.payload.intent,
+      source: 'provider',
+      sourceEventType: event.event_type,
+      runtimeState: event.payload.runtimeState,
+      agentState: event.payload.agentState,
+      hasUnseenCompletion: event.payload.hasUnseenCompletion,
+      runtimeExitCode: event.payload.runtimeExitCode,
+      runtimeExitReason: event.payload.runtimeExitReason,
+      blockingReason: event.payload.blockingReason,
+      summary: event.payload.summary,
+      externalSessionId: event.payload.externalSessionId
+    }
+  }
+
+  private allocateProviderPatchSequence(sessionId: string): number {
+    const session = this.manager.snapshot().sessions.find((candidate) => candidate.id === sessionId)
+    const lastManagerSequence = session?.lastStateSequence ?? 0
+    const lastAllocatedSequence = this.providerPatchSequences.get(sessionId) ?? 0
+    const nextSequence = Math.max(lastManagerSequence, lastAllocatedSequence) + 1
+    this.providerPatchSequences.set(sessionId, nextSequence)
+    return nextSequence
+  }
+
   issueSessionSecret(sessionId: string): string {
     const secret = `stoa-${randomUUID()}`
     this.sessionSecrets.set(sessionId, secret)
@@ -111,35 +149,41 @@ export class SessionEventBridge {
     await this.server?.stop()
     this.server = null
     this.sessionSecrets.clear()
+    this.providerPatchSequences.clear()
+    this.sessionEventQueues.clear()
     this.port = null
     await this.manager.setTerminalWebhookPort(null)
   }
 }
 
-function mapStatusToObservation(status: SessionStatus): {
+function mapIntentToObservation(intent: CanonicalSessionEvent['payload']['intent']): {
   category: ObservationCategory
   type: string
   severity: ObservationSeverity
   retention: ObservationRetention
 } {
-  switch (status) {
-    case 'running':
+  switch (intent) {
+    case 'agent.turn_started':
+    case 'agent.tool_started':
       return { category: 'presence', type: 'presence.running', severity: 'info', retention: 'operational' }
-    case 'turn_complete':
-      return { category: 'presence', type: 'presence.turn_complete', severity: 'info', retention: 'operational' }
-    case 'awaiting_input':
-      return { category: 'presence', type: 'presence.awaiting_input', severity: 'attention', retention: 'operational' }
-    case 'needs_confirmation':
-      return { category: 'presence', type: 'presence.needs_confirmation', severity: 'attention', retention: 'critical' }
-    case 'degraded':
-      return { category: 'presence', type: 'presence.degraded', severity: 'warning', retention: 'critical' }
-    case 'error':
-      return { category: 'presence', type: 'presence.error', severity: 'error', retention: 'critical' }
-    case 'exited':
+    case 'agent.turn_completed':
+      return { category: 'presence', type: 'presence.complete', severity: 'attention', retention: 'critical' }
+    case 'agent.permission_requested':
+      return { category: 'presence', type: 'presence.blocked', severity: 'attention', retention: 'critical' }
+    case 'agent.permission_resolved':
+    case 'agent.recovered':
+      return { category: 'presence', type: 'presence.ready', severity: 'info', retention: 'operational' }
+    case 'agent.turn_failed':
+      return { category: 'presence', type: 'presence.failed', severity: 'error', retention: 'critical' }
+    case 'runtime.exited_clean':
+    case 'runtime.exited_failed':
       return { category: 'lifecycle', type: 'lifecycle.session_exited', severity: 'info', retention: 'operational' }
-    case 'bootstrapping':
-      return { category: 'lifecycle', type: 'lifecycle.session_bootstrapping', severity: 'info', retention: 'ephemeral' }
-    case 'starting':
+    case 'runtime.created':
+      return { category: 'lifecycle', type: 'lifecycle.session_created', severity: 'info', retention: 'ephemeral' }
+    case 'runtime.starting':
+    case 'runtime.alive':
+    case 'runtime.failed_to_start':
+    case 'agent.completion_seen':
       return { category: 'lifecycle', type: 'lifecycle.session_starting', severity: 'info', retention: 'ephemeral' }
   }
 }

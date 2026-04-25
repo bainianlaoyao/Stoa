@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events'
 import { describe, expect, test, vi } from 'vitest'
 import { UpdateService } from './update-service'
-import type { BootstrapState } from '@shared/project-session'
+import type { BootstrapState, SessionSummary } from '@shared/project-session'
 
 class FakeUpdater extends EventEmitter {
   autoDownload = true
@@ -17,6 +17,30 @@ function createSnapshot(overrides?: Partial<BootstrapState>): BootstrapState {
     terminalWebhookPort: null,
     projects: [],
     sessions: [],
+    ...overrides
+  }
+}
+
+function createSessionSummary(overrides: Partial<SessionSummary> = {}): SessionSummary {
+  return {
+    id: 'session-1',
+    projectId: 'project-1',
+    type: 'shell',
+    runtimeState: 'alive',
+    agentState: 'unknown',
+    hasUnseenCompletion: false,
+    runtimeExitCode: null,
+    runtimeExitReason: null,
+    lastStateSequence: 1,
+    blockingReason: null,
+    title: 'Shell',
+    summary: 'Running',
+    recoveryMode: 'fresh-shell',
+    externalSessionId: null,
+    createdAt: '2026-04-24T00:00:00.000Z',
+    updatedAt: '2026-04-24T00:00:00.000Z',
+    lastActivatedAt: '2026-04-24T00:00:00.000Z',
+    archived: false,
     ...overrides
   }
 }
@@ -85,22 +109,7 @@ describe('UpdateService', () => {
       updater,
       sessionManager: {
         snapshot: () => createSnapshot({
-          sessions: [
-            {
-              id: 'session-1',
-              projectId: 'project-1',
-              type: 'shell',
-              status: 'running',
-              title: 'Shell',
-              summary: 'Running',
-              recoveryMode: 'fresh-shell',
-              externalSessionId: null,
-              createdAt: '2026-04-24T00:00:00.000Z',
-              updatedAt: '2026-04-24T00:00:00.000Z',
-              lastActivatedAt: '2026-04-24T00:00:00.000Z',
-              archived: false
-            }
-          ]
+          sessions: [createSessionSummary()]
         })
       },
       showSessionWarningDialog: async () => true
@@ -126,22 +135,7 @@ describe('UpdateService', () => {
       updater,
       sessionManager: {
         snapshot: () => createSnapshot({
-          sessions: [
-            {
-              id: 'session-1',
-              projectId: 'project-1',
-              type: 'shell',
-              status: 'running',
-              title: 'Shell',
-              summary: 'Running',
-              recoveryMode: 'fresh-shell',
-              externalSessionId: null,
-              createdAt: '2026-04-24T00:00:00.000Z',
-              updatedAt: '2026-04-24T00:00:00.000Z',
-              lastActivatedAt: '2026-04-24T00:00:00.000Z',
-              archived: false
-            }
-          ]
+          sessions: [createSessionSummary()]
         })
       },
       showSessionWarningDialog
@@ -197,20 +191,7 @@ describe('UpdateService', () => {
     })
 
     updater.emit('update-downloaded', { version: '1.3.0' })
-    sessions.push({
-      id: 'session-1',
-      projectId: 'project-1',
-      type: 'shell',
-      status: 'running',
-      title: 'Shell',
-      summary: 'Running',
-      recoveryMode: 'fresh-shell',
-      externalSessionId: null,
-      createdAt: '2026-04-24T00:00:00.000Z',
-      updatedAt: '2026-04-24T00:00:00.000Z',
-      lastActivatedAt: '2026-04-24T00:00:00.000Z',
-      archived: false
-    })
+    sessions.push(createSessionSummary())
 
     const published = service.publishState()
 
@@ -261,22 +242,7 @@ describe('UpdateService', () => {
       updater,
       sessionManager: {
         snapshot: () => createSnapshot({
-          sessions: [
-            {
-              id: 'session-1',
-              projectId: 'project-1',
-              type: 'shell',
-              status: 'running',
-              title: 'Shell',
-              summary: 'Running',
-              recoveryMode: 'fresh-shell',
-              externalSessionId: null,
-              createdAt: '2026-04-24T00:00:00.000Z',
-              updatedAt: '2026-04-24T00:00:00.000Z',
-              lastActivatedAt: '2026-04-24T00:00:00.000Z',
-              archived: false
-            }
-          ]
+          sessions: [createSessionSummary()]
         })
       },
       showSessionWarningDialog: async () => false,

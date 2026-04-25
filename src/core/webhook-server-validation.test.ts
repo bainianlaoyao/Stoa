@@ -26,7 +26,11 @@ function createValidEvent(overrides: Record<string, unknown> = {}): Record<strin
     session_id: 'session_test',
     project_id: 'project_test',
     source: 'hook-sidecar',
-    payload: { status: 'running' },
+    payload: {
+      intent: 'agent.turn_started',
+      agentState: 'working',
+      summary: 'event accepted'
+    },
     ...overrides
   }
 }
@@ -308,8 +312,8 @@ describe('webhook event validation', () => {
       expect(events[0]!.correlation_id).toBe('corr-123')
     })
 
-    test('accepts event with empty payload object', async () => {
-      const { server, events } = createTestServer()
+    test('rejects event with empty payload object', async () => {
+      const { server } = createTestServer()
       const port = await server.start()
 
       const response = await postJson(
@@ -318,8 +322,78 @@ describe('webhook event validation', () => {
         'secret-1'
       )
 
+      expect(response.statusCode).toBe(400)
+    })
+
+    test.each([
+      ['invalid intent', { intent: 'agent.teleported' }],
+      ['invalid agentState', { agentState: 'paused' }],
+      ['invalid runtimeState', { runtimeState: 'sleeping' }],
+      ['invalid blockingReason', { blockingReason: 'approval' }],
+      ['invalid hasUnseenCompletion type', { hasUnseenCompletion: 'true' }],
+      ['invalid runtimeExitCode type', { runtimeExitCode: '1' }],
+      ['invalid runtimeExitReason', { runtimeExitReason: 'timeout' }],
+      ['invalid externalSessionId type', { externalSessionId: 123 }],
+      ['invalid model type', { model: 123 }],
+      ['invalid model null', { model: null }],
+      ['invalid snippet type', { snippet: false }],
+      ['invalid snippet null', { snippet: null }],
+      ['invalid toolName type', { toolName: [] }],
+      ['invalid toolName null', { toolName: null }],
+      ['invalid error type', { error: { message: 'nope' } }],
+      ['invalid error null', { error: null }]
+    ])('rejects %s', async (_name, payloadOverrides) => {
+      const { server } = createTestServer()
+      const port = await server.start()
+      const event = createValidEvent({
+        payload: {
+          intent: 'agent.turn_started',
+          agentState: 'working',
+          summary: 'event rejected',
+          ...payloadOverrides
+        }
+      })
+
+      const response = await postJson(port, event, 'secret-1')
+
+      expect(response.statusCode).toBe(400)
+      expect(JSON.parse(response.body)).toEqual({ accepted: false, reason: 'invalid_event' })
+    })
+
+    test('accepts null externalSessionId', async () => {
+      const { server, events } = createTestServer()
+      const port = await server.start()
+      const event = createValidEvent({
+        payload: {
+          intent: 'agent.turn_started',
+          agentState: 'working',
+          summary: 'event accepted',
+          externalSessionId: null
+        }
+      })
+
+      const response = await postJson(port, event, 'secret-1')
+
       expect(response.statusCode).toBe(202)
       expect(events).toHaveLength(1)
+      expect(events[0]!.payload.externalSessionId).toBeNull()
+    })
+
+    test('rejects permission resolved events targeting blocked agent state', async () => {
+      const { server } = createTestServer()
+      const port = await server.start()
+      const event = createValidEvent({
+        payload: {
+          intent: 'agent.permission_resolved',
+          agentState: 'blocked',
+          summary: 'invalid target'
+        }
+      })
+
+      const response = await postJson(port, event, 'secret-1')
+
+      expect(response.statusCode).toBe(400)
+      expect(JSON.parse(response.body)).toEqual({ accepted: false, reason: 'invalid_event' })
     })
   })
 

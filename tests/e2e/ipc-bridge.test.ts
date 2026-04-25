@@ -61,8 +61,12 @@ const defaultPresenceSnapshot: SessionPresenceSnapshot = {
   providerId: 'local-shell',
   providerLabel: 'Shell',
   modelLabel: null,
-  phase: 'working',
-  canonicalStatus: 'running',
+  phase: 'ready',
+  runtimeState: 'alive',
+  agentState: 'unknown',
+  hasUnseenCompletion: false,
+  runtimeExitCode: null,
+  runtimeExitReason: null,
   confidence: 'stale',
   health: 'healthy',
   blockingReason: null,
@@ -71,6 +75,8 @@ const defaultPresenceSnapshot: SessionPresenceSnapshot = {
   lastEvidenceType: null,
   hasUnreadTurn: false,
   recoveryPointerState: 'missing',
+  evidenceSequence: 0,
+  sourceSequence: 0,
   updatedAt: '2026-01-01T00:00:00.000Z'
 }
 
@@ -79,23 +85,23 @@ const defaultProjectObservability: ProjectObservabilitySnapshot = {
   overallHealth: 'healthy',
   activeSessionCount: 1,
   blockedSessionCount: 0,
-  degradedSessionCount: 0,
   failedSessionCount: 0,
   unreadTurnCount: 0,
   latestAttentionSessionId: null,
   latestAttentionReason: null,
   lastEventAt: '2026-01-01T00:00:00.000Z',
+  sourceSequence: 0,
   updatedAt: '2026-01-01T00:00:00.000Z'
 }
 
 const defaultAppObservability: AppObservabilitySnapshot = {
   blockedProjectCount: 0,
   failedProjectCount: 0,
-  degradedProjectCount: 0,
   totalUnreadTurns: 0,
   projectsNeedingAttention: [],
   providerHealthSummary: {},
   lastGlobalEventAt: '2026-01-01T00:00:00.000Z',
+  sourceSequence: 0,
   updatedAt: '2026-01-01T00:00:00.000Z'
 }
 

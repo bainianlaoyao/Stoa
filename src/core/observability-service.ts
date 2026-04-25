@@ -9,7 +9,7 @@ import type {
   ProjectObservabilitySnapshot,
   SessionPresenceSnapshot
 } from '../shared/observability'
-import type { SessionStatus, SessionSummary } from '../shared/project-session'
+import type { SessionSummary } from '../shared/project-session'
 import type { ObservationStore } from './observation-store'
 
 export interface ObservabilityServiceOptions {
@@ -21,24 +21,13 @@ interface SessionEvidenceState {
   lastAssistantSnippet: string | null
   lastEvidenceType: string | null
   lastEventAt: string | null
-  sourceSequence: number
-}
-
-const PRESENCE_STATUS_BY_TYPE: Record<string, SessionStatus> = {
-  'presence.running': 'running',
-  'presence.turn_complete': 'turn_complete',
-  'presence.awaiting_input': 'awaiting_input',
-  'presence.needs_confirmation': 'needs_confirmation',
-  'presence.degraded': 'degraded',
-  'presence.error': 'error',
-  'lifecycle.session_exited': 'exited'
+  evidenceSequence: number
 }
 
 export class ObservabilityService {
   private readonly nowIso: () => string
   private readonly sessions = new Map<string, SessionSummary>()
   private readonly evidence = new Map<string, SessionEvidenceState>()
-  private readonly sourceSequenceBySessionId = new Map<string, number>()
   private readonly sessionSnapshots = new Map<string, SessionPresenceSnapshot>()
   private readonly projectSnapshots = new Map<string, ProjectObservabilitySnapshot>()
   private appSnapshot: AppObservabilitySnapshot
@@ -66,7 +55,7 @@ export class ObservabilityService {
           lastAssistantSnippet: null,
           lastEvidenceType: null,
           lastEventAt: null,
-          sourceSequence: this.sourceSequenceBySessionId.get(session.id) ?? 0
+          evidenceSequence: 0
         }
       )
     }
@@ -84,7 +73,6 @@ export class ObservabilityService {
     for (const sessionId of [...this.sessionSnapshots.keys()]) {
       if (!retainedIds.has(sessionId)) {
         this.sessionSnapshots.delete(sessionId)
-        this.sourceSequenceBySessionId.delete(sessionId)
       }
     }
 
@@ -107,36 +95,18 @@ export class ObservabilityService {
       return appended
     }
 
-    const session = this.sessions.get(event.sessionId)
+    if (!this.sessions.has(event.sessionId)) {
+      return appended
+    }
 
+    const session = this.sessions.get(event.sessionId)
     if (!session) {
       return appended
     }
 
-    const status = PRESENCE_STATUS_BY_TYPE[event.type]
-    const currentSequence = this.sourceSequenceBySessionId.get(event.sessionId) ?? 0
-    const isStalePresence = Boolean(status && event.sequence <= currentSequence)
-
-    if (isStalePresence) {
-      this.rebuildSnapshots(this.nowIso())
-      return appended
-    }
-
-    const nextEvidence = updateEvidence(this.evidence.get(event.sessionId), event)
+    const nextEvidence = updateEvidence(this.evidence.get(event.sessionId), event, session.lastStateSequence)
 
     this.evidence.set(event.sessionId, nextEvidence)
-
-    if (status && !isStalePresence) {
-      this.sessions.set(event.sessionId, {
-        ...session,
-        status,
-        updatedAt: event.occurredAt
-      })
-      this.sourceSequenceBySessionId.set(event.sessionId, event.sequence)
-    } else if (!status) {
-      this.sourceSequenceBySessionId.set(event.sessionId, Math.max(currentSequence, event.sequence))
-    }
-
     this.rebuildSnapshots(this.nowIso())
 
     return appended
@@ -169,9 +139,10 @@ export class ObservabilityService {
           lastAssistantSnippet: evidence?.lastAssistantSnippet ?? null,
           lastEvidenceType: evidence?.lastEvidenceType ?? null,
           lastEventAt: evidence?.lastEventAt ?? session.updatedAt,
+          evidenceSequence: evidence?.evidenceSequence ?? 0,
           sourceSequence: Math.max(
-            this.sourceSequenceBySessionId.get(session.id) ?? 0,
-            evidence?.sourceSequence ?? 0
+            session.lastStateSequence,
+            evidence?.evidenceSequence ?? 0
           )
         })
       )
@@ -201,26 +172,52 @@ export class ObservabilityService {
   }
 }
 
-function updateEvidence(current: SessionEvidenceState | undefined, event: ObservationEvent): SessionEvidenceState {
+function updateEvidence(
+  current: SessionEvidenceState | undefined,
+  event: ObservationEvent,
+  sessionStateSequence: number
+): SessionEvidenceState {
   const next: SessionEvidenceState = current ?? {
     modelLabel: null,
     lastAssistantSnippet: null,
     lastEvidenceType: null,
     lastEventAt: null,
-    sourceSequence: 0
+    evidenceSequence: 0
   }
+  const nextEvidenceSequence = Math.max(next.evidenceSequence, event.sequence)
+  const isCurrentEvidence = event.sequence >= Math.max(next.evidenceSequence, sessionStateSequence)
+
+  if (!isCurrentEvidence) {
+    return {
+      ...next,
+      evidenceSequence: nextEvidenceSequence
+    }
+  }
+
   const model = event.payload.model
-  const snippet = typeof event.payload.snippet === 'string'
-    ? event.payload.snippet
-    : typeof event.payload.summary === 'string'
-      ? event.payload.summary
-      : null
+  const snippet = assistantSnippetForEvent(event)
 
   return {
     modelLabel: typeof model === 'string' ? model : next.modelLabel,
     lastAssistantSnippet: snippet ?? next.lastAssistantSnippet,
     lastEvidenceType: event.category === 'evidence' ? event.type : next.lastEvidenceType,
     lastEventAt: event.occurredAt,
-    sourceSequence: Math.max(next.sourceSequence, event.sequence)
+    evidenceSequence: nextEvidenceSequence
   }
+}
+
+function assistantSnippetForEvent(event: ObservationEvent): string | null {
+  if (event.category !== 'evidence' || !event.type.startsWith('evidence.assistant')) {
+    return null
+  }
+
+  if (typeof event.payload.snippet === 'string') {
+    return event.payload.snippet
+  }
+
+  if (typeof event.payload.summary === 'string') {
+    return event.payload.summary
+  }
+
+  return null
 }

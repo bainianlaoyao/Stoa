@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest'
 import { sessionRestoreBehavior } from '../behavior/session.behavior'
 import { sessionRestoreJourney } from '../journeys/session-restore.journey'
 import { archiveTopology } from '../topology/archive.topology'
-import { generatePlaywrightSkeleton } from './generate-playwright'
+import {
+  generateClaudeLifecyclePlaywrightSkeleton,
+  generatePlaywrightSkeleton
+} from './generate-playwright'
 
 describe('playwright skeleton generator', () => {
   it('generates a deterministic session restore skeleton', () => {
@@ -43,5 +46,25 @@ describe('playwright skeleton generator', () => {
     )
     expect(generated).toContain('await app.close()')
     expect(generated).toContain('await cleanupStateDir(stateDir)')
+  })
+
+  it('generates a deterministic Claude lifecycle skeleton', () => {
+    const generated = generateClaudeLifecyclePlaywrightSkeleton()
+
+    expect(generated).toContain('AUTO-GENERATED FILE. DO NOT EDIT.')
+    expect(generated).toContain("id: 'journey.session.telemetry.claude-lifecycle'")
+    expect(generated).toContain("'session.presence.ready'")
+    expect(generated).toContain("'session.presence.running'")
+    expect(generated).toContain("'session.presence.blocked'")
+    expect(generated).toContain("'session.presence.complete'")
+    expect(generated).toContain("'session.presence.failed'")
+    expect(generated).toContain('installFakeClaude(app)')
+    expect(generated).toContain("data-session-status-testid', 'session-status-ready'")
+    expect(generated).toContain("data-session-status-testid', 'session-status-running'")
+    expect(generated).toContain("data-session-status-testid', 'session-status-blocked'")
+    expect(generated).toContain("data-session-status-testid', 'session-status-complete'")
+    expect(generated).toContain("data-session-status-testid', 'session-status-failed'")
+    expect(generated).toContain("event_type: 'claude-code.PermissionResolved'")
+    expect(generated).toContain("event_type: 'runtime.exited_failed'")
   })
 })

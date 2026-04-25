@@ -48,7 +48,8 @@ function createBaseSession(
     path: 'D:/demo',
     title: 'Deploy',
     type: 'opencode' as const,
-    status: 'running' as const,
+    runtimeState: 'alive' as const,
+    agentState: 'working' as const,
     externalSessionId: null as string | null,
     sessionSecret: 'secret-1',
     providerPort: 43128,
@@ -68,9 +69,10 @@ describe('session runtime callbacks and defaults', () => {
         provider: createProvider(),
         ptyHost: ptyHost as never,
         manager: {
-          markSessionStarting: vi.fn(async () => {}),
-          markSessionRunning: vi.fn(async () => {}),
-          markSessionExited: vi.fn(async () => {}),
+          markRuntimeStarting: vi.fn(async () => {}),
+          markRuntimeAlive: vi.fn(async () => {}),
+          markRuntimeExited: vi.fn(async () => {}),
+        markRuntimeFailedToStart: vi.fn(async () => {}),
           appendTerminalData
         } as never
       })
@@ -92,9 +94,10 @@ describe('session runtime callbacks and defaults', () => {
         provider: createProvider(),
         ptyHost: ptyHost as never,
         manager: {
-          markSessionStarting: vi.fn(async () => {}),
-          markSessionRunning: vi.fn(async () => {}),
-          markSessionExited: vi.fn(async () => {}),
+          markRuntimeStarting: vi.fn(async () => {}),
+          markRuntimeAlive: vi.fn(async () => {}),
+          markRuntimeExited: vi.fn(async () => {}),
+        markRuntimeFailedToStart: vi.fn(async () => {}),
           appendTerminalData
         } as never
       })
@@ -108,10 +111,10 @@ describe('session runtime callbacks and defaults', () => {
     })
   })
 
-  describe('onExit callback triggers markSessionExited', () => {
-    test('ptyHost.start onExit callback calls manager.markSessionExited with formatted message', async () => {
+  describe('onExit callback triggers markRuntimeExited', () => {
+    test('ptyHost.start onExit callback calls manager.markRuntimeExited with formatted message', async () => {
       const ptyHost = createCapturingPtyHost()
-      const markSessionExited = vi.fn(async () => {})
+      const markRuntimeExited = vi.fn(async () => {})
 
       await startSessionRuntime({
         session: createBaseSession(),
@@ -119,9 +122,9 @@ describe('session runtime callbacks and defaults', () => {
         provider: createProvider(),
         ptyHost: ptyHost as never,
         manager: {
-          markSessionStarting: vi.fn(async () => {}),
-          markSessionRunning: vi.fn(async () => {}),
-          markSessionExited,
+          markRuntimeStarting: vi.fn(async () => {}),
+          markRuntimeAlive: vi.fn(async () => {}),
+          markRuntimeExited,
           appendTerminalData: vi.fn(async () => {})
         } as never
       })
@@ -129,13 +132,13 @@ describe('session runtime callbacks and defaults', () => {
       const onExit = ptyHost.onExit!
       onExit(0)
 
-      expect(markSessionExited).toHaveBeenCalledOnce()
-      expect(markSessionExited).toHaveBeenCalledWith('session_op_1', 'opencode exited (0)')
+      expect(markRuntimeExited).toHaveBeenCalledOnce()
+      expect(markRuntimeExited).toHaveBeenCalledWith('session_op_1', 0, 'opencode exited (0)')
     })
 
     test('onExit with non-zero code includes the code', async () => {
       const ptyHost = createCapturingPtyHost()
-      const markSessionExited = vi.fn(async () => {})
+      const markRuntimeExited = vi.fn(async () => {})
 
       await startSessionRuntime({
         session: createBaseSession(),
@@ -143,9 +146,9 @@ describe('session runtime callbacks and defaults', () => {
         provider: createProvider(),
         ptyHost: ptyHost as never,
         manager: {
-          markSessionStarting: vi.fn(async () => {}),
-          markSessionRunning: vi.fn(async () => {}),
-          markSessionExited,
+          markRuntimeStarting: vi.fn(async () => {}),
+          markRuntimeAlive: vi.fn(async () => {}),
+          markRuntimeExited,
           appendTerminalData: vi.fn(async () => {})
         } as never
       })
@@ -153,15 +156,15 @@ describe('session runtime callbacks and defaults', () => {
       const onExit = ptyHost.onExit!
       onExit(137)
 
-      expect(markSessionExited).toHaveBeenCalledWith('session_op_1', 'opencode exited (137)')
+      expect(markRuntimeExited).toHaveBeenCalledWith('session_op_1', 137, 'opencode exited (137)')
     })
   })
 
-  describe('markSessionStarting is called before markSessionRunning', () => {
-    test('call order: markSessionStarting → ptyHost.start → markSessionRunning', async () => {
+  describe('markRuntimeStarting is called before markRuntimeAlive', () => {
+    test('call order: markRuntimeStarting 鈫?ptyHost.start 鈫?markRuntimeAlive', async () => {
       const callOrder: string[] = []
-      const markSessionStarting = vi.fn(async () => { callOrder.push('markSessionStarting') })
-      const markSessionRunning = vi.fn(async () => { callOrder.push('markSessionRunning') })
+      const markRuntimeStarting = vi.fn(async () => { callOrder.push('markRuntimeStarting') })
+      const markRuntimeAlive = vi.fn(async () => { callOrder.push('markRuntimeAlive') })
       const start = vi.fn(() => {
         callOrder.push('ptyHost.start')
         return { runtimeId: 'session_op_1' }
@@ -173,14 +176,15 @@ describe('session runtime callbacks and defaults', () => {
         provider: createProvider(),
         ptyHost: { start } as never,
         manager: {
-          markSessionStarting,
-          markSessionRunning,
-          markSessionExited: vi.fn(async () => {}),
+          markRuntimeStarting,
+          markRuntimeAlive,
+          markRuntimeExited: vi.fn(async () => {}),
+        markRuntimeFailedToStart: vi.fn(async () => {}),
           appendTerminalData: vi.fn(async () => {})
         } as never
       })
 
-      expect(callOrder).toEqual(['markSessionStarting', 'ptyHost.start', 'markSessionRunning'])
+      expect(callOrder).toEqual(['markRuntimeStarting', 'ptyHost.start', 'markRuntimeAlive'])
     })
   })
 
@@ -199,9 +203,10 @@ describe('session runtime callbacks and defaults', () => {
         provider,
         ptyHost: { start: vi.fn(() => ({ runtimeId: 'session_op_1' })) } as never,
         manager: {
-          markSessionStarting: vi.fn(async () => {}),
-          markSessionRunning: vi.fn(async () => {}),
-          markSessionExited: vi.fn(async () => {}),
+          markRuntimeStarting: vi.fn(async () => {}),
+          markRuntimeAlive: vi.fn(async () => {}),
+          markRuntimeExited: vi.fn(async () => {}),
+        markRuntimeFailedToStart: vi.fn(async () => {}),
           appendTerminalData: vi.fn(async () => {})
         } as never
       })
@@ -223,9 +228,10 @@ describe('session runtime callbacks and defaults', () => {
         provider,
         ptyHost: { start: vi.fn(() => ({ runtimeId: 'session_op_1' })) } as never,
         manager: {
-          markSessionStarting: vi.fn(async () => {}),
-          markSessionRunning: vi.fn(async () => {}),
-          markSessionExited: vi.fn(async () => {}),
+          markRuntimeStarting: vi.fn(async () => {}),
+          markRuntimeAlive: vi.fn(async () => {}),
+          markRuntimeExited: vi.fn(async () => {}),
+        markRuntimeFailedToStart: vi.fn(async () => {}),
           appendTerminalData: vi.fn(async () => {})
         } as never
       })
@@ -247,9 +253,10 @@ describe('session runtime callbacks and defaults', () => {
         provider,
         ptyHost: { start: vi.fn(() => ({ runtimeId: 'session_op_1' })) } as never,
         manager: {
-          markSessionStarting: vi.fn(async () => {}),
-          markSessionRunning: vi.fn(async () => {}),
-          markSessionExited: vi.fn(async () => {}),
+          markRuntimeStarting: vi.fn(async () => {}),
+          markRuntimeAlive: vi.fn(async () => {}),
+          markRuntimeExited: vi.fn(async () => {}),
+        markRuntimeFailedToStart: vi.fn(async () => {}),
           appendTerminalData: vi.fn(async () => {})
         } as never
       })
@@ -273,9 +280,10 @@ describe('session runtime callbacks and defaults', () => {
         provider,
         ptyHost: { start: vi.fn(() => ({ runtimeId: 'session_op_1' })) } as never,
         manager: {
-          markSessionStarting: vi.fn(async () => {}),
-          markSessionRunning: vi.fn(async () => {}),
-          markSessionExited: vi.fn(async () => {}),
+          markRuntimeStarting: vi.fn(async () => {}),
+          markRuntimeAlive: vi.fn(async () => {}),
+          markRuntimeExited: vi.fn(async () => {}),
+        markRuntimeFailedToStart: vi.fn(async () => {}),
           appendTerminalData: vi.fn(async () => {})
         } as never
       })
@@ -297,9 +305,10 @@ describe('session runtime callbacks and defaults', () => {
         provider,
         ptyHost: { start: vi.fn(() => ({ runtimeId: 'session_op_1' })) } as never,
         manager: {
-          markSessionStarting: vi.fn(async () => {}),
-          markSessionRunning: vi.fn(async () => {}),
-          markSessionExited: vi.fn(async () => {}),
+          markRuntimeStarting: vi.fn(async () => {}),
+          markRuntimeAlive: vi.fn(async () => {}),
+          markRuntimeExited: vi.fn(async () => {}),
+        markRuntimeFailedToStart: vi.fn(async () => {}),
           appendTerminalData: vi.fn(async () => {})
         } as never
       })
@@ -321,9 +330,10 @@ describe('session runtime callbacks and defaults', () => {
         provider,
         ptyHost: { start: vi.fn(() => ({ runtimeId: 'session_op_1' })) } as never,
         manager: {
-          markSessionStarting: vi.fn(async () => {}),
-          markSessionRunning: vi.fn(async () => {}),
-          markSessionExited: vi.fn(async () => {}),
+          markRuntimeStarting: vi.fn(async () => {}),
+          markRuntimeAlive: vi.fn(async () => {}),
+          markRuntimeExited: vi.fn(async () => {}),
+        markRuntimeFailedToStart: vi.fn(async () => {}),
           appendTerminalData: vi.fn(async () => {})
         } as never
       })
@@ -347,9 +357,10 @@ describe('session runtime callbacks and defaults', () => {
         provider,
         ptyHost: { start: vi.fn(() => ({ runtimeId: 'session_op_1' })) } as never,
         manager: {
-          markSessionStarting: vi.fn(async () => {}),
-          markSessionRunning: vi.fn(async () => {}),
-          markSessionExited: vi.fn(async () => {}),
+          markRuntimeStarting: vi.fn(async () => {}),
+          markRuntimeAlive: vi.fn(async () => {}),
+          markRuntimeExited: vi.fn(async () => {}),
+        markRuntimeFailedToStart: vi.fn(async () => {}),
           appendTerminalData: vi.fn(async () => {})
         } as never,
         providerPath: 'C:/tools/opencode.ps1'
@@ -372,9 +383,10 @@ describe('session runtime callbacks and defaults', () => {
         provider,
         ptyHost: { start: vi.fn(() => ({ runtimeId: 'session_op_1' })) } as never,
         manager: {
-          markSessionStarting: vi.fn(async () => {}),
-          markSessionRunning: vi.fn(async () => {}),
-          markSessionExited: vi.fn(async () => {}),
+          markRuntimeStarting: vi.fn(async () => {}),
+          markRuntimeAlive: vi.fn(async () => {}),
+          markRuntimeExited: vi.fn(async () => {}),
+        markRuntimeFailedToStart: vi.fn(async () => {}),
           appendTerminalData: vi.fn(async () => {})
         } as never
       })
@@ -394,14 +406,15 @@ describe('session runtime callbacks and defaults', () => {
       const provider = createProvider({ buildStartCommand, buildResumeCommand })
 
       await startSessionRuntime({
-        session: createBaseSession({ type: 'shell', externalSessionId: 'ext-1', status: 'running' }),
+        session: createBaseSession({ type: 'shell', externalSessionId: 'ext-1' }),
         webhookPort: 43127,
         provider,
         ptyHost: { start: vi.fn(() => ({ runtimeId: 'session_op_1' })) } as never,
         manager: {
-          markSessionStarting: vi.fn(async () => {}),
-          markSessionRunning: vi.fn(async () => {}),
-          markSessionExited: vi.fn(async () => {}),
+          markRuntimeStarting: vi.fn(async () => {}),
+          markRuntimeAlive: vi.fn(async () => {}),
+          markRuntimeExited: vi.fn(async () => {}),
+        markRuntimeFailedToStart: vi.fn(async () => {}),
           appendTerminalData: vi.fn(async () => {})
         } as never
       })
@@ -410,7 +423,7 @@ describe('session runtime callbacks and defaults', () => {
       expect(buildResumeCommand).not.toHaveBeenCalled()
     })
 
-    test('opencode with needs_confirmation status does not resume', async () => {
+    test('opencode with blocked agent state does not resume', async () => {
       const buildStartCommand = vi.fn(async () => ({
         command: 'opencode', args: [], cwd: 'D:/demo', env: {}
       }))
@@ -420,14 +433,15 @@ describe('session runtime callbacks and defaults', () => {
       const provider = createProvider({ buildStartCommand, buildResumeCommand })
 
       await startSessionRuntime({
-        session: createBaseSession({ type: 'opencode', externalSessionId: 'ext-1', status: 'needs_confirmation' }),
+        session: createBaseSession({ type: 'opencode', externalSessionId: 'ext-1', agentState: 'blocked' }),
         webhookPort: 43127,
         provider,
         ptyHost: { start: vi.fn(() => ({ runtimeId: 'session_op_1' })) } as never,
         manager: {
-          markSessionStarting: vi.fn(async () => {}),
-          markSessionRunning: vi.fn(async () => {}),
-          markSessionExited: vi.fn(async () => {}),
+          markRuntimeStarting: vi.fn(async () => {}),
+          markRuntimeAlive: vi.fn(async () => {}),
+          markRuntimeExited: vi.fn(async () => {}),
+        markRuntimeFailedToStart: vi.fn(async () => {}),
           appendTerminalData: vi.fn(async () => {})
         } as never
       })
@@ -446,14 +460,15 @@ describe('session runtime callbacks and defaults', () => {
       const provider = createProvider({ buildStartCommand, buildResumeCommand })
 
       await startSessionRuntime({
-        session: createBaseSession({ type: 'opencode', externalSessionId: null, status: 'running' }),
+        session: createBaseSession({ type: 'opencode', externalSessionId: null }),
         webhookPort: 43127,
         provider,
         ptyHost: { start: vi.fn(() => ({ runtimeId: 'session_op_1' })) } as never,
         manager: {
-          markSessionStarting: vi.fn(async () => {}),
-          markSessionRunning: vi.fn(async () => {}),
-          markSessionExited: vi.fn(async () => {}),
+          markRuntimeStarting: vi.fn(async () => {}),
+          markRuntimeAlive: vi.fn(async () => {}),
+          markRuntimeExited: vi.fn(async () => {}),
+        markRuntimeFailedToStart: vi.fn(async () => {}),
           appendTerminalData: vi.fn(async () => {})
         } as never
       })
@@ -475,14 +490,15 @@ describe('session runtime callbacks and defaults', () => {
       })
 
       await startSessionRuntime({
-        session: createBaseSession({ type: 'codex', externalSessionId: null, status: 'running' }),
+        session: createBaseSession({ type: 'codex', externalSessionId: null }),
         webhookPort: 43127,
         provider,
         ptyHost: { start: vi.fn(() => ({ runtimeId: 'session_op_1' })) } as never,
         manager: {
-          markSessionStarting: vi.fn(async () => {}),
-          markSessionRunning: vi.fn(async () => {}),
-          markSessionExited: vi.fn(async () => {}),
+          markRuntimeStarting: vi.fn(async () => {}),
+          markRuntimeAlive: vi.fn(async () => {}),
+          markRuntimeExited: vi.fn(async () => {}),
+        markRuntimeFailedToStart: vi.fn(async () => {}),
           appendTerminalData: vi.fn(async () => {})
         } as never
       })
@@ -501,14 +517,15 @@ describe('session runtime callbacks and defaults', () => {
       const provider = createProvider({ buildStartCommand, buildResumeCommand, supportsResume: () => false })
 
       await startSessionRuntime({
-        session: createBaseSession({ type: 'opencode', externalSessionId: 'ext-1', status: 'running' }),
+        session: createBaseSession({ type: 'opencode', externalSessionId: 'ext-1' }),
         webhookPort: 43127,
         provider,
         ptyHost: { start: vi.fn(() => ({ runtimeId: 'session_op_1' })) } as never,
         manager: {
-          markSessionStarting: vi.fn(async () => {}),
-          markSessionRunning: vi.fn(async () => {}),
-          markSessionExited: vi.fn(async () => {}),
+          markRuntimeStarting: vi.fn(async () => {}),
+          markRuntimeAlive: vi.fn(async () => {}),
+          markRuntimeExited: vi.fn(async () => {}),
+        markRuntimeFailedToStart: vi.fn(async () => {}),
           appendTerminalData: vi.fn(async () => {})
         } as never
       })
@@ -527,14 +544,15 @@ describe('session runtime callbacks and defaults', () => {
       const provider = createProvider({ buildStartCommand, buildResumeCommand, supportsResume: () => true })
 
       await startSessionRuntime({
-        session: createBaseSession({ type: 'opencode', externalSessionId: 'ext-1', status: 'running' }),
+        session: createBaseSession({ type: 'opencode', externalSessionId: 'ext-1' }),
         webhookPort: 43127,
         provider,
         ptyHost: { start: vi.fn(() => ({ runtimeId: 'session_op_1' })) } as never,
         manager: {
-          markSessionStarting: vi.fn(async () => {}),
-          markSessionRunning: vi.fn(async () => {}),
-          markSessionExited: vi.fn(async () => {}),
+          markRuntimeStarting: vi.fn(async () => {}),
+          markRuntimeAlive: vi.fn(async () => {}),
+          markRuntimeExited: vi.fn(async () => {}),
+        markRuntimeFailedToStart: vi.fn(async () => {}),
           appendTerminalData: vi.fn(async () => {})
         } as never
       })
@@ -544,63 +562,66 @@ describe('session runtime callbacks and defaults', () => {
     })
   })
 
-  describe('markSessionRunning receives correct externalSessionId', () => {
+  describe('markRuntimeAlive receives correct externalSessionId', () => {
     test('fresh opencode start keeps externalSessionId null', async () => {
-      const markSessionRunning = vi.fn(async () => {})
+      const markRuntimeAlive = vi.fn(async () => {})
       const start = vi.fn(() => ({ runtimeId: 'session_op_1' }))
 
       await startSessionRuntime({
-        session: createBaseSession({ type: 'opencode', externalSessionId: null, status: 'running' }),
+        session: createBaseSession({ type: 'opencode', externalSessionId: null }),
         webhookPort: 43127,
         provider: createProvider(),
         ptyHost: { start } as never,
         manager: {
-          markSessionStarting: vi.fn(async () => {}),
-          markSessionRunning,
-          markSessionExited: vi.fn(async () => {}),
+          markRuntimeStarting: vi.fn(async () => {}),
+          markRuntimeAlive,
+          markRuntimeExited: vi.fn(async () => {}),
+        markRuntimeFailedToStart: vi.fn(async () => {}),
           appendTerminalData: vi.fn(async () => {})
         } as never
       })
 
-      expect(markSessionRunning).toHaveBeenCalledWith('session_op_1', null)
+      expect(markRuntimeAlive).toHaveBeenCalledWith('session_op_1', null)
     })
 
     test('fresh shell start keeps externalSessionId null', async () => {
-      const markSessionRunning = vi.fn(async () => {})
+      const markRuntimeAlive = vi.fn(async () => {})
 
       await startSessionRuntime({
-        session: createBaseSession({ type: 'shell', externalSessionId: null, status: 'running' }),
+        session: createBaseSession({ type: 'shell', externalSessionId: null }),
         webhookPort: 43127,
         provider: createProvider({ supportsResume: () => true }),
         ptyHost: { start: vi.fn(() => ({ runtimeId: 'session_op_1' })) } as never,
         manager: {
-          markSessionStarting: vi.fn(async () => {}),
-          markSessionRunning,
-          markSessionExited: vi.fn(async () => {}),
+          markRuntimeStarting: vi.fn(async () => {}),
+          markRuntimeAlive,
+          markRuntimeExited: vi.fn(async () => {}),
+        markRuntimeFailedToStart: vi.fn(async () => {}),
           appendTerminalData: vi.fn(async () => {})
         } as never
       })
 
-      expect(markSessionRunning).toHaveBeenCalledWith('session_op_1', null)
+      expect(markRuntimeAlive).toHaveBeenCalledWith('session_op_1', null)
     })
 
     test('resume passes the session externalSessionId', async () => {
-      const markSessionRunning = vi.fn(async () => {})
+      const markRuntimeAlive = vi.fn(async () => {})
 
       await startSessionRuntime({
-        session: createBaseSession({ type: 'opencode', externalSessionId: 'ext-1', status: 'running' }),
+        session: createBaseSession({ type: 'opencode', externalSessionId: 'ext-1' }),
         webhookPort: 43127,
         provider: createProvider({ supportsResume: () => true }),
         ptyHost: { start: vi.fn(() => ({ runtimeId: 'session_op_1' })) } as never,
         manager: {
-          markSessionStarting: vi.fn(async () => {}),
-          markSessionRunning,
-          markSessionExited: vi.fn(async () => {}),
+          markRuntimeStarting: vi.fn(async () => {}),
+          markRuntimeAlive,
+          markRuntimeExited: vi.fn(async () => {}),
+        markRuntimeFailedToStart: vi.fn(async () => {}),
           appendTerminalData: vi.fn(async () => {})
         } as never
       })
 
-      expect(markSessionRunning).toHaveBeenCalledWith('session_op_1', 'ext-1')
+      expect(markRuntimeAlive).toHaveBeenCalledWith('session_op_1', 'ext-1')
     })
   })
 
@@ -625,9 +646,10 @@ describe('session runtime callbacks and defaults', () => {
         provider,
         ptyHost: { start: vi.fn(() => ({ runtimeId: 'session_xyz' })) } as never,
         manager: {
-          markSessionStarting: vi.fn(async () => {}),
-          markSessionRunning: vi.fn(async () => {}),
-          markSessionExited: vi.fn(async () => {}),
+          markRuntimeStarting: vi.fn(async () => {}),
+          markRuntimeAlive: vi.fn(async () => {}),
+          markRuntimeExited: vi.fn(async () => {}),
+        markRuntimeFailedToStart: vi.fn(async () => {}),
           appendTerminalData: vi.fn(async () => {})
         } as never
       })

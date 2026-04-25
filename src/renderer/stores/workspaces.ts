@@ -1,6 +1,6 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
-import type { BootstrapState, ProjectSummary, SessionStatus, SessionSummary } from '@shared/project-session'
+import type { BootstrapState, ProjectSummary, SessionSummary } from '@shared/project-session'
 import { buildSessionPresenceSnapshot } from '@shared/observability-projection'
 import type {
   AppObservabilitySnapshot,
@@ -12,6 +12,19 @@ export interface ProjectHierarchyNode extends ProjectSummary {
   active: boolean
   sessions: Array<SessionSummary & { active: boolean }>
   archivedSessions: Array<SessionSummary & { active: boolean }>
+}
+
+interface SequencedSnapshot {
+  sourceSequence: number
+  updatedAt: string
+}
+
+function isStaleSnapshot(current: SequencedSnapshot, next: SequencedSnapshot): boolean {
+  if (current.sourceSequence > next.sourceSequence) {
+    return true
+  }
+
+  return current.sourceSequence === next.sourceSequence && current.updatedAt >= next.updatedAt
 }
 
 export const useWorkspaceStore = defineStore('workspaces', () => {
@@ -27,6 +40,7 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
   const unsubscribeSessionPresenceChanged = ref<(() => void) | null>(null)
   const unsubscribeProjectObservabilityChanged = ref<(() => void) | null>(null)
   const unsubscribeAppObservabilityChanged = ref<(() => void) | null>(null)
+  const backendSessionPresenceIds = new Set<string>()
 
   const activeProject = computed(() => {
     return projects.value.find((project) => project.id === activeProjectId.value) ?? null
@@ -145,10 +159,11 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
 
   function applySessionPresenceSnapshot(snapshot: SessionPresenceSnapshot): void {
     const current = sessionPresenceById.value[snapshot.sessionId]
-    if (current && current.sourceSequence > snapshot.sourceSequence) {
+    if (current && backendSessionPresenceIds.has(snapshot.sessionId) && isStaleSnapshot(current, snapshot)) {
       return
     }
 
+    backendSessionPresenceIds.add(snapshot.sessionId)
     sessionPresenceById.value = {
       ...sessionPresenceById.value,
       [snapshot.sessionId]: snapshot
@@ -157,7 +172,7 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
 
   function applyProjectObservabilitySnapshot(snapshot: ProjectObservabilitySnapshot): void {
     const current = projectObservabilityById.value[snapshot.projectId]
-    if (current && current.sourceSequence > snapshot.sourceSequence) {
+    if (current && isStaleSnapshot(current, snapshot)) {
       return
     }
 
@@ -168,7 +183,7 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
   }
 
   function applyAppObservabilitySnapshot(snapshot: AppObservabilitySnapshot): void {
-    if (appObservability.value && appObservability.value.sourceSequence > snapshot.sourceSequence) {
+    if (appObservability.value && isStaleSnapshot(appObservability.value, snapshot)) {
       return
     }
 
@@ -177,7 +192,7 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
 
   async function backfillMissedObservability(stoa: typeof window.stoa): Promise<void> {
     for (const session of sessions.value) {
-      const cursor = String(sessionPresenceById.value[session.id]?.sourceSequence ?? 0)
+      const cursor = String(sessionPresenceById.value[session.id]?.evidenceSequence ?? 0)
       const listed = await stoa.listSessionObservationEvents?.(session.id, { cursor, limit: 50 })
       if (!listed?.events.length) {
         continue
@@ -235,35 +250,37 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
     syncSessionPresenceFromSummary(session)
   }
 
-  function updateSession(sessionId: string, patch: { status?: SessionStatus; summary?: string; externalSessionId?: string | null }): void {
+  function updateSession(sessionId: string, patch: Partial<SessionSummary>): void {
     const session = sessions.value.find((s) => s.id === sessionId)
     if (!session) return
-    if (patch.status !== undefined) session.status = patch.status
-    if (patch.summary !== undefined) session.summary = patch.summary
-    if (patch.externalSessionId !== undefined) session.externalSessionId = patch.externalSessionId
+    Object.assign(session, patch)
     syncSessionPresenceFromSummary(session)
   }
 
   function syncSessionPresenceFromSummary(session: SessionSummary): void {
+    if (backendSessionPresenceIds.has(session.id)) {
+      return
+    }
+
     const current = sessionPresenceById.value[session.id]
     const next = buildSessionPresenceSnapshot(session, {
       activeSessionId: activeSessionId.value,
       nowIso: new Date().toISOString(),
-      sourceSequence: current?.sourceSequence ?? 0
+      modelLabel: current?.modelLabel ?? null,
+      lastAssistantSnippet: current?.lastAssistantSnippet ?? null,
+      lastEvidenceType: current?.lastEvidenceType ?? null,
+      lastEventAt: current?.lastEventAt ?? null,
+      evidenceSequence: current?.evidenceSequence ?? 0,
+      sourceSequence: session.lastStateSequence
     })
+
+    if (current && isStaleSnapshot(current, next)) {
+      return
+    }
 
     sessionPresenceById.value = {
       ...sessionPresenceById.value,
-      [session.id]: {
-        ...current,
-        ...next,
-        modelLabel: current?.modelLabel ?? next.modelLabel,
-        lastAssistantSnippet: current?.lastAssistantSnippet ?? next.lastAssistantSnippet,
-        lastEvidenceType: current?.lastEvidenceType ?? next.lastEvidenceType,
-        hasUnreadTurn: current?.hasUnreadTurn ?? next.hasUnreadTurn,
-        lastEventAt: current?.lastEventAt ?? next.lastEventAt,
-        sourceSequence: current?.sourceSequence ?? next.sourceSequence
-      }
+      [session.id]: next
     }
   }
 

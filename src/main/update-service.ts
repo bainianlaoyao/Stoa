@@ -290,7 +290,7 @@ export class UpdateService {
     return this.options.sessionManager
       .snapshot()
       .sessions
-      .some((session) => !session.archived && session.status !== 'exited')
+      .some((session) => !session.archived && session.runtimeState !== 'exited')
   }
 
   private snapshotState(): UpdateState {

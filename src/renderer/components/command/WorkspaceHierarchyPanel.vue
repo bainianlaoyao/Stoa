@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import type { SessionRowViewModel } from '@shared/observability'
-import type { SessionStatus, SessionType } from '@shared/project-session'
+import type { SessionType } from '@shared/project-session'
 import { getProviderDescriptorBySessionType } from '@shared/provider-descriptors'
 import type { ProjectHierarchyNode } from '@renderer/stores/workspaces'
 import NewProjectModal from './NewProjectModal.vue'
@@ -13,7 +13,7 @@ interface DetailState {
   name: string
   path?: string
   sessionType?: string
-  status?: string
+  phase?: string
   x: number
   y: number
 }
@@ -93,16 +93,6 @@ function sessionRowViewModel(sessionId: string): SessionRowViewModel | null {
   return props.sessionRowViewModels?.[sessionId] ?? null
 }
 
-function sessionSecondaryLabel(session: ProjectHierarchyNode['sessions'][number]): string {
-  const viewModel = sessionRowViewModel(session.id)
-
-  if (viewModel) {
-    return viewModel.secondaryLabel
-  }
-
-  return session.type
-}
-
 function sessionTone(session: ProjectHierarchyNode['sessions'][number]): string {
   return sessionRowViewModel(session.id)?.tone ?? 'neutral'
 }
@@ -112,11 +102,11 @@ function sessionPrimaryLabel(session: ProjectHierarchyNode['sessions'][number]):
 }
 
 function sessionStatusLabel(session: ProjectHierarchyNode['sessions'][number]): string | null {
-  const vm = sessionRowViewModel(session.id)
-  if (!vm) return null
+  const viewModel = sessionRowViewModel(session.id)
+  if (!viewModel) return null
   const parts: string[] = []
-  if (vm.primaryLabel) parts.push(vm.primaryLabel)
-  if (vm.updatedAgoLabel) parts.push(vm.updatedAgoLabel)
+  if (viewModel.primaryLabel) parts.push(viewModel.primaryLabel)
+  if (viewModel.updatedAgoLabel) parts.push(viewModel.updatedAgoLabel)
   return parts.length ? parts.join(' ') : null
 }
 
@@ -129,8 +119,8 @@ function sessionAttentionReason(session: ProjectHierarchyNode['sessions'][number
 }
 
 function openDetail(event: MouseEvent | KeyboardEvent, kind: 'project', project: ProjectHierarchyNode): void
-function openDetail(event: MouseEvent | KeyboardEvent, kind: 'session', session: { title: string; type: string; status: SessionStatus }): void
-function openDetail(event: MouseEvent | KeyboardEvent, kind: 'project' | 'session', data: ProjectHierarchyNode | { title: string; type: string; status: SessionStatus }): void {
+function openDetail(event: MouseEvent | KeyboardEvent, kind: 'session', session: { title: string; type: string; phase: string }): void
+function openDetail(event: MouseEvent | KeyboardEvent, kind: 'project' | 'session', data: ProjectHierarchyNode | { title: string; type: string; phase: string }): void {
   event.stopPropagation()
   const el = event.currentTarget as HTMLElement
   const rect = el.getBoundingClientRect()
@@ -138,17 +128,20 @@ function openDetail(event: MouseEvent | KeyboardEvent, kind: 'project' | 'sessio
   const y = rect.top
 
   if (kind === 'project') {
-    const p = data as ProjectHierarchyNode
-    detailState.value = { kind: 'project', name: p.name, path: p.path, x, y }
+    const project = data as ProjectHierarchyNode
+    detailState.value = { kind: 'project', name: project.name, path: project.path, x, y }
   } else {
-    const s = data as { title: string; type: string; status: SessionStatus }
-    const descriptor = getProviderDescriptorBySessionType(s.type as SessionType)
-    detailState.value = { kind: 'session', name: descriptor.displayName, sessionType: s.type, status: s.status.replace(/_/g, ' '), x, y }
+    const session = data as { title: string; type: string; phase: string }
+    const descriptor = getProviderDescriptorBySessionType(session.type as SessionType)
+    detailState.value = {
+      kind: 'session',
+      name: descriptor.displayName,
+      sessionType: session.type,
+      phase: session.phase.replace(/_/g, ' '),
+      x,
+      y
+    }
   }
-}
-
-function closeDetail() {
-  detailState.value = null
 }
 
 function onAddButtonMouseDown(event: MouseEvent, projectId: string) {
@@ -312,13 +305,14 @@ onBeforeUnmount(() => {
               :data-session-type="session.type"
               type="button"
               @click="emit('selectSession', session.id)"
+              @contextmenu.prevent="openDetail($event, 'session', { title: session.title, type: session.type, phase: sessionPrimaryLabel(session) ?? sessionPhase(session) })"
             >
               <div
                 class="route-dot"
                 data-testid="session-status-dot"
-                :data-status="session.status"
                 :data-tone="sessionTone(session)"
                 :data-phase="sessionPhase(session)"
+                :data-session-status-testid="`session-status-${sessionPhase(session)}`"
                 :data-attention-reason="sessionAttentionReason(session) ?? undefined"
               />
               <img class="route-provider-icon" :src="providerIcon(session.type)" :alt="session.type" />
@@ -330,7 +324,7 @@ onBeforeUnmount(() => {
                 type="button"
                 data-testid="workspace.archive-session"
                 :data-session-id="session.id"
-                :aria-label="`Archive ${getProviderDescriptorBySessionType(session.type).displayName} session`"
+                :aria-label="`Archive ${session.title}`"
                 title="Archive session"
                 :data-row-archive="session.id"
                 @click.stop="emit('archiveSession', session.id)"
@@ -388,13 +382,12 @@ onBeforeUnmount(() => {
       <div class="detail-popover__name">{{ detailState.name }}</div>
       <div v-if="detailState.path" class="detail-popover__info">{{ detailState.path }}</div>
       <div v-if="detailState.sessionType" class="detail-popover__info">{{ detailState.sessionType }}</div>
-      <div v-if="detailState.status" class="detail-popover__info">{{ detailState.status }}</div>
+      <div v-if="detailState.phase" class="detail-popover__info">{{ detailState.phase }}</div>
     </div>
   </Teleport>
 </template>
 
 <style scoped>
-/* Layout */
 .route-session-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -430,7 +423,6 @@ onBeforeUnmount(() => {
   opacity: 1;
 }
 
-/* Route items */
 .route-item {
   display: grid;
   grid-template-columns: 20px minmax(0, 1fr);
@@ -446,7 +438,6 @@ onBeforeUnmount(() => {
   transition: all 0.2s ease;
 }
 
-/* Session rows: dot + icon + label */
 .route-item.child {
   grid-template-columns: 8px auto minmax(0, 1fr);
   gap: 8px;
@@ -470,7 +461,6 @@ onBeforeUnmount(() => {
   padding-right: 10px;
 }
 
-/* Detail trigger (⋮) */
 .route-detail-trigger {
   width: 20px;
   height: 20px;
@@ -495,7 +485,6 @@ onBeforeUnmount(() => {
   color: var(--color-text-strong);
 }
 
-/* Copy/text */
 .route-copy {
   display: grid;
   gap: 2px;
@@ -532,7 +521,6 @@ onBeforeUnmount(() => {
   font-weight: 600;
 }
 
-/* Route dot status colors (session rows only) */
 .route-dot {
   width: 6px;
   height: 6px;
@@ -596,7 +584,6 @@ onBeforeUnmount(() => {
   color: var(--color-subtle);
 }
 
-/* Detail popover */
 .detail-popover {
   position: fixed;
   z-index: 100;
@@ -625,7 +612,6 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 
-/* Group label */
 .group-label {
   display: flex;
   align-items: center;
@@ -642,7 +628,6 @@ onBeforeUnmount(() => {
   opacity: 0.6;
 }
 
-/* Icon buttons */
 .route-icon-button {
   width: 24px;
   height: 24px;
@@ -677,7 +662,6 @@ onBeforeUnmount(() => {
   height: 12px;
 }
 
-/* Add session button */
 .route-add-session {
   display: grid;
   place-items: center;

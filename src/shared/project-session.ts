@@ -5,19 +5,61 @@ import type {
   ProjectObservabilitySnapshot,
   SessionPresenceSnapshot
 } from './observability'
+import type { BlockingReason } from '@shared/observability'
 
 export type SessionType = 'shell' | 'opencode' | 'codex' | 'claude-code'
 export type SessionRecoveryMode = 'fresh-shell' | 'resume-external'
-export type SessionStatus =
-  | 'bootstrapping'
-  | 'starting'
-  | 'running'
-  | 'turn_complete'
-  | 'awaiting_input'
-  | 'degraded'
-  | 'error'
-  | 'exited'
-  | 'needs_confirmation'
+export type SessionRuntimeState = 'created' | 'starting' | 'alive' | 'exited' | 'failed_to_start'
+export type SessionAgentState = 'unknown' | 'idle' | 'working' | 'blocked' | 'error'
+export type SessionStateSource = 'runtime' | 'provider' | 'ui'
+export type SessionStateIntent =
+  | 'runtime.created'
+  | 'runtime.starting'
+  | 'runtime.alive'
+  | 'runtime.exited_clean'
+  | 'runtime.exited_failed'
+  | 'runtime.failed_to_start'
+  | 'agent.turn_started'
+  | 'agent.tool_started'
+  | 'agent.turn_completed'
+  | 'agent.completion_seen'
+  | 'agent.permission_requested'
+  | 'agent.permission_resolved'
+  | 'agent.turn_failed'
+  | 'agent.recovered'
+
+export interface SessionStatePatchEvent {
+  sessionId: string
+  sequence: number
+  occurredAt: string
+  intent: SessionStateIntent
+  source: SessionStateSource
+  sourceEventType?: string
+  runtimeState?: SessionRuntimeState
+  agentState?: SessionAgentState
+  hasUnseenCompletion?: boolean
+  runtimeExitCode?: number | null
+  runtimeExitReason?: 'clean' | 'failed' | null
+  blockingReason?: BlockingReason | null
+  summary: string
+  externalSessionId?: string | null
+}
+
+export interface SessionStatePatchPayload {
+  intent: SessionStateIntent
+  agentState?: SessionAgentState
+  runtimeState?: SessionRuntimeState
+  hasUnseenCompletion?: boolean
+  runtimeExitCode?: number | null
+  runtimeExitReason?: 'clean' | 'failed' | null
+  blockingReason?: BlockingReason | null
+  summary: string
+  externalSessionId?: string | null
+  model?: string
+  snippet?: string
+  toolName?: string
+  error?: string
+}
 
 export interface ProjectSummary {
   id: string
@@ -32,7 +74,13 @@ export interface SessionSummary {
   id: string
   projectId: string
   type: SessionType
-  status: SessionStatus
+  runtimeState: SessionRuntimeState
+  agentState: SessionAgentState
+  hasUnseenCompletion: boolean
+  runtimeExitCode: number | null
+  runtimeExitReason: 'clean' | 'failed' | null
+  lastStateSequence: number
+  blockingReason: BlockingReason | null
   title: string
   summary: string
   recoveryMode: SessionRecoveryMode
@@ -57,7 +105,13 @@ export interface PersistedSession {
   project_id: string
   type: SessionType
   title: string
-  last_known_status: SessionStatus
+  runtime_state: SessionRuntimeState
+  agent_state: SessionAgentState
+  has_unseen_completion: boolean
+  runtime_exit_code: number | null
+  runtime_exit_reason: 'clean' | 'failed' | null
+  last_state_sequence: number
+  blocking_reason: BlockingReason | null
   last_summary: string
   external_session_id: string | null
   created_at: string
@@ -105,7 +159,7 @@ export interface PersistedGlobalStateV3 {
 }
 
 export interface PersistedProjectSessions {
-  version: 4
+  version: 5
   project_id: string
   sessions: PersistedSession[]
 }
@@ -136,11 +190,8 @@ export interface TerminalDataChunk {
   data: string
 }
 
-export interface SessionStatusEvent {
-  sessionId: string
-  status: SessionStatus
-  summary: string
-  externalSessionId: string | null
+export interface SessionSummaryEvent {
+  session: SessionSummary
 }
 
 export interface ObservationEventListOptions {
@@ -161,7 +212,7 @@ export interface RendererApi {
   sendSessionInput: (sessionId: string, data: string) => Promise<void>
   sendSessionResize: (sessionId: string, cols: number, rows: number) => Promise<void>
   onTerminalData: (callback: (chunk: TerminalDataChunk) => void) => () => void
-  onSessionEvent: (callback: (event: SessionStatusEvent) => void) => () => void
+  onSessionEvent: (callback: (event: SessionSummaryEvent) => void) => () => void
   getSessionPresence: (sessionId: string) => Promise<SessionPresenceSnapshot | null>
   getProjectObservability: (projectId: string) => Promise<ProjectObservabilitySnapshot | null>
   getAppObservability: () => Promise<AppObservabilitySnapshot | null>
@@ -193,13 +244,6 @@ export interface RendererApi {
   onUpdateState: (callback: (state: UpdateState) => void) => () => void
 }
 
-export interface SessionEventPayload {
-  status?: SessionStatus
-  summary?: string
-  isProvisional?: boolean
-  externalSessionId?: string | null
-}
-
 export interface CanonicalSessionEvent {
   event_version: 1
   event_id: string
@@ -209,7 +253,7 @@ export interface CanonicalSessionEvent {
   project_id: string
   correlation_id?: string
   source: 'hook-sidecar' | 'provider-adapter' | 'system-recovery'
-  payload: SessionEventPayload
+  payload: SessionStatePatchPayload
 }
 
 export interface ProviderCommandContext {

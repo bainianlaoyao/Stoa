@@ -1,4 +1,4 @@
-import type { SessionStatus } from './project-session'
+import type { SessionAgentState, SessionRuntimeState } from './project-session'
 
 export type ObservationScope = 'session' | 'project' | 'app'
 export type ObservationCategory = 'lifecycle' | 'presence' | 'evidence' | 'activity' | 'system'
@@ -26,9 +26,9 @@ export interface ObservationEvent {
   payload: Record<string, unknown>
 }
 
-export type SessionPresencePhase = 'preparing' | 'working' | 'ready' | 'blocked' | 'degraded' | 'failed' | 'exited'
+export type SessionPresencePhase = 'preparing' | 'ready' | 'running' | 'complete' | 'blocked' | 'failed' | 'exited'
 export type ObservabilityConfidence = 'authoritative' | 'provisional' | 'stale'
-export type ObservabilityHealth = 'healthy' | 'degraded' | 'lost'
+export type ObservabilityHealth = 'healthy' | 'lost'
 export type BlockingReason = 'permission' | 'elicitation' | 'resume-confirmation' | 'provider-error'
 export type RecoveryPointerState = 'trusted' | 'suspect' | 'missing'
 export type ObservabilityTone = 'neutral' | 'accent' | 'success' | 'warning' | 'danger'
@@ -37,7 +37,11 @@ export interface SessionRuntimeSnapshot {
   sessionId: string
   projectId: string
   providerId: string
-  canonicalStatus: SessionStatus
+  runtimeState: SessionRuntimeState
+  agentState: SessionAgentState
+  hasUnseenCompletion: boolean
+  runtimeExitCode: number | null
+  runtimeExitReason: 'clean' | 'failed' | null
   runtimeAttached: boolean
   externalSessionId: string | null
   recoveryPointerState: RecoveryPointerState
@@ -46,13 +50,18 @@ export interface SessionRuntimeSnapshot {
 }
 
 export interface SessionPresenceSnapshot {
+  [extra: string]: unknown
   sessionId: string
   projectId: string
   providerId: string
   providerLabel: string
   modelLabel: string | null
   phase: SessionPresencePhase
-  canonicalStatus: SessionStatus
+  runtimeState: SessionRuntimeState
+  agentState: SessionAgentState
+  hasUnseenCompletion: boolean
+  runtimeExitCode: number | null
+  runtimeExitReason: 'clean' | 'failed' | null
   confidence: ObservabilityConfidence
   health: ObservabilityHealth
   blockingReason: BlockingReason | null
@@ -61,6 +70,7 @@ export interface SessionPresenceSnapshot {
   lastEvidenceType: string | null
   hasUnreadTurn: boolean
   recoveryPointerState: RecoveryPointerState
+  evidenceSequence: number
   sourceSequence: number
   updatedAt: string
 }
@@ -70,7 +80,6 @@ export interface ProjectObservabilitySnapshot {
   overallHealth: ObservabilityHealth
   activeSessionCount: number
   blockedSessionCount: number
-  degradedSessionCount: number
   failedSessionCount: number
   unreadTurnCount: number
   latestAttentionSessionId: string | null
@@ -83,7 +92,6 @@ export interface ProjectObservabilitySnapshot {
 export interface AppObservabilitySnapshot {
   blockedProjectCount: number
   failedProjectCount: number
-  degradedProjectCount: number
   totalUnreadTurns: number
   projectsNeedingAttention: string[]
   providerHealthSummary: Record<string, ObservabilityHealth>

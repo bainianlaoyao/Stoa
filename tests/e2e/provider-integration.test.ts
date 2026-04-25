@@ -140,7 +140,11 @@ describe('E2E: Provider Integration', () => {
         session_id: 'session_xyz',
         project_id: 'project_abc',
         source: 'hook-sidecar' as const,
-        payload: { status: 'running' as const }
+        payload: {
+          intent: 'agent.turn_started' as const,
+          agentState: 'working' as const,
+          summary: 'event accepted'
+        }
       }
 
       expect(provider.resolveSessionId(event)).toBe('session_xyz')
@@ -326,6 +330,9 @@ describe('E2E: Provider Integration', () => {
       expect(content).toContain('process.env.STOA_PROJECT_ID')
       expect(content).toContain('process.env.STOA_SESSION_SECRET')
       expect(content).toContain('process.env.STOA_WEBHOOK_PORT')
+      expect(content).toContain('try {')
+      expect(content).toContain('JSON.parse(payload)')
+      expect(content).toContain('process.exit(0)')
       expect(content).not.toContain('session_internal_codex')
       expect(content).not.toContain('project_internal_codex')
       expect(content).not.toContain('secret-codex')
@@ -485,7 +492,8 @@ describe('E2E: Provider Integration', () => {
       const pluginPath = join(workspaceDir, '.opencode', 'plugins', 'stoa-status.ts')
       const content = await readFile(pluginPath, 'utf-8')
       expect(content).toContain('x-stoa-secret')
-      expect(content).toContain('process.env.STOA_SESSION_SECRET')
+      expect(content).toContain('const sessionSecret = process.env.STOA_SESSION_SECRET')
+      expect(content).toContain("'x-stoa-secret': sessionSecret")
       expect(content).not.toContain('my-super-secret-key')
     })
 
@@ -506,12 +514,14 @@ describe('E2E: Provider Integration', () => {
       expect(content).toContain('process.env.STOA_SESSION_ID')
       expect(content).toContain('process.env.STOA_PROJECT_ID')
       expect(content).toContain('process.env.STOA_SESSION_SECRET')
+      expect(content).toContain('session_id: sessionId')
+      expect(content).toContain('project_id: projectId')
       expect(content).toContain('http://127.0.0.1:43127/events')
       expect(content).not.toContain('session_test_s99')
       expect(content).not.toContain('project_test_p99')
     })
 
-    test('sidecar plugin emits only explicit state-changing statuses', async () => {
+    test('sidecar plugin emits only explicit state-changing intents', async () => {
       const workspaceDir = await createTempDir('stoa-sidecar-provider-id-')
       const provider = getProvider('opencode')
 
@@ -526,13 +536,19 @@ describe('E2E: Provider Integration', () => {
 
       const content = await readFile(join(workspaceDir, '.opencode', 'plugins', 'stoa-status.ts'), 'utf8')
       expect(content).toContain("case 'session.idle'")
-      expect(content).toContain("status = 'turn_complete'")
+      expect(content).toContain("intent: 'agent.turn_completed'")
+      expect(content).toContain("agentState: 'idle'")
+      expect(content).toContain('hasUnseenCompletion: true')
       expect(content).toContain("case 'permission.asked'")
-      expect(content).toContain("status = 'needs_confirmation'")
+      expect(content).toContain("intent: 'agent.permission_requested'")
+      expect(content).toContain("agentState: 'blocked'")
+      expect(content).toContain("blockingReason: 'permission'")
       expect(content).toContain("case 'permission.replied'")
-      expect(content).toContain("status = 'running'")
+      expect(content).toContain("intent: 'agent.permission_resolved'")
+      expect(content).toContain("agentState: denied ? (failed ? 'error' : 'idle') : 'working'")
       expect(content).toContain("case 'session.error'")
-      expect(content).toContain("status = 'error'")
+      expect(content).toContain("intent: 'agent.turn_failed'")
+      expect(content).toContain("agentState: 'error'")
       expect(content).toContain('externalSessionId: event.properties?.sessionID ?? undefined')
       expect(content).not.toContain("status: event.type === 'session.idle' ? 'awaiting_input' : 'running'")
     })
@@ -564,7 +580,8 @@ describe('E2E: Provider Integration', () => {
       expect(content).toContain('process.env.STOA_SESSION_ID')
       expect(content).toContain('process.env.STOA_PROJECT_ID')
       expect(content).toContain('127.0.0.1:22222')
-      expect(content).toContain('process.env.STOA_SESSION_SECRET')
+      expect(content).toContain('const sessionSecret = process.env.STOA_SESSION_SECRET')
+      expect(content).toContain("'x-stoa-secret': sessionSecret")
       expect(content).not.toContain('session_v1')
       expect(content).not.toContain('session_v2')
       expect(content).not.toContain('project_v1')
@@ -749,7 +766,7 @@ describe('E2E: Provider Integration', () => {
       expect(content).toContain('snippet:')
     })
 
-    test('full pipeline: webhook server receives and converts Codex PreToolUse hook', async () => {
+    test('full pipeline: webhook server receives and converts Codex PreToolUse hook into a working patch', async () => {
       const server = createLocalWebhookServer({
         getSessionSecret(sessionId) {
           return sessionId === 'session_flow_001' ? 'flow-secret' : null
@@ -786,13 +803,14 @@ describe('E2E: Provider Integration', () => {
       expect(event.session_id).toBe('session_flow_001')
       expect(event.project_id).toBe('project_flow_001')
       expect(event.source).toBe('provider-adapter')
-      expect(event.payload.status).toBe('running')
+      expect(event.payload.intent).toBe('agent.tool_started')
+      expect(event.payload.agentState).toBe('working')
       expect(event.payload.toolName).toBe('Bash')
       expect(event.payload.toolUseId).toBe('tooluse-001')
       expect(event.payload.model).toBe('codex-1')
     })
 
-    test('full pipeline: Stop event produces turn_complete status', async () => {
+    test('full pipeline: Stop event produces a completion patch', async () => {
       const server = createLocalWebhookServer({
         getSessionSecret(sessionId) {
           return sessionId === 'session_flow_002' ? 'flow-secret-2' : null
@@ -811,7 +829,9 @@ describe('E2E: Provider Integration', () => {
 
       expect(statusCode).toBe(202)
       expect(acceptedEvents).toHaveLength(1)
-      expect(acceptedEvents[0]!.payload.status).toBe('turn_complete')
+      expect(acceptedEvents[0]!.payload.intent).toBe('agent.turn_completed')
+      expect(acceptedEvents[0]!.payload.agentState).toBe('idle')
+      expect(acceptedEvents[0]!.payload.hasUnseenCompletion).toBe(true)
       expect(acceptedEvents[0]!.event_type).toBe('codex.Stop')
     })
 
@@ -914,7 +934,12 @@ describe('E2E: Provider Integration', () => {
         session_id: 'trigger-sess-1',
         project_id: 'trigger-proj-1',
         source: 'provider-adapter',
-        payload: { status: 'running', summary: 'SessionStart', model: 'o4-mini' }
+        payload: {
+          intent: 'agent.turn_started',
+          agentState: 'working',
+          summary: 'SessionStart',
+          model: 'o4-mini'
+        }
       })
     })
 
@@ -945,7 +970,8 @@ describe('E2E: Provider Integration', () => {
         event_id: 'turn-tool-001',
         session_id: 'trigger-sess-2',
         payload: {
-          status: 'running',
+          intent: 'agent.tool_started',
+          agentState: 'working',
           summary: 'PreToolUse',
           toolName: 'Bash',
           toolUseId: 'tooluse-bash-001'
@@ -953,7 +979,7 @@ describe('E2E: Provider Integration', () => {
       })
     })
 
-    test('spawning hook-stoa.mjs with Stop payload produces turn_complete', async () => {
+    test('spawning hook-stoa.mjs with Stop payload produces a completion patch', async () => {
       const server = createLocalWebhookServer({
         getSessionSecret(id) { return id === 'trigger-sess-3' ? 'trigger-secret-3' : null },
         onEvent(event) { triggerEvents.push(event) }
@@ -972,7 +998,9 @@ describe('E2E: Provider Integration', () => {
 
       expect(exitCode).toBe(0)
       expect(triggerEvents).toHaveLength(1)
-      expect(triggerEvents[0]!.payload.status).toBe('turn_complete')
+      expect(triggerEvents[0]!.payload.intent).toBe('agent.turn_completed')
+      expect(triggerEvents[0]!.payload.agentState).toBe('idle')
+      expect(triggerEvents[0]!.payload.hasUnseenCompletion).toBe(true)
       expect(triggerEvents[0]!.event_type).toBe('codex.Stop')
     })
 
@@ -1097,7 +1125,9 @@ describe('E2E: Provider Integration', () => {
         project_id: 'notify-proj-1',
         source: 'provider-adapter',
         payload: {
-          status: 'turn_complete',
+          intent: 'agent.turn_completed',
+          agentState: 'idle',
+          hasUnseenCompletion: true,
           summary: 'agent-turn-complete',
           externalSessionId: 'codex-thread-notify-1',
           snippet: 'Build completed successfully.'

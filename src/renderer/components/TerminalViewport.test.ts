@@ -5,7 +5,7 @@ import { mount } from '@vue/test-utils'
 import { describe, expect, test, vi, beforeEach, afterEach } from 'vitest'
 import { nextTick } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
-import type { ProjectSummary, SessionSummary } from '@shared/project-session'
+import type { ProjectSummary, SessionSummary, SessionSummaryEvent } from '@shared/project-session'
 import { useSettingsStore } from '@renderer/stores/settings'
 
 const terminalViewportPath = resolve(dirname(fileURLToPath(import.meta.url)), 'TerminalViewport.vue')
@@ -25,6 +25,7 @@ vi.mock('@xterm/xterm', () => {
     }
 
     open() {}
+    focus() {}
     write(data: string, callback?: () => void) {
       this.writes.push(data)
       callback?.()
@@ -83,7 +84,7 @@ vi.mock('@xterm/xterm/css/xterm.css', () => ({}))
 function createMockApi() {
   const callbacks = {
     terminalData: [] as Array<(chunk: { sessionId: string; data: string }) => void>,
-    sessionEvent: [] as Array<(event: { sessionId: string; status: string; summary: string }) => void>,
+    sessionEvent: [] as Array<(event: SessionSummaryEvent) => void>,
   }
 
   return {
@@ -97,7 +98,7 @@ function createMockApi() {
         if (idx >= 0) callbacks.terminalData.splice(idx, 1)
       }
     }),
-    onSessionEvent: vi.fn((cb: (event: { sessionId: string; status: string; summary: string }) => void) => {
+    onSessionEvent: vi.fn((cb: (event: SessionSummaryEvent) => void) => {
       callbacks.sessionEvent.push(cb)
       return () => {
         const idx = callbacks.sessionEvent.indexOf(cb)
@@ -120,7 +121,13 @@ const baseSession: SessionSummary = {
   id: 'session_op_1',
   projectId: 'project_alpha',
   type: 'opencode',
-  status: 'running',
+  runtimeState: 'alive',
+  agentState: 'idle',
+  hasUnseenCompletion: false,
+  runtimeExitCode: null,
+  runtimeExitReason: null,
+  lastStateSequence: 1,
+  blockingReason: null,
   title: 'Deploy',
   summary: 'ready',
   recoveryMode: 'resume-external',
@@ -129,6 +136,13 @@ const baseSession: SessionSummary = {
   updatedAt: 'a',
   lastActivatedAt: 'a',
   archived: false
+}
+
+function sessionSummary(overrides: Partial<SessionSummary> = {}): SessionSummary {
+  return {
+    ...baseSession,
+    ...overrides,
+  }
 }
 
 async function flushTerminal(): Promise<void> {
@@ -283,7 +297,7 @@ describe('TerminalViewport', () => {
       cb({ sessionId: 'session_op_1', data: 'live-before-replay' })
     })
     mockApi.callbacks.sessionEvent.forEach((cb) => {
-      cb({ sessionId: 'session_op_1', status: 'exited', summary: 'done' })
+      cb({ session: sessionSummary({ runtimeState: 'exited', runtimeExitCode: 0, runtimeExitReason: 'clean', summary: 'done' }) })
     })
 
     resolveReplay('restored-frame')
@@ -315,7 +329,7 @@ describe('TerminalViewport', () => {
         cb({ sessionId: 'session_op_1', data: 'live-while-hung' })
       })
       mockApi.callbacks.sessionEvent.forEach((cb) => {
-        cb({ sessionId: 'session_op_1', status: 'exited', summary: 'done' })
+        cb({ session: sessionSummary({ runtimeState: 'exited', runtimeExitCode: 0, runtimeExitReason: 'clean', summary: 'done' }) })
       })
       await flushTerminal()
 
@@ -469,23 +483,21 @@ describe('TerminalViewport', () => {
   })
 
   test.each([
-    'bootstrapping',
-    'starting',
-    'running',
-    'turn_complete',
-    'awaiting_input',
-    'degraded',
-    'needs_confirmation',
-    'error',
-    'exited',
-  ] as const)('keeps xterm mounted for %s sessions', async (status) => {
+    { runtimeState: 'created' as const, agentState: 'unknown' as const, hasUnseenCompletion: false, runtimeExitReason: null },
+    { runtimeState: 'starting' as const, agentState: 'unknown' as const, hasUnseenCompletion: false, runtimeExitReason: null },
+    { runtimeState: 'alive' as const, agentState: 'working' as const, hasUnseenCompletion: false, runtimeExitReason: null },
+    { runtimeState: 'alive' as const, agentState: 'idle' as const, hasUnseenCompletion: true, runtimeExitReason: null },
+    { runtimeState: 'alive' as const, agentState: 'blocked' as const, hasUnseenCompletion: false, runtimeExitReason: null },
+    { runtimeState: 'alive' as const, agentState: 'error' as const, hasUnseenCompletion: false, runtimeExitReason: null },
+    { runtimeState: 'exited' as const, agentState: 'idle' as const, hasUnseenCompletion: false, runtimeExitReason: 'clean' as const },
+  ])('keeps xterm mounted for %j session states', async (statePatch) => {
     const { default: TerminalViewport } = await import('./TerminalViewport.vue')
     const wrapper = mount(TerminalViewport, {
       props: {
         project: baseProject,
         session: {
           ...baseSession,
-          status
+          ...statePatch
         }
       },
     })
@@ -495,7 +507,7 @@ describe('TerminalViewport', () => {
     expect(wrapper.find('[data-testid="terminal-status-bar"]').exists()).toBe(false)
   })
 
-  test('status-only changes do not rebuild the terminal instance for the same session', async () => {
+  test('state-only changes do not rebuild the terminal instance for the same session', async () => {
     const { default: TerminalViewport } = await import('./TerminalViewport.vue')
     const wrapper = mount(TerminalViewport, {
       props: { project: baseProject, session: baseSession },
@@ -509,7 +521,8 @@ describe('TerminalViewport', () => {
     await wrapper.setProps({
       session: {
         ...baseSession,
-        status: 'needs_confirmation',
+        agentState: 'blocked',
+        blockingReason: 'permission',
         summary: 'Waiting for approval'
       }
     })
@@ -522,7 +535,9 @@ describe('TerminalViewport', () => {
     await wrapper.setProps({
       session: {
         ...baseSession,
-        status: 'exited',
+        runtimeState: 'exited',
+        runtimeExitReason: 'clean',
+        runtimeExitCode: 0,
         summary: 'shell exited (0)'
       }
     })

@@ -4,7 +4,7 @@ import { PtyHost } from '@core/pty-host'
 import { ProjectSessionManager } from '@core/project-session-manager'
 import { startSessionRuntime } from '@core/session-runtime'
 import type { SessionRuntimeManager } from '@core/session-runtime'
-import type { SessionStatus, SessionStatusEvent } from '@shared/project-session'
+import type { SessionSummaryEvent } from '@shared/project-session'
 import type { ProviderCommand } from '@shared/project-session'
 import type { ProviderDefinition } from '@extensions/providers'
 import { useWorkspaceStore } from '@renderer/stores/workspaces'
@@ -44,32 +44,45 @@ function waitForExit(signal: Promise<void>, timeoutMs = 10_000): Promise<void> {
 }
 
 interface StoreCapturingManager extends SessionRuntimeManager {
-  events: Array<{ sessionId: string; status: SessionStatus; summary: string }>
+  events: SessionSummaryEvent[]
   terminalData: Array<{ sessionId: string; data: string }>
   exitSignal: Promise<void>
 }
 
 function createStoreCapturingManager(delegate: ProjectSessionManager): StoreCapturingManager {
-  const events: Array<{ sessionId: string; status: SessionStatus; summary: string }> = []
+  const events: SessionSummaryEvent[] = []
   const terminalData: Array<{ sessionId: string; data: string }> = []
   let resolveExit: (() => void) | undefined
   const exitSignal = new Promise<void>((resolve) => { resolveExit = resolve })
+  const captureSessionEvent = (sessionId: string): void => {
+    const session = delegate.snapshot().sessions.find(candidate => candidate.id === sessionId)
+    if (!session) {
+      throw new Error(`Session ${sessionId} not found in manager snapshot`)
+    }
+
+    events.push({ session })
+  }
 
   return {
     events,
     terminalData,
     exitSignal,
-    async markSessionStarting(sessionId: string, summary: string, externalSessionId: string | null) {
-      await delegate.markSessionStarting(sessionId, summary, externalSessionId)
-      events.push({ sessionId, status: 'starting', summary })
+    async markRuntimeStarting(sessionId: string, summary: string, externalSessionId: string | null) {
+      await delegate.markRuntimeStarting(sessionId, summary, externalSessionId)
+      captureSessionEvent(sessionId)
     },
-    async markSessionRunning(sessionId: string, externalSessionId: string | null) {
-      await delegate.markSessionRunning(sessionId, externalSessionId)
-      events.push({ sessionId, status: 'running', summary: 'Session running' })
+    async markRuntimeAlive(sessionId: string, externalSessionId: string | null) {
+      await delegate.markRuntimeAlive(sessionId, externalSessionId)
+      captureSessionEvent(sessionId)
     },
-    async markSessionExited(sessionId: string, summary: string) {
-      await delegate.markSessionExited(sessionId, summary)
-      events.push({ sessionId, status: 'exited', summary })
+    async markRuntimeExited(sessionId: string, exitCode: number | null, summary: string) {
+      await delegate.markRuntimeExited(sessionId, exitCode, summary)
+      captureSessionEvent(sessionId)
+      resolveExit!()
+    },
+    async markRuntimeFailedToStart(sessionId: string, summary: string) {
+      await delegate.markRuntimeFailedToStart(sessionId, summary)
+      captureSessionEvent(sessionId)
       resolveExit!()
     },
     async appendTerminalData(chunk: { sessionId: string; data: string }) {
@@ -80,10 +93,10 @@ function createStoreCapturingManager(delegate: ProjectSessionManager): StoreCapt
 
 function replayEventsToStore(
   store: ReturnType<typeof useWorkspaceStore>,
-  events: Array<{ sessionId: string; status: SessionStatus; summary: string }>
+  events: SessionSummaryEvent[]
 ): void {
   for (const event of events) {
-    store.updateSession(event.sessionId, { status: event.status, summary: event.summary })
+    store.updateSession(event.session.id, event.session)
   }
 }
 
@@ -101,7 +114,7 @@ describe('E2E: Store Lifecycle Synchronization', () => {
   })
 
   describe('Single session: full lifecycle through store', () => {
-    test('store tracks session through bootstrapping → starting → running → exited', async () => {
+    test('store tracks session through created → starting → alive → exited', async () => {
       const workspaceDir = await createTestWorkspace('stoa-sync-lifecycle-')
       const globalStatePath = await createTestGlobalStatePath()
 
@@ -114,38 +127,37 @@ describe('E2E: Store Lifecycle Synchronization', () => {
       store.hydrate(snapshot)
 
       expect(store.sessions).toHaveLength(1)
-      expect(store.sessions[0]!.status).toBe('bootstrapping')
-      expect(store.activeSession!.status).toBe('bootstrapping')
+      expect(store.sessions[0]!.runtimeState).toBe('created')
+      expect(store.sessions[0]!.agentState).toBe('unknown')
+      expect(store.activeSession!.runtimeState).toBe('created')
+      expect(store.activeSession!.agentState).toBe('unknown')
+      expect(store.activeSession!.summary).toBe('Waiting for session to start')
 
       const ptyHost = new PtyHost()
       activeHosts.push(ptyHost)
       const capturing = createStoreCapturingManager(manager)
 
       await startSessionRuntime({
-        session: {
-          id: session.id, projectId: session.projectId, path: workspaceDir,
-          title: session.title, type: session.type, status: session.status,
-          externalSessionId: session.externalSessionId
-        },
+        session: { ...session, path: workspaceDir },
         webhookPort: 43127, provider: createEchoProvider(), ptyHost, manager: capturing
       })
 
       replayEventsToStore(store, capturing.events)
 
       const storeSession = store.sessions.find(s => s.id === session.id)!
-      expect(storeSession.status).toBe('running')
+      expect(storeSession.runtimeState).toBe('alive')
       expect(storeSession.summary).toContain('Session running')
-      expect(store.activeSession!.status).toBe('running')
+      expect(store.activeSession!.runtimeState).toBe('alive')
 
       await waitForExit(capturing.exitSignal)
 
       replayEventsToStore(store, capturing.events)
 
-      expect(store.sessions.find(s => s.id === session.id)!.status).toBe('exited')
-      expect(store.activeSession!.status).toBe('exited')
+      expect(store.sessions.find(s => s.id === session.id)!.runtimeState).toBe('exited')
+      expect(store.activeSession!.runtimeState).toBe('exited')
     })
 
-    test('projectHierarchy reflects status changes through lifecycle', async () => {
+    test('projectHierarchy reflects runtime changes through lifecycle', async () => {
       const workspaceDir = await createTestWorkspace('stoa-sync-hierarchy-')
       const globalStatePath = await createTestGlobalStatePath()
 
@@ -161,11 +173,7 @@ describe('E2E: Store Lifecycle Synchronization', () => {
       const capturing = createStoreCapturingManager(manager)
 
       await startSessionRuntime({
-        session: {
-          id: session.id, projectId: session.projectId, path: workspaceDir,
-          title: session.title, type: session.type, status: session.status,
-          externalSessionId: session.externalSessionId
-        },
+        session: { ...session, path: workspaceDir },
         webhookPort: 43127, provider: createEchoProvider(), ptyHost, manager: capturing
       })
 
@@ -173,12 +181,12 @@ describe('E2E: Store Lifecycle Synchronization', () => {
 
       const node = store.projectHierarchy.find(n => n.id === project.id)!
       expect(node.sessions).toHaveLength(1)
-      expect(node.sessions[0]!.status).toBe('running')
+      expect(node.sessions[0]!.runtimeState).toBe('alive')
 
       await waitForExit(capturing.exitSignal)
       replayEventsToStore(store, capturing.events)
 
-      expect(store.projectHierarchy[0]!.sessions[0]!.status).toBe('exited')
+      expect(store.projectHierarchy[0]!.sessions[0]!.runtimeState).toBe('exited')
     })
 
     test('state on disk matches store state at each lifecycle stage', async () => {
@@ -197,27 +205,23 @@ describe('E2E: Store Lifecycle Synchronization', () => {
       const capturing = createStoreCapturingManager(manager)
 
       await startSessionRuntime({
-        session: {
-          id: session.id, projectId: session.projectId, path: workspaceDir,
-          title: session.title, type: session.type, status: session.status,
-          externalSessionId: session.externalSessionId
-        },
+        session: { ...session, path: workspaceDir },
         webhookPort: 43127, provider: createEchoProvider(), ptyHost, manager: capturing
       })
 
       replayEventsToStore(store, capturing.events)
 
       const diskRunning = await readProjectSessions(workspaceDir)
-      expect(diskRunning.sessions[0]!.last_known_status).toBe('running')
-      expect(store.sessions[0]!.status).toBe('running')
-      expect(diskRunning.sessions[0]!.last_known_status).toBe(store.sessions[0]!.status)
+      expect(diskRunning.sessions[0]!.runtime_state).toBe('alive')
+      expect(store.sessions[0]!.runtimeState).toBe('alive')
+      expect(diskRunning.sessions[0]!.runtime_state).toBe(store.sessions[0]!.runtimeState)
 
       await waitForExit(capturing.exitSignal)
       replayEventsToStore(store, capturing.events)
 
       const diskExited = await readProjectSessions(workspaceDir)
-      expect(diskExited.sessions[0]!.last_known_status).toBe('exited')
-      expect(store.sessions[0]!.status).toBe('exited')
+      expect(diskExited.sessions[0]!.runtime_state).toBe('exited')
+      expect(store.sessions[0]!.runtimeState).toBe('exited')
     })
 
     test('externalSessionId propagates to store after running', async () => {
@@ -238,11 +242,7 @@ describe('E2E: Store Lifecycle Synchronization', () => {
       const capturing = createStoreCapturingManager(manager)
 
       await startSessionRuntime({
-        session: {
-          id: session.id, projectId: session.projectId, path: workspaceDir,
-          title: session.title, type: session.type, status: session.status,
-          externalSessionId: session.externalSessionId
-        },
+        session: { ...session, path: workspaceDir },
         webhookPort: 43127, provider: createEchoProvider(), ptyHost, manager: capturing
       })
 
@@ -256,7 +256,7 @@ describe('E2E: Store Lifecycle Synchronization', () => {
   })
 
   describe('Event sequence validation', () => {
-    test('events arrive in correct order: starting → running → exited', async () => {
+    test('events arrive in correct order: starting → alive → exited', async () => {
       const workspaceDir = await createTestWorkspace('stoa-sync-order-')
       const globalStatePath = await createTestGlobalStatePath()
 
@@ -269,20 +269,16 @@ describe('E2E: Store Lifecycle Synchronization', () => {
       const capturing = createStoreCapturingManager(manager)
 
       await startSessionRuntime({
-        session: {
-          id: session.id, projectId: session.projectId, path: workspaceDir,
-          title: session.title, type: session.type, status: session.status,
-          externalSessionId: session.externalSessionId
-        },
+        session: { ...session, path: workspaceDir },
         webhookPort: 43127, provider: createEchoProvider(), ptyHost, manager: capturing
       })
 
       await waitForExit(capturing.exitSignal)
 
       expect(capturing.events).toHaveLength(3)
-      expect(capturing.events[0]!.status).toBe('starting')
-      expect(capturing.events[1]!.status).toBe('running')
-      expect(capturing.events[2]!.status).toBe('exited')
+      expect(capturing.events[0]!.session.runtimeState).toBe('starting')
+      expect(capturing.events[1]!.session.runtimeState).toBe('alive')
+      expect(capturing.events[2]!.session.runtimeState).toBe('exited')
     })
 
     test('replaying events to store produces same state as backend snapshot', async () => {
@@ -298,11 +294,7 @@ describe('E2E: Store Lifecycle Synchronization', () => {
       const capturing = createStoreCapturingManager(manager)
 
       await startSessionRuntime({
-        session: {
-          id: session.id, projectId: session.projectId, path: workspaceDir,
-          title: session.title, type: session.type, status: session.status,
-          externalSessionId: session.externalSessionId
-        },
+        session: { ...session, path: workspaceDir },
         webhookPort: 43127, provider: createEchoProvider(), ptyHost, manager: capturing
       })
 
@@ -312,7 +304,7 @@ describe('E2E: Store Lifecycle Synchronization', () => {
       const store = useWorkspaceStore()
       store.hydrate(manager.snapshot())
 
-      expect(store.sessions[0]!.status).toBe(backendSession.status)
+      expect(store.sessions[0]!.runtimeState).toBe(backendSession.runtimeState)
       expect(store.sessions[0]!.summary).toBe(backendSession.summary)
       expect(store.sessions[0]!.externalSessionId).toBe(backendSession.externalSessionId)
     })
@@ -330,18 +322,14 @@ describe('E2E: Store Lifecycle Synchronization', () => {
       const capturing = createStoreCapturingManager(manager)
 
       await startSessionRuntime({
-        session: {
-          id: session.id, projectId: session.projectId, path: workspaceDir,
-          title: session.title, type: session.type, status: session.status,
-          externalSessionId: session.externalSessionId
-        },
+        session: { ...session, path: workspaceDir },
         webhookPort: 43127, provider: createEchoProvider(), ptyHost, manager: capturing
       })
 
       await waitForExit(capturing.exitSignal)
 
       expect(capturing.events).toHaveLength(3)
-      expect(capturing.events[0]!.status).toBe('starting')
+      expect(capturing.events[0]!.session.runtimeState).toBe('starting')
       expect(capturing.terminalData.length).toBeGreaterThan(0)
       expect(capturing.terminalData.every(c => c.sessionId === session.id)).toBe(true)
       expect(capturing.terminalData.map(c => c.data).join('')).toContain('sync-e2e')
@@ -369,19 +357,11 @@ describe('E2E: Store Lifecycle Synchronization', () => {
 
       await Promise.all([
         startSessionRuntime({
-          session: {
-            id: session1.id, projectId: session1.projectId, path: workspaceDir,
-            title: session1.title, type: session1.type, status: session1.status,
-            externalSessionId: session1.externalSessionId
-          },
+          session: { ...session1, path: workspaceDir },
           webhookPort: 43127, provider, ptyHost, manager: capturing1
         }),
         startSessionRuntime({
-          session: {
-            id: session2.id, projectId: session2.projectId, path: workspaceDir,
-            title: session2.title, type: session2.type, status: session2.status,
-            externalSessionId: session2.externalSessionId
-          },
+          session: { ...session2, path: workspaceDir },
           webhookPort: 43127, provider, ptyHost, manager: capturing2
         })
       ])
@@ -389,12 +369,12 @@ describe('E2E: Store Lifecycle Synchronization', () => {
       replayEventsToStore(store, capturing1.events)
       replayEventsToStore(store, capturing2.events)
 
-      expect(store.sessions.find(s => s.id === session1.id)!.status).toBe('running')
-      expect(store.sessions.find(s => s.id === session2.id)!.status).toBe('running')
+      expect(store.sessions.find(s => s.id === session1.id)!.runtimeState).toBe('alive')
+      expect(store.sessions.find(s => s.id === session2.id)!.runtimeState).toBe('alive')
 
       const hierarchyNode = store.projectHierarchy.find(n => n.id === project.id)!
       expect(hierarchyNode.sessions).toHaveLength(2)
-      expect(hierarchyNode.sessions.every(s => s.status === 'running')).toBe(true)
+      expect(hierarchyNode.sessions.every(s => s.runtimeState === 'alive')).toBe(true)
 
       await Promise.all([
         waitForExit(capturing1.exitSignal),
@@ -404,8 +384,8 @@ describe('E2E: Store Lifecycle Synchronization', () => {
       replayEventsToStore(store, capturing1.events)
       replayEventsToStore(store, capturing2.events)
 
-      expect(store.sessions.find(s => s.id === session1.id)!.status).toBe('exited')
-      expect(store.sessions.find(s => s.id === session2.id)!.status).toBe('exited')
+      expect(store.sessions.find(s => s.id === session1.id)!.runtimeState).toBe('exited')
+      expect(store.sessions.find(s => s.id === session2.id)!.runtimeState).toBe('exited')
     })
 
     test('active session switches correctly during concurrent lifecycles', async () => {
@@ -422,7 +402,8 @@ describe('E2E: Store Lifecycle Synchronization', () => {
 
       store.setActiveSession(session1.id)
       expect(store.activeSessionId).toBe(session1.id)
-      expect(store.activeSession!.status).toBe('bootstrapping')
+      expect(store.activeSession!.runtimeState).toBe('created')
+      expect(store.activeSession!.agentState).toBe('unknown')
 
       const ptyHost = new PtyHost()
       activeHosts.push(ptyHost)
@@ -432,19 +413,11 @@ describe('E2E: Store Lifecycle Synchronization', () => {
 
       await Promise.all([
         startSessionRuntime({
-          session: {
-            id: session1.id, projectId: session1.projectId, path: workspaceDir,
-            title: session1.title, type: session1.type, status: session1.status,
-            externalSessionId: session1.externalSessionId
-          },
+          session: { ...session1, path: workspaceDir },
           webhookPort: 43127, provider, ptyHost, manager: capturing1
         }),
         startSessionRuntime({
-          session: {
-            id: session2.id, projectId: session2.projectId, path: workspaceDir,
-            title: session2.title, type: session2.type, status: session2.status,
-            externalSessionId: session2.externalSessionId
-          },
+          session: { ...session2, path: workspaceDir },
           webhookPort: 43127, provider, ptyHost, manager: capturing2
         })
       ])
@@ -453,11 +426,11 @@ describe('E2E: Store Lifecycle Synchronization', () => {
       replayEventsToStore(store, capturing2.events)
 
       expect(store.activeSessionId).toBe(session1.id)
-      expect(store.activeSession!.status).toBe('running')
+      expect(store.activeSession!.runtimeState).toBe('alive')
 
       store.setActiveSession(session2.id)
       expect(store.activeSessionId).toBe(session2.id)
-      expect(store.activeSession!.status).toBe('running')
+      expect(store.activeSession!.runtimeState).toBe('alive')
 
       await Promise.all([
         waitForExit(capturing1.exitSignal),
@@ -468,10 +441,10 @@ describe('E2E: Store Lifecycle Synchronization', () => {
       replayEventsToStore(store, capturing2.events)
 
       expect(store.activeSessionId).toBe(session2.id)
-      expect(store.activeSession!.status).toBe('exited')
+      expect(store.activeSession!.runtimeState).toBe('exited')
 
       store.setActiveSession(session1.id)
-      expect(store.activeSession!.status).toBe('exited')
+      expect(store.activeSession!.runtimeState).toBe('exited')
     })
   })
 
@@ -492,11 +465,7 @@ describe('E2E: Store Lifecycle Synchronization', () => {
       const capturing = createStoreCapturingManager(manager)
 
       await startSessionRuntime({
-        session: {
-          id: session.id, projectId: session.projectId, path: workspaceDir,
-          title: session.title, type: session.type, status: session.status,
-          externalSessionId: session.externalSessionId
-        },
+        session: { ...session, path: workspaceDir },
         webhookPort: 43127, provider: createEchoProvider(), ptyHost, manager: capturing
       })
 
@@ -514,10 +483,10 @@ describe('E2E: Store Lifecycle Synchronization', () => {
       store2.hydrate(restartedSnapshot)
 
       expect(store2.sessions).toHaveLength(1)
-      expect(store2.sessions[0]!.status).toBe('exited')
-      expect(store2.sessions[0]!.status).toBe(store1.sessions[0]!.status)
+      expect(store2.sessions[0]!.runtimeState).toBe('exited')
+      expect(store2.sessions[0]!.runtimeState).toBe(store1.sessions[0]!.runtimeState)
       expect(store2.sessions[0]!.externalSessionId).toBe(store1.sessions[0]!.externalSessionId)
-      expect(store2.projectHierarchy[0]!.sessions[0]!.status).toBe('exited')
+      expect(store2.projectHierarchy[0]!.sessions[0]!.runtimeState).toBe('exited')
     })
   })
 })

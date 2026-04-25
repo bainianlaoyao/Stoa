@@ -1,13 +1,81 @@
-import { beforeEach, describe, expect, test } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { ProjectSessionManager } from '@core/project-session-manager'
 import { useWorkspaceStore } from '@renderer/stores/workspaces'
-import type { BootstrapState, ProjectSummary, SessionSummary } from '@shared/project-session'
+import { DEFAULT_SETTINGS } from '@shared/project-session'
+import { buildSessionPresenceSnapshot } from '@shared/observability-projection'
+import type { BootstrapState, ProjectSummary, RendererApi, SessionSummary } from '@shared/project-session'
+import type { SessionPresenceSnapshot } from '@shared/observability'
+import type { UpdateState } from '@shared/update-state'
 import { createTestWorkspace, createTestGlobalStatePath, tempDirs } from './helpers'
+
+function idleUpdateState(): UpdateState {
+  return {
+    phase: 'idle',
+    currentVersion: '0.0.0-test',
+    availableVersion: null,
+    downloadedVersion: null,
+    downloadProgressPercent: null,
+    lastCheckedAt: null,
+    message: null,
+    requiresSessionWarning: false
+  }
+}
+
+function createRendererApiWithPresence(
+  state: BootstrapState,
+  presenceBySessionId: Record<string, SessionPresenceSnapshot>
+): RendererApi {
+  const noop = () => {}
+
+  return {
+    getBootstrapState: async () => state,
+    createProject: async () => { throw new Error('createProject not implemented in this test') },
+    createSession: async () => { throw new Error('createSession not implemented in this test') },
+    setActiveProject: async () => {},
+    setActiveSession: async () => {},
+    archiveSession: async () => {},
+    getTerminalReplay: async () => '',
+    sendSessionInput: async () => {},
+    sendSessionResize: async () => {},
+    onTerminalData: () => noop,
+    onSessionEvent: () => noop,
+    getSessionPresence: async (sessionId) => presenceBySessionId[sessionId] ?? null,
+    getProjectObservability: async () => null,
+    getAppObservability: async () => null,
+    listSessionObservationEvents: async () => ({ events: [], nextCursor: null }),
+    onSessionPresenceChanged: () => noop,
+    onProjectObservabilityChanged: () => noop,
+    onAppObservabilityChanged: () => noop,
+    getSettings: async () => DEFAULT_SETTINGS,
+    setSetting: async () => {},
+    pickFolder: async () => null,
+    pickFile: async () => null,
+    detectShell: async () => null,
+    detectProvider: async () => null,
+    minimizeWindow: async () => {},
+    maximizeWindow: async () => {},
+    closeWindow: async () => {},
+    isWindowMaximized: async () => false,
+    onWindowMaximizeChange: () => noop,
+    restoreSession: async () => {},
+    listArchivedSessions: async () => [],
+    getUpdateState: async () => idleUpdateState(),
+    checkForUpdates: async () => idleUpdateState(),
+    downloadUpdate: async () => idleUpdateState(),
+    quitAndInstallUpdate: async () => {},
+    dismissUpdate: async () => {},
+    onUpdateState: () => noop
+  }
+}
 
 describe('E2E: Frontend Store Projection', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
+  })
+
+  afterEach(() => {
+    Reflect.deleteProperty(window, 'stoa')
   })
 
   // ── Phase 1: Hydration from real backend state ─────────────────────
@@ -240,7 +308,7 @@ describe('E2E: Frontend Store Projection', () => {
       expect(node!.updatedAt).toBe(project.updatedAt)
     })
 
-    test('hierarchy sessions contain full data (type, status, title, summary, recoveryMode)', async () => {
+    test('hierarchy sessions contain full data (type, runtimeState, agentState, title, summary, recoveryMode)', async () => {
       const workspaceDir = await createTestWorkspace('stoa-store-p2a-')
       const globalStatePath = await createTestGlobalStatePath()
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
@@ -256,7 +324,8 @@ describe('E2E: Frontend Store Projection', () => {
       expect(hierarchySession).toBeDefined()
       expect(hierarchySession!.id).toBe(shellSession.id)
       expect(hierarchySession!.type).toBe('shell')
-      expect(hierarchySession!.status).toBe('bootstrapping')
+      expect(hierarchySession!.runtimeState).toBe('created')
+      expect(hierarchySession!.agentState).toBe('unknown')
       expect(hierarchySession!.title).toBe('Shell Full')
       expect(hierarchySession!.summary).toBe(shellSession.summary)
       expect(hierarchySession!.recoveryMode).toBe('fresh-shell')
@@ -436,7 +505,8 @@ describe('E2E: Frontend Store Projection', () => {
       expect(store.sessions[0]!.projectId).toBe(project.id)
       expect(store.sessions[0]!.type).toBe('shell')
       expect(store.sessions[0]!.title).toBe('IPC Shell')
-      expect(store.sessions[0]!.status).toBe('bootstrapping')
+      expect(store.sessions[0]!.runtimeState).toBe('created')
+      expect(store.sessions[0]!.agentState).toBe('unknown')
       expect(store.sessions[0]!.recoveryMode).toBe('fresh-shell')
     })
 
@@ -726,7 +796,7 @@ describe('E2E: Frontend Store Projection', () => {
       expect(store.activeSession!.id).toBe(session.id)
     })
 
-    test('multiple sessions with same status all render correctly in hierarchy', async () => {
+    test('multiple sessions with same initial runtime and agent state all render correctly in hierarchy', async () => {
       const workspaceDir = await createTestWorkspace('stoa-store-p6-')
       const globalStatePath = await createTestGlobalStatePath()
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
@@ -749,9 +819,10 @@ describe('E2E: Frontend Store Projection', () => {
       expect(ids).toContain(session2.id)
       expect(ids).toContain(session3.id)
 
-      // All sessions have bootstrapping status since just created
+      // All sessions are freshly created and should start from the same base state.
       for (const s of hierarchy[0]!.sessions) {
-        expect(s.status).toBe('bootstrapping')
+        expect(s.runtimeState).toBe('created')
+        expect(s.agentState).toBe('unknown')
       }
     })
   })
@@ -812,6 +883,85 @@ describe('E2E: Frontend Store Projection', () => {
       // Hierarchy should still work
       expect(store.projectHierarchy).toHaveLength(1)
       expect(store.projectHierarchy[0]!.sessions).toHaveLength(1)
+    })
+  })
+
+  // ── Phase 8: Authoritative session presence projection ─────────────
+
+  describe('Phase 8: Authoritative session presence projection', () => {
+    test('backend presence snapshot keeps Claude runtime alive calm ready in the renderer', async () => {
+      const workspaceDir = await createTestWorkspace('stoa-store-presence-ready-')
+      const globalStatePath = await createTestGlobalStatePath()
+      const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
+      const project = await manager.createProject({ path: workspaceDir, name: 'presence_ready' })
+      const session = await manager.createSession({ projectId: project.id, type: 'claude-code', title: 'Claude Presence' })
+      await manager.markRuntimeAlive(session.id, session.externalSessionId)
+
+      const snapshot = manager.snapshot()
+      const readySession = snapshot.sessions.find((candidate) => candidate.id === session.id)!
+      const backendPresence = buildSessionPresenceSnapshot(readySession, {
+        activeSessionId: snapshot.activeSessionId,
+        nowIso: '2026-04-25T00:00:00.000Z',
+        sourceSequence: readySession.lastStateSequence
+      })
+
+      const store = useWorkspaceStore()
+      store.hydrate(snapshot)
+      window.stoa = createRendererApiWithPresence(snapshot, { [session.id]: backendPresence })
+      await store.hydrateObservability()
+
+      expect(store.activeSessionPresence).toEqual(backendPresence)
+      expect(store.activeSessionPresence).toMatchObject({
+        phase: 'ready',
+        runtimeState: 'alive',
+        agentState: 'unknown',
+        hasUnseenCompletion: false
+      })
+    })
+
+    test('visited complete session becomes ready after backend marks completion seen', async () => {
+      const workspaceDir = await createTestWorkspace('stoa-store-presence-seen-')
+      const globalStatePath = await createTestGlobalStatePath()
+      const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
+      const project = await manager.createProject({ path: workspaceDir, name: 'presence_seen' })
+      const session = await manager.createSession({ projectId: project.id, type: 'claude-code', title: 'Claude Complete' })
+      await manager.markRuntimeAlive(session.id, session.externalSessionId)
+      await manager.applySessionStatePatch({
+        sessionId: session.id,
+        sequence: 2,
+        occurredAt: new Date().toISOString(),
+        intent: 'agent.turn_completed',
+        source: 'provider',
+        sourceEventType: 'claude-code.Stop',
+        agentState: 'idle',
+        hasUnseenCompletion: true,
+        summary: 'Stop'
+      })
+
+      expect(buildSessionPresenceSnapshot(manager.snapshot().sessions[0]!, {
+        activeSessionId: null,
+        nowIso: '2026-04-25T00:00:00.000Z'
+      }).phase).toBe('complete')
+
+      await manager.setActiveSession(session.id)
+      const snapshot = manager.snapshot()
+      const seenSession = snapshot.sessions.find((candidate) => candidate.id === session.id)!
+      const backendPresence = buildSessionPresenceSnapshot(seenSession, {
+        activeSessionId: snapshot.activeSessionId,
+        nowIso: '2026-04-25T00:00:00.000Z',
+        sourceSequence: seenSession.lastStateSequence
+      })
+
+      const store = useWorkspaceStore()
+      store.hydrate(snapshot)
+      window.stoa = createRendererApiWithPresence(snapshot, { [session.id]: backendPresence })
+      await store.hydrateObservability()
+
+      expect(store.activeSessionPresence).toMatchObject({
+        phase: 'ready',
+        agentState: 'idle',
+        hasUnseenCompletion: false
+      })
     })
   })
 })

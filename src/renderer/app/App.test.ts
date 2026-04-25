@@ -25,20 +25,38 @@ const mockCreatedProject: ProjectSummary = {
   updatedAt: 'x'
 }
 
-const mockCreatedSession: SessionSummary = {
+function createSessionSummary(overrides: Partial<SessionSummary> = {}): SessionSummary {
+  return {
+    id: 's1',
+    projectId: 'p1',
+    type: 'shell',
+    runtimeState: 'alive',
+    agentState: 'unknown',
+    hasUnseenCompletion: false,
+    runtimeExitCode: null,
+    runtimeExitReason: null,
+    lastStateSequence: 0,
+    blockingReason: null,
+    title: 'S',
+    summary: '',
+    recoveryMode: 'fresh-shell',
+    externalSessionId: null,
+    createdAt: 't',
+    updatedAt: 't',
+    lastActivatedAt: 't',
+    archived: false,
+    ...overrides
+  }
+}
+
+const mockCreatedSession: SessionSummary = createSessionSummary({
   id: 'new_session',
   projectId: 'new_project',
-  type: 'shell',
-  status: 'running',
   title: 'test',
-  summary: '',
-  recoveryMode: 'fresh-shell',
-  externalSessionId: null,
   createdAt: 'x',
   updatedAt: 'x',
-  lastActivatedAt: 'x',
-  archived: false
-}
+  lastActivatedAt: 'x'
+})
 
 function createSessionPresenceSnapshot(
   overrides: Partial<SessionPresenceSnapshot> = {}
@@ -49,8 +67,12 @@ function createSessionPresenceSnapshot(
     providerId: 'claude-code',
     providerLabel: 'Claude Code',
     modelLabel: 'Sonnet',
-    phase: 'working',
-    canonicalStatus: 'running',
+    phase: 'running',
+    runtimeState: 'alive',
+    agentState: 'working',
+    hasUnseenCompletion: false,
+    runtimeExitCode: null,
+    runtimeExitReason: null,
     confidence: 'authoritative',
     health: 'healthy',
     blockingReason: null,
@@ -59,6 +81,7 @@ function createSessionPresenceSnapshot(
     lastEvidenceType: null,
     hasUnreadTurn: false,
     recoveryPointerState: 'trusted',
+    evidenceSequence: 1,
     sourceSequence: 1,
     updatedAt: '2026-04-24T08:00:00.000Z',
     ...overrides
@@ -104,11 +127,11 @@ function setupStoa(overrides?: Partial<typeof window.stoa>) {
     getAppObservability: vi.fn().mockResolvedValue({
       blockedProjectCount: 0,
       failedProjectCount: 0,
-      degradedProjectCount: 0,
       totalUnreadTurns: 0,
       projectsNeedingAttention: [],
       providerHealthSummary: {},
       lastGlobalEventAt: null,
+      sourceSequence: 0,
       updatedAt: 'x'
     }),
     listSessionObservationEvents: vi.fn().mockResolvedValue({ events: [], nextCursor: null }),
@@ -190,7 +213,7 @@ describe('App (root)', () => {
         activeSessionId: 's1',
         terminalWebhookPort: 42,
         projects: [{ id: 'p1', name: 'Proj', path: '/p', createdAt: 't', updatedAt: 't' }],
-        sessions: [{ id: 's1', projectId: 'p1', type: 'shell', status: 'running', title: 'Sess', summary: '', recoveryMode: 'fresh-shell', externalSessionId: null, createdAt: 't', updatedAt: 't', lastActivatedAt: 't', archived: false }]
+        sessions: [createSessionSummary({ id: 's1', projectId: 'p1', title: 'Sess' })]
       }
       setupStoa({ getBootstrapState: vi.fn().mockResolvedValue(hydratedState) })
 
@@ -217,7 +240,7 @@ describe('App (root)', () => {
       wrapper = await mountApp(pinia)
       await flush()
 
-      expect(window.stoa.getUpdateState).toHaveBeenCalledTimes(2)
+      expect(window.stoa.getUpdateState).toHaveBeenCalledOnce()
       expect(useUpdateStore(pinia).state.availableVersion).toBe('0.2.0')
     })
 
@@ -249,10 +272,9 @@ describe('App (root)', () => {
       expect(useUpdateStore(pinia).state.downloadedVersion).toBe('0.2.0')
     })
 
-    it('re-reads update state after subscribing so startup cannot miss a single-fire transition', async () => {
+    it('reads update state after subscribing so startup sees the latest transition', async () => {
       const getUpdateState = vi
         .fn()
-        .mockResolvedValueOnce(createUpdateState({ phase: 'idle' }))
         .mockResolvedValueOnce(createUpdateState({ phase: 'downloaded', downloadedVersion: '0.2.0' }))
 
       setupStoa({
@@ -263,7 +285,7 @@ describe('App (root)', () => {
       wrapper = await mountApp(pinia)
       await flush()
 
-      expect(getUpdateState).toHaveBeenCalledTimes(2)
+      expect(getUpdateState).toHaveBeenCalledOnce()
       expect(useUpdateStore(pinia).state.phase).toBe('downloaded')
       expect(useUpdateStore(pinia).state.downloadedVersion).toBe('0.2.0')
     })
@@ -275,20 +297,16 @@ describe('App (root)', () => {
         activeSessionId: 'session_1',
         terminalWebhookPort: 0,
         projects: [{ id: 'project_1', name: 'test', path: '/test', createdAt: 't', updatedAt: 't' }],
-        sessions: [{
+        sessions: [createSessionSummary({
           id: 'session_1',
           projectId: 'project_1',
           type: 'claude-code',
-          status: 'running',
+          agentState: 'working',
           title: 'test session',
           summary: 'running',
           recoveryMode: 'resume-external',
-          externalSessionId: 'claude-session-1',
-          createdAt: 't',
-          updatedAt: 't',
-          lastActivatedAt: 't',
-          archived: false
-        }]
+          externalSessionId: 'claude-session-1'
+        })]
       }
 
       setupStoa({
@@ -317,7 +335,6 @@ describe('App (root)', () => {
 
       sessionPresenceListener(createSessionPresenceSnapshot({
         phase: 'blocked',
-        canonicalStatus: 'needs_confirmation',
         blockingReason: 'permission',
         sourceSequence: 3,
         updatedAt: '2026-04-24T08:00:01.000Z'
@@ -353,7 +370,7 @@ describe('App (root)', () => {
         activeSessionId: null,
         terminalWebhookPort: 0,
         projects: [{ id: 'p1', name: 'P', path: '/p', createdAt: 't', updatedAt: 't' }],
-        sessions: [{ id: 's1', projectId: 'p1', type: 'shell', status: 'running', title: 'S', summary: '', recoveryMode: 'fresh-shell', externalSessionId: null, createdAt: 't', updatedAt: 't', lastActivatedAt: 't', archived: false }]
+        sessions: [createSessionSummary({ id: 's1', projectId: 'p1' })]
       }
       setupStoa({ getBootstrapState: vi.fn().mockResolvedValue(hydratedState) })
 
@@ -371,7 +388,7 @@ describe('App (root)', () => {
         activeSessionId: null,
         terminalWebhookPort: 0,
         projects: [{ id: 'p1', name: 'P', path: '/p', createdAt: 't', updatedAt: 't' }],
-        sessions: [{ id: 's1', projectId: 'p1', type: 'shell', status: 'running', title: 'S', summary: '', recoveryMode: 'fresh-shell', externalSessionId: null, createdAt: 't', updatedAt: 't', lastActivatedAt: 't', archived: false }]
+        sessions: [createSessionSummary({ id: 's1', projectId: 'p1' })]
       }
       setupStoa({ getBootstrapState: vi.fn().mockResolvedValue(hydratedState) })
 
@@ -450,7 +467,7 @@ describe('App (root)', () => {
         activeSessionId: 's1',
         terminalWebhookPort: 0,
         projects: [{ id: 'p1', name: 'P', path: '/p', createdAt: 't', updatedAt: 't' }],
-        sessions: [{ id: 's1', projectId: 'p1', type: 'shell', status: 'running', title: 'S', summary: '', recoveryMode: 'fresh-shell', externalSessionId: null, createdAt: 't', updatedAt: 't', lastActivatedAt: 't', archived: false }]
+        sessions: [createSessionSummary({ id: 's1', projectId: 'p1' })]
       }
       setupStoa({ getBootstrapState: vi.fn().mockResolvedValue(hydratedState) })
 
@@ -473,7 +490,7 @@ describe('App (root)', () => {
         activeSessionId: 's1',
         terminalWebhookPort: 0,
         projects: [{ id: 'p1', name: 'P', path: '/p', createdAt: 't', updatedAt: 't' }],
-        sessions: [{ id: 's1', projectId: 'p1', type: 'shell', status: 'running', title: 'S', summary: '', recoveryMode: 'fresh-shell', externalSessionId: null, createdAt: 't', updatedAt: 't', lastActivatedAt: 't', archived: false }]
+        sessions: [createSessionSummary({ id: 's1', projectId: 'p1' })]
       }
       setupStoa({
         getBootstrapState: vi.fn().mockResolvedValue(hydratedState),
@@ -498,7 +515,7 @@ describe('App (root)', () => {
         activeSessionId: null,
         terminalWebhookPort: 0,
         projects: [{ id: 'p1', name: 'P', path: '/p', createdAt: 't', updatedAt: 't' }],
-        sessions: [{ id: 's1', projectId: 'p1', type: 'shell', status: 'running', title: 'S', summary: '', recoveryMode: 'fresh-shell', externalSessionId: null, createdAt: 't', updatedAt: 't', lastActivatedAt: 't', archived: true }]
+        sessions: [createSessionSummary({ id: 's1', projectId: 'p1', archived: true })]
       }
       setupStoa({ getBootstrapState: vi.fn().mockResolvedValue(hydratedState) })
 
@@ -524,7 +541,7 @@ describe('App (root)', () => {
         activeSessionId: null,
         terminalWebhookPort: 0,
         projects: [{ id: 'p1', name: 'P', path: '/p', createdAt: 't', updatedAt: 't' }],
-        sessions: [{ id: 's1', projectId: 'p1', type: 'shell', status: 'running', title: 'S', summary: '', recoveryMode: 'fresh-shell', externalSessionId: null, createdAt: 't', updatedAt: 't', lastActivatedAt: 't', archived: true }]
+        sessions: [createSessionSummary({ id: 's1', projectId: 'p1', archived: true })]
       }
       setupStoa({
         getBootstrapState: vi.fn().mockResolvedValue(hydratedState),
@@ -680,20 +697,16 @@ describe('App (root)', () => {
           activeSessionId: 'session_1',
           terminalWebhookPort: 0,
           projects: [{ id: 'project_1', name: 'test', path: '/test', createdAt: 't', updatedAt: 't' }],
-          sessions: [{
+          sessions: [createSessionSummary({
             id: 'session_1',
             projectId: 'project_1',
             type: 'claude-code',
-            status: 'running',
+            agentState: 'working',
             title: 'test session',
             summary: 'running',
             recoveryMode: 'resume-external',
-            externalSessionId: 'claude-session-1',
-            createdAt: 't',
-            updatedAt: 't',
-            lastActivatedAt: 't',
-            archived: false
-          }]
+            externalSessionId: 'claude-session-1'
+          })]
         }),
         onSessionPresenceChanged: vi.fn().mockReturnValue(unsubscribeSessionPresence),
         onProjectObservabilityChanged: vi.fn().mockReturnValue(unsubscribeProjectObservability),

@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest'
 import { adaptClaudeCodeHook, adaptCodexHook } from './hook-event-adapter'
 
 describe('hook event adapter', () => {
-  test('adapts Claude Stop hook into turn_complete canonical event', () => {
+  test('adapts Claude Stop hook into turn completed state patch event', () => {
     const event = adaptClaudeCodeHook(
       {
         hook_event_name: 'Stop',
@@ -22,14 +22,16 @@ describe('hook event adapter', () => {
       project_id: 'project_internal_1',
       source: 'provider-adapter',
       payload: {
-        status: 'turn_complete',
+        intent: 'agent.turn_completed',
+        agentState: 'idle',
+        hasUnseenCompletion: true,
         summary: 'Stop',
         snippet: 'I completed the implementation.'
       }
     })
   })
 
-  test('adapts Claude SessionStart hook into running canonical event', () => {
+  test('ignores Claude SessionStart hook because turn start is emitted by user prompts', () => {
     const event = adaptClaudeCodeHook(
       {
         hook_event_name: 'SessionStart',
@@ -41,46 +43,58 @@ describe('hook event adapter', () => {
       }
     )
 
+    expect(event).toBeNull()
+  })
+
+  test('adapts Claude UserPromptSubmit hook into turn started state patch event', () => {
+    const event = adaptClaudeCodeHook(
+      {
+        hook_event_name: 'UserPromptSubmit'
+      },
+      {
+        sessionId: 'session_internal_running',
+        projectId: 'project_internal_running'
+      }
+    )
+
     expect(event).toMatchObject({
-      event_version: 1,
-      event_type: 'claude-code.SessionStart',
-      session_id: 'session_internal_1',
-      project_id: 'project_internal_1',
-      source: 'provider-adapter',
+      event_type: 'claude-code.UserPromptSubmit',
+      session_id: 'session_internal_running',
+      project_id: 'project_internal_running',
       payload: {
-        status: 'running',
-        summary: 'SessionStart'
+        intent: 'agent.turn_started',
+        agentState: 'working',
+        summary: 'UserPromptSubmit'
       }
     })
   })
 
-  test.each(['UserPromptSubmit', 'PreToolUse'] as const)(
-    'adapts Claude %s hook into running canonical event',
-    (hookEventName) => {
-      const event = adaptClaudeCodeHook(
-        {
-          hook_event_name: hookEventName,
-          tool_name: hookEventName === 'PreToolUse' ? 'Bash' : undefined
-        },
-        {
-          sessionId: 'session_internal_running',
-          projectId: 'project_internal_running'
-        }
-      )
+  test('adapts Claude PreToolUse hook into tool started state patch event', () => {
+    const event = adaptClaudeCodeHook(
+      {
+        hook_event_name: 'PreToolUse',
+        tool_name: 'Bash'
+      },
+      {
+        sessionId: 'session_internal_running',
+        projectId: 'project_internal_running'
+      }
+    )
 
-      expect(event).toMatchObject({
-        event_type: `claude-code.${hookEventName}`,
-        session_id: 'session_internal_running',
-        project_id: 'project_internal_running',
-        payload: {
-          status: 'running',
-          summary: hookEventName
-        }
-      })
-    }
-  )
+    expect(event).toMatchObject({
+      event_type: 'claude-code.PreToolUse',
+      session_id: 'session_internal_running',
+      project_id: 'project_internal_running',
+      payload: {
+        intent: 'agent.tool_started',
+        agentState: 'working',
+        summary: 'PreToolUse',
+        toolName: 'Bash'
+      }
+    })
+  })
 
-  test('adapts Claude PermissionRequest hook into needs_confirmation canonical event', () => {
+  test('adapts Claude PermissionRequest hook into permission requested state patch event', () => {
     const event = adaptClaudeCodeHook(
       {
         hook_event_name: 'PermissionRequest',
@@ -99,7 +113,8 @@ describe('hook event adapter', () => {
       project_id: 'project_internal_2',
       source: 'provider-adapter',
       payload: {
-        status: 'needs_confirmation',
+        intent: 'agent.permission_requested',
+        agentState: 'blocked',
         summary: 'PermissionRequest',
         toolName: 'Bash',
         blockingReason: 'permission'
@@ -124,7 +139,8 @@ describe('hook event adapter', () => {
       project_id: 'project_internal_4',
       source: 'provider-adapter',
       payload: {
-        status: 'error',
+        intent: 'agent.turn_failed',
+        agentState: 'error',
         summary: 'StopFailure',
         error: 'api_error'
       }
@@ -147,7 +163,7 @@ describe('hook event adapter', () => {
 describe('codex hook adapter', () => {
   const codexContext = { sessionId: 'codex_session_1', projectId: 'codex_project_1' }
 
-  test('adapts Codex SessionStart hook into running canonical event', () => {
+  test('adapts Codex SessionStart hook into turn started state patch event', () => {
     const event = adaptCodexHook(
       {
         hook_event_name: 'SessionStart',
@@ -165,14 +181,15 @@ describe('codex hook adapter', () => {
       project_id: 'codex_project_1',
       source: 'provider-adapter',
       payload: {
-        status: 'running',
+        intent: 'agent.turn_started',
+        agentState: 'working',
         summary: 'SessionStart',
         model: 'gpt-4o'
       }
     })
   })
 
-  test('adapts Codex UserPromptSubmit hook into running canonical event', () => {
+  test('adapts Codex UserPromptSubmit hook into turn started state patch event', () => {
     const event = adaptCodexHook(
       {
         hook_event_name: 'UserPromptSubmit',
@@ -189,13 +206,14 @@ describe('codex hook adapter', () => {
       project_id: 'codex_project_1',
       source: 'provider-adapter',
       payload: {
-        status: 'running',
+        intent: 'agent.turn_started',
+        agentState: 'working',
         summary: 'UserPromptSubmit'
       }
     })
   })
 
-  test('adapts Codex PreToolUse hook with toolName and toolUseId', () => {
+  test('adapts Codex PreToolUse hook into tool started state patch event with toolName and toolUseId', () => {
     const event = adaptCodexHook(
       {
         hook_event_name: 'PreToolUse',
@@ -214,7 +232,8 @@ describe('codex hook adapter', () => {
       project_id: 'codex_project_1',
       source: 'provider-adapter',
       payload: {
-        status: 'running',
+        intent: 'agent.tool_started',
+        agentState: 'working',
         summary: 'PreToolUse',
         toolName: 'Write',
         toolUseId: 'tooluse_abc'
@@ -222,7 +241,7 @@ describe('codex hook adapter', () => {
     })
   })
 
-  test('adapts Codex PostToolUse hook with toolName and toolUseId', () => {
+  test('adapts Codex PostToolUse hook into tool started state patch event with toolName and toolUseId', () => {
     const event = adaptCodexHook(
       {
         hook_event_name: 'PostToolUse',
@@ -242,7 +261,8 @@ describe('codex hook adapter', () => {
       project_id: 'codex_project_1',
       source: 'provider-adapter',
       payload: {
-        status: 'running',
+        intent: 'agent.tool_started',
+        agentState: 'working',
         summary: 'PostToolUse',
         model: 'o3',
         toolName: 'Bash',
@@ -251,7 +271,7 @@ describe('codex hook adapter', () => {
     })
   })
 
-  test('adapts Codex Stop hook into turn_complete canonical event', () => {
+  test('adapts Codex Stop hook into turn completed state patch event', () => {
     const event = adaptCodexHook(
       {
         hook_event_name: 'Stop',
@@ -268,7 +288,9 @@ describe('codex hook adapter', () => {
       project_id: 'codex_project_1',
       source: 'provider-adapter',
       payload: {
-        status: 'turn_complete',
+        intent: 'agent.turn_completed',
+        agentState: 'idle',
+        hasUnseenCompletion: true,
         summary: 'Stop'
       }
     })

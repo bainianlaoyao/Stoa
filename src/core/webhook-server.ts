@@ -3,6 +3,29 @@ import type { AddressInfo } from 'node:net'
 import type { CanonicalSessionEvent } from '@shared/project-session'
 import { adaptClaudeCodeHook, adaptCodexHook } from './hook-event-adapter'
 
+const VALID_SOURCES = new Set(['hook-sidecar', 'provider-adapter', 'system-recovery'])
+const VALID_INTENTS = new Set([
+  'runtime.created',
+  'runtime.starting',
+  'runtime.alive',
+  'runtime.exited_clean',
+  'runtime.exited_failed',
+  'runtime.failed_to_start',
+  'agent.turn_started',
+  'agent.tool_started',
+  'agent.turn_completed',
+  'agent.completion_seen',
+  'agent.permission_requested',
+  'agent.permission_resolved',
+  'agent.turn_failed',
+  'agent.recovered'
+])
+const VALID_RUNTIME_STATES = new Set(['created', 'starting', 'alive', 'exited', 'failed_to_start'])
+const VALID_AGENT_STATES = new Set(['unknown', 'idle', 'working', 'blocked', 'error'])
+const VALID_RUNTIME_EXIT_REASONS = new Set(['clean', 'failed'])
+const VALID_BLOCKING_REASONS = new Set(['permission', 'elicitation', 'resume-confirmation', 'provider-error'])
+const OPTIONAL_STRING_FIELDS = ['model', 'snippet', 'toolName', 'error'] as const
+
 export interface LocalWebhookServerOptions {
   onEvent?: (event: CanonicalSessionEvent) => Promise<void> | void
   getSessionSecret?: (sessionId: string) => string | null
@@ -22,15 +45,79 @@ function isCanonicalSessionEvent(value: unknown): value is CanonicalSessionEvent
   }
 
   const event = value as Record<string, unknown>
-  return event.event_version === 1
+  const payload = event.payload as Record<string, unknown> | null
+  if (!(event.event_version === 1
     && typeof event.event_id === 'string'
     && typeof event.event_type === 'string'
     && typeof event.timestamp === 'string'
     && typeof event.session_id === 'string'
     && typeof event.project_id === 'string'
+    && (event.correlation_id === undefined || typeof event.correlation_id === 'string')
     && typeof event.source === 'string'
-    && !!event.payload
-    && typeof event.payload === 'object'
+    && VALID_SOURCES.has(event.source)
+    && !!payload
+    && typeof payload === 'object'
+    && typeof payload.intent === 'string'
+    && VALID_INTENTS.has(payload.intent)
+    && typeof payload.summary === 'string')) {
+    return false
+  }
+
+  if (payload.runtimeState !== undefined && !VALID_RUNTIME_STATES.has(payload.runtimeState as string)) {
+    return false
+  }
+
+  if (payload.agentState !== undefined && !VALID_AGENT_STATES.has(payload.agentState as string)) {
+    return false
+  }
+
+  if (payload.hasUnseenCompletion !== undefined && typeof payload.hasUnseenCompletion !== 'boolean') {
+    return false
+  }
+
+  if (
+    payload.runtimeExitCode !== undefined
+    && payload.runtimeExitCode !== null
+    && typeof payload.runtimeExitCode !== 'number'
+  ) {
+    return false
+  }
+
+  if (
+    payload.runtimeExitReason !== undefined
+    && payload.runtimeExitReason !== null
+    && !VALID_RUNTIME_EXIT_REASONS.has(payload.runtimeExitReason as string)
+  ) {
+    return false
+  }
+
+  if (
+    payload.blockingReason !== undefined
+    && payload.blockingReason !== null
+    && !VALID_BLOCKING_REASONS.has(payload.blockingReason as string)
+  ) {
+    return false
+  }
+
+  for (const field of OPTIONAL_STRING_FIELDS) {
+    if (payload[field] !== undefined && typeof payload[field] !== 'string') {
+      return false
+    }
+  }
+
+  if (
+    payload.externalSessionId !== undefined
+    && payload.externalSessionId !== null
+    && typeof payload.externalSessionId !== 'string'
+  ) {
+    return false
+  }
+
+  if (payload.intent === 'agent.permission_resolved' && payload.agentState === 'blocked') {
+    return false
+  }
+
+  return true
 }
 
 export function createLocalWebhookServer(options: LocalWebhookServerOptions = {}): LocalWebhookServer {

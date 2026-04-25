@@ -4,6 +4,7 @@ import { ProjectSessionManager } from '@core/project-session-manager'
 import { startSessionRuntime } from '@core/session-runtime'
 import type { SessionRuntimeManager } from '@core/session-runtime'
 import type { ProviderCommand } from '@shared/project-session'
+import { buildSessionPresenceSnapshot } from '@shared/observability-projection'
 import type { ProviderDefinition } from '@extensions/providers'
 import { createTestWorkspace, createTestGlobalStatePath } from './helpers'
 import { readProjectSessions } from '@core/state-store'
@@ -110,14 +111,18 @@ function createCapturingManager(delegate: ProjectSessionManager): CapturingManag
   return {
     terminalData,
     exitSignal,
-    async markSessionStarting(sessionId: string, summary: string, externalSessionId: string | null) {
-      await delegate.markSessionStarting(sessionId, summary, externalSessionId)
+    async markRuntimeStarting(sessionId: string, summary: string, externalSessionId: string | null) {
+      await delegate.markRuntimeStarting(sessionId, summary, externalSessionId)
     },
-    async markSessionRunning(sessionId: string, externalSessionId: string | null) {
-      await delegate.markSessionRunning(sessionId, externalSessionId)
+    async markRuntimeAlive(sessionId: string, externalSessionId: string | null) {
+      await delegate.markRuntimeAlive(sessionId, externalSessionId)
     },
-    async markSessionExited(sessionId: string, summary: string) {
-      await delegate.markSessionExited(sessionId, summary)
+    async markRuntimeExited(sessionId: string, exitCode: number | null, summary: string) {
+      await delegate.markRuntimeExited(sessionId, exitCode, summary)
+      resolveExit!()
+    },
+    async markRuntimeFailedToStart(sessionId: string, summary: string) {
+      await delegate.markRuntimeFailedToStart(sessionId, summary)
       resolveExit!()
     },
     async appendTerminalData(chunk: { sessionId: string; data: string }) {
@@ -135,7 +140,7 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
     }
   })
 
-  describe('Shell session: bootstrapping → starting → running → exited', () => {
+  describe('Shell session: created → starting → alive → exited', () => {
     test('completes full lifecycle with real PtyHost and real state persistence', async () => {
       const workspaceDir = await createTestWorkspace('stoa-e2e-rt-lifecycle-')
       const globalStatePath = await createTestGlobalStatePath()
@@ -155,7 +160,7 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
         title: 'Lifecycle Shell'
       })
 
-      expect(manager.snapshot().sessions[0]!.status).toBe('bootstrapping')
+      expect(manager.snapshot().sessions[0]!.runtimeState).toBe('created')
 
       const ptyHost = new PtyHost()
       activeHosts.push(ptyHost)
@@ -168,7 +173,8 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
           path: workspaceDir,
           title: session.title,
           type: session.type,
-          status: session.status,
+          runtimeState: session.runtimeState,
+          agentState: session.agentState,
           externalSessionId: session.externalSessionId
         },
         webhookPort: 43127,
@@ -178,13 +184,22 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
       })
 
       let snapshot = manager.snapshot()
-      expect(snapshot.sessions.find(s => s.id === session.id)!.status).toBe('running')
-      expect(snapshot.sessions.find(s => s.id === session.id)!.externalSessionId).toBeNull()
+      const aliveSession = snapshot.sessions.find(s => s.id === session.id)!
+      expect(aliveSession.runtimeState).toBe('alive')
+      expect(aliveSession.externalSessionId).toBeNull()
+      expect(buildSessionPresenceSnapshot(aliveSession, {
+        activeSessionId: snapshot.activeSessionId,
+        nowIso: '2026-04-25T00:00:00.000Z'
+      })).toMatchObject({
+        phase: 'running',
+        runtimeState: 'alive',
+        agentState: 'unknown'
+      })
 
       await waitForExit(capturing.exitSignal)
 
       snapshot = manager.snapshot()
-      expect(snapshot.sessions.find(s => s.id === session.id)!.status).toBe('exited')
+      expect(snapshot.sessions.find(s => s.id === session.id)!.runtimeState).toBe('exited')
       expect(snapshot.sessions.find(s => s.id === session.id)!.summary).toMatch(/exited/)
     })
 
@@ -214,7 +229,8 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
           path: workspaceDir,
           title: session.title,
           type: session.type,
-          status: session.status,
+          runtimeState: session.runtimeState,
+          agentState: session.agentState,
           externalSessionId: session.externalSessionId
         },
         webhookPort: 43127,
@@ -258,7 +274,8 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
           path: workspaceDir,
           title: session.title,
           type: session.type,
-          status: session.status,
+          runtimeState: session.runtimeState,
+          agentState: session.agentState,
           externalSessionId: session.externalSessionId
         },
         webhookPort: 43127,
@@ -268,12 +285,12 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
       })
 
       const diskRunning = await readProjectSessions(workspaceDir)
-      expect(diskRunning.sessions[0]!.last_known_status).toBe('running')
+      expect(diskRunning.sessions[0]!.runtime_state).toBe('alive')
 
       await waitForExit(capturing.exitSignal)
 
       const diskExited = await readProjectSessions(workspaceDir)
-      expect(diskExited.sessions[0]!.last_known_status).toBe('exited')
+      expect(diskExited.sessions[0]!.runtime_state).toBe('exited')
       expect(diskExited.sessions[0]!.last_summary).toMatch(/exited/)
     })
   })
@@ -299,7 +316,7 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
       await startSessionRuntime({
         session: {
           id: session1.id, projectId: session1.projectId, path: workspaceDir,
-          title: session1.title, type: session1.type, status: session1.status,
+          title: session1.title, type: session1.type, runtimeState: session1.runtimeState, agentState: session1.agentState,
           externalSessionId: session1.externalSessionId
         },
         webhookPort: 43127, provider, ptyHost, manager: capturing1
@@ -310,7 +327,7 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
       await startSessionRuntime({
         session: {
           id: session2.id, projectId: session2.projectId, path: workspaceDir,
-          title: session2.title, type: session2.type, status: session2.status,
+          title: session2.title, type: session2.type, runtimeState: session2.runtimeState, agentState: session2.agentState,
           externalSessionId: session2.externalSessionId
         },
         webhookPort: 43127, provider, ptyHost, manager: capturing2
@@ -319,8 +336,8 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
 
       const snapshot = manager.snapshot()
       expect(snapshot.sessions).toHaveLength(2)
-      expect(snapshot.sessions[0]!.status).toBe('exited')
-      expect(snapshot.sessions[1]!.status).toBe('exited')
+      expect(snapshot.sessions[0]!.runtimeState).toBe('exited')
+      expect(snapshot.sessions[1]!.runtimeState).toBe('exited')
       expect(capturing1.terminalData[0]!.sessionId).toBe(session1.id)
       expect(capturing2.terminalData[0]!.sessionId).toBe(session2.id)
     })
@@ -342,7 +359,7 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
       await startSessionRuntime({
         session: {
           id: session.id, projectId: session.projectId, path: workspaceDir,
-          title: session.title, type: session.type, status: session.status,
+          title: session.title, type: session.type, runtimeState: session.runtimeState, agentState: session.agentState,
           externalSessionId: session.externalSessionId
         },
         webhookPort: 43127, provider: createEchoProvider(), ptyHost, manager: capturing
@@ -369,7 +386,7 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
       await startSessionRuntime({
         session: {
           id: session.id, projectId: session.projectId, path: workspaceDir,
-          title: session.title, type: session.type, status: session.status,
+          title: session.title, type: session.type, runtimeState: session.runtimeState, agentState: session.agentState,
           externalSessionId: session.externalSessionId
         },
         webhookPort: 43127, provider: createEchoProvider(), ptyHost, manager: capturing
@@ -381,7 +398,7 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
       const snapshot = restored.snapshot()
       expect(snapshot.projects).toHaveLength(1)
       expect(snapshot.sessions).toHaveLength(1)
-      expect(snapshot.sessions[0]!.status).toBe('exited')
+      expect(snapshot.sessions[0]!.runtimeState).toBe('exited')
       expect(snapshot.sessions[0]!.summary).toMatch(/exited/)
       expect(snapshot.sessions[0]!.id).toBe(session.id)
       expect(snapshot.sessions[0]!.externalSessionId).toBeNull()
@@ -408,7 +425,7 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
         startSessionRuntime({
           session: {
             id: session1.id, projectId: session1.projectId, path: workspaceDir,
-            title: session1.title, type: session1.type, status: session1.status,
+            title: session1.title, type: session1.type, runtimeState: session1.runtimeState, agentState: session1.agentState,
             externalSessionId: session1.externalSessionId
           },
           webhookPort: 43127, provider, ptyHost, manager: capturing1
@@ -416,7 +433,7 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
         startSessionRuntime({
           session: {
             id: session2.id, projectId: session2.projectId, path: workspaceDir,
-            title: session2.title, type: session2.type, status: session2.status,
+            title: session2.title, type: session2.type, runtimeState: session2.runtimeState, agentState: session2.agentState,
             externalSessionId: session2.externalSessionId
           },
           webhookPort: 43127, provider, ptyHost, manager: capturing2
@@ -424,8 +441,8 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
       ])
 
       let snapshot = manager.snapshot()
-      expect(snapshot.sessions.find(s => s.id === session1.id)!.status).toBe('running')
-      expect(snapshot.sessions.find(s => s.id === session2.id)!.status).toBe('running')
+      expect(snapshot.sessions.find(s => s.id === session1.id)!.runtimeState).toBe('alive')
+      expect(snapshot.sessions.find(s => s.id === session2.id)!.runtimeState).toBe('alive')
 
       await Promise.all([
         waitForExit(capturing1.exitSignal),
@@ -433,8 +450,8 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
       ])
 
       snapshot = manager.snapshot()
-      expect(snapshot.sessions.find(s => s.id === session1.id)!.status).toBe('exited')
-      expect(snapshot.sessions.find(s => s.id === session2.id)!.status).toBe('exited')
+      expect(snapshot.sessions.find(s => s.id === session1.id)!.runtimeState).toBe('exited')
+      expect(snapshot.sessions.find(s => s.id === session2.id)!.runtimeState).toBe('exited')
       expect(capturing1.terminalData.some(c => c.data.includes('hello-from-e2e'))).toBe(true)
       expect(capturing2.terminalData.some(c => c.data.includes('hello-from-e2e'))).toBe(true)
     })
@@ -456,7 +473,7 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
       await startSessionRuntime({
         session: {
           id: session.id, projectId: session.projectId, path: workspaceDir,
-          title: session.title, type: session.type, status: session.status,
+          title: session.title, type: session.type, runtimeState: session.runtimeState, agentState: session.agentState,
           externalSessionId: session.externalSessionId
         },
         webhookPort: 43127, provider: createFailProvider(), ptyHost, manager: capturing
@@ -465,8 +482,17 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
       await waitForExit(capturing.exitSignal)
 
       const exitedSession = manager.snapshot().sessions.find(s => s.id === session.id)!
-      expect(exitedSession.status).toBe('exited')
+      expect(exitedSession.runtimeState).toBe('exited')
       expect(exitedSession.summary).toContain('42')
+      expect(buildSessionPresenceSnapshot(exitedSession, {
+        activeSessionId: session.id,
+        nowIso: '2026-04-25T00:00:00.000Z'
+      })).toMatchObject({
+        phase: 'failed',
+        runtimeState: 'exited',
+        runtimeExitReason: 'failed',
+        runtimeExitCode: 42
+      })
     })
   })
 })

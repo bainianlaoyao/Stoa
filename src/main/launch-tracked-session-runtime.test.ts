@@ -36,11 +36,12 @@ describe('launchTrackedSessionRuntime', () => {
       webhookPort: 43127,
       ptyHost: { start: vi.fn(() => ({ runtimeId: session.id })) } as never,
       runtimeController: {
-        markSessionStarting: vi.fn(async () => {}),
-        markSessionRunning: vi.fn(async () => {}),
-        markSessionExited: vi.fn(async () => {}),
+        markRuntimeStarting: vi.fn(async () => {}),
+        markRuntimeAlive: vi.fn(async () => {}),
+        markRuntimeExited: vi.fn(async () => {}),
+        markRuntimeFailedToStart: vi.fn(async () => {}),
         appendTerminalData: vi.fn(async () => {})
-      } as never,
+      },
       sessionEventBridge: {
         issueSessionSecret
       } as never,
@@ -61,7 +62,8 @@ describe('launchTrackedSessionRuntime', () => {
           path: project.path,
           title: 'Restored shell',
           type: 'shell',
-          status: 'bootstrapping',
+          runtimeState: 'created',
+          agentState: 'unknown',
           externalSessionId: null,
           sessionSecret: 'secret-1'
         }),
@@ -87,11 +89,12 @@ describe('launchTrackedSessionRuntime', () => {
       webhookPort: 43127,
       ptyHost: { start: vi.fn(() => ({ runtimeId: 'missing-session' })) } as never,
       runtimeController: {
-        markSessionStarting: vi.fn(async () => {}),
-        markSessionRunning: vi.fn(async () => {}),
-        markSessionExited: vi.fn(async () => {}),
+        markRuntimeStarting: vi.fn(async () => {}),
+        markRuntimeAlive: vi.fn(async () => {}),
+        markRuntimeExited: vi.fn(async () => {}),
+        markRuntimeFailedToStart: vi.fn(async () => {}),
         appendTerminalData: vi.fn(async () => {})
-      } as never,
+      },
       sessionEventBridge: {
         issueSessionSecret: vi.fn(() => 'secret-1')
       } as never,

@@ -6,7 +6,7 @@ import type {
   ProjectObservabilitySnapshot,
   SessionPresenceSnapshot
 } from '@shared/observability'
-import type { RendererApi } from '@shared/project-session'
+import type { RendererApi, SessionSummary } from '@shared/project-session'
 import { useWorkspaceStore } from './workspaces'
 
 function deferred<T>() {
@@ -42,7 +42,6 @@ function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
     getAppObservability: vi.fn().mockResolvedValue({
       blockedProjectCount: 0,
       failedProjectCount: 0,
-      degradedProjectCount: 0,
       totalUnreadTurns: 0,
       projectsNeedingAttention: [],
       providerHealthSummary: {},
@@ -118,8 +117,12 @@ function sessionPresenceFixture(patch: Partial<SessionPresenceSnapshot> = {}): S
     providerId: 'claude-code',
     providerLabel: 'Claude Code',
     modelLabel: 'Sonnet',
-    phase: 'working',
-    canonicalStatus: 'running',
+    phase: 'running',
+    runtimeState: 'alive',
+    agentState: 'working',
+    hasUnseenCompletion: false,
+    runtimeExitCode: null,
+    runtimeExitReason: null,
     confidence: 'authoritative',
     health: 'healthy',
     blockingReason: null,
@@ -128,6 +131,7 @@ function sessionPresenceFixture(patch: Partial<SessionPresenceSnapshot> = {}): S
     lastEvidenceType: null,
     hasUnreadTurn: false,
     recoveryPointerState: 'trusted',
+    evidenceSequence: 1,
     sourceSequence: 1,
     updatedAt: '2026-04-24T07:59:50.000Z',
     ...patch
@@ -142,7 +146,6 @@ function projectObservabilityFixture(
     overallHealth: 'healthy',
     activeSessionCount: 1,
     blockedSessionCount: 0,
-    degradedSessionCount: 0,
     failedSessionCount: 0,
     unreadTurnCount: 0,
     latestAttentionSessionId: null,
@@ -158,7 +161,6 @@ function appObservabilityFixture(patch: Partial<AppObservabilitySnapshot> = {}):
   return {
     blockedProjectCount: 0,
     failedProjectCount: 0,
-    degradedProjectCount: 0,
     totalUnreadTurns: 0,
     projectsNeedingAttention: [],
     providerHealthSummary: {},
@@ -181,13 +183,37 @@ function observationEventFixture(patch: Partial<ObservationEvent> = {}): Observa
     sessionId: 'session_op_1',
     providerId: 'claude-code',
     category: 'presence',
-    type: 'presence.turn_complete',
-    severity: 'info',
-    retention: 'operational',
+    type: 'presence.complete',
+    severity: 'attention',
+    retention: 'critical',
     source: 'provider-adapter',
     correlationId: null,
     dedupeKey: null,
     payload: {},
+    ...patch
+  }
+}
+
+function sessionSummaryFixture(patch: Partial<SessionSummary> = {}): SessionSummary {
+  return {
+    id: 'session_op_1',
+    projectId: 'project_alpha',
+    type: 'opencode',
+    runtimeState: 'alive',
+    agentState: 'working',
+    hasUnseenCompletion: false,
+    runtimeExitCode: null,
+    runtimeExitReason: null,
+    lastStateSequence: 1,
+    blockingReason: null,
+    title: 'Deploy',
+    summary: 'running',
+    recoveryMode: 'resume-external',
+    externalSessionId: 'ext-1',
+    createdAt: 'a',
+    updatedAt: 'a',
+    lastActivatedAt: 'a',
+    archived: false,
     ...patch
   }
 }
@@ -219,7 +245,13 @@ describe('project/session renderer store', () => {
           id: 'session_op_1',
           projectId: 'project_alpha',
           type: 'opencode',
-          status: 'running',
+          runtimeState: 'alive',
+          agentState: 'working',
+          hasUnseenCompletion: false,
+          runtimeExitCode: null,
+          runtimeExitReason: null,
+          lastStateSequence: 0,
+          blockingReason: null,
           title: 'Deploy',
           summary: 'running',
           recoveryMode: 'resume-external',
@@ -262,11 +294,10 @@ describe('project/session renderer store', () => {
         }
       ],
       sessions: [
-        {
+        sessionSummaryFixture({
           id: 'session_shell_1',
           projectId: 'project_alpha',
           type: 'shell',
-          status: 'running',
           summary: 'running',
           title: 'Shell 1',
           recoveryMode: 'fresh-shell',
@@ -275,12 +306,13 @@ describe('project/session renderer store', () => {
           updatedAt: 'a',
           lastActivatedAt: 'a',
           archived: false
-        },
-        {
+        }),
+        sessionSummaryFixture({
           id: 'session_op_2',
           projectId: 'project_beta',
           type: 'opencode',
-          status: 'bootstrapping',
+          runtimeState: 'created',
+          agentState: 'unknown',
           summary: 'waiting',
           title: 'Deploy',
           recoveryMode: 'resume-external',
@@ -289,7 +321,7 @@ describe('project/session renderer store', () => {
           updatedAt: 'b',
           lastActivatedAt: 'b',
           archived: false
-        }
+        })
       ]
     })
 
@@ -317,11 +349,10 @@ describe('project/session renderer store', () => {
         }
       ],
       sessions: [
-        {
+        sessionSummaryFixture({
           id: 'session_op_1',
           projectId: 'project_alpha',
           type: 'opencode',
-          status: 'running',
           title: 'deploy gateway',
           summary: 'deploy gateway',
           recoveryMode: 'resume-external',
@@ -330,12 +361,11 @@ describe('project/session renderer store', () => {
           updatedAt: 'a',
           lastActivatedAt: 'a',
           archived: false
-        },
-        {
+        }),
+        sessionSummaryFixture({
           id: 'session_op_2',
           projectId: 'project_alpha',
           type: 'opencode',
-          status: 'awaiting_input',
           title: 'need confirmation',
           summary: 'need confirmation',
           recoveryMode: 'resume-external',
@@ -344,7 +374,7 @@ describe('project/session renderer store', () => {
           updatedAt: 'b',
           lastActivatedAt: 'b',
           archived: false
-        }
+        })
       ]
     })
 
@@ -376,11 +406,10 @@ describe('project/session renderer store', () => {
           }
         ],
         sessions: [
-          {
+          sessionSummaryFixture({
             id: 'session_shell_1',
             projectId: 'project_alpha',
             type: 'shell',
-            status: 'running',
             summary: 'running',
             title: 'Shell 1',
             recoveryMode: 'fresh-shell',
@@ -389,12 +418,15 @@ describe('project/session renderer store', () => {
             updatedAt: 'a',
             lastActivatedAt: 'a',
             archived: false
-          },
-          {
+          }),
+          sessionSummaryFixture({
             id: 'session_archived',
             projectId: 'project_alpha',
             type: 'shell',
-            status: 'exited',
+            runtimeState: 'exited',
+            agentState: 'idle',
+            runtimeExitCode: 0,
+            runtimeExitReason: 'clean',
             summary: 'done',
             title: 'Old Shell',
             recoveryMode: 'fresh-shell',
@@ -403,7 +435,7 @@ describe('project/session renderer store', () => {
             updatedAt: 'a',
             lastActivatedAt: 'a',
             archived: true
-          }
+          })
         ]
       })
 
@@ -422,11 +454,10 @@ describe('project/session renderer store', () => {
           { id: 'project_alpha', name: 'alpha', path: 'D:/alpha', createdAt: 'a', updatedAt: 'a' }
         ],
         sessions: [
-          {
+          sessionSummaryFixture({
             id: 'session_shell_1',
             projectId: 'project_alpha',
             type: 'shell',
-            status: 'running',
             summary: 'running',
             title: 'Shell 1',
             recoveryMode: 'fresh-shell',
@@ -435,7 +466,7 @@ describe('project/session renderer store', () => {
             updatedAt: 'a',
             lastActivatedAt: 'a',
             archived: false
-          }
+          })
         ]
       })
 
@@ -457,11 +488,14 @@ describe('project/session renderer store', () => {
           { id: 'project_alpha', name: 'alpha', path: 'D:/alpha', createdAt: 'a', updatedAt: 'a' }
         ],
         sessions: [
-          {
+          sessionSummaryFixture({
             id: 'session_archived',
             projectId: 'project_alpha',
             type: 'shell',
-            status: 'exited',
+            runtimeState: 'exited',
+            agentState: 'idle',
+            runtimeExitCode: 0,
+            runtimeExitReason: 'clean',
             summary: 'done',
             title: 'Old Shell',
             recoveryMode: 'fresh-shell',
@@ -470,7 +504,7 @@ describe('project/session renderer store', () => {
             updatedAt: 'a',
             lastActivatedAt: 'a',
             archived: true
-          }
+          })
         ]
       })
 
@@ -506,11 +540,10 @@ describe('project/session renderer store', () => {
           { id: 'project_alpha', name: 'alpha', path: 'D:/alpha', createdAt: 'a', updatedAt: 'a' }
         ],
         sessions: [
-          {
+          sessionSummaryFixture({
             id: 'session_op_1',
             projectId: 'project_alpha',
             type: 'opencode',
-            status: 'running',
             title: 'Deploy',
             summary: 'running',
             recoveryMode: 'resume-external',
@@ -519,7 +552,7 @@ describe('project/session renderer store', () => {
             updatedAt: 'a',
             lastActivatedAt: 'a',
             archived: false
-          }
+          })
         ]
       })
 
@@ -569,11 +602,10 @@ describe('project/session renderer store', () => {
           { id: 'project_alpha', name: 'alpha', path: 'D:/alpha', createdAt: 'a', updatedAt: 'a' }
         ],
         sessions: [
-          {
+          sessionSummaryFixture({
             id: 'session_op_1',
             projectId: 'project_alpha',
             type: 'opencode',
-            status: 'running',
             title: 'Deploy',
             summary: 'running',
             recoveryMode: 'resume-external',
@@ -582,7 +614,7 @@ describe('project/session renderer store', () => {
             updatedAt: 'a',
             lastActivatedAt: 'a',
             archived: false
-          }
+          })
         ]
       })
 
@@ -591,11 +623,11 @@ describe('project/session renderer store', () => {
       const sessionPresence = sessionPresenceFixture({
         phase: 'blocked',
         blockingReason: 'permission',
-        health: 'degraded',
+        health: 'healthy',
         hasUnreadTurn: true
       })
       const projectObservability = projectObservabilityFixture({
-        overallHealth: 'degraded',
+        overallHealth: 'healthy',
         blockedSessionCount: 1,
         unreadTurnCount: 1,
         latestAttentionSessionId: 'session_op_1',
@@ -615,6 +647,278 @@ describe('project/session renderer store', () => {
       expect(store.projectObservabilityById.project_alpha).toEqual(projectObservability)
       expect(store.appObservability).toEqual(appObservability)
       expect(store.activeSessionPresence?.blockingReason).toBe('permission')
+    })
+
+    test('uses backend presence snapshot as authoritative over fallback', async () => {
+      const backendPresence = sessionPresenceFixture({
+        sessionId: 'session_claude_1',
+        phase: 'blocked',
+        runtimeState: 'alive',
+        agentState: 'blocked',
+        blockingReason: 'permission',
+        health: 'healthy',
+        sourceSequence: 9
+      })
+
+      window.stoa = createStoaMock({
+        getSessionPresence: vi.fn().mockResolvedValue(backendPresence)
+      })
+
+      const store = useWorkspaceStore()
+      store.hydrate({
+        activeProjectId: 'project_alpha',
+        activeSessionId: 'session_claude_1',
+        terminalWebhookPort: 43127,
+        projects: [{ id: 'project_alpha', name: 'alpha', path: 'D:/alpha', createdAt: 'a', updatedAt: 'a' }],
+        sessions: []
+      })
+
+      store.addSession(sessionSummaryFixture({
+        id: 'session_claude_1',
+        type: 'claude-code',
+        runtimeState: 'alive',
+        agentState: 'working',
+        lastStateSequence: 12,
+        title: 'Claude'
+      }))
+
+      expect(store.sessionPresenceById.session_claude_1).toMatchObject({
+        phase: 'running',
+        sourceSequence: 12
+      })
+
+      await store.hydrateObservability()
+
+      expect(store.sessionPresenceById.session_claude_1).toEqual(backendPresence)
+    })
+
+    test('does not let lower sourceSequence fallback overwrite newer snapshot', async () => {
+      const backendPresence = sessionPresenceFixture({
+        phase: 'blocked',
+        runtimeState: 'alive',
+        agentState: 'blocked',
+        blockingReason: 'resume-confirmation',
+        sourceSequence: 20
+      })
+
+      window.stoa = createStoaMock({
+        getSessionPresence: vi.fn().mockResolvedValue(backendPresence)
+      })
+
+      const store = useWorkspaceStore()
+      store.hydrate({
+        activeProjectId: 'project_alpha',
+        activeSessionId: 'session_op_1',
+        terminalWebhookPort: 43127,
+        projects: [{ id: 'project_alpha', name: 'alpha', path: 'D:/alpha', createdAt: 'a', updatedAt: 'a' }],
+        sessions: [sessionSummaryFixture({
+          id: 'session_op_1',
+          lastStateSequence: 10,
+          agentState: 'idle',
+          hasUnseenCompletion: true,
+          summary: 'complete'
+        })]
+      })
+
+      await store.hydrateObservability()
+      expect(store.sessionPresenceById.session_op_1).toEqual(backendPresence)
+
+      store.updateSession('session_op_1', {
+        runtimeState: 'alive',
+        agentState: 'working',
+        hasUnseenCompletion: false,
+        blockingReason: null,
+        lastStateSequence: 19,
+        summary: 'local running fallback'
+      })
+
+      expect(store.sessionPresenceById.session_op_1).toEqual(backendPresence)
+    })
+
+    test('does not let newer fallback overwrite backend snapshot', async () => {
+      let sessionListener: ((snapshot: SessionPresenceSnapshot) => void) | undefined
+      const backendPresence = sessionPresenceFixture({
+        phase: 'blocked',
+        runtimeState: 'alive',
+        agentState: 'blocked',
+        blockingReason: 'permission',
+        sourceSequence: 9
+      })
+
+      window.stoa = createStoaMock({
+        getSessionPresence: vi.fn().mockResolvedValue(backendPresence),
+        onSessionPresenceChanged: vi.fn().mockImplementation((callback: (snapshot: SessionPresenceSnapshot) => void) => {
+          sessionListener = callback
+          return () => {}
+        })
+      })
+
+      const store = useWorkspaceStore()
+      store.hydrate({
+        activeProjectId: 'project_alpha',
+        activeSessionId: 'session_op_1',
+        terminalWebhookPort: 43127,
+        projects: [{ id: 'project_alpha', name: 'alpha', path: 'D:/alpha', createdAt: 'a', updatedAt: 'a' }],
+        sessions: [sessionSummaryFixture({
+          id: 'session_op_1',
+          lastStateSequence: 8,
+          agentState: 'blocked',
+          blockingReason: 'permission',
+          summary: 'blocked'
+        })]
+      })
+
+      await store.hydrateObservability()
+      expect(store.sessionPresenceById.session_op_1).toEqual(backendPresence)
+
+      store.updateSession('session_op_1', {
+        runtimeState: 'alive',
+        agentState: 'working',
+        hasUnseenCompletion: false,
+        blockingReason: null,
+        lastStateSequence: 12,
+        summary: 'local running fallback'
+      })
+
+      expect(store.sessionPresenceById.session_op_1).toEqual(backendPresence)
+
+      sessionListener?.(sessionPresenceFixture({
+        phase: 'running',
+        runtimeState: 'alive',
+        agentState: 'working',
+        blockingReason: null,
+        sourceSequence: 12
+      }))
+
+      expect(store.sessionPresenceById.session_op_1).toMatchObject({
+        phase: 'running',
+        runtimeState: 'alive',
+        agentState: 'working',
+        blockingReason: null,
+        sourceSequence: 12
+      })
+    })
+
+    test('does not let equal sourceSequence fallback overwrite backend snapshot', async () => {
+      const backendPresence = sessionPresenceFixture({
+        phase: 'blocked',
+        runtimeState: 'alive',
+        agentState: 'blocked',
+        blockingReason: 'permission',
+        sourceSequence: 12,
+        updatedAt: '2026-04-24T08:00:00.000Z'
+      })
+
+      window.stoa = createStoaMock({
+        getSessionPresence: vi.fn().mockResolvedValue(backendPresence)
+      })
+
+      const store = useWorkspaceStore()
+      store.hydrate({
+        activeProjectId: 'project_alpha',
+        activeSessionId: 'session_op_1',
+        terminalWebhookPort: 43127,
+        projects: [{ id: 'project_alpha', name: 'alpha', path: 'D:/alpha', createdAt: 'a', updatedAt: 'a' }],
+        sessions: [sessionSummaryFixture({
+          id: 'session_op_1',
+          lastStateSequence: 12,
+          agentState: 'blocked',
+          blockingReason: 'permission',
+          summary: 'blocked'
+        })]
+      })
+
+      await store.hydrateObservability()
+      expect(store.sessionPresenceById.session_op_1).toEqual(backendPresence)
+
+      store.updateSession('session_op_1', {
+        runtimeState: 'alive',
+        agentState: 'working',
+        hasUnseenCompletion: false,
+        blockingReason: null,
+        lastStateSequence: 12,
+        summary: 'same sequence fallback'
+      })
+
+      expect(store.sessionPresenceById.session_op_1).toEqual(backendPresence)
+    })
+
+    test('updates active complete session to ready after backend completion_seen patch', async () => {
+      let sessionListener: ((snapshot: SessionPresenceSnapshot) => void) | undefined
+
+      window.stoa = createStoaMock({
+        onSessionPresenceChanged: vi.fn().mockImplementation((callback: (snapshot: SessionPresenceSnapshot) => void) => {
+          sessionListener = callback
+          return () => {}
+        })
+      })
+
+      const store = useWorkspaceStore()
+      store.hydrate({
+        activeProjectId: 'project_alpha',
+        activeSessionId: null,
+        terminalWebhookPort: 43127,
+        projects: [{ id: 'project_alpha', name: 'alpha', path: 'D:/alpha', createdAt: 'a', updatedAt: 'a' }],
+        sessions: []
+      })
+      store.addSession(sessionSummaryFixture({
+        id: 'session_claude_complete',
+        type: 'claude-code',
+        runtimeState: 'alive',
+        agentState: 'idle',
+        hasUnseenCompletion: true,
+        lastStateSequence: 12,
+        title: 'Claude complete'
+      }))
+
+      store.setActiveSession('session_claude_complete')
+
+      expect(store.activeSessionId).toBe('session_claude_complete')
+      expect(store.activeSessionPresence).toMatchObject({
+        phase: 'complete',
+        hasUnseenCompletion: true
+      })
+
+      await store.hydrateObservability()
+
+      const readyPresence = sessionPresenceFixture({
+        sessionId: 'session_claude_complete',
+        phase: 'ready',
+        runtimeState: 'alive',
+        agentState: 'idle',
+        hasUnseenCompletion: false,
+        sourceSequence: 13
+      })
+      sessionListener?.(readyPresence)
+
+      expect(store.activeSessionPresence).toEqual(readyPresence)
+    })
+
+    test('keeps Claude alive unknown ready instead of running', () => {
+      const store = useWorkspaceStore()
+      store.hydrate({
+        activeProjectId: 'project_alpha',
+        activeSessionId: 'session_claude_1',
+        terminalWebhookPort: 43127,
+        projects: [{ id: 'project_alpha', name: 'alpha', path: 'D:/alpha', createdAt: 'a', updatedAt: 'a' }],
+        sessions: []
+      })
+
+      store.addSession(sessionSummaryFixture({
+        id: 'session_claude_1',
+        type: 'claude-code',
+        runtimeState: 'alive',
+        agentState: 'unknown',
+        lastStateSequence: 4,
+        title: 'Claude unknown'
+      }))
+
+      expect(store.sessionPresenceById.session_claude_1).toMatchObject({
+        phase: 'ready',
+        runtimeState: 'alive',
+        agentState: 'unknown',
+        sourceSequence: 4
+      })
     })
 
     test('keeps newer pushed snapshots when initial observability queries resolve later', async () => {
@@ -653,11 +957,10 @@ describe('project/session renderer store', () => {
           { id: 'project_alpha', name: 'alpha', path: 'D:/alpha', createdAt: 'a', updatedAt: 'a' }
         ],
         sessions: [
-          {
+          sessionSummaryFixture({
             id: 'session_op_1',
             projectId: 'project_alpha',
             type: 'opencode',
-            status: 'running',
             title: 'Deploy',
             summary: 'running',
             recoveryMode: 'resume-external',
@@ -666,7 +969,7 @@ describe('project/session renderer store', () => {
             updatedAt: 'a',
             lastActivatedAt: 'a',
             archived: false
-          }
+          })
         ]
       })
 
@@ -677,12 +980,12 @@ describe('project/session renderer store', () => {
         sourceSequence: 10,
         phase: 'blocked',
         blockingReason: 'permission',
-        health: 'degraded'
+        health: 'healthy'
       })
       const pushedProjectObservability = projectObservabilityFixture({
         updatedAt: '2026-04-24T08:00:10.000Z',
         sourceSequence: 10,
-        overallHealth: 'degraded',
+        overallHealth: 'healthy',
         blockedSessionCount: 1,
         latestAttentionSessionId: 'session_op_1',
         latestAttentionReason: 'permission'
@@ -701,6 +1004,93 @@ describe('project/session renderer store', () => {
       delayedSessionPresence.resolve(sessionPresenceFixture({ updatedAt: '2026-04-24T08:00:00.000Z', sourceSequence: 9 }))
       delayedProjectObservability.resolve(projectObservabilityFixture({ updatedAt: '2026-04-24T08:00:00.000Z', sourceSequence: 9 }))
       delayedAppObservability.resolve(appObservabilityFixture({ updatedAt: '2026-04-24T08:00:00.000Z', sourceSequence: 9 }))
+
+      await hydrationPromise
+
+      expect(store.sessionPresenceById.session_op_1).toEqual(pushedSessionPresence)
+      expect(store.projectObservabilityById.project_alpha).toEqual(pushedProjectObservability)
+      expect(store.appObservability).toEqual(pushedAppObservability)
+    })
+
+    test('keeps newer pushed snapshots when equal-sequence initial observability queries resolve later', async () => {
+      let sessionListener: ((snapshot: SessionPresenceSnapshot) => void) | undefined
+      let projectListener: ((snapshot: ProjectObservabilitySnapshot) => void) | undefined
+      let appListener: ((snapshot: AppObservabilitySnapshot) => void) | undefined
+
+      const delayedSessionPresence = deferred<SessionPresenceSnapshot | null>()
+      const delayedProjectObservability = deferred<ProjectObservabilitySnapshot | null>()
+      const delayedAppObservability = deferred<AppObservabilitySnapshot | null>()
+
+      window.stoa = createStoaMock({
+        getSessionPresence: vi.fn().mockReturnValue(delayedSessionPresence.promise),
+        getProjectObservability: vi.fn().mockReturnValue(delayedProjectObservability.promise),
+        getAppObservability: vi.fn().mockReturnValue(delayedAppObservability.promise),
+        onSessionPresenceChanged: vi.fn().mockImplementation((callback: (snapshot: SessionPresenceSnapshot) => void) => {
+          sessionListener = callback
+          return () => {}
+        }),
+        onProjectObservabilityChanged: vi.fn().mockImplementation((callback: (snapshot: ProjectObservabilitySnapshot) => void) => {
+          projectListener = callback
+          return () => {}
+        }),
+        onAppObservabilityChanged: vi.fn().mockImplementation((callback: (snapshot: AppObservabilitySnapshot) => void) => {
+          appListener = callback
+          return () => {}
+        })
+      })
+
+      const store = useWorkspaceStore()
+      store.hydrate({
+        activeProjectId: 'project_alpha',
+        activeSessionId: 'session_op_1',
+        terminalWebhookPort: 43127,
+        projects: [{ id: 'project_alpha', name: 'alpha', path: 'D:/alpha', createdAt: 'a', updatedAt: 'a' }],
+        sessions: [sessionSummaryFixture({
+          id: 'session_op_1',
+          projectId: 'project_alpha',
+          type: 'opencode',
+          title: 'Deploy',
+          summary: 'running',
+          recoveryMode: 'resume-external',
+          externalSessionId: 'ext-1',
+          createdAt: 'a',
+          updatedAt: 'a',
+          lastActivatedAt: 'a',
+          archived: false
+        })]
+      })
+
+      const hydrationPromise = store.hydrateObservability()
+
+      const pushedSessionPresence = sessionPresenceFixture({
+        updatedAt: '2026-04-24T08:00:10.000Z',
+        sourceSequence: 10,
+        phase: 'blocked',
+        blockingReason: 'permission',
+        health: 'healthy'
+      })
+      const pushedProjectObservability = projectObservabilityFixture({
+        updatedAt: '2026-04-24T08:00:10.000Z',
+        sourceSequence: 10,
+        overallHealth: 'healthy',
+        blockedSessionCount: 1,
+        latestAttentionSessionId: 'session_op_1',
+        latestAttentionReason: 'permission'
+      })
+      const pushedAppObservability = appObservabilityFixture({
+        updatedAt: '2026-04-24T08:00:10.000Z',
+        sourceSequence: 10,
+        blockedProjectCount: 1,
+        projectsNeedingAttention: ['project_alpha']
+      })
+
+      sessionListener?.(pushedSessionPresence)
+      projectListener?.(pushedProjectObservability)
+      appListener?.(pushedAppObservability)
+
+      delayedSessionPresence.resolve(sessionPresenceFixture({ updatedAt: '2026-04-24T08:00:00.000Z', sourceSequence: 10 }))
+      delayedProjectObservability.resolve(projectObservabilityFixture({ updatedAt: '2026-04-24T08:00:00.000Z', sourceSequence: 10 }))
+      delayedAppObservability.resolve(appObservabilityFixture({ updatedAt: '2026-04-24T08:00:00.000Z', sourceSequence: 10 }))
 
       await hydrationPromise
 
@@ -730,7 +1120,7 @@ describe('project/session renderer store', () => {
       })
 
       const store = useWorkspaceStore()
-      const newerSession = sessionPresenceFixture({ sourceSequence: 10, phase: 'blocked', canonicalStatus: 'needs_confirmation' })
+      const newerSession = sessionPresenceFixture({ sourceSequence: 10, phase: 'blocked' })
       const newerProject = projectObservabilityFixture({ sourceSequence: 10, blockedSessionCount: 1 })
       const newerApp = appObservabilityFixture({ sourceSequence: 10, blockedProjectCount: 1 })
 
@@ -739,11 +1129,10 @@ describe('project/session renderer store', () => {
         activeSessionId: 'session_op_1',
         terminalWebhookPort: 43127,
         projects: [{ id: 'project_alpha', name: 'alpha', path: 'D:/alpha', createdAt: 'a', updatedAt: 'a' }],
-        sessions: [{
+        sessions: [sessionSummaryFixture({
           id: 'session_op_1',
           projectId: 'project_alpha',
           type: 'opencode',
-          status: 'running',
           title: 'Deploy',
           summary: 'running',
           recoveryMode: 'resume-external',
@@ -752,14 +1141,14 @@ describe('project/session renderer store', () => {
           updatedAt: 'a',
           lastActivatedAt: 'a',
           archived: false
-        }]
+        })]
       })
       await store.hydrateObservability()
 
       sessionListener?.(newerSession)
       projectListener?.(newerProject)
       appListener?.(newerApp)
-      sessionListener?.(sessionPresenceFixture({ sourceSequence: 9, phase: 'working', canonicalStatus: 'running' }))
+      sessionListener?.(sessionPresenceFixture({ sourceSequence: 9, phase: 'running' }))
       projectListener?.(projectObservabilityFixture({ sourceSequence: 9, blockedSessionCount: 0 }))
       appListener?.(appObservabilityFixture({ sourceSequence: 9, blockedProjectCount: 0 }))
 
@@ -768,7 +1157,7 @@ describe('project/session renderer store', () => {
       expect(store.appObservability).toEqual(newerApp)
     })
 
-    test('session status updates replace provisional presence derived from session creation', () => {
+    test('session state updates replace provisional presence derived from session creation', () => {
       const store = useWorkspaceStore()
       store.hydrate({
         activeProjectId: 'project_alpha',
@@ -782,7 +1171,13 @@ describe('project/session renderer store', () => {
         id: 'session_claude_1',
         projectId: 'project_alpha',
         type: 'claude-code',
-        status: 'bootstrapping',
+        runtimeState: 'created',
+        agentState: 'unknown',
+        hasUnseenCompletion: false,
+        runtimeExitCode: null,
+        runtimeExitReason: null,
+        lastStateSequence: 0,
+        blockingReason: null,
         title: 'Claude',
         summary: 'Waiting for session to start',
         recoveryMode: 'resume-external',
@@ -795,21 +1190,21 @@ describe('project/session renderer store', () => {
       expect(store.sessionPresenceById.session_claude_1?.phase).toBe('preparing')
 
       store.updateSession('session_claude_1', {
-        status: 'running',
+        runtimeState: 'alive',
+        agentState: 'working',
+        lastStateSequence: 1,
         summary: 'Session running'
       })
 
       expect(store.sessionPresenceById.session_claude_1).toMatchObject({
-        phase: 'working',
-        canonicalStatus: 'running'
+        phase: 'running'
       })
     })
 
     test('backfills missed observability events after subscribing and refetches converged snapshots', async () => {
       const refetchedSessionPresence = sessionPresenceFixture({
         sourceSequence: 7,
-        phase: 'ready',
-        canonicalStatus: 'turn_complete'
+        phase: 'ready'
       })
       const refetchedProjectObservability = projectObservabilityFixture({ sourceSequence: 7 })
       const refetchedAppObservability = appObservabilityFixture({ sourceSequence: 7 })
@@ -836,11 +1231,10 @@ describe('project/session renderer store', () => {
         activeSessionId: 'session_op_1',
         terminalWebhookPort: 43127,
         projects: [{ id: 'project_alpha', name: 'alpha', path: 'D:/alpha', createdAt: 'a', updatedAt: 'a' }],
-        sessions: [{
+        sessions: [sessionSummaryFixture({
           id: 'session_op_1',
           projectId: 'project_alpha',
           type: 'opencode',
-          status: 'running',
           title: 'Deploy',
           summary: 'running',
           recoveryMode: 'resume-external',
@@ -849,18 +1243,61 @@ describe('project/session renderer store', () => {
           updatedAt: 'a',
           lastActivatedAt: 'a',
           archived: false
-        }]
+        })]
       })
 
       await store.hydrateObservability()
 
       expect(window.stoa.listSessionObservationEvents).toHaveBeenCalledWith('session_op_1', {
-        cursor: '3',
+        cursor: '1',
         limit: 50
       })
       expect(store.sessionPresenceById.session_op_1).toEqual(refetchedSessionPresence)
       expect(store.projectObservabilityById.project_alpha).toEqual(refetchedProjectObservability)
       expect(store.appObservability).toEqual(refetchedAppObservability)
+    })
+
+    test('backfill uses evidence sequence when authoritative session source sequence is ahead', async () => {
+      window.stoa = createStoaMock({
+        getSessionPresence: vi.fn().mockResolvedValue(sessionPresenceFixture({
+          sourceSequence: 20,
+          evidenceSequence: 10
+        })),
+        getProjectObservability: vi.fn().mockResolvedValue(projectObservabilityFixture({ sourceSequence: 20 })),
+        getAppObservability: vi.fn().mockResolvedValue(appObservabilityFixture({ sourceSequence: 20 })),
+        listSessionObservationEvents: vi.fn().mockResolvedValue({
+          events: [observationEventFixture({ sequence: 11 })],
+          nextCursor: null
+        })
+      })
+
+      const store = useWorkspaceStore()
+      store.hydrate({
+        activeProjectId: 'project_alpha',
+        activeSessionId: 'session_op_1',
+        terminalWebhookPort: 43127,
+        projects: [{ id: 'project_alpha', name: 'alpha', path: 'D:/alpha', createdAt: 'a', updatedAt: 'a' }],
+        sessions: [sessionSummaryFixture({
+          id: 'session_op_1',
+          projectId: 'project_alpha',
+          type: 'opencode',
+          title: 'Deploy',
+          summary: 'running',
+          recoveryMode: 'resume-external',
+          externalSessionId: 'ext-1',
+          createdAt: 'a',
+          updatedAt: 'a',
+          lastActivatedAt: 'a',
+          archived: false
+        })]
+      })
+
+      await store.hydrateObservability()
+
+      expect(window.stoa.listSessionObservationEvents).toHaveBeenCalledWith('session_op_1', {
+        cursor: '10',
+        limit: 50
+      })
     })
   })
 })

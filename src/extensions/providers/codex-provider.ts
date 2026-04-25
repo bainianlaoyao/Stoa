@@ -60,8 +60,32 @@ if (!sessionId || !projectId || !sessionSecret || !webhookPort || !payload) {
   process.exit(0)
 }
 
-const parsed = JSON.parse(payload)
-if (!parsed || typeof parsed !== 'object' || parsed.type !== 'agent-turn-complete') {
+let parsed
+try {
+  parsed = JSON.parse(payload)
+} catch {
+  process.exit(0)
+}
+if (!parsed || typeof parsed !== 'object') {
+  process.exit(0)
+}
+
+let patch
+if (parsed.type === 'agent-turn-complete') {
+  patch = {
+    intent: 'agent.turn_completed',
+    agentState: 'idle',
+    hasUnseenCompletion: true,
+    summary: String(parsed.type)
+  }
+} else if (parsed.type === 'agent-error') {
+  patch = {
+    intent: 'agent.turn_failed',
+    agentState: 'error',
+    summary: String(parsed.type),
+    ...(parsed.message ? { error: String(parsed.message) } : {})
+  }
+} else {
   process.exit(0)
 }
 
@@ -80,9 +104,8 @@ await fetch(\`http://127.0.0.1:\${webhookPort}/events\`, {
     project_id: projectId,
     source: 'provider-adapter',
     payload: {
-      status: 'turn_complete',
-      summary: String(parsed.type),
-      externalSessionId: parsed['thread-id'] ?? undefined,
+      ...patch,
+      externalSessionId: parsed['thread-id'] ?? parsed['thread_id'] ?? undefined,
       snippet: parsed['last-assistant-message'] ?? undefined
     }
   })

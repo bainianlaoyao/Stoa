@@ -1,71 +1,4 @@
-import type { BehaviorSpec, JourneySpec, TopologySpec } from '../contracts/testing-contracts'
-
-export interface PlaywrightSkeletonInput {
-  behavior: BehaviorSpec
-  topology: TopologySpec
-  journey: JourneySpec
-}
-
-export function generatePlaywrightSkeleton(input: PlaywrightSkeletonInput): string {
-  const { behavior, topology, journey } = input
-  const rootTestId = topology.testIds.root
-  const restoreButtonTestId = topology.testIds.restoreButton
-  const sessionRowTestId = topology.testIds.sessionRow
-
-  return `// AUTO-GENERATED FILE. DO NOT EDIT.
-import { join } from 'node:path'
-import { expect, test } from '@playwright/test'
-import { defineGeneratedTestMeta } from '../../../testing/contracts/testing-contracts'
-import { cleanupStateDir, launchElectronApp } from '../../e2e-playwright/fixtures/electron-app'
-import { createProject, createSession } from '../../e2e-playwright/helpers/ui-actions'
-
-export const meta = defineGeneratedTestMeta({
-  id: '${journey.id}',
-  behaviorIds: ['${behavior.id}'],
-  entities: ['project', 'session', 'archive'],
-  statesCovered: ['session.archived'],
-  interruptionsCovered: [],
-  observationLayers: ['ui'],
-  riskBudget: '${behavior.coverageBudget}',
-  regressionSources: []
-})
-
-test('${journey.id}', async () => {
-  const app = await launchElectronApp()
-
-  try {
-    const projectRow = await createProject(app, {
-      name: 'generated-restore-project',
-      path: join(app.stateDir, 'generated-restore-project')
-    })
-
-    const session = await createSession(app.page, projectRow, {
-      type: 'shell'
-    })
-
-    await app.page.getByRole('button', { name: \`Archive \${session.title}\` }).click()
-    await app.page.getByRole('button', { name: 'Archive' }).click()
-
-    const root = app.page.getByTestId('${rootTestId}')
-    const restoreButton = app.page.getByTestId('${restoreButtonTestId}')
-    const sessionRow = app.page.getByTestId('${sessionRowTestId}')
-
-    await expect(root).toBeVisible()
-    await expect(sessionRow).toHaveCount(1)
-    await expect(restoreButton).toBeVisible()
-    await restoreButton.click()
-    await expect(sessionRow).toHaveCount(0)
-  } finally {
-    const { stateDir } = app
-    await app.close()
-    await cleanupStateDir(stateDir)
-  }
-})
-`
-}
-
-export function generateClaudeLifecyclePlaywrightSkeleton(): string {
-  return `// AUTO-GENERATED FILE. DO NOT EDIT.
+// AUTO-GENERATED FILE. DO NOT EDIT.
 import { randomUUID } from 'node:crypto'
 import { chmod, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -112,8 +45,8 @@ export const meta = defineGeneratedTestMeta({
 async function installFakeClaude(app: Awaited<ReturnType<typeof launchElectronApp>>): Promise<void> {
   const fakeClaudePath = join(app.stateDir, process.platform === 'win32' ? 'fake-claude.cmd' : 'fake-claude.sh')
   const script = process.platform === 'win32'
-    ? '@echo off\\r\\nping -n 30 127.0.0.1 >nul\\r\\n'
-    : '#!/bin/sh\\nsleep 30\\n'
+    ? '@echo off\r\nping -n 30 127.0.0.1 >nul\r\n'
+    : '#!/bin/sh\nsleep 30\n'
 
   await writeFile(fakeClaudePath, script, 'utf8')
   if (process.platform !== 'win32') {
@@ -142,7 +75,7 @@ async function waitForSessionState(
   const debugState = await getMainE2EDebugState(app.electronApp)
   const session = debugState?.snapshot?.sessions.find(candidate => candidate.title === title)
   if (!session) {
-    throw new Error(\`Unable to find session \${title}\`)
+    throw new Error(`Unable to find session ${title}`)
   }
   return session
 }
@@ -197,7 +130,7 @@ test('journey.session.telemetry.claude-lifecycle', async () => {
       secret: secret!,
       event: {
         event_version: 1,
-        event_id: \`evt_\${randomUUID()}\`,
+        event_id: `evt_${randomUUID()}`,
         event_type: 'claude-code.PermissionResolved',
         timestamp: new Date().toISOString(),
         session_id: sessionState.id,
@@ -229,7 +162,7 @@ test('journey.session.telemetry.claude-lifecycle', async () => {
       secret: secret!,
       event: {
         event_version: 1,
-        event_id: \`evt_\${randomUUID()}\`,
+        event_id: `evt_${randomUUID()}`,
         event_type: 'runtime.exited_failed',
         timestamp: new Date().toISOString(),
         session_id: sessionState.id,
@@ -251,5 +184,3 @@ test('journey.session.telemetry.claude-lifecycle', async () => {
     await cleanupStateDir(stateDir)
   }
 })
-`
-}

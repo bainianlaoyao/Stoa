@@ -8,10 +8,8 @@ import {
   buildSessionPresenceSnapshot,
   buildSessionRowViewModel,
   mapPhaseToTone,
-  mapStatusToPresencePhase
+  phaseLabel
 } from './observability-projection'
-import type { ObservabilityTone, SessionPresencePhase } from './observability'
-import type { SessionStatus } from './project-session'
 
 const NOW_ISO = '2026-04-24T08:00:00.000Z'
 
@@ -20,9 +18,15 @@ function sessionFixture(patch: Partial<SessionSummary> = {}): SessionSummary {
     id: 'session-1',
     projectId: 'project-1',
     type: 'claude-code',
-    status: 'running',
     title: 'Implement feature',
     summary: 'Working on feature',
+    runtimeState: 'alive',
+    agentState: 'idle',
+    hasUnseenCompletion: false,
+    runtimeExitCode: null,
+    runtimeExitReason: null,
+    lastStateSequence: 1,
+    blockingReason: null,
     recoveryMode: 'resume-external',
     externalSessionId: 'external-1',
     createdAt: '2026-04-24T07:00:00.000Z',
@@ -33,51 +37,66 @@ function sessionFixture(patch: Partial<SessionSummary> = {}): SessionSummary {
   }
 }
 
-const statusPhaseCases: Array<{
-  status: SessionStatus
-  phase: SessionPresencePhase
-}> = [
-  { status: 'bootstrapping', phase: 'preparing' },
-  { status: 'starting', phase: 'preparing' },
-  { status: 'running', phase: 'working' },
-  { status: 'turn_complete', phase: 'ready' },
-  { status: 'awaiting_input', phase: 'ready' },
-  { status: 'needs_confirmation', phase: 'blocked' },
-  { status: 'degraded', phase: 'degraded' },
-  { status: 'error', phase: 'failed' },
-  { status: 'exited', phase: 'exited' }
-]
-
-const phaseToneCases: Array<{
-  phase: SessionPresencePhase
-  tone: ObservabilityTone
-}> = [
-  { phase: 'preparing', tone: 'neutral' },
-  { phase: 'working', tone: 'success' },
-  { phase: 'ready', tone: 'accent' },
-  { phase: 'blocked', tone: 'warning' },
-  { phase: 'degraded', tone: 'warning' },
-  { phase: 'failed', tone: 'danger' },
-  { phase: 'exited', tone: 'neutral' }
-]
-
 describe('observability projection', () => {
-  it.each(statusPhaseCases)('maps $status to $phase presence phase', ({ status, phase }) => {
-    expect(mapStatusToPresencePhase(status)).toBe(phase)
+  it('labels working agent phase as Running', () => {
+    const snapshot = buildSessionPresenceSnapshot(sessionFixture({ agentState: 'working' }), {
+      activeSessionId: 'session-1',
+      nowIso: NOW_ISO
+    })
+
+    expect(snapshot.phase).toBe('running')
+    expect(phaseLabel(snapshot.phase)).toBe('Running')
+    expect(buildSessionRowViewModel(sessionFixture({ agentState: 'working' }), snapshot, NOW_ISO).primaryLabel).toBe('Running')
   })
 
-  it.each(phaseToneCases)('maps $phase phase to $tone tone', ({ phase, tone }) => {
-    expect(mapPhaseToTone(phase)).toBe(tone)
+  it('labels idle unseen completion as Complete', () => {
+    const snapshot = buildSessionPresenceSnapshot(sessionFixture({
+      agentState: 'idle',
+      hasUnseenCompletion: true
+    }), {
+      activeSessionId: 'session-1',
+      nowIso: NOW_ISO
+    })
+
+    expect(snapshot.phase).toBe('complete')
+    expect(phaseLabel(snapshot.phase)).toBe('Complete')
+  })
+
+  it('uses danger tone for failed before complete and blocked', () => {
+    const failedSnapshot = buildSessionPresenceSnapshot(sessionFixture({
+      agentState: 'error',
+      hasUnseenCompletion: true,
+      blockingReason: 'permission'
+    }), {
+      activeSessionId: 'session-1',
+      nowIso: NOW_ISO
+    })
+
+    expect(failedSnapshot.phase).toBe('failed')
+    expect(mapPhaseToTone(failedSnapshot.phase)).toBe('danger')
+  })
+
+  it('uses warning tone for complete and blocked', () => {
+    expect(mapPhaseToTone('complete')).toBe('warning')
+    expect(mapPhaseToTone('blocked')).toBe('warning')
+  })
+
+  it('uses neutral tone for ready', () => {
+    expect(mapPhaseToTone('ready')).toBe('neutral')
   })
 
   it('builds a session presence snapshot with the approved contract', () => {
-    const snapshot = buildSessionPresenceSnapshot(sessionFixture({ status: 'turn_complete' }), {
+    const snapshot = buildSessionPresenceSnapshot(sessionFixture({
+      agentState: 'idle',
+      hasUnseenCompletion: true
+    }), {
       activeSessionId: 'session-1',
       nowIso: NOW_ISO,
       modelLabel: 'Sonnet',
       lastAssistantSnippet: 'I finished the implementation.',
       lastEvidenceType: 'evidence.assistant_message',
       lastEventAt: '2026-04-24T07:59:00.000Z',
+      evidenceSequence: 17,
       sourceSequence: 42
     })
 
@@ -87,8 +106,12 @@ describe('observability projection', () => {
       providerId: 'claude-code',
       providerLabel: 'Claude Code',
       modelLabel: 'Sonnet',
-      phase: 'ready',
-      canonicalStatus: 'turn_complete',
+      phase: 'complete',
+      runtimeState: 'alive',
+      agentState: 'idle',
+      hasUnseenCompletion: true,
+      runtimeExitCode: null,
+      runtimeExitReason: null,
       confidence: 'authoritative',
       health: 'healthy',
       blockingReason: null,
@@ -97,6 +120,7 @@ describe('observability projection', () => {
       lastEvidenceType: 'evidence.assistant_message',
       hasUnreadTurn: false,
       recoveryPointerState: 'trusted',
+      evidenceSequence: 17,
       sourceSequence: 42,
       updatedAt: NOW_ISO
     })
@@ -114,7 +138,10 @@ describe('observability projection', () => {
   })
 
   it('builds session row view models with approved labels and attention state', () => {
-    const session = sessionFixture({ status: 'needs_confirmation' })
+    const session = sessionFixture({
+      agentState: 'blocked',
+      blockingReason: 'resume-confirmation'
+    })
     const snapshot = buildSessionPresenceSnapshot(session, {
       activeSessionId: 'other-session',
       nowIso: NOW_ISO,
@@ -130,7 +157,7 @@ describe('observability projection', () => {
       title: 'Implement feature',
       phase: 'blocked',
       primaryLabel: 'Blocked',
-      secondaryLabel: 'Claude Code / Sonnet',
+      secondaryLabel: 'Sonnet',
       tone: 'warning',
       hasUnreadTurn: true,
       needsAttention: true,
@@ -140,7 +167,10 @@ describe('observability projection', () => {
   })
 
   it('builds active session view models with descriptor labels', () => {
-    const session = sessionFixture({ status: 'turn_complete' })
+    const session = sessionFixture({
+      agentState: 'idle',
+      hasUnseenCompletion: true
+    })
     const snapshot = buildSessionPresenceSnapshot(session, {
       activeSessionId: 'session-1',
       nowIso: NOW_ISO,
@@ -155,9 +185,9 @@ describe('observability projection', () => {
       title: 'Implement feature',
       providerLabel: 'Claude Code',
       modelLabel: 'Sonnet',
-      phaseLabel: 'Ready',
+      phaseLabel: 'Complete',
       confidenceLabel: 'Authoritative',
-      tone: 'accent',
+      tone: 'warning',
       lastUpdatedLabel: 'Just now',
       snippet: 'Done.',
       explanation: 'Working on feature'
@@ -168,7 +198,8 @@ describe('observability projection', () => {
     const session = sessionFixture({
       id: 'shell-session',
       type: 'shell',
-      status: 'turn_complete',
+      agentState: 'idle',
+      hasUnseenCompletion: true,
       externalSessionId: null
     })
     const snapshot = buildSessionPresenceSnapshot(session, {
@@ -184,28 +215,67 @@ describe('observability projection', () => {
     expect(viewModel.secondaryLabel).toBe('Shell')
   })
 
-  it('builds project observability snapshots with health and latest attention', () => {
+  it('builds project attention with failed first then complete and blocked', () => {
     const blockedSession = buildSessionPresenceSnapshot(
-      sessionFixture({ id: 'blocked', status: 'needs_confirmation', updatedAt: '2026-04-24T07:40:00.000Z' }),
-      { activeSessionId: 'active-session', nowIso: NOW_ISO, lastAssistantSnippet: 'Approve me.' }
+      sessionFixture({
+        id: 'blocked',
+        agentState: 'blocked',
+        blockingReason: 'resume-confirmation',
+        updatedAt: '2026-04-24T07:59:00.000Z'
+      }),
+      {
+        activeSessionId: 'active-session',
+        nowIso: NOW_ISO,
+        lastAssistantSnippet: 'Approve me.',
+        lastEventAt: '2026-04-24T07:58:00.000Z'
+      }
+    )
+    const completeSession = buildSessionPresenceSnapshot(
+      sessionFixture({
+        id: 'complete',
+        agentState: 'idle',
+        hasUnseenCompletion: true,
+        updatedAt: '2026-04-24T07:58:00.000Z'
+      }),
+      {
+        activeSessionId: 'active-session',
+        nowIso: NOW_ISO,
+        lastEventAt: '2026-04-24T07:59:00.000Z'
+      }
     )
     const failedSession = buildSessionPresenceSnapshot(
-      sessionFixture({ id: 'failed', status: 'error', updatedAt: '2026-04-24T07:50:00.000Z' }),
-      { activeSessionId: 'active-session', nowIso: NOW_ISO }
+      sessionFixture({
+        id: 'failed',
+        agentState: 'error',
+        updatedAt: '2026-04-24T07:40:00.000Z'
+      }),
+      {
+        activeSessionId: 'active-session',
+        nowIso: NOW_ISO,
+        lastEventAt: '2026-04-24T07:40:00.000Z'
+      }
     )
-    const project = buildProjectObservabilitySnapshot('project-1', [blockedSession, failedSession], NOW_ISO)
+    const completeBeforeBlocked = buildProjectObservabilitySnapshot('project-1', [blockedSession, completeSession], NOW_ISO)
+    const failedBeforeCompleteAndBlocked = buildProjectObservabilitySnapshot(
+      'project-1',
+      [blockedSession, completeSession, failedSession],
+      NOW_ISO
+    )
 
-    expect(project).toEqual({
+    expect(completeBeforeBlocked).toMatchObject({
+      latestAttentionSessionId: 'complete',
+      latestAttentionReason: 'turn-complete'
+    })
+    expect(failedBeforeCompleteAndBlocked).toEqual({
       projectId: 'project-1',
       overallHealth: 'lost',
-      activeSessionCount: 2,
+      activeSessionCount: 3,
       blockedSessionCount: 1,
-      degradedSessionCount: 0,
       failedSessionCount: 1,
       unreadTurnCount: 1,
       latestAttentionSessionId: 'failed',
       latestAttentionReason: 'provider-error',
-      lastEventAt: NOW_ISO,
+      lastEventAt: '2026-04-24T07:59:00.000Z',
       sourceSequence: 0,
       updatedAt: NOW_ISO
     })
@@ -213,39 +283,89 @@ describe('observability projection', () => {
 
   it('aggregates provider health, attention projects, and unread turns into the app snapshot', () => {
     const blockedSession = buildSessionPresenceSnapshot(
-      sessionFixture({ id: 'blocked-session', projectId: 'project-blocked', status: 'needs_confirmation' }),
+      sessionFixture({
+        id: 'blocked-session',
+        projectId: 'project-blocked',
+        agentState: 'blocked',
+        blockingReason: 'resume-confirmation'
+      }),
       { activeSessionId: 'active-session', nowIso: NOW_ISO, lastAssistantSnippet: 'Please approve this action.' }
     )
     const failedSession = buildSessionPresenceSnapshot(
-      sessionFixture({ id: 'failed-session', projectId: 'project-failed', status: 'error', type: 'codex' }),
-      { activeSessionId: 'active-session', nowIso: NOW_ISO }
-    )
-    const degradedSession = buildSessionPresenceSnapshot(
-      sessionFixture({ id: 'degraded-session', projectId: 'project-degraded', status: 'degraded', type: 'shell' }),
+      sessionFixture({
+        id: 'failed-session',
+        projectId: 'project-failed',
+        type: 'codex',
+        agentState: 'error'
+      }),
       { activeSessionId: 'active-session', nowIso: NOW_ISO }
     )
     const projects = [
       buildProjectObservabilitySnapshot('project-blocked', [blockedSession], NOW_ISO),
-      buildProjectObservabilitySnapshot('project-failed', [failedSession], NOW_ISO),
-      buildProjectObservabilitySnapshot('project-degraded', [degradedSession], NOW_ISO)
+      buildProjectObservabilitySnapshot('project-failed', [failedSession], NOW_ISO)
     ]
 
-    const app = buildAppObservabilitySnapshot(projects, [blockedSession, failedSession, degradedSession], NOW_ISO)
+    const app = buildAppObservabilitySnapshot(projects, [blockedSession, failedSession], NOW_ISO)
 
     expect(app).toEqual({
       blockedProjectCount: 1,
       failedProjectCount: 1,
-      degradedProjectCount: 1,
       totalUnreadTurns: 1,
-      projectsNeedingAttention: ['project-blocked', 'project-failed', 'project-degraded'],
+      projectsNeedingAttention: ['project-blocked', 'project-failed'],
       providerHealthSummary: {
-        'claude-code': 'degraded',
-        codex: 'lost',
-        'local-shell': 'degraded'
+        'claude-code': 'healthy',
+        codex: 'lost'
       },
       lastGlobalEventAt: NOW_ISO,
       sourceSequence: 0,
       updatedAt: NOW_ISO
+    })
+  })
+
+  it('keeps blocked and complete session phases on healthy aggregate health', () => {
+    const blockedSession = buildSessionPresenceSnapshot(
+      sessionFixture({
+        id: 'blocked-session',
+        projectId: 'project-attention',
+        agentState: 'blocked',
+        blockingReason: 'permission'
+      }),
+      { activeSessionId: 'active-session', nowIso: NOW_ISO, lastAssistantSnippet: 'Approval required.' }
+    )
+    const completeSession = buildSessionPresenceSnapshot(
+      sessionFixture({
+        id: 'complete-session',
+        projectId: 'project-attention',
+        hasUnseenCompletion: true
+      }),
+      { activeSessionId: 'active-session', nowIso: NOW_ISO, lastAssistantSnippet: 'Turn finished.' }
+    )
+    const project = buildProjectObservabilitySnapshot(
+      'project-attention',
+      [
+        blockedSession,
+        completeSession
+      ],
+      NOW_ISO
+    )
+    const app = buildAppObservabilitySnapshot(
+      [project],
+      [
+        blockedSession,
+        completeSession
+      ],
+      NOW_ISO
+    )
+
+    expect(project).toMatchObject({
+      overallHealth: 'healthy',
+      blockedSessionCount: 1,
+      failedSessionCount: 0
+    })
+    expect(app).toMatchObject({
+      providerHealthSummary: {
+        'claude-code': 'healthy'
+      }
     })
   })
 })

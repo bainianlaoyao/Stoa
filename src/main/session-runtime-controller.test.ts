@@ -1,12 +1,13 @@
 import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
-import { describe, test, expect, beforeEach, afterEach } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import { SessionRuntimeController } from './session-runtime-controller'
 import { syncObservabilitySessionsFromManager } from './observability-sync'
 import { IPC_CHANNELS } from '@core/ipc-channels'
 import { InMemoryObservationStore } from '@core/observation-store'
 import { ObservabilityService } from '@core/observability-service'
 import { ProjectSessionManager } from '@core/project-session-manager'
+import type { SessionStateIntent, SessionStatePatchEvent } from '@shared/project-session'
 import { createTestTempDir } from '../../testing/test-temp'
 
 const tempDirs: string[] = []
@@ -34,9 +35,30 @@ function createMockWindow() {
         }
       }
     },
-    sent,
-    lastSend() { return sent[sent.length - 1] }
+    sent
   }
+}
+
+function providerPatch(
+  sessionId: string,
+  intent: SessionStateIntent,
+  sequence: number,
+  summary: string,
+  overrides: Partial<SessionStatePatchEvent> = {}
+): SessionStatePatchEvent {
+  return {
+    sessionId,
+    sequence,
+    occurredAt: `2026-01-01T00:00:${String(sequence).padStart(2, '0')}.000Z`,
+    intent,
+    source: 'provider',
+    summary,
+    ...overrides
+  }
+}
+
+function sessionPatchData(sent: Array<{ channel: string; data: unknown }>) {
+  return sent.find((item) => item.channel === IPC_CHANNELS.sessionEvent)?.data
 }
 
 describe('SessionRuntimeController', () => {
@@ -53,182 +75,137 @@ describe('SessionRuntimeController', () => {
     manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
   })
 
-  test('markSessionStarting updates manager and pushes session event', async () => {
-    const { window: win } = createMockWindow()
-    const project = await manager.createProject({ path: await createTestWorkspace('ctrl-'), name: 'test' })
-    const session = await manager.createSession({ projectId: project.id, type: 'shell', title: 'S1' })
-
-    const controller = new SessionRuntimeController(manager, () => win)
-    await controller.markSessionStarting(session.id, 'starting shell', null)
-
-    expect(manager.snapshot().sessions[0]!.status).toBe('starting')
-  })
-
-  test('markSessionStarting sends session event via IPC', async () => {
+  test('markRuntimeStarting updates manager and pushes a full summary patch', async () => {
     const { window: win, sent } = createMockWindow()
     const project = await manager.createProject({ path: await createTestWorkspace('ctrl-'), name: 'test' })
     const session = await manager.createSession({ projectId: project.id, type: 'shell', title: 'S1' })
 
     const controller = new SessionRuntimeController(manager, () => win)
-    await controller.markSessionStarting(session.id, 'starting shell', null)
-
-    expect(sent).toHaveLength(1)
-    expect(sent[0]!.channel).toBe(IPC_CHANNELS.sessionEvent)
-    expect(sent[0]!.data).toEqual({
-      sessionId: session.id,
-      status: 'starting',
-      summary: 'starting shell',
-      externalSessionId: null
-    })
-  })
-
-  test('markSessionRunning updates manager and pushes session event', async () => {
-    const { window: win, sent } = createMockWindow()
-    const project = await manager.createProject({ path: await createTestWorkspace('ctrl-'), name: 'test' })
-    const session = await manager.createSession({ projectId: project.id, type: 'shell', title: 'S1' })
-
-    const controller = new SessionRuntimeController(manager, () => win)
-    await controller.markSessionRunning(session.id, 'pty-123')
-
-    expect(manager.snapshot().sessions[0]!.status).toBe('running')
-    expect(manager.snapshot().sessions[0]!.externalSessionId).toBe('pty-123')
-    expect(sent).toHaveLength(1)
-    expect(sent[0]!.data).toEqual({
-      sessionId: session.id,
-      status: 'running',
-      summary: 'Session running',
-      externalSessionId: 'pty-123'
-    })
-  })
-
-  test('markSessionExited updates manager and pushes session event', async () => {
-    const { window: win, sent } = createMockWindow()
-    const project = await manager.createProject({ path: await createTestWorkspace('ctrl-'), name: 'test' })
-    const session = await manager.createSession({ projectId: project.id, type: 'shell', title: 'S1' })
-
-    const controller = new SessionRuntimeController(manager, () => win)
-    await controller.markSessionExited(session.id, 'shell exited (0)')
-
-    expect(manager.snapshot().sessions[0]!.status).toBe('exited')
-    expect(sent).toHaveLength(1)
-    expect(sent[0]!.data).toEqual({
-      sessionId: session.id,
-      status: 'exited',
-      summary: 'shell exited (0)',
-      externalSessionId: null
-    })
-  })
-
-  test('applySessionEvent updates manager state and pushes awaiting_input via IPC', async () => {
-    const { window: win, sent } = createMockWindow()
-    const project = await manager.createProject({ path: await createTestWorkspace('ctrl-'), name: 'test' })
-    const session = await manager.createSession({ projectId: project.id, type: 'opencode', title: 'S1' })
-
-    const controller = new SessionRuntimeController(manager, () => win)
-    await controller.applySessionEvent({
-      sessionId: session.id,
-      status: 'awaiting_input',
-      summary: 'session.idle',
-      externalSessionId: 'opencode-real-123'
-    })
+    await controller.markRuntimeStarting(session.id, 'starting shell', null)
 
     const updated = manager.snapshot().sessions[0]!
-    expect(updated.status).toBe('awaiting_input')
-    expect(updated.summary).toBe('session.idle')
+    expect(updated.runtimeState).toBe('starting')
+    expect(updated.summary).toBe('starting shell')
+    expect(sessionPatchData(sent)).toEqual({ session: updated })
+  })
+
+  test('markRuntimeAlive pushes presence without setting agent working', async () => {
+    const { window: win, sent } = createMockWindow()
+    const project = await manager.createProject({ path: await createTestWorkspace('ctrl-alive-'), name: 'test' })
+    const session = await manager.createSession({ projectId: project.id, type: 'opencode', title: 'S1' })
+    const observability = new ObservabilityService(new InMemoryObservationStore(), {
+      nowIso: () => '2026-01-01T00:00:02.000Z'
+    })
+    const controller = new SessionRuntimeController(manager, () => win, undefined, observability)
+
+    await controller.markRuntimeAlive(session.id, 'opencode-real-123')
+
+    const updated = manager.snapshot().sessions[0]!
+    expect(updated.runtimeState).toBe('alive')
+    expect(updated.agentState).toBe('unknown')
     expect(updated.externalSessionId).toBe('opencode-real-123')
-    expect(sent).toHaveLength(1)
-    expect(sent[0]!.data).toEqual({
-      sessionId: session.id,
-      status: 'awaiting_input',
-      summary: 'session.idle',
-      externalSessionId: 'opencode-real-123'
-    })
-  })
-
-  test('applySessionEvent preserves session event push and publishes observability snapshots', async () => {
-    const { window: win, sent } = createMockWindow()
-    const project = await manager.createProject({ path: await createTestWorkspace('ctrl-observe-'), name: 'test' })
-    const session = await manager.createSession({ projectId: project.id, type: 'opencode', title: 'S1' })
-    const observability = new ObservabilityService(new InMemoryObservationStore(), {
-      nowIso: () => '2026-01-01T00:00:02.000Z'
-    })
-    observability.syncSessions(manager.snapshot().sessions, manager.snapshot().activeSessionId)
-
-    const controller = new SessionRuntimeController(manager, () => win, undefined, observability)
-    await controller.applySessionEvent({
-      sessionId: session.id,
-      status: 'turn_complete',
-      summary: 'Turn complete',
-      externalSessionId: 'opencode-real-123'
-    })
-
     expect(sent.map((item) => item.channel)).toEqual([
       IPC_CHANNELS.sessionEvent,
       IPC_CHANNELS.observabilitySessionPresenceChanged,
       IPC_CHANNELS.observabilityProjectChanged,
       IPC_CHANNELS.observabilityAppChanged
     ])
-    expect(sent[0]!.data).toEqual({
-      sessionId: session.id,
-      status: 'turn_complete',
-      summary: 'Turn complete',
-      externalSessionId: 'opencode-real-123'
-    })
     expect(sent[1]!.data).toMatchObject({
       sessionId: session.id,
-      canonicalStatus: 'turn_complete',
-      confidence: 'authoritative',
-      recoveryPointerState: 'trusted'
-    })
-    expect(sent[2]!.data).toMatchObject({
-      projectId: project.id,
-      activeSessionCount: 1
-    })
-    expect(sent[3]!.data).toMatchObject({
-      providerHealthSummary: {
-        opencode: 'healthy'
-      }
+      phase: 'ready',
+      runtimeState: 'alive',
+      agentState: 'unknown',
+      hasUnseenCompletion: false
     })
   })
 
-  test('observability snapshots follow manager state after canonical lifecycle changes', async () => {
+  test('markRuntimeExited clean preserves complete presence when unseen completion exists', async () => {
     const { window: win, sent } = createMockWindow()
-    const project = await manager.createProject({ path: await createTestWorkspace('ctrl-sync-'), name: 'test' })
-    const session = await manager.createSession({ projectId: project.id, type: 'opencode', title: 'S1' })
+    const project = await manager.createProject({ path: await createTestWorkspace('ctrl-exit-'), name: 'test' })
+    const session = await manager.createSession({ projectId: project.id, type: 'codex', title: 'S1' })
+    await manager.markRuntimeAlive(session.id, 'codex-real-123')
+    await manager.applySessionStatePatch(providerPatch(session.id, 'agent.turn_completed', 2, 'Turn complete'))
     const observability = new ObservabilityService(new InMemoryObservationStore(), {
-      nowIso: () => '2026-01-01T00:00:02.000Z'
+      nowIso: () => '2026-01-01T00:00:03.000Z'
     })
-    observability.syncSessions(manager.snapshot().sessions, manager.snapshot().activeSessionId)
     const controller = new SessionRuntimeController(manager, () => win, undefined, observability)
 
-    await controller.applySessionEvent({
+    await controller.markRuntimeExited(session.id, 0, 'codex exited (0)')
+
+    const updated = manager.snapshot().sessions[0]!
+    expect(updated.runtimeState).toBe('exited')
+    expect(updated.runtimeExitReason).toBe('clean')
+    expect(updated.agentState).toBe('idle')
+    expect(updated.hasUnseenCompletion).toBe(true)
+    expect(sent.find((item) => item.channel === IPC_CHANNELS.observabilitySessionPresenceChanged)?.data).toMatchObject({
       sessionId: session.id,
-      status: 'awaiting_input',
-      summary: 'session.idle',
-      externalSessionId: 'opencode-real-123'
+      phase: 'complete',
+      runtimeState: 'exited',
+      agentState: 'idle',
+      hasUnseenCompletion: true
     })
-    sent.length = 0
+  })
 
-    await controller.markSessionRunning(session.id, 'opencode-real-456')
+  test('applyProviderStatePatch forwards intentful patches and pushes observability snapshots', async () => {
+    const { window: win, sent } = createMockWindow()
+    const project = await manager.createProject({ path: await createTestWorkspace('ctrl-provider-'), name: 'test' })
+    const session = await manager.createSession({ projectId: project.id, type: 'opencode', title: 'S1' })
+    await manager.markRuntimeAlive(session.id, 'opencode-real-123')
+    const observability = new ObservabilityService(new InMemoryObservationStore(), {
+      nowIso: () => '2026-01-01T00:00:04.000Z'
+    })
+    const controller = new SessionRuntimeController(manager, () => win, undefined, observability)
 
+    await controller.applyProviderStatePatch(
+      providerPatch(session.id, 'agent.permission_requested', 2, 'Confirm resume', {
+        blockingReason: 'permission',
+        externalSessionId: 'opencode-real-456'
+      })
+    )
+
+    const updated = manager.snapshot().sessions[0]!
+    expect(updated.agentState).toBe('blocked')
+    expect(updated.blockingReason).toBe('permission')
+    expect(updated.externalSessionId).toBe('opencode-real-456')
+    expect(sessionPatchData(sent)).toEqual({ session: updated })
     expect(sent.map((item) => item.channel)).toEqual([
       IPC_CHANNELS.sessionEvent,
       IPC_CHANNELS.observabilitySessionPresenceChanged,
       IPC_CHANNELS.observabilityProjectChanged,
       IPC_CHANNELS.observabilityAppChanged
     ])
-    expect(sent[0]!.data).toEqual({
-      sessionId: session.id,
-      status: 'running',
-      summary: 'Session running',
-      externalSessionId: 'opencode-real-456'
-    })
     expect(sent[1]!.data).toMatchObject({
       sessionId: session.id,
-      canonicalStatus: 'running',
-      phase: 'working',
-      confidence: 'authoritative',
-      recoveryPointerState: 'trusted'
+      phase: 'blocked',
+      agentState: 'blocked',
+      blockingReason: 'permission'
+    })
+  })
+
+  test('setActiveSession on a complete session pushes a ready presence snapshot after completion_seen', async () => {
+    const { window: win, sent } = createMockWindow()
+    const project = await manager.createProject({ path: await createTestWorkspace('ctrl-active-'), name: 'test' })
+    const other = await manager.createSession({ projectId: project.id, type: 'opencode', title: 'Other' })
+    const complete = await manager.createSession({ projectId: project.id, type: 'opencode', title: 'Complete' })
+    await manager.markRuntimeAlive(complete.id, 'opencode-real-123')
+    await manager.applySessionStatePatch(providerPatch(complete.id, 'agent.turn_completed', 2, 'Turn complete'))
+    await manager.setActiveSession(other.id)
+    const observability = new ObservabilityService(new InMemoryObservationStore(), {
+      nowIso: () => '2026-01-01T00:00:05.000Z'
+    })
+    const controller = new SessionRuntimeController(manager, () => win, undefined, observability)
+
+    await controller.setActiveSession(complete.id)
+
+    const updated = manager.snapshot().sessions.find((candidate) => candidate.id === complete.id)!
+    expect(updated.agentState).toBe('idle')
+    expect(updated.hasUnseenCompletion).toBe(false)
+    expect(sessionPatchData(sent)).toEqual({ session: updated })
+    expect(sent.find((item) => item.channel === IPC_CHANNELS.observabilitySessionPresenceChanged)?.data).toMatchObject({
+      sessionId: complete.id,
+      phase: 'ready',
+      agentState: 'idle',
+      hasUnseenCompletion: false
     })
   })
 
@@ -237,8 +214,11 @@ describe('SessionRuntimeController', () => {
     const archivedProject = await manager.createProject({ path: await createTestWorkspace('ctrl-bootstrap-b-'), name: 'Archived' })
     const activeSession = await manager.createSession({ projectId: activeProject.id, type: 'opencode', title: 'Active Session' })
     const archivedSession = await manager.createSession({ projectId: archivedProject.id, type: 'opencode', title: 'Archived Session' })
-    await manager.applySessionEvent(activeSession.id, 'running', 'Running', 'active-ext')
-    await manager.applySessionEvent(archivedSession.id, 'needs_confirmation', 'Confirm resume', 'archived-ext')
+    await manager.markRuntimeAlive(activeSession.id, 'active-ext')
+    await manager.markRuntimeAlive(archivedSession.id, 'archived-ext')
+    await manager.applySessionStatePatch(providerPatch(archivedSession.id, 'agent.permission_requested', 2, 'Confirm resume', {
+      blockingReason: 'resume-confirmation'
+    }))
     await manager.archiveSession(archivedSession.id)
 
     const observability = new ObservabilityService(new InMemoryObservationStore(), {
@@ -249,7 +229,7 @@ describe('SessionRuntimeController', () => {
 
     expect(observability.getSessionPresence(activeSession.id)).toMatchObject({
       sessionId: activeSession.id,
-      canonicalStatus: 'running'
+      runtimeState: 'alive'
     })
     expect(observability.getSessionPresence(archivedSession.id)).toBeNull()
     expect(observability.getProjectObservability(activeProject.id)).toMatchObject({
@@ -268,8 +248,11 @@ describe('SessionRuntimeController', () => {
     const project = await manager.createProject({ path: await createTestWorkspace('ctrl-archive-sync-'), name: 'Archive Sync' })
     const retainedSession = await manager.createSession({ projectId: project.id, type: 'opencode', title: 'Retained' })
     const archivedSession = await manager.createSession({ projectId: project.id, type: 'opencode', title: 'Archive Me' })
-    await manager.applySessionEvent(retainedSession.id, 'running', 'Running', 'retained-ext')
-    await manager.applySessionEvent(archivedSession.id, 'needs_confirmation', 'Confirm resume', 'archived-ext')
+    await manager.markRuntimeAlive(retainedSession.id, 'retained-ext')
+    await manager.markRuntimeAlive(archivedSession.id, 'archived-ext')
+    await manager.applySessionStatePatch(providerPatch(archivedSession.id, 'agent.permission_requested', 2, 'Confirm resume', {
+      blockingReason: 'resume-confirmation'
+    }))
 
     const observability = new ObservabilityService(new InMemoryObservationStore(), {
       nowIso: () => '2026-01-01T00:00:02.000Z'
@@ -296,64 +279,6 @@ describe('SessionRuntimeController', () => {
     expect(observability.getAppObservability()).toMatchObject({
       blockedProjectCount: 0,
       projectsNeedingAttention: []
-    })
-  })
-
-  test('markSessionRunning pushes running when runtime becomes active after ready status', async () => {
-    const { window: win, sent } = createMockWindow()
-    const project = await manager.createProject({ path: await createTestWorkspace('ctrl-'), name: 'test' })
-    const session = await manager.createSession({ projectId: project.id, type: 'opencode', title: 'S1' })
-    const controller = new SessionRuntimeController(manager, () => win)
-
-    await controller.applySessionEvent({
-      sessionId: session.id,
-      status: 'awaiting_input',
-      summary: 'session.idle',
-      externalSessionId: 'opencode-real-123'
-    })
-    sent.length = 0
-
-    await controller.markSessionRunning(session.id, 'opencode-real-456')
-
-    const updated = manager.snapshot().sessions[0]!
-    expect(updated.status).toBe('running')
-    expect(updated.summary).toBe('Session running')
-    expect(updated.externalSessionId).toBe('opencode-real-456')
-    expect(sent).toHaveLength(1)
-    expect(sent[0]!.data).toEqual({
-      sessionId: session.id,
-      status: 'running',
-      summary: 'Session running',
-      externalSessionId: 'opencode-real-456'
-    })
-  })
-
-  test('markSessionRunning replaces turn_complete sessions when runtime becomes active again', async () => {
-    const { window: win, sent } = createMockWindow()
-    const project = await manager.createProject({ path: await createTestWorkspace('ctrl-'), name: 'test' })
-    const session = await manager.createSession({ projectId: project.id, type: 'codex', title: 'S1' })
-    const controller = new SessionRuntimeController(manager, () => win)
-
-    await controller.applySessionEvent({
-      sessionId: session.id,
-      status: 'turn_complete',
-      summary: 'Turn complete',
-      externalSessionId: 'codex-real-123'
-    })
-    sent.length = 0
-
-    await controller.markSessionRunning(session.id, 'codex-real-456')
-
-    const updated = manager.snapshot().sessions[0]!
-    expect(updated.status).toBe('running')
-    expect(updated.summary).toBe('Session running')
-    expect(updated.externalSessionId).toBe('codex-real-456')
-    expect(sent).toHaveLength(1)
-    expect(sent[0]!.data).toEqual({
-      sessionId: session.id,
-      status: 'running',
-      summary: 'Session running',
-      externalSessionId: 'codex-real-456'
     })
   })
 
@@ -414,9 +339,14 @@ describe('SessionRuntimeController', () => {
 
     const controller = new SessionRuntimeController(manager, () => null)
 
-    await controller.markSessionStarting(session.id, 'start', null)
+    await controller.markRuntimeStarting(session.id, 'start', null)
+    await controller.markRuntimeAlive(session.id, null)
+    await controller.markRuntimeExited(session.id, 0, 'exit')
     await controller.appendTerminalData({ sessionId: session.id, data: 'x' })
 
-    expect(manager.snapshot().sessions[0]!.status).toBe('starting')
+    expect(manager.snapshot().sessions[0]!).toMatchObject({
+      runtimeState: 'exited',
+      runtimeExitReason: 'clean'
+    })
   })
 })

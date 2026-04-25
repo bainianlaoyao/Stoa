@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount } from 'vue'
 import { storeToRefs } from 'pinia'
-import type { SessionType, SessionStatusEvent } from '@shared/project-session'
+import type { SessionType, SessionSummaryEvent } from '@shared/project-session'
 import AppShell from '@renderer/components/AppShell.vue'
 import UpdatePrompt from '@renderer/components/update/UpdatePrompt.vue'
 import { useWorkspaceStore } from '@renderer/stores/workspaces'
@@ -103,14 +103,9 @@ onMounted(async () => {
     settingsStore.loadSettings(),
     updateStore.refresh()
   ])
-  await updateStore.refresh()
 
-  unsubscribeSessionEvent = window.stoa?.onSessionEvent?.((event: SessionStatusEvent) => {
-    workspaceStore.updateSession(event.sessionId, {
-      status: event.status,
-      summary: event.summary,
-      externalSessionId: event.externalSessionId
-    })
+  unsubscribeSessionEvent = window.stoa?.onSessionEvent?.((event: SessionSummaryEvent) => {
+    workspaceStore.updateSession(event.session.id, event.session)
   })
 })
 
