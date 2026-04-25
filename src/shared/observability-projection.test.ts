@@ -320,7 +320,7 @@ describe('observability projection', () => {
       totalUnreadTurns: 1,
       projectsNeedingAttention: ['project-blocked', 'project-failed'],
       providerHealthSummary: {
-        'claude-code': 'degraded',
+        'claude-code': 'healthy',
         codex: 'lost'
       },
       lastGlobalEventAt: NOW_ISO,

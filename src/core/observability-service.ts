@@ -174,12 +174,17 @@ function updateEvidence(current: SessionEvidenceState | undefined, event: Observ
     lastEventAt: null,
     sourceSequence: 0
   }
+  const isCurrentEvidence = event.sequence >= next.sourceSequence
+
+  if (!isCurrentEvidence) {
+    return {
+      ...next,
+      sourceSequence: Math.max(next.sourceSequence, event.sequence)
+    }
+  }
+
   const model = event.payload.model
-  const snippet = typeof event.payload.snippet === 'string'
-    ? event.payload.snippet
-    : typeof event.payload.summary === 'string'
-      ? event.payload.summary
-      : null
+  const snippet = assistantSnippetForEvent(event)
 
   return {
     modelLabel: typeof model === 'string' ? model : next.modelLabel,
@@ -188,4 +193,20 @@ function updateEvidence(current: SessionEvidenceState | undefined, event: Observ
     lastEventAt: event.occurredAt,
     sourceSequence: Math.max(next.sourceSequence, event.sequence)
   }
+}
+
+function assistantSnippetForEvent(event: ObservationEvent): string | null {
+  if (event.category !== 'evidence' || !event.type.startsWith('evidence.assistant')) {
+    return null
+  }
+
+  if (typeof event.payload.snippet === 'string') {
+    return event.payload.snippet
+  }
+
+  if (typeof event.payload.summary === 'string') {
+    return event.payload.summary
+  }
+
+  return null
 }

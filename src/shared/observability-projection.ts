@@ -205,10 +205,6 @@ function healthForPhase(phase: SessionPresencePhase): ObservabilityHealth {
     return 'lost'
   }
 
-  if (phase === 'blocked') {
-    return 'degraded'
-  }
-
   return 'healthy'
 }
 

@@ -162,7 +162,7 @@ describe('ObservabilityService', () => {
 
     expect(service.getSessionPresence('session-1')).toMatchObject({
       phase: 'running',
-      lastAssistantSnippet: 'Turn complete evidence.',
+      lastAssistantSnippet: null,
       sourceSequence: 7,
       updatedAt: '2026-01-01T00:00:04.000Z'
     })
@@ -240,6 +240,82 @@ describe('ObservabilityService', () => {
       lastEvidenceType: 'evidence.assistant_message',
       lastEventAt: '2026-01-01T00:00:20.000Z',
       hasUnreadTurn: true
+    })
+  })
+
+  it('lower-sequence events do not overwrite newer evidence fields while preserving max source sequence', () => {
+    const service = new ObservabilityService(new InMemoryObservationStore(), {
+      nowIso: nowValues(
+        '2026-01-01T00:00:03.000Z',
+        '2026-01-01T00:00:04.000Z',
+        '2026-01-01T00:00:05.000Z'
+      )
+    })
+
+    service.registerSession(session(), 'active-session')
+    service.ingest(event({
+      eventId: 'newer-assistant-evidence',
+      sequence: 30,
+      occurredAt: '2026-01-01T00:00:30.000Z',
+      category: 'evidence',
+      type: 'evidence.assistant_message',
+      payload: {
+        model: 'gpt-5-codex',
+        snippet: 'Current answer.'
+      }
+    }))
+    service.ingest(event({
+      eventId: 'stale-assistant-evidence',
+      sequence: 10,
+      occurredAt: '2026-01-01T00:00:10.000Z',
+      category: 'evidence',
+      type: 'evidence.assistant_message',
+      payload: {
+        model: 'old-model',
+        snippet: 'Stale answer.'
+      }
+    }))
+
+    expect(service.getSessionPresence('session-1')).toMatchObject({
+      modelLabel: 'gpt-5-codex',
+      lastAssistantSnippet: 'Current answer.',
+      lastEvidenceType: 'evidence.assistant_message',
+      lastEventAt: '2026-01-01T00:00:30.000Z',
+      sourceSequence: 30
+    })
+  })
+
+  it('presence and runtime summaries do not become assistant snippets or unread turns', () => {
+    const service = new ObservabilityService(new InMemoryObservationStore(), {
+      nowIso: nowValues(
+        '2026-01-01T00:00:03.000Z',
+        '2026-01-01T00:00:04.000Z',
+        '2026-01-01T00:00:05.000Z'
+      )
+    })
+
+    service.registerSession(session(), 'active-session')
+    service.ingest(event({
+      eventId: 'presence-summary',
+      sequence: 10,
+      type: 'presence.turn_complete',
+      payload: { summary: 'Presence summary.' }
+    }))
+    service.ingest(event({
+      eventId: 'runtime-summary',
+      sequence: 20,
+      occurredAt: '2026-01-01T00:00:20.000Z',
+      category: 'system',
+      type: 'runtime.summary',
+      payload: { summary: 'Runtime summary.' }
+    }))
+
+    expect(service.getSessionPresence('session-1')).toMatchObject({
+      lastAssistantSnippet: null,
+      hasUnreadTurn: false,
+      lastEvidenceType: null,
+      lastEventAt: '2026-01-01T00:00:20.000Z',
+      sourceSequence: 20
     })
   })
 
@@ -393,6 +469,7 @@ describe('ObservabilityService', () => {
       overallHealth: 'lost',
       activeSessionCount: 2,
       blockedSessionCount: 1,
+      degradedSessionCount: 0,
       failedSessionCount: 1,
       unreadTurnCount: 1
     })
