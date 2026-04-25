@@ -44,7 +44,7 @@ async function writeSharedNotifySidecar(target: ProviderRuntimeTarget): Promise<
 
   await writeFile(
     join(codexDir, 'config.toml'),
-    'notify = ["node", ".codex/notify-stoa.mjs"]\n',
+    '[features]\ncodex_hooks = true\n\nnotify = ["node", ".codex/notify-stoa.mjs"]\n',
     'utf-8'
   )
 
@@ -82,11 +82,84 @@ await fetch(\`http://127.0.0.1:\${webhookPort}/events\`, {
     payload: {
       status: 'turn_complete',
       summary: String(parsed.type),
-      externalSessionId: parsed['thread-id'] ?? undefined
+      externalSessionId: parsed['thread-id'] ?? undefined,
+      snippet: parsed['last-assistant-message'] ?? undefined
     }
   })
 })
-`.replaceAll('\n', '\n'),
+`,
+    'utf-8'
+  )
+
+  const hooksConfig = {
+    hooks: {
+      SessionStart: [
+        {
+          matcher: '*',
+          hooks: [{ type: 'command', command: 'node .codex/hook-stoa.mjs', timeout_sec: 5 }]
+        }
+      ],
+      UserPromptSubmit: [
+        {
+          hooks: [{ type: 'command', command: 'node .codex/hook-stoa.mjs', timeout_sec: 5 }]
+        }
+      ],
+      PreToolUse: [
+        {
+          matcher: '*',
+          hooks: [{ type: 'command', command: 'node .codex/hook-stoa.mjs', timeout_sec: 5 }]
+        }
+      ],
+      PostToolUse: [
+        {
+          matcher: '*',
+          hooks: [{ type: 'command', command: 'node .codex/hook-stoa.mjs', timeout_sec: 5 }]
+        }
+      ],
+      Stop: [
+        {
+          hooks: [{ type: 'command', command: 'node .codex/hook-stoa.mjs', timeout_sec: 5 }]
+        }
+      ]
+    }
+  }
+  await writeFile(
+    join(codexDir, 'hooks.json'),
+    JSON.stringify(hooksConfig, null, 2) + '\n',
+    'utf-8'
+  )
+
+  await writeFile(
+    join(codexDir, 'hook-stoa.mjs'),
+    `import { createInterface } from 'node:readline'
+
+const sessionId = process.env.STOA_SESSION_ID
+const projectId = process.env.STOA_PROJECT_ID
+const sessionSecret = process.env.STOA_SESSION_SECRET
+const webhookPort = process.env.STOA_WEBHOOK_PORT
+
+if (!sessionId || !projectId || !sessionSecret || !webhookPort) {
+  process.exit(0)
+}
+
+let input = ''
+for await (const line of createInterface({ input: process.stdin })) {
+  input += line
+}
+
+if (!input.trim()) process.exit(0)
+
+await fetch(\`http://127.0.0.1:\${webhookPort}/hooks/codex\`, {
+  method: 'POST',
+  headers: {
+    'content-type': 'application/json',
+    'x-stoa-session-id': sessionId,
+    'x-stoa-project-id': projectId,
+    'x-stoa-secret': sessionSecret
+  },
+  body: input
+})
+`,
     'utf-8'
   )
 }
@@ -154,12 +227,10 @@ async function readCodexSessionMeta(path: string): Promise<{ id: string; cwd: st
 
   try {
     const parsed = JSON.parse(firstLine) as {
-      type?: string
-      payload?: { id?: string; cwd?: string }
+      meta?: { id?: string; cwd?: string }
     }
-    if (parsed.type !== 'session_meta') return null
-    if (!parsed.payload?.id || !parsed.payload?.cwd) return null
-    return { id: parsed.payload.id, cwd: parsed.payload.cwd }
+    if (!parsed.meta?.id || !parsed.meta?.cwd) return null
+    return { id: parsed.meta.id, cwd: parsed.meta.cwd }
   } catch {
     return null
   }
