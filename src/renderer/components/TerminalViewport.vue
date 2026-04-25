@@ -96,6 +96,7 @@ function setupTerminal() {
   terminal = localTerminal
   fitAddon = localFitAddon
   localTerminal.open(terminalContainer.value)
+  localTerminal.focus()
 
   const isActiveMount = () => mountVersion === localMountVersion && terminal === localTerminal
   const enqueueWrite = (data: string) => {
