@@ -136,7 +136,7 @@ export function reduceSessionState(
       break
     case 'agent.permission_resolved':
       if (session.runtimeState === 'alive' && session.agentState === 'blocked') {
-        next.agentState = 'working'
+        next.agentState = getPermissionResolvedAgentState(patch.agentState)
         next.blockingReason = null
       }
       break
@@ -166,6 +166,14 @@ function applyExternalSessionId(next: SessionSummary, patch: SessionStatePatchEv
   if (patch.externalSessionId !== undefined) {
     next.externalSessionId = patch.externalSessionId
   }
+}
+
+function getPermissionResolvedAgentState(agentState: SessionStatePatchEvent['agentState']): SessionAgentState {
+  if (agentState === 'working' || agentState === 'idle' || agentState === 'error') {
+    return agentState
+  }
+
+  return 'working'
 }
 
 function markAgentWorkingIfRuntimeAlive(current: SessionSummary, next: SessionSummary): void {

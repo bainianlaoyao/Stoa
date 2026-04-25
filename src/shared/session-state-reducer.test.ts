@@ -291,6 +291,36 @@ describe('session state reducer', () => {
     })
   })
 
+  it('permission resolved can move blocked to idle from provider target state', () => {
+    const next = reduceSessionState(
+      session({ agentState: 'blocked', blockingReason: 'permission' }),
+      patch({ intent: 'agent.permission_resolved', agentState: 'idle' }),
+      NOW
+    )
+
+    expect(next).toMatchObject({
+      agentState: 'idle',
+      blockingReason: null,
+      lastStateSequence: 2,
+      updatedAt: NOW
+    })
+  })
+
+  it('permission resolved can move blocked to error from provider target state', () => {
+    const next = reduceSessionState(
+      session({ agentState: 'blocked', blockingReason: 'permission' }),
+      patch({ intent: 'agent.permission_resolved', agentState: 'error' }),
+      NOW
+    )
+
+    expect(next).toMatchObject({
+      agentState: 'error',
+      blockingReason: null,
+      lastStateSequence: 2,
+      updatedAt: NOW
+    })
+  })
+
   it('stale sequence patches are ignored', () => {
     const current = session({ lastStateSequence: 10 })
 
