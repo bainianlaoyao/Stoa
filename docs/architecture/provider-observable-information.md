@@ -11,7 +11,7 @@ status: living document
 
 ## Summary
 
-Three providers each use a combination of command-line flags, environment variables, file-system sidecars, and webhook events to exchange information with Stoa. All three provide session lifecycle status and external session IDs. **Additionally, each provider has significant untapped observability** — Claude Code exposes 30+ hook events, OpenCode stores everything in SQLite and offers 29 plugin events, and Codex provides OTel metrics with token usage. Stoa currently uses a small fraction of each provider's capabilities.
+Three providers each use a combination of command-line flags, environment variables, file-system sidecars, and webhook events to exchange information with Stoa. All three provide session lifecycle status and external session IDs. **Additionally, each provider has significant untapped observability** — Claude Code exposes 30+ hook events, OpenCode stores everything in SQLite and offers 29 plugin events, and Codex provides a 5-event lifecycle hook system (same ecological niche as Claude Code) plus OTel metrics with token usage. **Codex's notify hook is legacy** — replaced by the `ClaudeHooksEngine` with `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, and `Stop` events that directly compete with Claude Code's hooks. Stoa currently uses a small fraction of each provider's capabilities.
 
 ---
 
@@ -980,65 +980,148 @@ POSTed to `http://127.0.0.1:<STOA_WEBHOOK_PORT>/events` with headers `content-ty
 
 > This section documents what Codex CLI **can** expose through its various channels. It serves as a reference for future enhancement.
 
-#### A. Codex Hooks System (Beta)
+#### A. Codex Hooks System (ClaudeHooksEngine)
 
-**Feature flag**: Must enable `codex_hooks = true` in `~/.codex/config.toml` or `.codex/config.toml`.
+> **Source**: Direct source-code analysis of `openai/codex` repository (`codex-rs/hooks/` crate). This section supersedes earlier documentation based on external blog posts.
 
-**Important limitation**: Windows hooks are currently disabled (as of docs date).
+**Architecture**: Codex hooks are implemented as the `ClaudeHooksEngine` in `codex-rs/hooks/src/engine/`. The engine discovers hook configurations from `hooks.json` files in a layered config stack, dispatches matching handlers as external processes, and parses their JSON output to influence agent behavior.
 
-**Hook mechanism**: Command-based hooks. Codex invokes the configured command, passing event data as **command-line arguments** (not stdin like Claude Code). The hook command receives the event JSON as the first argument.
+**Feature flag**: Codex hooks require `codex_hooks = true` in `config.toml` `[features]` section, or `--enable codex_hooks` CLI flag. The feature is `Stage::UnderDevelopment` with `default_enabled: false` (source: `codex-rs/features/src/lib.rs` → `Feature::CodexHooks` → `FeatureSpec`). **This is a feature flag, not a platform gate** — there are zero `cfg!(windows)` checks in the entire hooks crate or `hook_runtime.rs`. Stoa's `installSidecar()` can automatically write the feature flag to `.codex/config.toml`.
 
-**Configuration format** (in `.codex/config.toml`):
-```toml
-codex_hooks = true
+> **Historical note**: Before 2026-04-09, hooks were gated on Windows via `cfg!(windows)` in `codex-rs/hooks/src/engine/mod.rs` (returning empty handlers with a warning). **PR #17268** ("remove windows gate that disables hooks — they work!") removed this gate. Windows now uses `cmd.exe /C` (via `%COMSPEC%`) for hook command execution (`codex-rs/hooks/src/engine/command_runner.rs`). User-confirmed working as of 2026-04-12.
 
-[hooks.SessionStart]
-command = ["node", "/path/to/hook-handler.mjs"]
+**⚠️ UnderDevelopment caveat**: Hooks are in active development. The core architecture is complete (5 events, command handlers, JSON I/O, blocking), but `prompt` and `agent` handler types are not yet operational, and behavior may change between releases. Known open bug: hook payloads with large file contents can exceed OS command-line limits on Windows/Linux (issue #18067).
 
-[hooks.PreToolUse]
-command = ["node", "/path/to/hook-handler.mjs"]
-matcher = "Bash"  # Optional: only fire for specific tools
-```
+**Handler types** (defined in schema, 3 total):
 
-**Available hook events** (6 total):
+| Type | Status | Mechanism |
+|------|--------|-----------|
+| `command` | ✅ **Operational** | External shell process; receives event JSON on **stdin**, emits response JSON on **stdout** |
+| `prompt` | ❌ Not yet operational | Planned: single-turn LLM evaluation (similar to Claude Code's prompt hooks) |
+| `agent` | ❌ Not yet operational | Planned: sub-agent with tool access |
 
-| Event | Trigger | Extra Fields | Stoa Currently Uses? |
-|-------|---------|-------------|---------------------|
-| `SessionStart` | Session begins | `model` (**model slug**, e.g. `o4-mini`), `session_id` | **no** |
-| `PreToolUse` | Before tool execution | `tool_name`, `tool_input` (currently only `Bash` tool supported), `turn_id` | **no** |
-| `PermissionRequest` | Permission dialog shown | `tool_input.command`, `tool_input.description` | **no** |
-| `PostToolUse` | After tool execution | `tool_name`, `tool_input`, `tool_response` (**tool output payload**), `turn_id` | **no** |
-| `UserPromptSubmit` | User submits a prompt | `prompt` (**full user input text**), `turn_id` | **no** |
-| `Stop` | Agent finishes responding | `last_assistant_message`, `stop_hook_active` | **no** |
+**Data delivery**: Hook commands receive event data as **JSON on stdin** (same as Claude Code). The handler processes it and returns JSON on stdout. This is a key similarity with Claude Code's command hooks.
 
-**Common input fields** (ALL hooks receive these):
+**Available hook events** (5 lifecycle events):
+
+| Event | Trigger | Matcher | Can Block? | Unique Capability | Stoa Currently Uses? |
+|-------|---------|---------|------------|-------------------|---------------------|
+| `SessionStart` | Session begins/resumes | `source` (`startup`/`resume`/`clear`) | yes (via `continue: false`) | Distinguishes first-start vs resume vs clear | **no** |
+| `UserPromptSubmit` | User submits a prompt | *(none — fires for all)* | yes (via `continue: false`) | — | **no** |
+| `PreToolUse` | Before tool execution | `tool_name` (regex) | **yes** (`permissionDecision: "deny"` or exit code 2) | Block tool execution with reason | **no** |
+| `PostToolUse` | After tool execution | `tool_name` (regex) | yes (via `continue: false`) | Inject `additionalContext`, `feedback_message` | **no** |
+| `Stop` | Agent finishes responding | *(none — fires for all)* | yes (via `decision: "block"`) | Inject `continuation_fragments` — structured prompt that forces agent to continue | **no** |
+
+**Common input fields** (ALL hooks receive on stdin):
 
 ```json
 {
   "session_id": "abc123",
+  "turn_id": "turn-uuid",
   "transcript_path": "/home/user/.codex/sessions/.../transcript.jsonl",
   "cwd": "/home/user/my-project",
   "hook_event_name": "PreToolUse",
   "model": "o4-mini",
-  "turn_id": "turn-uuid"
+  "permission_mode": "default",
+  "tool_name": "Bash",
+  "tool_use_id": "call-uuid",
+  "tool_input": { "command": "cargo fmt" }
 }
 ```
 
-**Key differences from Claude Code hooks**:
-- Data delivered as command argument, not stdin
-- Only 6 events vs Claude Code's 30+
-- PreToolUse/PostToolUse currently only support Bash tool (not Write/Edit/etc.)
-- Windows support not yet available
-- No hook output control (cannot block/modify actions like Claude Code's PreToolUse)
+**Hook output — controlling agent behavior**:
 
-#### B. Codex Notify System (Legacy)
+Hooks return JSON on stdout to influence the agent loop:
+
+**PreToolUse output** (can block tool execution):
+```json
+{
+  "hookSpecificOutput": {
+    "hookEventName": "PreToolUse",
+    "permissionDecision": "deny",
+    "permissionDecisionReason": "Command not allowed by policy"
+  }
+}
+```
+Exit code 2 + stderr message is a shorthand alternative (no JSON needed).
+
+**PostToolUse output** (can inject context + stop):
+```json
+{
+  "continue": false,
+  "stopReason": "halt after bash output",
+  "reason": "post-tool hook says stop",
+  "hookSpecificOutput": {
+    "hookEventName": "PostToolUse",
+    "additionalContext": "Remember the bash cleanup note."
+  }
+}
+```
+
+**Stop output — continuation fragments** (unique to Codex):
+```json
+{
+  "decision": "block",
+  "reason": "Tests not passing, continue working",
+  "continuation_fragments": [
+    { "content": "You have not verified the tests pass. Run them now." }
+  ]
+}
+```
+This `continuation_fragments` mechanism is **unique to Codex** — no equivalent exists in Claude Code or OpenCode. It allows an external script to force the agent to continue working by injecting structured prompt content back into the conversation.
+
+**Configuration discovery**: Hook configs loaded from `hooks.json` files in a layered config stack (`codex-rs/hooks/src/engine/discovery.rs`). Matchers are regex patterns validated at discovery time; invalid regex causes the entire matcher group to be skipped with a warning.
+
+**Execution model**: Matching handlers execute as external processes. Results are aggregated — any single `deny` or `block` prevails (similar to Claude Code's precedence: `deny` > `defer` > `ask` > `allow`).
+
+**Internal `HookEvent` enum** (from `codex-rs/hooks/src/types.rs`):
+
+In addition to the 5 lifecycle events above, the internal hook system defines two lower-level events used by the legacy notify path:
+
+| Internal Event | Trigger | Usage |
+|---------------|---------|-------|
+| `AfterAgent` | Agent turn complete | Used by `legacy_notify` to fire the configured notify command |
+| `AfterToolUse` | Tool execution complete | Internal payload type carrying tool_name, tool_kind, executed, success, duration_ms, sandbox info |
+
+**Ecological niche comparison with Claude Code hooks**:
+
+Codex hooks and Claude Code hooks occupy **the same ecological niche** — lifecycle event hooks that allow external scripts to observe and influence agent behavior. They are direct competitors with 1:1 event type correspondence:
+
+| Hook Event | Claude Code | Codex | Capability Parity |
+|-----------|-------------|-------|-------------------|
+| SessionStart | ✅ | ✅ | **Equivalent** — both provide model, cwd, session_id |
+| UserPromptSubmit | ✅ | ✅ | **Equivalent** — both provide full prompt text |
+| PreToolUse | ✅ (allow/deny/modify input) | ✅ (deny + reason) | **Claude Code stronger** — can modify tool_input |
+| PostToolUse | ✅ | ✅ (feedback + additionalContext + stop) | **Codex stronger** — can inject additionalContext + stop execution |
+| Stop | ✅ (approve/block) | ✅ (approve/block + continuation_fragments) | **Codex stronger** — continuation_fragments unique |
+| SubagentStop | ✅ | ❌ | **Claude Code only** |
+| PreCompact | ✅ | ❌ | **Claude Code only** |
+| Notification | ✅ | ❌ (legacy notify only) | **Claude Code only** |
+| PermissionRequest | ✅ (standalone event) | ❌ (merged into PreToolUse) | **Design difference**, functionally equivalent |
+| Handler types | command/http/mcp_tool/prompt/agent | command only (prompt/agent planned) | **Claude Code far richer** |
+
+**Key architectural differences**:
+- **Codex**: External process per hook invocation (Rust-spawned), JSON over stdin/stdout, language-agnostic
+- **Claude Code**: In-process JS callbacks OR external commands, richer handler type ecosystem (HTTP, MCP tool, prompt, agent)
+- **Codex unique**: `continuation_fragments` in Stop hook, `additionalContext` in PostToolUse
+- **Claude Code unique**: 5 handler types, tool input modification, subagent lifecycle hooks, 30+ total event types
+
+#### B. Codex Notify System (Legacy — Replaced by Hooks)
+
+> **Source**: `codex-rs/hooks/src/legacy_notify.rs` — direct source-code analysis.
+
+**Status**: The notify system is Codex's **original, now-legacy** mechanism for external event notification. It has been superseded by the 5-event `ClaudeHooksEngine` (Section 3.9a-A above). The notify hook remains functional for backward compatibility but only supports `AfterAgent` events.
+
+**How it works internally**: The `legacy_notify` function (`legacy_notify.rs`) wraps a configured argv command. When an `AfterAgent` event fires, it serializes the payload as `UserNotification::AgentTurnComplete` and passes it as the final command-line argument to the configured process. The process stdin/stdout/stderr are all set to null — it's fire-and-forget.
+
+**Relationship to hooks**: The `Hooks::dispatch()` method in `registry.rs` handles the legacy notify path separately from the new `ClaudeHooksEngine` dispatch. Both coexist: legacy notify fires `AfterAgent` events, while the new engine handles `SessionStart`, `PreToolUse`, `PostToolUse`, `UserPromptSubmit`, and `Stop`.
 
 **Configuration** (in `.codex/config.toml`):
 ```toml
 notify = ["node", ".codex/notify-stoa.mjs"]
 ```
 
-**Event type**: Only `agent-turn-complete` fires.
+**Event type**: Only `agent-turn-complete` fires. This is equivalent to the new hooks system's `Stop` event but with a different payload shape.
 
 **Full payload** (all fields, including ones Stoa currently ignores):
 
@@ -1048,21 +1131,24 @@ notify = ["node", ".codex/notify-stoa.mjs"]
   "thread-id": "session-uuid",
   "turn-id": "turn-uuid",
   "cwd": "/home/user/my-project",
+  "client": "codex-tui",
   "input-messages": [
-    { "role": "user", "content": "..." },
-    { "role": "assistant", "content": "..." }
+    "Rename `foo` to `bar` and update the callsites."
   ],
-  "last-assistant-message": "The final reply text from Codex"
+  "last-assistant-message": "Rename complete and verified `cargo build` succeeds."
 }
 ```
 
+**Note**: `input-messages` is an array of strings (not objects with role/content). This differs from Claude Code's transcript format.
+
 | Payload Field | Stoa Currently Extracts? | Value |
 |---------------|--------------------------|-------|
-| `type` | yes | Used for event_type mapping |
+| `type` | yes | Used for event_type mapping (`"agent-turn-complete"`) |
 | `turn-id` / `turn_id` | yes | Used as event_id |
-| `thread-id` | **no** | Could serve as externalSessionId |
+| `thread-id` | **no** | Could serve as externalSessionId (replaces file polling) |
 | `cwd` | **no** | Working directory |
-| `input-messages` | **no** | **Full conversation input messages** |
+| `client` | **no** | Client identifier (e.g. `"codex-tui"`) |
+| `input-messages` | **no** | **Array of user input strings** (full conversation prompts) |
 | `last-assistant-message` | **no** | **Last assistant response text** |
 
 **Highest-value extraction opportunities from existing notify**:
@@ -1158,20 +1244,22 @@ This is available via both hooks and the file-system discovery path already used
 | notify `last-assistant-message` | Last response text | **Minimal** — read existing payload field |
 | notify `thread-id` | External session ID from event (supplement file polling) | **Minimal** — read existing payload field |
 | notify `input-messages` | Full conversation history | Low — read existing payload field |
-| Hooks `SessionStart` | Model identity (`model` slug) | Medium — requires `codex_hooks = true` + Windows support |
-| Hooks `UserPromptSubmit` | Full user prompt text | Medium — requires hooks + Windows support |
-| Hooks `PreToolUse` (Bash) | Bash commands before execution | Medium — requires hooks + Windows support |
-| Hooks `PostToolUse` (Bash) | Bash command output | Medium — requires hooks + Windows support |
-| Hooks `PermissionRequest` | Permission request details | Medium — requires hooks + Windows support |
+| Hooks `SessionStart` | Model identity (`model` slug), source (`startup`/`resume`/`clear`) | Medium — requires `[features] codex_hooks = true` + hooks.json config |
+| Hooks `UserPromptSubmit` | Full user prompt text | Medium — requires feature flag + hooks.json |
+| Hooks `PreToolUse` (regex matcher) | Bash commands before execution, can **block** execution | Medium — requires feature flag + hooks.json |
+| Hooks `PostToolUse` (regex matcher) | Tool output, can inject **additionalContext** to model, can **stop** execution | Medium — requires feature flag + hooks.json |
+| Hooks `Stop` with `continuation_fragments` | Can force agent to continue working by injecting structured prompts (**unique to Codex**) | Medium — requires feature flag + hooks.json |
 | OTel metrics | Token usage, tool metrics, API metrics | High — requires OTel collector infrastructure |
 
-**Critical blocker**: Codex hooks are currently **disabled on Windows**. Until OpenAI enables Windows support, only the notify sidecar and OTel telemetry are viable on Stoa's primary platform.
+**Enabling requirement**: Codex hooks require the `codex_hooks` feature flag (default: off, `Stage::UnderDevelopment`). Stoa can automatically set this via `installSidecar()` writing to `.codex/config.toml`. **Not a platform limitation** — source code has zero `cfg!(windows)` checks; hooks work on all platforms when the flag is enabled.
 
-**Highest-value additions** (in order of impact, regardless of Windows blocker):
+**Highest-value additions** (in order of impact):
 1. **notify `last-assistant-message`** — extract from existing payload, zero new infrastructure
 2. **notify `thread-id`** — could simplify/replace file polling discovery
-3. **OTel token usage** — unique capability across all providers, but requires infrastructure
-4. **Hooks `SessionStart`** — gives `model` field (when Windows support lands)
+3. **Hooks `SessionStart`** — gives `model` field + `source` (startup/resume/clear) (requires `codex_hooks = true`)
+4. **Hooks `PostToolUse`** — gives `additionalContext` injection + execution stop capability (requires `codex_hooks = true`)
+5. **Hooks `Stop` with `continuation_fragments`** — unique Codex capability to force agent continuation (requires `codex_hooks = true`)
+6. **OTel token usage** — unique capability across all providers, but requires infrastructure
 
 ---
 
@@ -1182,7 +1270,7 @@ This is available via both hooks and the file-system discovery path already used
 | Channel | claude-code | opencode | codex |
 |---------|-------------|----------|-------|
 | CLI flags to provider | `--session-id`, `--resume`, `--dangerously-skip-permissions` | (none) or `--session` | (none) or `resume <id>` / `resume --last` |
-| Sidecar type | Claude hooks (`.claude/settings.local.json`) | TS plugin (`.opencode/plugins/stoa-status.ts`) | JS notify script (`.codex/notify-stoa.mjs`) + config.toml |
+| Sidecar type | Claude hooks (`.claude/settings.local.json`) | TS plugin (`.opencode/plugins/stoa-status.ts`) | JS notify script (`.codex/notify-stoa.mjs`) + config.toml **(legacy)**; hooks.json **(new, same niche as Claude Code)** |
 | Webhook endpoint | `POST /hooks/claude-code` | `POST /events` | `POST /events` |
 | File-system discovery | none | none | poll `~/.codex/sessions/*.jsonl` |
 | **SQLite database** | none | **`.opencode/opencode.db`** (sessions, messages, files tables) | none |
@@ -1258,8 +1346,8 @@ This is available via both hooks and the file-system discovery path already used
 | Full history | **yes** (`transcript_path`) | no | **yes** (SQLite `messages` table) | no | **yes** (`transcript_path`, notify `input-messages`) | no |
 | Token usage | no | no | **yes** (SQLite `sessions.prompt_tokens/completion_tokens/cost`) | no | **yes** (OTel `turn.token_usage`) | no |
 | Reasoning | no | no | **yes** (SQLite `reasoning` content part) | no | no | no |
-| Session lifecycle | **yes** (30+ events) | 2 events | **yes** (29 plugin events) | 4 events | 6 hooks + 1 notify | 1 event |
-| Windows support | **yes** | yes | **yes** | yes | **no** (hooks disabled) | notify only |
+| Session lifecycle | **yes** (30+ events) | 2 events | **yes** (29 plugin events) | 4 events | **yes** (5 hooks + 1 legacy notify) | 1 event (legacy notify only) |
+| Windows support | **yes** | yes | **yes** | yes | **yes** (feature-flag gated, `codex_hooks = true`) | notify only (hooks not yet enabled) |
 | **Easiest data access** | hooks (HTTP POST) | — | **SQLite (just read DB)** | — | hooks + notify | — |
 
 ### 4.7 Per-Provider Data Access Strategies
@@ -1268,7 +1356,7 @@ This is available via both hooks and the file-system discovery path already used
 |----------|----------------------------|-------------------------------|--------------------------------------|
 | Claude Code | Not available | Register `SessionStart` hook | Read `transcript_path` from any hook |
 | OpenCode | **Read `.opencode/opencode.db` SQLite** | **Read `.opencode/opencode.db` SQLite** | **Read `.opencode/opencode.db` SQLite** |
-| Codex | OTel collector (high effort) | Register `SessionStart` hook (Windows blocked) | Read `transcript_path` or extract notify `input-messages` |
+| Codex | OTel collector (high effort) | Register `SessionStart` hook (requires `codex_hooks = true` feature flag) | Read `transcript_path` or extract notify `input-messages` |
 
 ---
 
@@ -1337,11 +1425,21 @@ This is available via both hooks and the file-system discovery path already used
 
 - [x] ~~**Codex `agent-turn-complete` payload fields**: Unknown whether the full payload from Codex contains additional useful fields beyond `type` and `turn-id`.~~ **RESOLVED**: The notify payload includes `thread-id`, `cwd`, `input-messages` (full conversation), and `last-assistant-message` (last response). Stoa currently extracts only `type` and `turn-id`, discarding all other fields. See Section 3.9a-B.
 
-- [?] **Codex `supportsStructuredEvents` discrepancy**: Descriptor says `false`, provider instance says `true`. Impact unclear — descriptor value may control UI logic while provider value controls runtime.
+- [x] ~~**Codex `supportsStructuredEvents` discrepancy**: Descriptor says `false`, provider instance says `true`. Impact unclear — descriptor value may control UI logic while provider value controls runtime.~~ **RESOLVED**: Source-code analysis confirms Codex has a full 5-event lifecycle hooks system (`ClaudeHooksEngine`). The descriptor `false` may reflect that hooks are behind a feature flag / not yet enabled on Windows. The provider instance correctly reports `true` since the engine is implemented. When hooks become available on all platforms, the descriptor should be updated to `true`.
 
 - [?] **Claude Code hook reliability**: Community reports indicate `PreToolUse` and `PostToolUse` hooks sometimes don't fire (GitHub issues anthropics/claude-code#6403, #34573). `SessionStart`, `SessionEnd`, and `Stop` hooks are generally reliable.
 
-- [!] **Codex hooks Windows blocker**: Codex hooks are currently **disabled on Windows** (as of official docs). This blocks all 6 hook events (`SessionStart`, `PreToolUse`, `PermissionRequest`, `PostToolUse`, `UserPromptSubmit`, `Stop`) on Stoa's primary platform. Only the legacy notify sidecar and OTel telemetry work on Windows.
+- [!] **Codex hooks require feature flag**: Codex hooks are gated by `codex_hooks = true` in `config.toml` `[features]` (`Feature::CodexHooks`, `default_enabled: false`, `Stage::UnderDevelopment`). **This is NOT a platform limitation** — source-code analysis of `codex-rs/hooks/`, `codex-rs/core/src/hook_runtime.rs`, and `codex-rs/features/src/lib.rs` confirms zero `cfg!(windows)` platform checks. All 5 hook events work on all platforms when the flag is enabled. Stoa can automatically write `[features]\ncodex_hooks = true` to `.codex/config.toml` via `installSidecar()`. Historical: Windows was gated until PR #17268 (2026-04-09) removed the gate; user-confirmed working 2026-04-12.
+
+- [!] **Codex hooks large-payload bug on Windows/Linux**: Hook payloads containing full file content (e.g. `PreToolUse` for Write/Edit) are passed via command-line arguments on Windows/Linux, which can exceed OS limits (`ENAMETOOLONG` on Windows ~32KB, `E2BIG` on Linux ~128KB). macOS uses stdin pipe and is unaffected. This is an open bug (issue #18067), not a design limitation. For Stoa's use case (small JSON payloads to webhook server), this is unlikely to be triggered.
+
+- [!] **Codex hooks are same ecological niche as Claude Code hooks**: Source-code analysis confirms Codex's `ClaudeHooksEngine` (`codex-rs/hooks/`) is a 1:1 architectural competitor to Claude Code's hook system — both provide lifecycle event hooks with pre/post tool interception, blocking, and structured JSON I/O. The 5 Codex events (`SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop`) directly correspond to Claude Code events of the same names. Key differentiators: Codex has `continuation_fragments` (unique), Claude Code has `prompt`/`agent`/`http`/`mcp_tool` handler types and 30+ total event types.
+
+- [!] **Codex `continuation_fragments` — unique and powerful**: The Codex `Stop` hook can inject `continuation_fragments` — structured prompt content that forces the agent to keep working. This enables guard-rail patterns where external validation prevents premature session conclusion. No equivalent exists in Claude Code or OpenCode. **Immediately available** once `codex_hooks = true` is set in config.
+
+- [!] **Codex hooks data delivery is stdin, not argv**: Earlier documentation (based on external blogs) stated Codex hooks receive data as command-line arguments. Source-code analysis of `codex-rs/hooks/src/engine/command_runner.rs` confirms hooks receive event JSON on **stdin** (same as Claude Code command hooks), not argv. The legacy notify system uses argv, which may have caused the confusion.
+
+- [!] **Codex `PermissionRequest` is not a separate hook event**: Unlike Claude Code which has a standalone `PermissionRequest` event, Codex handles permission decisions within `PreToolUse` via `permissionDecision: "deny"`. This is a design difference, not a capability gap.
 
 - [!] **Massive untapped observability in Codex notify**: The existing `agent-turn-complete` notify payload contains `last-assistant-message`, `thread-id`, `cwd`, and `input-messages` — none of which are currently extracted by the Stoa sidecar script. These are available **today** with zero new infrastructure.
 
@@ -1436,6 +1534,23 @@ Precedence for multiple hooks: `deny` > `defer` > `ask` > `allow`.
 - [Codex CLI Reference (exec --json, notify)](https://openai.github.io/codex/docs/cli-reference)
 - [Codex Telemetry Reference (OTel metrics)](https://openai.github.io/codex/docs/telemetry)
 - [Codex Configuration Reference (config.toml)](https://openai.github.io/codex/docs/configuration)
+- **Source-code analysis** (`openai/codex` repository, 2026-04-25):
+  - `codex-rs/hooks/src/lib.rs` — public API: 5 event types + legacy_notify
+  - `codex-rs/hooks/src/types.rs` — `HookEvent` enum (`AfterAgent`, `AfterToolUse`), `HookPayload`, `HookResult` (`Success`/`FailedContinue`/`FailedAbort`)
+  - `codex-rs/hooks/src/events/pre_tool_use.rs` — PreToolUse: deny blocking via JSON or exit code 2
+  - `codex-rs/hooks/src/events/post_tool_use.rs` — PostToolUse: additionalContext injection, continue:false stop
+  - `codex-rs/hooks/src/events/stop.rs` — Stop: `continuation_fragments` for forced agent continuation
+  - `codex-rs/hooks/src/events/session_start.rs` — SessionStart: source discrimination (startup/resume/clear)
+  - `codex-rs/hooks/src/legacy_notify.rs` — Legacy `notify` hook: AfterAgent only, argv-based, fire-and-forget
+  - `codex-rs/hooks/src/engine/discovery.rs` — hooks.json config discovery, prompt/agent handler types (not yet operational)
+  - `codex-rs/hooks/src/engine/config.rs` — ConfiguredHandler struct with matcher regex support
+  - `codex-rs/hooks/src/engine/command_runner.rs` — Windows: `cmd.exe /C` via `%COMSPEC%`; Unix: `$SHELL -lc`
+  - `codex-rs/hooks/src/engine/mod.rs` — Windows gate removed by PR #17268 (2026-04-09)
+  - `codex-rs/features/src/lib.rs` — `Feature::CodexHooks` → `key: "codex_hooks"`, `stage: UnderDevelopment`, `default_enabled: false`
+  - `codex-rs/core/src/hook_runtime.rs` — Zero platform checks; hooks dispatch via `Hooks` struct from `codex-hooks` crate
+- **PR #17268** — "remove windows gate that disables hooks — they work!" (merged 2026-04-09) — removed `cfg!(windows)` check from `codex-rs/hooks/src/engine/mod.rs`
+- **Issue #17478** — "Enable hooks on Windows" (closed 2026-04-15) — user-confirmed working with `codex_hooks = true` on 2026-04-12
+- **Issue #18067** — Hooks fail silently on Windows/Linux with large file payloads (open bug, not platform gate)
 
 **OpenCode:**
 - [OpenCode Plugin Documentation](https://opencode.ai/docs/plugins)
