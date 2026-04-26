@@ -25,6 +25,7 @@ export const IPC_CHANNELS = {
   dialogPickFile: 'dialog:pick-file',
   settingsDetectShell: 'settings:detect-shell',
   settingsDetectProvider: 'settings:detect-provider',
+  settingsDetectVscode: 'settings:detect-vscode',
   updateGetState: 'update:get-state',
   updateCheck: 'update:check',
   updateDownload: 'update:download',

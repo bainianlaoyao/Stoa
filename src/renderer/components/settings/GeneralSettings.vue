@@ -10,6 +10,7 @@ const { t } = useI18n()
 const store = useSettingsStore()
 
 const detectedShell = ref<string | null>(null)
+const detectedVscode = ref<string | null>(null)
 const detecting = ref(true)
 
 const fontSizeOptions = Array.from({ length: 13 }, (_, i) => ({
@@ -32,7 +33,12 @@ const languageOptions = SUPPORTED_LOCALES.map((loc) => ({
 }))
 
 onMounted(async () => {
-  detectedShell.value = await store.detectAndSetShell()
+  const [shell, vscode] = await Promise.all([
+    store.detectAndSetShell(),
+    store.detectAndSetVscode()
+  ])
+  detectedShell.value = shell
+  detectedVscode.value = vscode
   detecting.value = false
 })
 
@@ -146,6 +152,13 @@ async function handleLanguageChange(value: string): Promise<void> {
           @update:model-value="store.updateSetting('workspaceIde', { id: store.workspaceIde.id, executablePath: $event })"
           @browse="handleWorkspaceIdeBrowse"
         />
+
+        <p v-if="detecting" class="settings-item__hint">{{ t('general.workspaceIdeSection.detecting') }}</p>
+        <p v-else-if="detectedVscode && !store.workspaceIde.executablePath" class="settings-item__hint settings-item__hint--success">
+          {{ t('general.workspaceIdeSection.autoDetectedWith', { path: detectedVscode }) }}
+        </p>
+        <p v-else-if="store.workspaceIde.executablePath && store.workspaceIde.executablePath !== detectedVscode" class="settings-item__hint">{{ t('general.workspaceIdeSection.customPath') }}</p>
+        <p v-else-if="detectedVscode" class="settings-item__hint settings-item__hint--success">{{ t('general.workspaceIdeSection.autoDetected') }}</p>
       </section>
 
       <section class="settings-card" aria-label="Terminal font size">

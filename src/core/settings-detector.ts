@@ -9,6 +9,25 @@ const COMMON_BIN_WIN = [
   process.env['PROGRAMFILES(X86)'] ?? '',
 ].filter(Boolean)
 
+const VSCODE_CANDIDATES_WIN = [
+  resolve(process.env.LOCALAPPDATA ?? '', 'Programs', 'Microsoft VS Code', 'Code.exe'),
+  resolve(process.env.PROGRAMFILES ?? '', 'Microsoft VS Code', 'Code.exe'),
+  resolve(process.env['PROGRAMFILES(X86)'] ?? '', 'Microsoft VS Code', 'Code.exe'),
+  resolve(process.env.LOCALAPPDATA ?? '', 'Programs', 'Microsoft VS Code Insiders', 'Code - Insiders.exe'),
+]
+
+const VSCODE_CANDIDATES_MAC = [
+  '/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code',
+  resolve(process.env.HOME ?? '', 'Applications', 'Visual Studio Code.app', 'Contents', 'Resources', 'app', 'bin', 'code'),
+]
+
+const VSCODE_CANDIDATES_LINUX = [
+  '/usr/bin/code',
+  '/usr/local/bin/code',
+  '/snap/bin/code',
+  resolve(process.env.HOME ?? '', '.local', 'bin', 'code'),
+]
+
 export async function detectShell(): Promise<string | null> {
   if (process.platform === 'win32') {
     const comspec = process.env.COMSPEC
@@ -59,6 +78,25 @@ export async function detectProvider(providerId: string, shellPath?: string | nu
 
   const cmd = process.platform === 'win32' ? 'where' : 'which'
   return execLookup(cmd, [providerId])
+}
+
+export async function detectVscode(): Promise<string | null> {
+  const candidates =
+    process.platform === 'win32' ? VSCODE_CANDIDATES_WIN
+    : process.platform === 'darwin' ? VSCODE_CANDIDATES_MAC
+    : VSCODE_CANDIDATES_LINUX
+
+  for (const candidate of candidates) {
+    try { await access(candidate, constants.X_OK); return candidate } catch { /* continue */ }
+  }
+
+  if (process.platform === 'win32') {
+    const fromWhere = await execLookup('where', ['code'])
+    if (fromWhere) return fromWhere
+    return execLookup('where', ['code.cmd'])
+  }
+
+  return execLookup('which', ['code'])
 }
 
 function classifyShellFamily(shellPath?: string | null): 'powershell' | 'posix' | 'unknown' {

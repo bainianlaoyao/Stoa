@@ -183,6 +183,7 @@ describe('E2E: Main Process Config Guard', () => {
         ['pickFile', 'dialogPickFile'],
         ['detectShell', 'settingsDetectShell'],
         ['detectProvider', 'settingsDetectProvider'],
+        ['detectVscode', 'settingsDetectVscode'],
         ['getUpdateState', 'updateGetState'],
         ['checkForUpdates', 'updateCheck'],
         ['downloadUpdate', 'updateDownload'],
@@ -283,6 +284,7 @@ describe('E2E: Main Process Config Guard', () => {
         'pickFile',
         'detectShell',
         'detectProvider',
+        'detectVscode',
         'archiveSession',
         'restoreSession',
         'listArchivedSessions',
@@ -337,6 +339,7 @@ describe('E2E: Main Process Config Guard', () => {
       expect(invMap.get('pickFile')).toBe('dialog:pick-file')
       expect(invMap.get('detectShell')).toBe('settings:detect-shell')
       expect(invMap.get('detectProvider')).toBe('settings:detect-provider')
+      expect(invMap.get('detectVscode')).toBe('settings:detect-vscode')
       expect(invMap.get('archiveSession')).toBe('session:archive')
       expect(invMap.get('restoreSession')).toBe('session:restore')
       expect(invMap.get('listArchivedSessions')).toBe('session:list-archived')

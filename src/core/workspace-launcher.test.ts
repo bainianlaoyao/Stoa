@@ -4,6 +4,13 @@ import { join } from 'node:path'
 import { describe, expect, test, vi } from 'vitest'
 import type { AppSettings, ProjectSummary, SessionSummary } from '@shared/project-session'
 import { DEFAULT_SETTINGS } from '@shared/project-session'
+
+const mockDetectVscode = vi.hoisted(() => vi.fn<() => Promise<string | null>>().mockResolvedValue(null))
+vi.mock('@core/settings-detector', async () => {
+  const actual = await vi.importActual<typeof import('@core/settings-detector')>('@core/settings-detector')
+  return { ...actual, detectVscode: mockDetectVscode }
+})
+
 import { openWorkspace, validateOpenWorkspaceRequest } from './workspace-launcher'
 
 function projectFixture(path: string, patch: Partial<ProjectSummary> = {}): ProjectSummary {

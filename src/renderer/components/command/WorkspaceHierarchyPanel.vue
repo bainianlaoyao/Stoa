@@ -316,6 +316,7 @@ onBeforeUnmount(() => {
                 :data-attention-reason="sessionAttentionReason(session) ?? undefined"
               />
               <img class="route-provider-icon" :src="providerIcon(session.type)" :alt="session.type" />
+              <span class="route-session-name">{{ session.title }}</span>
               <span v-if="sessionStatusLabel(session)" class="route-session-label">{{ sessionStatusLabel(session) }}</span>
             </button>
             <span class="route-row-actions">
@@ -436,10 +437,10 @@ onBeforeUnmount(() => {
 
 .route-item {
   display: grid;
-  grid-template-columns: 20px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
   align-items: center;
-  padding: 5px 8px 5px 10px;
+  padding: 5px 8px 5px 8px;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   background: transparent;
@@ -451,9 +452,9 @@ onBeforeUnmount(() => {
 }
 
 .route-item.child {
-  grid-template-columns: 6px 14px minmax(0, 1fr);
+  grid-template-columns: 6px 14px minmax(0, 1fr) auto;
   gap: 6px;
-  padding: 4px 8px 4px 38px;
+  padding: 4px 8px 4px 20px;
 }
 
 .route-item:hover:not(.route-item--active),
@@ -463,24 +464,24 @@ onBeforeUnmount(() => {
 }
 
 .route-item--active {
-  background: var(--color-active-fill);
+  background: transparent;
   border-color: transparent;
   box-shadow: none;
 }
 
-.route-item--active::before {
+.route-session-row:has(.route-item--active)::before {
   content: '';
   position: absolute;
   left: 0;
-  top: 4px;
-  bottom: 4px;
-  width: 3px;
-  border-radius: 0 3px 3px 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  border-radius: 0;
   background: var(--color-active-indicator);
 }
 
 .route-item--active .route-name {
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .route-item--active .route-session-label {
@@ -494,9 +495,14 @@ onBeforeUnmount(() => {
 
 .route-item--parent {
   padding-right: 10px;
+  padding-left: 28px;
 }
 
 .route-detail-trigger {
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  transform: translateY(-50%);
   width: 20px;
   height: 20px;
   padding: 0;
@@ -509,6 +515,7 @@ onBeforeUnmount(() => {
   cursor: pointer;
   transition: all 0.15s ease;
   opacity: 0;
+  z-index: 1;
 }
 
 .route-item:hover .route-detail-trigger,
@@ -551,6 +558,26 @@ onBeforeUnmount(() => {
   white-space: nowrap;
   color: var(--color-muted);
   font: var(--text-caption) var(--font-mono);
+}
+
+.route-session-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-body-sm);
+  font-weight: 400;
+  color: var(--color-muted);
+}
+
+.route-item.child.route-item--active .route-session-name {
+  color: var(--color-text-strong);
+  font-weight: 600;
+}
+
+.route-item.child:not(.route-item--active) .route-session-name {
+  color: var(--color-muted);
+  font-weight: 400;
 }
 
 .route-name {

@@ -70,6 +70,14 @@ export const useSettingsStore = defineStore('settings', () => {
     return detected
   }
 
+  async function detectAndSetVscode(): Promise<string | null> {
+    const detected = await window.stoa.detectVscode()
+    if (detected && !workspaceIde.value.executablePath) {
+      await updateSetting('workspaceIde', { id: workspaceIde.value.id, executablePath: detected })
+    }
+    return detected
+  }
+
   async function pickFolder(title?: string): Promise<string | null> {
     return window.stoa.pickFolder(title ? { title } : undefined)
   }
@@ -93,7 +101,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
   return {
     shellPath, terminalFontSize, terminalFontFamily, providers, workspaceIde, claudeDangerouslySkipPermissions, locale, loaded,
-    loadSettings, updateSetting, detectAndSetShell, detectAndSetProvider,
+    loadSettings, updateSetting, detectAndSetShell, detectAndSetProvider, detectAndSetVscode,
     pickFolder, pickFile, applyLocale
   }
 })

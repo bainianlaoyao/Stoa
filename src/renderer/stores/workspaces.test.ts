@@ -67,6 +67,7 @@ function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
     pickFile: vi.fn().mockResolvedValue(null),
     detectShell: vi.fn().mockResolvedValue(null),
     detectProvider: vi.fn().mockResolvedValue(null),
+    detectVscode: vi.fn().mockResolvedValue(null),
     minimizeWindow: vi.fn().mockResolvedValue(undefined),
     maximizeWindow: vi.fn().mockResolvedValue(undefined),
     closeWindow: vi.fn().mockResolvedValue(undefined),

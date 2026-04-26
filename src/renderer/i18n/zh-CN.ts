@@ -37,7 +37,11 @@ export default {
       pathLabel: 'VS Code \u53EF\u6267\u884C\u6587\u4EF6',
       pathPlaceholder: '\u4F7F\u7528\u7CFB\u7EDF PATH',
       browse: '\u6D4F\u89C8',
-      selectExecutable: 'VS Code \u53EF\u6267\u884C\u6587\u4EF6'
+      selectExecutable: 'VS Code \u53EF\u6267\u884C\u6587\u4EF6',
+      detecting: '\u6B63\u5728\u641C\u7D22 VS Code\u2026',
+      autoDetected: '\u5DF2\u81EA\u52A8\u68C0\u6D4B\u5230 VS Code',
+      autoDetectedWith: '\u81EA\u52A8\u68C0\u6D4B\uFF1A{path}',
+      customPath: '\u4F7F\u7528\u81EA\u5B9A\u4E49\u8DEF\u5F84'
     },
     typographySection: {
       title: '\u7EC8\u7AEF\u5B57\u4F53',

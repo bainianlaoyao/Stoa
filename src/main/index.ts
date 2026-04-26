@@ -9,7 +9,7 @@ import { InMemoryObservationStore } from '@core/observation-store'
 import type { ListObservationEventsOptions } from '@core/observation-store'
 import { ObservabilityService } from '@core/observability-service'
 import { ProjectSessionManager } from '@core/project-session-manager'
-import { detectShell, detectProvider } from '@core/settings-detector'
+import { detectShell, detectProvider, detectVscode } from '@core/settings-detector'
 import { openWorkspace } from '@core/workspace-launcher'
 import { getProviderDescriptorByProviderId, getProviderDescriptorBySessionType } from '@shared/provider-descriptors'
 import { derivePresencePhase } from '@shared/session-state-reducer'
@@ -730,7 +730,6 @@ app.whenReady().then(async () => {
       })
     }
     await sessionInputRouter?.send(sessionId, data)
-    await runtimeController?.notifyUserInput(sessionId)
   })
 
   ipcMain.handle(IPC_CHANNELS.sessionResize, async (_event, sessionId: string, cols: number, rows: number) => {
@@ -775,6 +774,10 @@ app.whenReady().then(async () => {
   ipcMain.handle(IPC_CHANNELS.settingsDetectProvider, async (_event, providerId: string) => {
     const descriptor = getProviderDescriptorByProviderId(providerId)
     return detectProvider(descriptor?.executableName ?? providerId, projectSessionManager?.getSettings().shellPath ?? null)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.settingsDetectVscode, async () => {
+    return detectVscode()
   })
 
   ipcMain.handle(IPC_CHANNELS.windowMinimize, () => {

@@ -124,6 +124,11 @@ onMounted(async () => {
   if (isUnmounted) {
     return
   }
+
+  void settingsStore.detectAndSetVscode()
+  if (isUnmounted) {
+    return
+  }
 })
 
 onBeforeUnmount(() => {

@@ -158,4 +158,41 @@ describe('settings detector', () => {
     )
     expect(result).toBe('/usr/local/bin/claude')
   })
+
+  test('detectVscode uses where code on windows as first fallback', async () => {
+    const { detectVscode } = await import('./settings-detector')
+    mockExecFile.mockImplementation((_file: string, _args: string[], callback: (err: Error | null, stdout: string) => void) => {
+      callback(null, 'D:\\ProgramFiles\\Microsoft VS Code\\Code.exe\n')
+    })
+
+    const result = await detectVscode()
+
+    if (process.platform === 'win32') {
+      expect(mockExecFile).toHaveBeenCalledWith('where', ['code'], expect.any(Function))
+    }
+    expect(result).toBeTruthy()
+  })
+
+  test('detectVscode falls back to where lookup when no candidate exists', async () => {
+    const { detectVscode } = await import('./settings-detector')
+    mockAccess.mockRejectedValue(new Error('not found'))
+    mockExecFile.mockImplementation((_file: string, _args: string[], callback: (err: Error | null, stdout: string) => void) => {
+      callback(null, 'C:\\Program Files\\Microsoft VS Code\\bin\\code.cmd\n')
+    })
+
+    const result = await detectVscode()
+    expect(mockExecFile).toHaveBeenCalled()
+    expect(result).toBeTruthy()
+  })
+
+  test('detectVscode returns null when nothing is found', async () => {
+    const { detectVscode } = await import('./settings-detector')
+    mockAccess.mockRejectedValue(new Error('not found'))
+    mockExecFile.mockImplementation((_file: string, _args: string[], callback: (err: Error | null, stdout: string) => void) => {
+      callback(new Error('not found'), '')
+    })
+
+    const result = await detectVscode()
+    expect(result).toBeNull()
+  })
 })

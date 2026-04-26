@@ -1,5 +1,6 @@
 import { stat } from 'node:fs/promises'
 import type { AppSettings, OpenWorkspaceRequest, ProjectSummary, SessionSummary } from '@shared/project-session'
+import { detectVscode } from '@core/settings-detector'
 
 export interface WorkspaceSpawnOptions {
   cwd: string
@@ -88,12 +89,14 @@ async function openIde(
   spawnProcess: WorkspaceSpawnProcess
 ): Promise<void> {
   const configuredExecutable = settings.workspaceIde.executablePath.trim()
-  const candidates = configuredExecutable.length > 0
-    ? [configuredExecutable]
-    : [...VSCODE_AUTO_DETECT_CANDIDATES]
 
+  let candidates: string[]
   if (configuredExecutable.length > 0) {
     await assertFile(configuredExecutable, VSCODE_LAUNCH_ERROR)
+    candidates = [configuredExecutable]
+  } else {
+    const detected = await detectVscode()
+    candidates = detected ? [detected] : [...VSCODE_AUTO_DETECT_CANDIDATES]
   }
 
   const spawnOptions: WorkspaceSpawnOptions = {

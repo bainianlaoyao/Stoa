@@ -137,6 +137,9 @@ const api: RendererApi = {
   async detectProvider(providerId: string) {
     return ipcRenderer.invoke(IPC_CHANNELS.settingsDetectProvider, providerId) as Promise<string | null>
   },
+  async detectVscode() {
+    return ipcRenderer.invoke(IPC_CHANNELS.settingsDetectVscode) as Promise<string | null>
+  },
   async minimizeWindow() {
     return ipcRenderer.invoke(IPC_CHANNELS.windowMinimize)
   },

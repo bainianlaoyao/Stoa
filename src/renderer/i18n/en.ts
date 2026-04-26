@@ -37,7 +37,11 @@ export default {
       pathLabel: 'VS Code executable',
       pathPlaceholder: 'Use system PATH',
       browse: 'Browse',
-      selectExecutable: 'VS Code executable'
+      selectExecutable: 'VS Code executable',
+      detecting: 'Searching for VS Code\u2026',
+      autoDetected: 'VS Code detected automatically',
+      autoDetectedWith: 'Auto-detected: {path}',
+      customPath: 'Using custom path'
     },
     typographySection: {
       title: 'Terminal typography',

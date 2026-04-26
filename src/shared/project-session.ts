@@ -244,6 +244,7 @@ export interface RendererApi {
   pickFile: (options?: { title?: string; filters?: Array<{ name: string; extensions: string[] }> }) => Promise<string | null>
   detectShell: () => Promise<string | null>
   detectProvider: (providerId: string) => Promise<string | null>
+  detectVscode: () => Promise<string | null>
   minimizeWindow: () => Promise<void>
   maximizeWindow: () => Promise<void>
   closeWindow: () => Promise<void>
