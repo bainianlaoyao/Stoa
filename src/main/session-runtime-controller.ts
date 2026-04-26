@@ -35,37 +35,31 @@ export class SessionRuntimeController implements SessionRuntimeManager {
   async markRuntimeStarting(sessionId: string, summary: string, externalSessionId: string | null): Promise<void> {
     this.terminalBacklogs.delete(sessionId)
     await this.manager.markRuntimeStarting(sessionId, summary, externalSessionId)
-    this.pushSessionSummaryPatch(sessionId)
     this.finishSessionStateChange(sessionId)
   }
 
   async markRuntimeAlive(sessionId: string, externalSessionId: string | null): Promise<void> {
     await this.manager.markRuntimeAlive(sessionId, externalSessionId)
-    this.pushSessionSummaryPatch(sessionId)
     this.finishSessionStateChange(sessionId)
   }
 
   async markRuntimeExited(sessionId: string, exitCode: number | null, summary: string): Promise<void> {
     await this.manager.markRuntimeExited(sessionId, exitCode, summary)
-    this.pushSessionSummaryPatch(sessionId)
     this.finishSessionStateChange(sessionId)
   }
 
   async markRuntimeFailedToStart(sessionId: string, summary: string): Promise<void> {
     await this.manager.markRuntimeFailedToStart(sessionId, summary)
-    this.pushSessionSummaryPatch(sessionId)
     this.finishSessionStateChange(sessionId)
   }
 
   async applyProviderStatePatch(patch: SessionStatePatchEvent): Promise<void> {
     await this.manager.applySessionStatePatch(patch)
-    this.pushSessionSummaryPatch(patch.sessionId)
     this.finishSessionStateChange(patch.sessionId)
   }
 
   async setActiveSession(sessionId: string): Promise<void> {
     await this.manager.setActiveSession(sessionId)
-    this.pushSessionSummaryPatch(sessionId)
     this.finishSessionStateChange(sessionId)
   }
 
@@ -81,21 +75,6 @@ export class SessionRuntimeController implements SessionRuntimeManager {
 
   async getTerminalReplay(sessionId: string): Promise<string> {
     return this.terminalBacklogs.get(sessionId) ?? ''
-  }
-
-  private pushSessionSummaryPatch(sessionId: string): void {
-    const win = this.getWindow()
-    const session = this.manager.snapshot().sessions.find((candidate) => candidate.id === sessionId)
-
-    if (!session) {
-      return
-    }
-
-    if (!win || win.isDestroyed()) {
-      return
-    }
-
-    win.webContents.send(IPC_CHANNELS.sessionEvent, { session })
   }
 
   private finishSessionStateChange(sessionId: string): void {

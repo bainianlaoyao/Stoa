@@ -57,10 +57,6 @@ function providerPatch(
   }
 }
 
-function sessionPatchData(sent: Array<{ channel: string; data: unknown }>) {
-  return sent.find((item) => item.channel === IPC_CHANNELS.sessionEvent)?.data
-}
-
 describe('SessionRuntimeController', () => {
   let manager: ProjectSessionManager
 
@@ -75,7 +71,26 @@ describe('SessionRuntimeController', () => {
     manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
   })
 
-  test('markRuntimeStarting updates manager and pushes a full summary patch', async () => {
+  test('applyProviderStatePatch pushes presence snapshots without sessionEvent', async () => {
+    const { window: win, sent } = createMockWindow()
+    const project = await manager.createProject({ path: await createTestWorkspace('ctrl-presence-'), name: 'test' })
+    const session = await manager.createSession({ projectId: project.id, type: 'claude-code', title: 'Claude' })
+    await manager.markRuntimeAlive(session.id, 'external-1')
+    const observability = new ObservabilityService(new InMemoryObservationStore(), {
+      nowIso: () => '2026-01-01T00:00:00.000Z'
+    })
+    const controller = new SessionRuntimeController(manager, () => win, undefined, observability)
+
+    await controller.applyProviderStatePatch(providerPatch(session.id, 'agent.turn_started', 3, 'UserPromptSubmit', {
+      sourceEventType: 'claude-code.UserPromptSubmit',
+      agentState: 'working'
+    }))
+
+    expect(sent.some(event => event.channel === IPC_CHANNELS.observabilitySessionPresenceChanged)).toBe(true)
+    expect(sent.some(event => event.channel === IPC_CHANNELS.sessionEvent)).toBe(false)
+  })
+
+  test('markRuntimeStarting updates manager and pushes observability snapshots', async () => {
     const { window: win, sent } = createMockWindow()
     const project = await manager.createProject({ path: await createTestWorkspace('ctrl-'), name: 'test' })
     const session = await manager.createSession({ projectId: project.id, type: 'shell', title: 'S1' })
@@ -86,7 +101,7 @@ describe('SessionRuntimeController', () => {
     const updated = manager.snapshot().sessions[0]!
     expect(updated.runtimeState).toBe('starting')
     expect(updated.summary).toBe('starting shell')
-    expect(sessionPatchData(sent)).toEqual({ session: updated })
+    expect(sent.some(event => event.channel === IPC_CHANNELS.sessionEvent)).toBe(false)
   })
 
   test('markRuntimeAlive pushes presence without setting agent working', async () => {
@@ -105,12 +120,11 @@ describe('SessionRuntimeController', () => {
     expect(updated.agentState).toBe('unknown')
     expect(updated.externalSessionId).toBe('opencode-real-123')
     expect(sent.map((item) => item.channel)).toEqual([
-      IPC_CHANNELS.sessionEvent,
       IPC_CHANNELS.observabilitySessionPresenceChanged,
       IPC_CHANNELS.observabilityProjectChanged,
       IPC_CHANNELS.observabilityAppChanged
     ])
-    expect(sent[1]!.data).toMatchObject({
+    expect(sent[0]!.data).toMatchObject({
       sessionId: session.id,
       phase: 'ready',
       runtimeState: 'alive',
@@ -167,14 +181,13 @@ describe('SessionRuntimeController', () => {
     expect(updated.agentState).toBe('blocked')
     expect(updated.blockingReason).toBe('permission')
     expect(updated.externalSessionId).toBe('opencode-real-456')
-    expect(sessionPatchData(sent)).toEqual({ session: updated })
+    expect(sent.some(event => event.channel === IPC_CHANNELS.sessionEvent)).toBe(false)
     expect(sent.map((item) => item.channel)).toEqual([
-      IPC_CHANNELS.sessionEvent,
       IPC_CHANNELS.observabilitySessionPresenceChanged,
       IPC_CHANNELS.observabilityProjectChanged,
       IPC_CHANNELS.observabilityAppChanged
     ])
-    expect(sent[1]!.data).toMatchObject({
+    expect(sent[0]!.data).toMatchObject({
       sessionId: session.id,
       phase: 'blocked',
       agentState: 'blocked',
@@ -200,7 +213,7 @@ describe('SessionRuntimeController', () => {
     const updated = manager.snapshot().sessions.find((candidate) => candidate.id === complete.id)!
     expect(updated.agentState).toBe('idle')
     expect(updated.hasUnseenCompletion).toBe(false)
-    expect(sessionPatchData(sent)).toEqual({ session: updated })
+    expect(sent.some(event => event.channel === IPC_CHANNELS.sessionEvent)).toBe(false)
     expect(sent.find((item) => item.channel === IPC_CHANNELS.observabilitySessionPresenceChanged)?.data).toMatchObject({
       sessionId: complete.id,
       phase: 'ready',
