@@ -109,7 +109,7 @@ describe('AboutSettings', () => {
     const logo = wrapper.get('.settings-about__logo')
 
     expect(logo.element.tagName).toBe('IMG')
-    expect(logo.attributes('src')).toMatch(/^data:image\/svg\+xml,/)
+    expect(logo.attributes('src')).toMatch(/^data:image\/svg\+xml/)
     expect(logo.attributes('aria-hidden')).toBe('true')
     expect(logo.text()).toBe('')
   })

@@ -59,6 +59,10 @@ function explanationForPresence(presence: SessionPresenceSnapshot): string | nul
     return 'Provider is waiting for permission.'
   }
 
+  if (presence.blockingReason === 'elicitation') {
+    return 'Provider is asking a question.'
+  }
+
   if (presence.blockingReason === 'resume-confirmation') {
     return 'Provider is waiting for confirmation.'
   }

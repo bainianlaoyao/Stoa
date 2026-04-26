@@ -117,6 +117,9 @@ export function reduceSessionState(
         markAgentWorkingIfRuntimeAlive(session, next)
       }
       break
+    case 'agent.tool_completed':
+      markAgentWorkingIfRuntimeAlive(session, next)
+      break
     case 'agent.turn_completed':
       if (session.agentState === 'unknown' || session.agentState === 'working') {
         next.agentState = 'idle'

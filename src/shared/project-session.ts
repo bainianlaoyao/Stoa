@@ -21,6 +21,7 @@ export type SessionStateIntent =
   | 'runtime.failed_to_start'
   | 'agent.turn_started'
   | 'agent.tool_started'
+  | 'agent.tool_completed'
   | 'agent.turn_completed'
   | 'agent.completion_seen'
   | 'agent.permission_requested'

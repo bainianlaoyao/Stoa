@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useUpdateStore } from '@renderer/stores/update'
-import stoaSymbol from '@renderer/assets/brand/stoa-symbol.svg'
+import stoaLogo from '@renderer/assets/icons/gemini-svg.svg'
 
 const { t } = useI18n()
 const updateStore = useUpdateStore()
@@ -70,7 +70,7 @@ async function handleCheckForUpdates(): Promise<void> {
     <div class="settings-section settings-section--about">
       <section class="settings-card settings-card--hero settings-about" :aria-label="t('about.title')">
         <div class="settings-about__brand">
-          <img :src="stoaSymbol" alt="" class="settings-about__logo" aria-hidden="true">
+          <img :src="stoaLogo" alt="" class="settings-about__logo" aria-hidden="true">
           <div class="settings-about__identity">
             <h2 class="settings-about__name">Stoa</h2>
             <span class="settings-about__version">v{{ currentVersion }}</span>
@@ -246,7 +246,7 @@ async function handleCheckForUpdates(): Promise<void> {
 }
 
 .settings-about__logo {
-  width: 52px;
+  width: auto;
   height: 52px;
   object-fit: contain;
 }

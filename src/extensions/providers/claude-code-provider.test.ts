@@ -165,6 +165,7 @@ describe('claude-code provider', () => {
       expect(content).toContain('STOA_SESSION_SECRET')
       expect(Object.keys(settings.hooks).sort()).toEqual([
         'PermissionRequest',
+        'PostToolUse',
         'PreToolUse',
         'Stop',
         'StopFailure',

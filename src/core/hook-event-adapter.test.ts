@@ -147,16 +147,57 @@ describe('hook event adapter', () => {
     })
   })
 
-  test('returns null for unsupported Claude hook events', () => {
+  test('adapts Claude PostToolUse hook into tool completed state patch event', () => {
     const event = adaptClaudeCodeHook(
-      { hook_event_name: 'PostToolUse' },
+      {
+        hook_event_name: 'PostToolUse',
+        tool_name: 'Bash'
+      },
       {
         sessionId: 'session_internal_3',
         projectId: 'project_internal_3'
       }
     )
 
-    expect(event).toBeNull()
+    expect(event).toMatchObject({
+      event_type: 'claude-code.PostToolUse',
+      session_id: 'session_internal_3',
+      project_id: 'project_internal_3',
+      source: 'provider-adapter',
+      payload: {
+        intent: 'agent.tool_completed',
+        agentState: 'working',
+        summary: 'PostToolUse',
+        toolName: 'Bash'
+      }
+    })
+  })
+
+  test('adapts Claude PreToolUse with AskUserQuestion tool into permission requested with elicitation blocking reason', () => {
+    const event = adaptClaudeCodeHook(
+      {
+        hook_event_name: 'PreToolUse',
+        tool_name: 'AskUserQuestion'
+      },
+      {
+        sessionId: 'session_elicitation_1',
+        projectId: 'project_elicitation_1'
+      }
+    )
+
+    expect(event).toMatchObject({
+      event_type: 'claude-code.PreToolUse',
+      session_id: 'session_elicitation_1',
+      project_id: 'project_elicitation_1',
+      source: 'provider-adapter',
+      payload: {
+        intent: 'agent.permission_requested',
+        agentState: 'blocked',
+        summary: 'PreToolUse',
+        toolName: 'AskUserQuestion',
+        blockingReason: 'elicitation'
+      }
+    })
   })
 })
 

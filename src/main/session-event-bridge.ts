@@ -159,7 +159,7 @@ export class SessionEventBridge {
       return null
     }
 
-    if (session.agentState !== 'blocked' || session.blockingReason !== 'permission') {
+    if (session.agentState !== 'blocked') {
       return null
     }
 
@@ -212,7 +212,9 @@ export class SessionEventBridge {
 }
 
 function isClaudePermissionContinuationEvent(event: CanonicalSessionEvent): boolean {
-  return event.event_type === 'claude-code.PreToolUse' || event.event_type === 'claude-code.Stop'
+  return event.event_type === 'claude-code.PreToolUse'
+    || event.event_type === 'claude-code.PostToolUse'
+    || event.event_type === 'claude-code.Stop'
 }
 
 function mapIntentToObservation(intent: CanonicalSessionEvent['payload']['intent']): {
@@ -224,6 +226,7 @@ function mapIntentToObservation(intent: CanonicalSessionEvent['payload']['intent
   switch (intent) {
     case 'agent.turn_started':
     case 'agent.tool_started':
+    case 'agent.tool_completed':
       return { category: 'presence', type: 'presence.running', severity: 'info', retention: 'operational' }
     case 'agent.turn_completed':
       return { category: 'presence', type: 'presence.complete', severity: 'attention', retention: 'critical' }

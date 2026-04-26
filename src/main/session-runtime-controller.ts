@@ -24,6 +24,7 @@ interface RuntimeObservabilityReader {
 
 export class SessionRuntimeController implements SessionRuntimeManager {
   private readonly terminalBacklogs = new Map<string, string>()
+  private readonly optimisticPatchSequences = new Map<string, number>()
 
   constructor(
     private readonly manager: ProjectSessionManager,
@@ -63,6 +64,27 @@ export class SessionRuntimeController implements SessionRuntimeManager {
     this.finishSessionStateChange(sessionId)
   }
 
+  async notifyUserInput(sessionId: string): Promise<void> {
+    const session = this.manager.snapshot().sessions.find((candidate) => candidate.id === sessionId)
+    if (!session || session.agentState !== 'blocked') {
+      return
+    }
+
+    const patch: SessionStatePatchEvent = {
+      sessionId,
+      sequence: this.allocateOptimisticPatchSequence(sessionId),
+      occurredAt: new Date().toISOString(),
+      intent: 'agent.permission_resolved',
+      source: 'provider',
+      sourceEventType: 'optimistic.permission_resolved_on_input',
+      agentState: 'working',
+      blockingReason: null,
+      summary: 'Permission resolved (optimistic on user input)'
+    }
+
+    await this.applyProviderStatePatch(patch)
+  }
+
   async appendTerminalData(chunk: { sessionId: string; data: string }): Promise<void> {
     const current = this.terminalBacklogs.get(chunk.sessionId) ?? ''
     this.terminalBacklogs.set(chunk.sessionId, trimBacklog(current + chunk.data))
@@ -80,6 +102,15 @@ export class SessionRuntimeController implements SessionRuntimeManager {
   private finishSessionStateChange(sessionId: string): void {
     this.pushObservabilitySnapshots(sessionId)
     this.onSessionStateChanged?.()
+  }
+
+  private allocateOptimisticPatchSequence(sessionId: string): number {
+    const session = this.manager.snapshot().sessions.find((candidate) => candidate.id === sessionId)
+    const lastManagerSequence = session?.lastStateSequence ?? 0
+    const lastAllocatedSequence = this.optimisticPatchSequences.get(sessionId) ?? 0
+    const nextSequence = Math.max(lastManagerSequence, lastAllocatedSequence) + 1
+    this.optimisticPatchSequences.set(sessionId, nextSequence)
+    return nextSequence
   }
 
   private pushObservabilitySnapshots(sessionId: string): void {

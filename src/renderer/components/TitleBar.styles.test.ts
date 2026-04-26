@@ -16,8 +16,8 @@ describe('TitleBar style contracts', () => {
   it('uses the renderer brand symbol asset instead of the placeholder mark', () => {
     const source = readFileSync(titleBarPath, 'utf8')
 
-    expect(source).toContain("import stoaSymbol from '@renderer/assets/brand/stoa-symbol.svg'")
-    expect(source).toContain('<img :src="stoaSymbol" alt="" class="h-8 w-8" aria-hidden="true">')
+    expect(source).toContain("import stoaLogo from '@renderer/assets/icons/gemini-svg.svg'")
+    expect(source).toContain('<img :src="stoaLogo" alt="" class="h-6"')
     expect(source).not.toContain('>S<')
   })
 })

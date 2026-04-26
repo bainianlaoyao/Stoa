@@ -730,6 +730,7 @@ app.whenReady().then(async () => {
       })
     }
     await sessionInputRouter?.send(sessionId, data)
+    await runtimeController?.notifyUserInput(sessionId)
   })
 
   ipcMain.handle(IPC_CHANNELS.sessionResize, async (_event, sessionId: string, cols: number, rows: number) => {
