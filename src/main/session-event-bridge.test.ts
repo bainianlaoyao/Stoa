@@ -608,6 +608,90 @@ describe('SessionEventBridge', () => {
     })
   })
 
+  test('applies provider state patches without requiring observability ingestion', async () => {
+    const stateDir = await createTestTempDir('session-event-bridge-state-')
+    const workspaceDir = await createTestTempDir('session-event-bridge-workspace-')
+    tempDirs.push(stateDir, workspaceDir)
+    const manager = await ProjectSessionManager.create({
+      webhookPort: null,
+      globalStatePath: join(stateDir, 'global.json')
+    })
+    const project = await manager.createProject({ name: 'Demo', path: workspaceDir })
+    const session = await manager.createSession({ projectId: project.id, type: 'claude-code', title: 'Claude' })
+    await manager.markRuntimeAlive(session.id, 'external-1')
+
+    const applied: SessionStatePatchEvent[] = []
+    const bridge = new SessionEventBridge(manager, {
+      applyProviderStatePatch: async (patch) => {
+        applied.push(patch)
+      }
+    })
+    bridges.push(bridge)
+
+    const port = await bridge.start()
+    const secret = bridge.issueSessionSecret(session.id)
+    const headers = {
+      'x-stoa-secret': secret,
+      'x-stoa-session-id': session.id,
+      'x-stoa-project-id': project.id
+    }
+
+    await postClaudeHook(port, {
+      hook_event_name: 'PreToolUse',
+      tool_name: 'Bash',
+      tool_use_id: 'call_123',
+      model: 'claude-sonnet'
+    }, headers)
+
+    expect(applied.length).toBeGreaterThanOrEqual(1)
+    expect(applied[0]!.intent).toBe('agent.tool_started')
+  })
+
+  test('forwards model and snippet as evidence metadata', async () => {
+    const stateDir = await createTestTempDir('session-event-bridge-evidence-')
+    const workspaceDir = await createTestTempDir('session-event-bridge-evidence-ws-')
+    tempDirs.push(stateDir, workspaceDir)
+    const manager = await ProjectSessionManager.create({
+      webhookPort: null,
+      globalStatePath: join(stateDir, 'global.json')
+    })
+    const project = await manager.createProject({ name: 'Demo', path: workspaceDir })
+    const session = await manager.createSession({ projectId: project.id, type: 'claude-code', title: 'Claude' })
+    await manager.markRuntimeAlive(session.id, 'external-1')
+
+    const ingested: ObservationEvent[] = []
+    const bridge = new SessionEventBridge(
+      manager,
+      {
+        applyProviderStatePatch: async () => {}
+      },
+      {
+        ingest: (event) => {
+          ingested.push(event)
+          return true
+        }
+      }
+    )
+    bridges.push(bridge)
+
+    const port = await bridge.start()
+    const secret = bridge.issueSessionSecret(session.id)
+    const headers = {
+      'x-stoa-secret': secret,
+      'x-stoa-session-id': session.id,
+      'x-stoa-project-id': project.id
+    }
+
+    await postClaudeHook(port, {
+      hook_event_name: 'Stop',
+      last_assistant_message: 'Done with the task.'
+    }, headers)
+
+    const evidenceEvent = ingested.find(e => e.type === 'presence.complete')
+    expect(evidenceEvent).toBeDefined()
+    expect(evidenceEvent!.payload).toHaveProperty('summary')
+  })
+
   test('main shutdown path awaits bridge stop before re-triggering quit', () => {
     const indexSource = readFileSync(join(process.cwd(), 'src/main/index.ts'), 'utf8')
 

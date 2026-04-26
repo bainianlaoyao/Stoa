@@ -89,6 +89,22 @@ export class SessionEventBridge {
       summary: event.payload.summary
     }
 
+    if (event.payload.model !== undefined) {
+      payload.model = event.payload.model
+    }
+
+    if (event.payload.snippet !== undefined) {
+      payload.snippet = event.payload.snippet
+    }
+
+    if (event.payload.toolName !== undefined) {
+      payload.toolName = event.payload.toolName
+    }
+
+    if (event.payload.error !== undefined) {
+      payload.error = event.payload.error
+    }
+
     if (event.payload.externalSessionId !== undefined) {
       payload.externalSessionId = event.payload.externalSessionId
     }
