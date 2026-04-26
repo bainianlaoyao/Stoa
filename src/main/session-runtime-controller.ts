@@ -78,23 +78,8 @@ export class SessionRuntimeController implements SessionRuntimeManager {
   }
 
   private finishSessionStateChange(sessionId: string): void {
-    this.pushSessionEvent(sessionId)
     this.pushObservabilitySnapshots(sessionId)
     this.onSessionStateChanged?.()
-  }
-
-  private pushSessionEvent(sessionId: string): void {
-    const win = this.getWindow()
-    if (!win || win.isDestroyed()) {
-      return
-    }
-
-    const session = this.manager.snapshot().sessions.find((candidate) => candidate.id === sessionId)
-    if (!session) {
-      return
-    }
-
-    win.webContents.send(IPC_CHANNELS.sessionEvent, { session })
   }
 
   private pushObservabilitySnapshots(sessionId: string): void {

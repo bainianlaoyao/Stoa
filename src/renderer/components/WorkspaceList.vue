@@ -2,13 +2,13 @@
 import { useI18n } from 'vue-i18n'
 import type { SessionType } from '@shared/project-session'
 import { listProviderDescriptors } from '@shared/provider-descriptors'
-import { derivePresencePhase } from '@shared/session-state-reducer'
+import type { SessionPresenceSnapshot } from '@shared/observability'
 import type { ProjectHierarchyNode } from '@renderer/stores/workspaces'
 import GlassListbox from './primitives/GlassListbox.vue'
 
 const { t } = useI18n()
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   hierarchy: ProjectHierarchyNode[]
   activeProjectId: string | null
   activeSessionId: string | null
@@ -16,7 +16,10 @@ const props = defineProps<{
   projectPath: string
   sessionTitle: string
   sessionType: SessionType
-}>()
+  sessionPresenceMap?: Record<string, SessionPresenceSnapshot>
+}>(), {
+  sessionPresenceMap: () => ({})
+})
 
 const emit = defineEmits<{
   selectProject: [projectId: string]
@@ -30,14 +33,7 @@ const emit = defineEmits<{
 }>()
 
 function presenceLabel(session: ProjectHierarchyNode['sessions'][number]): string {
-  return derivePresencePhase({
-    runtimeState: session.runtimeState,
-    agentState: session.agentState,
-    hasUnseenCompletion: session.hasUnseenCompletion,
-    runtimeExitCode: session.runtimeExitCode,
-    runtimeExitReason: session.runtimeExitReason,
-    provider: session.type
-  }).replace(/_/g, ' ')
+  return props.sessionPresenceMap[session.id]?.phase?.replace(/_/g, ' ') ?? 'ready'
 }
 
 function updateProjectName(event: Event): void {

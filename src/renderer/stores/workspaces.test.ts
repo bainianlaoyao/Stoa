@@ -37,7 +37,6 @@ function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
     sendSessionInput: vi.fn().mockResolvedValue(undefined),
     sendSessionResize: vi.fn().mockResolvedValue(undefined),
     onTerminalData: vi.fn().mockReturnValue(() => {}),
-    onSessionEvent: vi.fn().mockReturnValue(() => {}),
     getSessionPresence: vi.fn().mockResolvedValue(null),
     getProjectObservability: vi.fn().mockResolvedValue(null),
     getAppObservability: vi.fn().mockResolvedValue({
@@ -558,7 +557,10 @@ describe('project/session renderer store', () => {
         ]
       })
 
-      expect(store.sessionPresenceById).toEqual({})
+      expect(store.sessionPresenceById.session_op_1).toMatchObject({
+        sessionId: 'session_op_1',
+        runtimeState: 'alive'
+      })
       expect(store.projectObservabilityById).toEqual({})
       expect(store.appObservability).toBeNull()
 

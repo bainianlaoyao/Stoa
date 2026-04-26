@@ -10,7 +10,6 @@ export const IPC_CHANNELS = {
   sessionArchive: 'session:archive',
   sessionRestore: 'session:restore',
   sessionListArchived: 'session:list-archived',
-  sessionEvent: 'session:event',
   workspaceOpen: 'workspace:open',
   observabilityGetSessionPresence: 'observability:get-session-presence',
   observabilityGetProject: 'observability:get-project-observability',

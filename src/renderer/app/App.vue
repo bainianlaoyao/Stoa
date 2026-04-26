@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount } from 'vue'
 import { storeToRefs } from 'pinia'
-import type { OpenWorkspaceRequest, SessionType, SessionSummaryEvent } from '@shared/project-session'
+import type { OpenWorkspaceRequest, SessionType } from '@shared/project-session'
 import AppShell from '@renderer/components/AppShell.vue'
 import UpdatePrompt from '@renderer/components/update/UpdatePrompt.vue'
 import { useWorkspaceStore } from '@renderer/stores/workspaces'
@@ -97,8 +97,8 @@ async function handleOpenWorkspace(request: OpenWorkspaceRequest): Promise<void>
   }
 }
 
-let unsubscribeSessionEvent: (() => void) | null = null
 let unsubscribeUpdateState: (() => void) | null = null
+let isUnmounted = false
 
 onMounted(async () => {
   unsubscribeUpdateState = window.stoa.onUpdateState((state) => {
@@ -106,20 +106,28 @@ onMounted(async () => {
   })
 
   const bootstrapState = await window.stoa.getBootstrapState()
+  if (isUnmounted) {
+    return
+  }
+
   workspaceStore.hydrate(bootstrapState)
   await workspaceStore.hydrateObservability()
+  if (isUnmounted) {
+    workspaceStore.unsubscribeObservability()
+    return
+  }
+
   await Promise.all([
     settingsStore.loadSettings(),
     updateStore.refresh()
   ])
-
-  unsubscribeSessionEvent = window.stoa?.onSessionEvent?.((event: SessionSummaryEvent) => {
-    workspaceStore.updateSession(event.session.id, event.session)
-  })
+  if (isUnmounted) {
+    return
+  }
 })
 
 onBeforeUnmount(() => {
-  unsubscribeSessionEvent?.()
+  isUnmounted = true
   unsubscribeUpdateState?.()
   workspaceStore.unsubscribeObservability()
 })

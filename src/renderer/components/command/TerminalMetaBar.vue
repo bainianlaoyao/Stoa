@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { computed } from 'vue'
 import type { ActiveSessionViewModel } from '@shared/observability'
 import type { ProjectSummary, SessionSummary } from '@shared/project-session'
 
@@ -8,12 +7,10 @@ const props = defineProps<{
   session: SessionSummary | null
   activeViewModel?: ActiveSessionViewModel | null
 }>()
-
-const hasFallbackMeta = computed(() => Boolean(props.project && props.session))
 </script>
 
 <template>
-  <div v-if="activeViewModel || hasFallbackMeta" class="terminal-meta" data-testid="terminal-status-bar">
+  <div v-if="activeViewModel" class="terminal-meta" data-testid="terminal-status-bar">
     <template v-if="activeViewModel">
       <div class="terminal-meta__headline">
         <span class="terminal-meta__eyebrow">{{ project?.name ?? 'Active session' }}</span>
@@ -30,17 +27,6 @@ const hasFallbackMeta = computed(() => Boolean(props.project && props.session))
 
       <p v-if="activeViewModel.snippet" class="terminal-meta__summary">{{ activeViewModel.snippet }}</p>
       <p v-if="activeViewModel.explanation" class="terminal-meta__explanation">{{ activeViewModel.explanation }}</p>
-    </template>
-
-    <template v-else-if="project && session">
-      <div class="terminal-meta__group terminal-meta__group--primary">
-        <span>{{ project.id }}</span>
-        <span>{{ session.id }}</span>
-      </div>
-      <div class="terminal-meta__group terminal-meta__group--secondary">
-        <span>{{ session.type }}</span>
-        <span>{{ session.runtimeState }} / {{ session.agentState }}</span>
-      </div>
     </template>
   </div>
 </template>

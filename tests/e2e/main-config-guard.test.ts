@@ -371,10 +371,6 @@ describe('E2E: Main Process Config Guard', () => {
       expect(preloadSource).toMatch(/ipcRenderer\.on\(\s*IPC_CHANNELS\.terminalData/)
     })
 
-    it('preload registers listener for session:event channel', () => {
-      expect(preloadSource).toMatch(/ipcRenderer\.on\(\s*IPC_CHANNELS\.sessionEvent/)
-    })
-
     it('preload registers listener for observability push channels', () => {
       expect(preloadSource).toMatch(/ipcRenderer\.on\(\s*IPC_CHANNELS\.observabilitySessionPresenceChanged/)
       expect(preloadSource).toMatch(/ipcRenderer\.on\(\s*IPC_CHANNELS\.observabilityProjectChanged/)
@@ -395,10 +391,6 @@ describe('E2E: Main Process Config Guard', () => {
 
     it('main process uses webContents.send for terminal data', () => {
       expect(controllerSource).toMatch(/webContents\.send\(\s*IPC_CHANNELS\.terminalData/)
-    })
-
-    it('main process uses webContents.send for session events', () => {
-      expect(controllerSource).toMatch(/webContents\.send\(\s*IPC_CHANNELS\.sessionEvent/)
     })
   })
 })

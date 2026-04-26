@@ -122,7 +122,6 @@ function setupStoa(overrides?: Partial<typeof window.stoa>) {
     sendSessionInput: vi.fn().mockResolvedValue(undefined),
     sendSessionResize: vi.fn().mockResolvedValue(undefined),
     onTerminalData: vi.fn().mockReturnValue(() => {}),
-    onSessionEvent: vi.fn().mockReturnValue(() => {}),
     getSessionPresence: vi.fn().mockResolvedValue(null),
     getProjectObservability: vi.fn().mockResolvedValue(null),
     getAppObservability: vi.fn().mockResolvedValue({
@@ -326,21 +325,18 @@ describe('App (root)', () => {
       const store = useWorkspaceStore(pinia)
 
       expect(window.stoa.getSessionPresence).toHaveBeenCalledWith('session_1')
-      expect(window.stoa.onSessionPresenceChanged).toHaveBeenCalledOnce()
+      expect(window.stoa.onSessionPresenceChanged).toHaveBeenCalledTimes(2)
       expect(store.activeSessionPresence?.sourceSequence).toBe(2)
-      expect(sessionPresenceListeners).toHaveLength(1)
+      expect(sessionPresenceListeners).toHaveLength(2)
 
-      const sessionPresenceListener = sessionPresenceListeners[0]
-      if (!sessionPresenceListener) {
-        throw new Error('Expected session presence listener to be registered')
+      for (const sessionPresenceListener of sessionPresenceListeners) {
+        sessionPresenceListener(createSessionPresenceSnapshot({
+          phase: 'blocked',
+          blockingReason: 'permission',
+          sourceSequence: 3,
+          updatedAt: '2026-04-24T08:00:01.000Z'
+        }))
       }
-
-      sessionPresenceListener(createSessionPresenceSnapshot({
-        phase: 'blocked',
-        blockingReason: 'permission',
-        sourceSequence: 3,
-        updatedAt: '2026-04-24T08:00:01.000Z'
-      }))
       await flush()
 
       expect(store.activeSessionPresence?.phase).toBe('blocked')
@@ -707,6 +703,52 @@ describe('App (root)', () => {
   })
 
   describe('cleanup', () => {
+    it('keeps update listeners active after mount until unmount', async () => {
+      const unsubscribeUpdate = vi.fn()
+      setupStoa({
+        onUpdateState: vi.fn().mockReturnValue(unsubscribeUpdate)
+      })
+
+      wrapper = await mountApp(pinia)
+      await flush()
+
+      expect(unsubscribeUpdate).not.toHaveBeenCalled()
+    })
+
+    it('keeps observability listeners active after mount until unmount', async () => {
+      const unsubscribeSessionPresence = vi.fn()
+      const unsubscribeProjectObservability = vi.fn()
+      const unsubscribeAppObservability = vi.fn()
+      setupStoa({
+        getBootstrapState: vi.fn().mockResolvedValue({
+          activeProjectId: 'project_1',
+          activeSessionId: 'session_1',
+          terminalWebhookPort: 0,
+          projects: [{ id: 'project_1', name: 'test', path: '/test', createdAt: 't', updatedAt: 't' }],
+          sessions: [createSessionSummary({
+            id: 'session_1',
+            projectId: 'project_1',
+            type: 'claude-code',
+            agentState: 'working',
+            title: 'test session',
+            summary: 'running',
+            recoveryMode: 'resume-external',
+            externalSessionId: 'claude-session-1'
+          })]
+        }),
+        onSessionPresenceChanged: vi.fn().mockReturnValue(unsubscribeSessionPresence),
+        onProjectObservabilityChanged: vi.fn().mockReturnValue(unsubscribeProjectObservability),
+        onAppObservabilityChanged: vi.fn().mockReturnValue(unsubscribeAppObservability)
+      })
+
+      wrapper = await mountApp(pinia)
+      await flush()
+
+      expect(unsubscribeSessionPresence).not.toHaveBeenCalled()
+      expect(unsubscribeProjectObservability).not.toHaveBeenCalled()
+      expect(unsubscribeAppObservability).not.toHaveBeenCalled()
+    })
+
     it('unsubscribes update listeners on unmount', async () => {
       const unsubscribeUpdate = vi.fn()
       setupStoa({
@@ -752,7 +794,7 @@ describe('App (root)', () => {
       wrapper.unmount()
       wrapper = undefined
 
-      expect(unsubscribeSessionPresence).toHaveBeenCalledOnce()
+      expect(unsubscribeSessionPresence).toHaveBeenCalledTimes(2)
       expect(unsubscribeProjectObservability).toHaveBeenCalledOnce()
       expect(unsubscribeAppObservability).toHaveBeenCalledOnce()
     })

@@ -69,6 +69,7 @@ describe('renderer observability view models', () => {
       sessionFixture({ agentState: 'idle' }),
       presenceFixture({
         phase: 'ready',
+        lastEventAt: '2026-04-24T07:58:00.000Z',
         updatedAt: '2026-04-24T07:58:00.000Z'
       }),
       NOW_ISO
@@ -103,6 +104,19 @@ describe('renderer observability view models', () => {
     expect(viewModel.tone).toBe('success')
     expect(viewModel.primaryLabel).toBe('Running')
     expect(viewModel.secondaryLabel).toBe('Sonnet')
+  })
+
+  it('uses the last event time for session row relative age', () => {
+    const viewModel = toSessionRowViewModel(
+      sessionFixture(),
+      presenceFixture({
+        lastEventAt: '2026-04-24T07:45:00.000Z',
+        updatedAt: '2026-04-24T07:59:50.000Z'
+      }),
+      NOW_ISO
+    )
+
+    expect(viewModel.updatedAgoLabel).toBe('15m ago')
   })
 
   it('maps ready rows to neutral tone', () => {
@@ -224,6 +238,7 @@ describe('renderer observability view models', () => {
       sessionFixture(),
       presenceFixture({
         lastAssistantSnippet: 'Patch applied.',
+        lastEventAt: '2026-04-24T07:59:50.000Z',
         updatedAt: '2026-04-24T07:59:50.000Z'
       }),
       NOW_ISO
@@ -233,10 +248,24 @@ describe('renderer observability view models', () => {
     expect(viewModel.lastUpdatedLabel).toBe('10s ago')
   })
 
+  it('uses the last event time for active session relative age', () => {
+    const viewModel = toActiveSessionViewModel(
+      sessionFixture(),
+      presenceFixture({
+        lastEventAt: '2026-04-24T07:45:00.000Z',
+        updatedAt: '2026-04-24T07:59:50.000Z'
+      }),
+      NOW_ISO
+    )
+
+    expect(viewModel.lastUpdatedLabel).toBe('15m ago')
+  })
+
   it('uses the assistant snippet and relative age in minutes for older sessions', () => {
     const viewModel = toActiveSessionViewModel(
       sessionFixture(),
       presenceFixture({
+        lastEventAt: '2026-04-24T07:57:01.000Z',
         updatedAt: '2026-04-24T07:57:01.000Z'
       }),
       NOW_ISO

@@ -208,10 +208,6 @@ export interface TerminalDataChunk {
   data: string
 }
 
-export interface SessionSummaryEvent {
-  session: SessionSummary
-}
-
 export interface ObservationEventListOptions {
   limit: number
   cursor?: string
@@ -231,7 +227,6 @@ export interface RendererApi {
   sendSessionInput: (sessionId: string, data: string) => Promise<void>
   sendSessionResize: (sessionId: string, cols: number, rows: number) => Promise<void>
   onTerminalData: (callback: (chunk: TerminalDataChunk) => void) => () => void
-  onSessionEvent: (callback: (event: SessionSummaryEvent) => void) => () => void
   getSessionPresence: (sessionId: string) => Promise<SessionPresenceSnapshot | null>
   getProjectObservability: (projectId: string) => Promise<ProjectObservabilitySnapshot | null>
   getAppObservability: () => Promise<AppObservabilitySnapshot | null>
