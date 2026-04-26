@@ -1,5 +1,27 @@
 import { defineBehavior } from '../contracts/testing-contracts'
 
+export const workspaceQuickAccessBehavior = defineBehavior({
+  id: 'workspace.quickAccess',
+  actor: 'user',
+  goal: 'open the active session workspace from the terminal surface in the configured IDE or the OS file browser',
+  entities: ['project', 'session', 'workspace-path', 'ide-settings'],
+  usageModes: ['active_workflow'],
+  preconditions: ['project.exists', 'session.active', 'workspace.path.exists'],
+  action: 'workspace.open',
+  expects: [
+    'terminal.workspaceQuickActionsVisible',
+    'ipc.workspaceOpenRequested',
+    'workspace.ide=vscode',
+    'workspace.fileManagerUsesOsExplorer'
+  ],
+  invalidPreconditions: ['session.missing', 'project.missing', 'workspace.path.missing'],
+  interruptions: ['workspace.pathDeletedBeforeOpen', 'ide.executableMissing'],
+  recovery: ['surfaceErrorInWorkspaceStore', 'terminalSessionRemainsMounted'],
+  observationLayers: ['ui', 'renderer-store', 'main-debug-state'],
+  risk: 'medium',
+  coverageBudget: 'high'
+})
+
 export const sessionRestoreBehavior = defineBehavior({
   id: 'session.restore',
   actor: 'user',

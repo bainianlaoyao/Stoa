@@ -7,10 +7,12 @@ import {
   sessionPresenceRunningBehavior,
   sessionTelemetryBlockedBehavior,
   sessionRestoreBehavior,
-  sessionTelemetryCompleteBehavior
+  sessionTelemetryCompleteBehavior,
+  workspaceQuickAccessBehavior
 } from '../behavior/session.behavior'
 import { defineGeneratedTestMeta } from '../contracts/testing-contracts'
 import { sessionRestoreJourney } from '../journeys/session-restore.journey'
+import { workspaceQuickAccessJourney } from '../journeys/workspace-quick-access.journey'
 import {
   sessionPresenceBlockedJourney,
   sessionPresenceFailedJourney,
@@ -41,6 +43,33 @@ describe('behavior coverage report', () => {
     })
 
     expect(report.behaviors['session.restore']?.maturity).toBe('Reachable')
+  })
+
+  it('marks workspace quick access as verified by generated Playwright metadata', () => {
+    const report = buildBehaviorCoverageReport({
+      behaviors: [workspaceQuickAccessBehavior],
+      journeys: [workspaceQuickAccessJourney],
+      generatedTests: [
+        defineGeneratedTestMeta({
+          id: 'journey.workspace.quick-access.actions',
+          behaviorIds: ['workspace.quickAccess'],
+          entities: ['project', 'session', 'workspace-path', 'ide-settings'],
+          statesCovered: ['workspace.open.ide', 'workspace.open.file-manager'],
+          interruptionsCovered: [],
+          observationLayers: ['ui', 'renderer-store', 'main-debug-state'],
+          riskBudget: 'high',
+          regressionSources: ['workspace-open-ipc', 'terminal-quick-actions']
+        })
+      ]
+    })
+
+    expect(report.behaviors['workspace.quickAccess']?.maturity).toBe('Verified')
+    expect(report.behaviors['workspace.quickAccess']?.journeyIds).toEqual([
+      'journey.workspace.quick-access.actions'
+    ])
+    expect(report.behaviors['workspace.quickAccess']?.generatedTestIds).toEqual([
+      'journey.workspace.quick-access.actions'
+    ])
   })
 
   it('marks critical behavior as Verified with generated metadata but no interruption coverage', () => {

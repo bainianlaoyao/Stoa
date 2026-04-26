@@ -29,6 +29,16 @@ export default {
       autoDetectedWith: 'Auto-detected: {path}',
       customPath: 'Custom path'
     },
+    workspaceIdeSection: {
+      title: 'Workspace quick access',
+      description: 'Choose the IDE used by active session shortcuts and optionally pin its executable path.',
+      badge: 'IDE',
+      ideLabel: 'Workspace IDE',
+      pathLabel: 'VS Code executable',
+      pathPlaceholder: 'Use system PATH',
+      browse: 'Browse',
+      selectExecutable: 'VS Code executable'
+    },
     typographySection: {
       title: 'Terminal typography',
       description: 'Keep command output legible while preserving the tighter console density.',
@@ -115,7 +125,13 @@ export default {
     externalSession: 'External Session',
     notBound: 'not bound',
     emptyTitle: 'No session to display',
-    emptyHint: 'Create a project first, then create a session under it.'
+    emptyHint: 'Create a project first, then create a session under it.',
+    quickActions: {
+      openIde: 'Open in VS Code',
+      openIdeAria: 'Open workspace in VS Code',
+      openFileManager: 'Reveal in File Browser',
+      openFileManagerAria: 'Reveal workspace in file browser'
+    }
   },
 
   activityBar: {

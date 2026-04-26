@@ -112,6 +112,7 @@ function setupStoa(overrides?: Partial<typeof window.stoa>) {
     getBootstrapState: vi.fn().mockResolvedValue({ ...mockBootstrapState, projects: [], sessions: [] }),
     createProject: vi.fn().mockResolvedValue({ ...mockCreatedProject }),
     createSession: vi.fn().mockResolvedValue({ ...mockCreatedSession }),
+    openWorkspace: vi.fn().mockResolvedValue(undefined),
     setActiveProject: vi.fn().mockResolvedValue(undefined),
     setActiveSession: vi.fn().mockResolvedValue(undefined),
     archiveSession: vi.fn().mockResolvedValue(undefined),
@@ -143,6 +144,7 @@ function setupStoa(overrides?: Partial<typeof window.stoa>) {
       terminalFontSize: 14,
       terminalFontFamily: 'JetBrains Mono',
       providers: {},
+      workspaceIde: { id: 'vscode', executablePath: '' },
       claudeDangerouslySkipPermissions: false,
       locale: 'en'
     }),
@@ -559,6 +561,38 @@ describe('App (root)', () => {
       expect(store.sessions[0].archived).toBe(true)
       expect(store.activeSessionId).toBeNull()
       expect(store.lastError).toBe('restore failed')
+    })
+  })
+
+  describe('workspace quick access', () => {
+    it('openWorkspace event calls window.stoa.openWorkspace and clears previous errors', async () => {
+      wrapper = await mountApp(pinia)
+      await flush()
+
+      const store = useWorkspaceStore(pinia)
+      store.lastError = 'previous error'
+
+      const appShell = wrapper.findComponent({ name: 'AppShell' })
+      await appShell.vm.$emit('openWorkspace', { sessionId: 's1', target: 'ide' })
+      await flush()
+
+      expect(window.stoa.openWorkspace).toHaveBeenCalledWith({ sessionId: 's1', target: 'ide' })
+      expect(store.lastError).toBeNull()
+    })
+
+    it('openWorkspace failure records the launcher error', async () => {
+      setupStoa({
+        openWorkspace: vi.fn().mockRejectedValue(new Error('VS Code executable not found'))
+      })
+
+      wrapper = await mountApp(pinia)
+      await flush()
+
+      const appShell = wrapper.findComponent({ name: 'AppShell' })
+      await appShell.vm.$emit('openWorkspace', { sessionId: 's1', target: 'ide' })
+      await flush()
+
+      expect(useWorkspaceStore(pinia).lastError).toBe('VS Code executable not found')
     })
   })
 

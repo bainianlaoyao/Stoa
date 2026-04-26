@@ -29,6 +29,16 @@ export default {
       autoDetectedWith: '\u5DF2\u81EA\u52A8\u68C0\u6D4B: {path}',
       customPath: '\u81EA\u5B9A\u4E49\u8DEF\u5F84'
     },
+    workspaceIdeSection: {
+      title: '\u5DE5\u4F5C\u533A\u5FEB\u6377\u8BBF\u95EE',
+      description: '\u9009\u62E9\u5F53\u524D\u4F1A\u8BDD\u5FEB\u6377\u64CD\u4F5C\u4F7F\u7528\u7684 IDE\uFF0C\u5E76\u53EF\u6307\u5B9A\u5176\u53EF\u6267\u884C\u6587\u4EF6\u8DEF\u5F84\u3002',
+      badge: 'IDE',
+      ideLabel: '\u5DE5\u4F5C\u533A IDE',
+      pathLabel: 'VS Code \u53EF\u6267\u884C\u6587\u4EF6',
+      pathPlaceholder: '\u4F7F\u7528\u7CFB\u7EDF PATH',
+      browse: '\u6D4F\u89C8',
+      selectExecutable: 'VS Code \u53EF\u6267\u884C\u6587\u4EF6'
+    },
     typographySection: {
       title: '\u7EC8\u7AEF\u5B57\u4F53',
       description: '\u4FDD\u6301\u547D\u4EE4\u8F93\u51FA\u6E05\u6670\u53EF\u8BFB\uFF0C\u540C\u65F6\u7EF4\u6301\u63A7\u5236\u53F0\u7D27\u51D1\u7684\u884C\u8DDD\u3002',
@@ -115,7 +125,13 @@ export default {
     externalSession: '\u5916\u90E8\u4F1A\u8BDD',
     notBound: '\u672A\u7ED1\u5B9A',
     emptyTitle: '\u6CA1\u6709\u53EF\u663E\u793A\u7684\u4F1A\u8BDD',
-    emptyHint: '\u5148\u521B\u5EFA\u9879\u76EE\uFF0C\u518D\u5728\u9879\u76EE\u4E0B\u521B\u5EFA\u4F1A\u8BDD\u3002'
+    emptyHint: '\u5148\u521B\u5EFA\u9879\u76EE\uFF0C\u518D\u5728\u9879\u76EE\u4E0B\u521B\u5EFA\u4F1A\u8BDD\u3002',
+    quickActions: {
+      openIde: '\u7528 VS Code \u6253\u5F00',
+      openIdeAria: '\u5728 VS Code \u4E2D\u6253\u5F00\u5DE5\u4F5C\u533A',
+      openFileManager: '\u5728\u6587\u4EF6\u6D4F\u89C8\u5668\u4E2D\u663E\u793A',
+      openFileManagerAria: '\u5728\u6587\u4EF6\u6D4F\u89C8\u5668\u4E2D\u663E\u793A\u5DE5\u4F5C\u533A'
+    }
   },
 
   activityBar: {

@@ -29,6 +29,7 @@ function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
     }),
     createProject: vi.fn().mockResolvedValue(null),
     createSession: vi.fn().mockResolvedValue(null),
+    openWorkspace: vi.fn().mockResolvedValue(undefined),
     setActiveProject: vi.fn().mockResolvedValue(undefined),
     setActiveSession: vi.fn().mockResolvedValue(undefined),
     archiveSession: vi.fn().mockResolvedValue(undefined),
@@ -58,6 +59,7 @@ function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
       terminalFontSize: 14,
       terminalFontFamily: 'JetBrains Mono',
       providers: {},
+      workspaceIde: { id: 'vscode', executablePath: '' },
       claudeDangerouslySkipPermissions: false,
       locale: 'en'
     }),

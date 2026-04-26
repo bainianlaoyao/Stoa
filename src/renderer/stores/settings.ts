@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
-import type { AppSettings } from '@shared/project-session'
+import type { AppSettings, WorkspaceIdeSettings } from '@shared/project-session'
 import { BUILTIN_FONT_FAMILIES } from '@shared/project-session'
 import i18n, { SUPPORTED_LOCALES, DEFAULT_LOCALE } from '@renderer/i18n'
 import type { SupportedLocale } from '@renderer/i18n'
@@ -10,6 +10,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const terminalFontSize = ref(14)
   const terminalFontFamily = ref('JetBrains Mono')
   const providers = ref<Record<string, string>>({})
+  const workspaceIde = ref<WorkspaceIdeSettings>({ id: 'vscode', executablePath: '' })
   const claudeDangerouslySkipPermissions = ref(false)
   const locale = ref<string>(DEFAULT_LOCALE)
   const loaded = ref(false)
@@ -23,6 +24,7 @@ export const useSettingsStore = defineStore('settings', () => {
         terminalFontFamily.value = settings.terminalFontFamily
       }
       providers.value = { ...settings.providers }
+      workspaceIde.value = { ...settings.workspaceIde }
       claudeDangerouslySkipPermissions.value = settings.claudeDangerouslySkipPermissions === true
       if (settings.locale && SUPPORTED_LOCALES.includes(settings.locale as SupportedLocale)) {
         locale.value = settings.locale
@@ -42,6 +44,8 @@ export const useSettingsStore = defineStore('settings', () => {
       terminalFontFamily.value = BUILTIN_FONT_FAMILIES.includes(value as any) ? value : 'JetBrains Mono'
     } else if (key === 'providers' && typeof value === 'object' && value !== null) {
       providers.value = { ...(value as Record<string, string>) }
+    } else if (key === 'workspaceIde' && isWorkspaceIdeSettings(value)) {
+      workspaceIde.value = { ...value }
     } else if (key === 'claudeDangerouslySkipPermissions' && typeof value === 'boolean') {
       claudeDangerouslySkipPermissions.value = value
     } else if (key === 'locale' && typeof value === 'string') {
@@ -78,8 +82,17 @@ export const useSettingsStore = defineStore('settings', () => {
     i18n.global.locale.value = newLocale as 'en' | 'zh-CN'
   }
 
+  function isWorkspaceIdeSettings(value: unknown): value is WorkspaceIdeSettings {
+    return typeof value === 'object'
+      && value !== null
+      && 'id' in value
+      && 'executablePath' in value
+      && value.id === 'vscode'
+      && typeof value.executablePath === 'string'
+  }
+
   return {
-    shellPath, terminalFontSize, terminalFontFamily, providers, claudeDangerouslySkipPermissions, locale, loaded,
+    shellPath, terminalFontSize, terminalFontFamily, providers, workspaceIde, claudeDangerouslySkipPermissions, locale, loaded,
     loadSettings, updateSetting, detectAndSetShell, detectAndSetProvider,
     pickFolder, pickFile, applyLocale
   }

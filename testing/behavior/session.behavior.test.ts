@@ -7,10 +7,20 @@ import {
   sessionPresenceRunningBehavior,
   sessionRestoreBehavior,
   sessionTelemetryBlockedBehavior,
-  sessionTelemetryCompleteBehavior
+  sessionTelemetryCompleteBehavior,
+  workspaceQuickAccessBehavior
 } from './session.behavior'
 
 describe('session behavior assets', () => {
+  it('declares workspace quick access from the active terminal surface', () => {
+    expect(workspaceQuickAccessBehavior.id).toBe('workspace.quickAccess')
+    expect(workspaceQuickAccessBehavior.entities).toEqual(['project', 'session', 'workspace-path', 'ide-settings'])
+    expect(workspaceQuickAccessBehavior.expects).toContain('workspace.ide=vscode')
+    expect(workspaceQuickAccessBehavior.expects).toContain('workspace.fileManagerUsesOsExplorer')
+    expect(workspaceQuickAccessBehavior.invalidPreconditions).toContain('workspace.path.missing')
+    expect(workspaceQuickAccessBehavior.recovery).toContain('terminalSessionRemainsMounted')
+  })
+
   it('marks session.restore as critical and recovery-oriented', () => {
     expect(sessionRestoreBehavior.id).toBe('session.restore')
     expect(sessionRestoreBehavior.coverageBudget).toBe('critical')

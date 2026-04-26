@@ -6,7 +6,7 @@ import TerminalViewport from '@renderer/components/TerminalViewport.vue'
 import { useWorkspaceStore } from '@renderer/stores/workspaces'
 import { toSessionRowViewModel } from '@renderer/stores/observability-view-models'
 import { buildSessionPresenceSnapshot } from '@shared/observability-projection'
-import type { ProjectSummary, SessionSummary } from '@shared/project-session'
+import type { OpenWorkspaceRequest, ProjectSummary, SessionSummary } from '@shared/project-session'
 import type { ProjectHierarchyNode } from '@renderer/stores/workspaces'
 
 const props = defineProps<{
@@ -23,6 +23,7 @@ const emit = defineEmits<{
   createProject: [payload: { name: string; path: string }]
   createSession: [payload: { projectId: string; type: string; title: string }]
   archiveSession: [sessionId: string]
+  openWorkspace: [request: OpenWorkspaceRequest]
 }>()
 
 const workspaceStore = useWorkspaceStore()
@@ -63,7 +64,11 @@ const sessionRowViewModels = computed(() => {
           @archive-session="emit('archiveSession', $event)"
         />
 
-        <TerminalViewport :project="activeProject" :session="activeSession" />
+        <TerminalViewport
+          :project="activeProject"
+          :session="activeSession"
+          @open-workspace="emit('openWorkspace', $event)"
+        />
       </div>
     </div>
   </section>

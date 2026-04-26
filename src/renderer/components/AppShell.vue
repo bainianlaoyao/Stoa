@@ -5,7 +5,7 @@ import TitleBar from './TitleBar.vue'
 import CommandSurface from './command/CommandSurface.vue'
 import ArchiveSurface from './archive/ArchiveSurface.vue'
 import SettingsSurface from './settings/SettingsSurface.vue'
-import type { ProjectSummary, SessionSummary } from '@shared/project-session'
+import type { OpenWorkspaceRequest, ProjectSummary, SessionSummary } from '@shared/project-session'
 import type { ProjectHierarchyNode } from '@renderer/stores/workspaces'
 import type { AppSurface } from './GlobalActivityBar.vue'
 
@@ -24,6 +24,7 @@ const emit = defineEmits<{
   createSession: [payload: { projectId: string; type: string; title: string }]
   archiveSession: [sessionId: string]
   restoreSession: [sessionId: string]
+  openWorkspace: [request: OpenWorkspaceRequest]
 }>()
 
 const activeSurface = ref<AppSurface>('command')
@@ -59,6 +60,7 @@ const archivedSessions = computed(() => {
           @create-project="emit('createProject', $event)"
           @create-session="emit('createSession', $event)"
           @archive-session="emit('archiveSession', $event)"
+          @open-workspace="emit('openWorkspace', $event)"
         />
         <ArchiveSurface
           v-else-if="activeSurface === 'archive'"

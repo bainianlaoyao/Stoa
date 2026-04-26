@@ -22,6 +22,10 @@ const fontFamilyOptions = [
   { value: 'Cascadia Mono', label: 'Cascadia Mono' }
 ]
 
+const workspaceIdeOptions = [
+  { value: 'vscode', label: 'VS Code' }
+]
+
 const languageOptions = SUPPORTED_LOCALES.map((loc) => ({
   value: loc,
   label: t(`language.${loc}`)
@@ -37,6 +41,25 @@ async function handleBrowse(): Promise<void> {
   if (path) {
     await store.updateSetting('shellPath', path)
     detectedShell.value = null
+  }
+}
+
+async function handleWorkspaceIdeBrowse(): Promise<void> {
+  const path = await store.pickFile({ title: t('general.workspaceIdeSection.selectExecutable') })
+  if (path) {
+    await store.updateSetting('workspaceIde', {
+      id: store.workspaceIde.id,
+      executablePath: path
+    })
+  }
+}
+
+function handleWorkspaceIdeChange(value: string): void {
+  if (value === 'vscode') {
+    void store.updateSetting('workspaceIde', {
+      id: value,
+      executablePath: store.workspaceIde.executablePath
+    })
   }
 }
 
@@ -93,6 +116,36 @@ async function handleLanguageChange(value: string): Promise<void> {
         </p>
         <p v-else-if="store.shellPath && store.shellPath !== detectedShell" class="settings-item__hint">{{ t('general.shellSection.customPath') }}</p>
         <p v-else-if="detectedShell" class="settings-item__hint settings-item__hint--success">{{ t('general.shellSection.autoDetected') }}</p>
+      </section>
+
+      <section class="settings-card" aria-label="Workspace quick access">
+        <div class="settings-card__header">
+          <div>
+            <h4 class="settings-card__title">{{ t('general.workspaceIdeSection.title') }}</h4>
+            <p class="settings-card__description">{{ t('general.workspaceIdeSection.description') }}</p>
+          </div>
+          <span class="settings-card__badge">{{ t('general.workspaceIdeSection.badge') }}</span>
+        </div>
+
+        <GlassFormField
+          :label="t('general.workspaceIdeSection.ideLabel')"
+          type="select"
+          :model-value="store.workspaceIde.id"
+          :options="workspaceIdeOptions"
+          data-settings-field="workspaceIdeId"
+          @update:model-value="handleWorkspaceIdeChange"
+        />
+
+        <GlassPathField
+          data-settings-field="workspaceIdeExecutablePath"
+          :label="t('general.workspaceIdeSection.pathLabel')"
+          :model-value="store.workspaceIde.executablePath"
+          :placeholder="t('general.workspaceIdeSection.pathPlaceholder')"
+          mono
+          :browse-label="t('general.workspaceIdeSection.browse')"
+          @update:model-value="store.updateSetting('workspaceIde', { id: store.workspaceIde.id, executablePath: $event })"
+          @browse="handleWorkspaceIdeBrowse"
+        />
       </section>
 
       <section class="settings-card" aria-label="Terminal font size">

@@ -11,6 +11,7 @@ function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
     getBootstrapState: vi.fn().mockResolvedValue({ activeProjectId: null, activeSessionId: null, terminalWebhookPort: 0, projects: [], sessions: [] }),
     createProject: vi.fn().mockResolvedValue(null),
     createSession: vi.fn().mockResolvedValue(null),
+    openWorkspace: vi.fn().mockResolvedValue(undefined),
     archiveSession: vi.fn().mockResolvedValue(undefined),
     restoreSession: vi.fn().mockResolvedValue(undefined),
     listArchivedSessions: vi.fn().mockResolvedValue([]),
@@ -41,6 +42,7 @@ function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
       terminalFontSize: 14,
       terminalFontFamily: 'JetBrains Mono',
       providers: {},
+      workspaceIde: { id: 'vscode', executablePath: '' },
       claudeDangerouslySkipPermissions: false,
       locale: 'en'
     }),
@@ -113,6 +115,8 @@ describe('GeneralSettings', () => {
       attachTo: document.body
     })
     expect(wrapper.find('[data-settings-field="shellPath"]').exists()).toBe(true)
+    expect(wrapper.find('[data-settings-field="workspaceIdeId"]').exists()).toBe(true)
+    expect(wrapper.find('[data-settings-field="workspaceIdeExecutablePath"]').exists()).toBe(true)
     expect(wrapper.find('[data-settings-field="terminalFontFamily"]').exists()).toBe(true)
     expect(wrapper.find('[data-settings-field="terminalFontSize"]').exists()).toBe(true)
   })
@@ -125,6 +129,7 @@ describe('GeneralSettings', () => {
 
     expect(wrapper.find('.settings-panel__title').text()).toBe('Shell and terminal defaults')
     expect(wrapper.text()).toContain('Shell executable')
+    expect(wrapper.text()).toContain('Workspace quick access')
     expect(wrapper.text()).toContain('Terminal typography')
   })
 
@@ -170,6 +175,46 @@ describe('GeneralSettings', () => {
 
     expect(pickFileMock).toHaveBeenCalledWith({ title: 'Shell executable' })
     expect(setSettingMock).toHaveBeenCalledWith('shellPath', '/usr/bin/zsh')
+  })
+
+  it('renders VS Code as the only workspace IDE option', async () => {
+    const wrapper = mount(GeneralSettings, {
+      global: { plugins: [createPinia()] },
+      attachTo: document.body
+    })
+
+    const field = wrapper.find('[data-settings-field="workspaceIdeId"]')
+    const button = field.find('[data-testid="glass-listbox-button"]')
+    await button.trigger('click')
+    await nextTick()
+
+    const options = field.findAll('li.glass-listbox__option')
+    expect(options.map((option) => option.text())).toEqual(['VS Code'])
+  })
+
+  it('clicking workspace IDE Browse updates workspaceIde executablePath', async () => {
+    const pickFileMock = vi.fn().mockResolvedValue('C:/Users/dev/AppData/Local/Programs/Microsoft VS Code/Code.exe')
+    const setSettingMock = vi.fn().mockResolvedValue(undefined)
+    setupVibecodingMock({
+      pickFile: pickFileMock,
+      setSetting: setSettingMock
+    })
+
+    const wrapper = mount(GeneralSettings, {
+      global: { plugins: [createPinia()] },
+      attachTo: document.body
+    })
+
+    const browseBtn = wrapper.find('[data-settings-field="workspaceIdeExecutablePath"] .btn-ghost')
+    await browseBtn.trigger('click')
+    await nextTick()
+    await nextTick()
+
+    expect(pickFileMock).toHaveBeenCalledWith({ title: 'VS Code executable' })
+    expect(setSettingMock).toHaveBeenCalledWith('workspaceIde', {
+      id: 'vscode',
+      executablePath: 'C:/Users/dev/AppData/Local/Programs/Microsoft VS Code/Code.exe'
+    })
   })
 
   it('changing font size select calls store.updateSetting with terminalFontSize', async () => {

@@ -3,7 +3,8 @@ import { dirname, resolve } from 'node:path'
 import { sessionRestoreBehavior } from '../behavior/session.behavior.ts'
 import {
   generateClaudeLifecyclePlaywrightSkeleton,
-  generatePlaywrightSkeleton
+  generatePlaywrightSkeleton,
+  generateWorkspaceQuickAccessPlaywrightSkeleton
 } from './generate-playwright.ts'
 import { sessionRestoreJourney } from '../journeys/session-restore.journey.ts'
 import { archiveTopology } from '../topology/archive.topology.ts'
@@ -21,3 +22,7 @@ await writeFile(outputPath, generated, 'utf8')
 const claudeLifecycleOutputPath = resolve('tests/generated/playwright/session-telemetry-claude-lifecycle.generated.spec.ts')
 await mkdir(dirname(claudeLifecycleOutputPath), { recursive: true })
 await writeFile(claudeLifecycleOutputPath, generateClaudeLifecyclePlaywrightSkeleton(), 'utf8')
+
+const workspaceQuickAccessOutputPath = resolve('tests/generated/playwright/workspace-quick-access.generated.spec.ts')
+await mkdir(dirname(workspaceQuickAccessOutputPath), { recursive: true })
+await writeFile(workspaceQuickAccessOutputPath, generateWorkspaceQuickAccessPlaywrightSkeleton(), 'utf8')

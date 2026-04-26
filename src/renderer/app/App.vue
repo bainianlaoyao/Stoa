@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount } from 'vue'
 import { storeToRefs } from 'pinia'
-import type { SessionType, SessionSummaryEvent } from '@shared/project-session'
+import type { OpenWorkspaceRequest, SessionType, SessionSummaryEvent } from '@shared/project-session'
 import AppShell from '@renderer/components/AppShell.vue'
 import UpdatePrompt from '@renderer/components/update/UpdatePrompt.vue'
 import { useWorkspaceStore } from '@renderer/stores/workspaces'
@@ -88,6 +88,15 @@ async function handleRestoreSession(sessionId: string): Promise<void> {
   }
 }
 
+async function handleOpenWorkspace(request: OpenWorkspaceRequest): Promise<void> {
+  workspaceStore.clearError()
+  try {
+    await window.stoa.openWorkspace(request)
+  } catch (err) {
+    workspaceStore.lastError = err instanceof Error ? err.message : String(err)
+  }
+}
+
 let unsubscribeSessionEvent: (() => void) | null = null
 let unsubscribeUpdateState: (() => void) | null = null
 
@@ -131,6 +140,7 @@ onBeforeUnmount(() => {
       @create-session="handleSessionCreate"
       @archive-session="handleArchiveSession"
       @restore-session="handleRestoreSession"
+      @open-workspace="handleOpenWorkspace"
     />
     <UpdatePrompt
       :visible="shouldShowPrompt"

@@ -197,6 +197,22 @@ describe('TerminalViewport', () => {
     expect(wrapper.find('.terminal-viewport__xterm-mount').exists()).toBe(true)
   })
 
+  test('renders workspace quick actions and forwards openWorkspace requests', async () => {
+    const { default: TerminalViewport } = await import('./TerminalViewport.vue')
+    const wrapper = mount(TerminalViewport, {
+      props: { project: baseProject, session: baseSession },
+    })
+    await flushTerminal()
+
+    expect(wrapper.find('[data-testid="workspace.quick-actions"]').exists()).toBe(true)
+
+    await wrapper.get('[data-testid="workspace.open-file-manager"]').trigger('click')
+
+    expect(wrapper.emitted('openWorkspace')).toEqual([
+      [{ sessionId: 'session_op_1', target: 'file-manager' }]
+    ])
+  })
+
   test('mounts the running xterm surface inside a visual shell when session is running', async () => {
     const { default: TerminalViewport } = await import('./TerminalViewport.vue')
     const wrapper = mount(TerminalViewport, {

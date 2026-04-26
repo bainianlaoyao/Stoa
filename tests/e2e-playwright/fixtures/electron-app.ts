@@ -3,7 +3,7 @@ import type { ChildProcess } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { BootstrapState, CanonicalSessionEvent } from '@shared/project-session'
+import type { BootstrapState, CanonicalSessionEvent, OpenWorkspaceRequest } from '@shared/project-session'
 import { createTestTempDir } from '../../../testing/test-temp'
 
 export interface LaunchOptions {
@@ -32,6 +32,8 @@ interface MainE2EDebugApi {
   queueDialogPickFolder: (path: string | null) => void
   getTerminalReplay: (sessionId: string) => Promise<string>
   appendTerminalData: (sessionId: string, data: string) => Promise<void>
+  getWorkspaceOpenRequests: () => OpenWorkspaceRequest[]
+  clearWorkspaceOpenRequests: () => void
 }
 
 export async function createStateDir(prefix = 'stoa-playwright-'): Promise<string> {
@@ -222,6 +224,26 @@ export async function queueNextFolderPick(
     }).__VIBECODING_MAIN_E2E__
     api?.queueDialogPickFolder(nextPath)
   }, path)
+}
+
+export async function clearWorkspaceOpenRequests(electronApp: ElectronApplication): Promise<void> {
+  await electronApp.evaluate(async () => {
+    const api = (globalThis as typeof globalThis & {
+      __VIBECODING_MAIN_E2E__?: MainE2EDebugApi
+    }).__VIBECODING_MAIN_E2E__
+    api?.clearWorkspaceOpenRequests()
+  })
+}
+
+export async function getWorkspaceOpenRequests(
+  electronApp: ElectronApplication
+): Promise<OpenWorkspaceRequest[]> {
+  return await electronApp.evaluate(async () => {
+    const api = (globalThis as typeof globalThis & {
+      __VIBECODING_MAIN_E2E__?: MainE2EDebugApi
+    }).__VIBECODING_MAIN_E2E__
+    return api?.getWorkspaceOpenRequests() ?? []
+  })
 }
 
 export async function postWebhookEvent(options: {

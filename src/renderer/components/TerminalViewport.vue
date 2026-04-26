@@ -4,13 +4,18 @@ import '@xterm/xterm/css/xterm.css'
 import { createTerminalRuntime, installScrollbackGuard } from '@renderer/terminal/xterm-runtime'
 import { useSettingsStore } from '@renderer/stores/settings'
 import { useI18n } from 'vue-i18n'
+import WorkspaceQuickActions from './command/WorkspaceQuickActions.vue'
 import type { FitAddon } from '@xterm/addon-fit'
 import type { IDisposable, Terminal } from '@xterm/xterm'
-import type { ProjectSummary, SessionSummary, TerminalDataChunk } from '@shared/project-session'
+import type { OpenWorkspaceRequest, ProjectSummary, SessionSummary, TerminalDataChunk } from '@shared/project-session'
 
 const props = defineProps<{
   project: ProjectSummary | null
   session: SessionSummary | null
+}>()
+
+const emit = defineEmits<{
+  openWorkspace: [request: OpenWorkspaceRequest]
 }>()
 
 const terminalContainer = useTemplateRef<HTMLDivElement>('terminalContainer')
@@ -248,6 +253,11 @@ onBeforeUnmount(disposeTerminal)
   <section class="terminal-viewport" data-testid="terminal-viewport">
     <template v-if="project && session">
       <div class="terminal-viewport__xterm" data-testid="terminal-xterm">
+        <WorkspaceQuickActions
+          :project="project"
+          :session="session"
+          @open-workspace="emit('openWorkspace', $event)"
+        />
         <div class="terminal-viewport__shell" data-testid="terminal-shell">
           <div class="terminal-viewport__xterm-mount" ref="terminalContainer" data-testid="terminal-xterm-mount" />
         </div>
@@ -282,6 +292,9 @@ onBeforeUnmount(disposeTerminal)
   height: 100%;
   width: 100%;
   min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 8px;
 }
 
 .terminal-viewport__shell {

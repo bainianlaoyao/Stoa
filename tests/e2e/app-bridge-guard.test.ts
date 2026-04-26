@@ -62,6 +62,7 @@ function createStoaMock(overrides?: Partial<typeof window.stoa>): typeof window.
     getBootstrapState: vi.fn().mockResolvedValue({ ...mockBootstrapState }),
     createProject: vi.fn().mockResolvedValue({ ...mockCreatedProject }),
     createSession: vi.fn().mockResolvedValue({ ...mockCreatedSession }),
+    openWorkspace: vi.fn().mockResolvedValue(undefined),
     setActiveProject: vi.fn().mockResolvedValue(undefined),
     setActiveSession: vi.fn().mockResolvedValue(undefined),
     archiveSession: vi.fn().mockResolvedValue(undefined),
@@ -91,6 +92,7 @@ function createStoaMock(overrides?: Partial<typeof window.stoa>): typeof window.
       terminalFontSize: 14,
       terminalFontFamily: 'JetBrains Mono',
       providers: {},
+      workspaceIde: { id: 'vscode', executablePath: '' },
       claudeDangerouslySkipPermissions: false,
       locale: 'en'
     }),

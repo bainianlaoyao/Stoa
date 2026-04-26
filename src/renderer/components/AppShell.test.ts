@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createPinia } from 'pinia'
 import AppShell from './AppShell.vue'
+import CommandSurface from './command/CommandSurface.vue'
 import type { ProjectSummary, RendererApi, SessionSummary } from '@shared/project-session'
 
 const baseProject: ProjectSummary = {
@@ -46,6 +47,7 @@ describe('AppShell', () => {
       }),
       createProject: vi.fn().mockResolvedValue(baseProject),
       createSession: vi.fn().mockResolvedValue(baseSession),
+      openWorkspace: vi.fn().mockResolvedValue(undefined),
       archiveSession: vi.fn().mockResolvedValue(undefined),
       restoreSession: vi.fn().mockResolvedValue(undefined),
       listArchivedSessions: vi.fn().mockResolvedValue([]),
@@ -77,6 +79,7 @@ describe('AppShell', () => {
         terminalFontSize: 14,
         terminalFontFamily: 'JetBrains Mono',
         providers: {},
+        workspaceIde: { id: 'vscode', executablePath: '' },
         claudeDangerouslySkipPermissions: false,
         locale: 'en'
       }),
@@ -293,5 +296,35 @@ describe('AppShell', () => {
     await wrapper.get('[data-archive-restore="session-archived"]').trigger('click')
 
     expect(wrapper.emitted('restoreSession')).toEqual([['session-archived']])
+  })
+
+  it('forwards openWorkspace from command surface', async () => {
+    const wrapper = mount(AppShell, {
+      global: { plugins: [createPinia()] },
+      props: {
+        hierarchy: [{
+          ...baseProject,
+          active: true,
+          archivedSessions: [],
+          sessions: [{
+            ...baseSession,
+            active: true
+          }]
+        }],
+        activeProjectId: baseProject.id,
+        activeSessionId: baseSession.id,
+        activeProject: baseProject,
+        activeSession: baseSession
+      }
+    })
+
+    await wrapper.findComponent(CommandSurface).vm.$emit('openWorkspace', {
+      sessionId: 'session-1',
+      target: 'ide'
+    })
+
+    expect(wrapper.emitted('openWorkspace')).toEqual([
+      [{ sessionId: 'session-1', target: 'ide' }]
+    ])
   })
 })

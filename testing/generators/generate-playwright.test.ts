@@ -4,7 +4,8 @@ import { sessionRestoreJourney } from '../journeys/session-restore.journey'
 import { archiveTopology } from '../topology/archive.topology'
 import {
   generateClaudeLifecyclePlaywrightSkeleton,
-  generatePlaywrightSkeleton
+  generatePlaywrightSkeleton,
+  generateWorkspaceQuickAccessPlaywrightSkeleton
 } from './generate-playwright'
 
 describe('playwright skeleton generator', () => {
@@ -66,5 +67,21 @@ describe('playwright skeleton generator', () => {
     expect(generated).toContain("data-session-status-testid', 'session-status-failed'")
     expect(generated).toContain("body: { hook_event_name: 'PreToolUse' }")
     expect(generated).toContain("event_type: 'runtime.exited_failed'")
+  })
+
+  it('generates a deterministic workspace quick access skeleton', () => {
+    const generated = generateWorkspaceQuickAccessPlaywrightSkeleton()
+
+    expect(generated).toContain('AUTO-GENERATED FILE. DO NOT EDIT.')
+    expect(generated).toContain("id: 'journey.workspace.quick-access.actions'")
+    expect(generated).toContain("behaviorIds: ['workspace.quickAccess']")
+    expect(generated).toContain("statesCovered: ['workspace.open.ide', 'workspace.open.file-manager']")
+    expect(generated).toContain('clearWorkspaceOpenRequests')
+    expect(generated).toContain('getWorkspaceOpenRequests')
+    expect(generated).toContain("app.page.getByTestId('workspace.quick-actions')")
+    expect(generated).toContain("app.page.getByTestId('workspace.open-ide').click()")
+    expect(generated).toContain("app.page.getByTestId('workspace.open-file-manager').click()")
+    expect(generated).toContain("{ sessionId, target: 'ide' }")
+    expect(generated).toContain("{ sessionId, target: 'file-manager' }")
   })
 })

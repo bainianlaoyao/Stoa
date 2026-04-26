@@ -4,6 +4,7 @@ import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import CommandSurface from './CommandSurface.vue'
 import WorkspaceHierarchyPanel from './WorkspaceHierarchyPanel.vue'
+import TerminalViewport from '@renderer/components/TerminalViewport.vue'
 import { useWorkspaceStore } from '@renderer/stores/workspaces'
 import type { ProjectHierarchyNode } from '@renderer/stores/workspaces'
 import type { SessionPresenceSnapshot } from '@shared/observability'
@@ -193,5 +194,27 @@ describe('CommandSurface', () => {
     await wrapper.findComponent(WorkspaceHierarchyPanel).vm.$emit('archiveSession', 'session_1')
 
     expect(wrapper.emitted('archiveSession')).toEqual([['session_1']])
+  })
+
+  it('forwards openWorkspace from TerminalViewport', async () => {
+    const wrapper = mount(CommandSurface, {
+      global: { plugins: [createPinia()] },
+      props: {
+        hierarchy,
+        activeProject,
+        activeSession,
+        activeProjectId: 'project_alpha',
+        activeSessionId: 'session_1'
+      }
+    })
+
+    await wrapper.findComponent(TerminalViewport).vm.$emit('openWorkspace', {
+      sessionId: 'session_1',
+      target: 'ide'
+    })
+
+    expect(wrapper.emitted('openWorkspace')).toEqual([
+      [{ sessionId: 'session_1', target: 'ide' }]
+    ])
   })
 })

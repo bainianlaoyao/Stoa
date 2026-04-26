@@ -186,19 +186,8 @@ export class ProjectSessionManager {
     this.persistDisabled = persistDisabled
     this.hasPersistedProjects = initialState.projects.length > 0
     this.settings = persistedSettings
-      ? {
-          ...DEFAULT_SETTINGS,
-          ...persistedSettings,
-          providers: {
-            ...DEFAULT_SETTINGS.providers,
-            ...persistedSettings.providers
-          },
-          workspaceIde: {
-            ...DEFAULT_SETTINGS.workspaceIde,
-            ...persistedSettings.workspaceIde
-          }
-        }
-      : { ...DEFAULT_SETTINGS }
+      ? structuredClone(persistedSettings)
+      : structuredClone(DEFAULT_SETTINGS)
   }
 
   static async create(options: ProjectSessionManagerOptions): Promise<ProjectSessionManager> {

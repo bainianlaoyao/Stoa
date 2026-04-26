@@ -32,6 +32,7 @@ let sessionInputRouter: SessionInputRouter | null = null
 let observationStore: InMemoryObservationStore | null = null
 let observabilityService: ObservabilityService | null = null
 let updateService: UpdateService | null = null
+const e2eWorkspaceOpenRequests: OpenWorkspaceRequest[] = []
 let isQuittingAfterBridgeStop = false
 const pendingE2EPickFolders: Array<string | null> = []
 const isE2EMode = process.env.VIBECODING_E2E === '1'
@@ -134,6 +135,8 @@ interface MainE2EDebugApi {
   getTerminalReplay: (sessionId: string) => Promise<string>
   appendTerminalData: (sessionId: string, data: string) => Promise<void>
   getDebugModeActive: () => boolean
+  getWorkspaceOpenRequests: () => OpenWorkspaceRequest[]
+  clearWorkspaceOpenRequests: () => void
 }
 
 declare global {
@@ -164,6 +167,12 @@ function installMainE2EDebugApi(): void {
     },
     getDebugModeActive() {
       return debugModeActive
+    },
+    getWorkspaceOpenRequests() {
+      return e2eWorkspaceOpenRequests.map((request) => ({ ...request }))
+    },
+    clearWorkspaceOpenRequests() {
+      e2eWorkspaceOpenRequests.length = 0
     }
   }
 }
@@ -653,6 +662,11 @@ app.whenReady().then(async () => {
   ipcMain.handle(IPC_CHANNELS.workspaceOpen, async (_event, payload: OpenWorkspaceRequest) => {
     if (!projectSessionManager) {
       throw new Error('Unable to open workspace: session manager is not available.')
+    }
+
+    if (isE2EMode) {
+      e2eWorkspaceOpenRequests.push({ ...payload })
+      return
     }
 
     const snapshot = projectSessionManager.snapshot()
