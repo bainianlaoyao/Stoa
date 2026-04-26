@@ -38,11 +38,11 @@ Release：`[链接]`
 
 你需要忘掉那些垃圾多 Agent 编程工具。
 
-转而来试试: Stoa -- AI编程工作台。
+转而来试试: Stoa , 一个真正好用的编程工作台。
 
 通过近千个测试守护稳定性。
-简洁优雅的 UI / UX。
-开源, 支持多种 CLI 工具: claude code, codex, opencode, 一个应用统一管理。
+简洁优雅的 UI / UX
+支持多种 CLI 工具: claude code, codex, opencode, 一个应用统一管理。
 
 
 GitHub：`[链接]`
