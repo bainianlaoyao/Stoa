@@ -245,6 +245,19 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
     activeProjectId.value = session.projectId
   }
 
+  function removeProject(projectId: string): void {
+    projects.value = projects.value.filter(p => p.id !== projectId)
+    sessions.value = sessions.value.filter(s => s.projectId !== projectId)
+    if (activeProjectId.value === projectId) {
+      activeProjectId.value = projects.value[0]?.id ?? null
+      if (activeProjectId.value) {
+        activeSessionId.value = sessions.value.find(s => s.projectId === activeProjectId.value)?.id ?? null
+      } else {
+        activeSessionId.value = null
+      }
+    }
+  }
+
   function addProject(project: ProjectSummary): void {
     projects.value.push(project)
   }
@@ -334,6 +347,7 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
     clearError,
     archiveSession,
     restoreSession,
+    removeProject,
     unsubscribeObservability
   }
 })

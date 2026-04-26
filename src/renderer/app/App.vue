@@ -67,6 +67,18 @@ async function handleSessionCreate(payload: { projectId: string; type: string; t
   }
 }
 
+async function handleProjectDelete(projectId: string): Promise<void> {
+  workspaceStore.clearError()
+  const project = workspaceStore.projects.find(p => p.id === projectId)
+  if (!project) return
+  try {
+    await window.stoa.deleteProject(projectId)
+    workspaceStore.removeProject(projectId)
+  } catch (err) {
+    workspaceStore.lastError = err instanceof Error ? err.message : String(err)
+  }
+}
+
 async function handleArchiveSession(sessionId: string): Promise<void> {
   workspaceStore.archiveSession(sessionId)
   try {
@@ -151,6 +163,7 @@ onBeforeUnmount(() => {
       @select-session="handleSessionSelect"
       @create-project="handleProjectCreate"
       @create-session="handleSessionCreate"
+      @delete-project="handleProjectDelete"
       @archive-session="handleArchiveSession"
       @restore-session="handleRestoreSession"
       @open-workspace="handleOpenWorkspace"

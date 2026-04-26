@@ -1,6 +1,7 @@
 export const IPC_CHANNELS = {
   projectBootstrap: 'project:bootstrap',
   projectCreate: 'project:create',
+  projectDelete: 'project:delete',
   projectSetActive: 'project:set-active',
   sessionCreate: 'session:create',
   sessionSetActive: 'session:set-active',

@@ -163,6 +163,8 @@ describe('E2E: Main Process Config Guard', () => {
       const channelToConstant = new Map<string, string>([
         ['getBootstrapState', 'projectBootstrap'],
         ['createProject', 'projectCreate'],
+        ['deleteProject', 'projectDelete'],
+        ['deleteProject', 'projectDelete'],
         ['createSession', 'sessionCreate'],
         ['openWorkspace', 'workspaceOpen'],
         ['setActiveProject', 'projectSetActive'],
@@ -267,6 +269,7 @@ describe('E2E: Main Process Config Guard', () => {
       const knownInvokeMethods = [
         'getBootstrapState',
         'createProject',
+        'deleteProject',
         'createSession',
         'openWorkspace',
         'setActiveProject',
@@ -322,7 +325,9 @@ describe('E2E: Main Process Config Guard', () => {
 
       expect(invMap.get('getBootstrapState')).toBe('project:bootstrap')
       expect(invMap.get('createProject')).toBe('project:create')
+      expect(invMap.get('deleteProject')).toBe('project:delete')
       expect(invMap.get('createSession')).toBe('session:create')
+      expect(invMap.get('deleteProject')).toBe('project:delete')
       expect(invMap.get('openWorkspace')).toBe('workspace:open')
       expect(invMap.get('setActiveProject')).toBe('project:set-active')
       expect(invMap.get('setActiveSession')).toBe('session:set-active')

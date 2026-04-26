@@ -30,10 +30,13 @@ const emit = defineEmits<{
   selectSession: [sessionId: string]
   createProject: [payload: { name: string; path: string }]
   createSession: [payload: { projectId: string; type: SessionType; title: string }]
+  deleteProject: [projectId: string]
   archiveSession: [sessionId: string]
 }>()
 
 const showNewProject = ref(false)
+
+const collapsedProjectIds = ref<Set<string>>(new Set())
 
 const detailState = ref<DetailState | null>(null)
 
@@ -116,6 +119,28 @@ function sessionPhase(session: ProjectHierarchyNode['sessions'][number]): string
 
 function sessionAttentionReason(session: ProjectHierarchyNode['sessions'][number]): string | null {
   return sessionRowViewModel(session.id)?.attentionReason ?? null
+}
+
+function isProjectCollapsed(projectId: string): boolean {
+  return collapsedProjectIds.value.has(projectId)
+}
+
+function toggleProjectCollapse(projectId: string): void {
+  const next = new Set(collapsedProjectIds.value)
+  if (next.has(projectId)) {
+    next.delete(projectId)
+  } else {
+    next.add(projectId)
+  }
+  collapsedProjectIds.value = next
+}
+
+function toggleAllCollapsed(): void {
+  if (collapsedProjectIds.value.size === props.hierarchy.length) {
+    collapsedProjectIds.value = new Set()
+  } else {
+    collapsedProjectIds.value = new Set(props.hierarchy.map(p => p.id))
+  }
 }
 
 function openDetail(event: MouseEvent | KeyboardEvent, kind: 'project', project: ProjectHierarchyNode): void
@@ -247,7 +272,10 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="grid gap-1">
-        <div class="group-label">Projects</div>
+        <button class="group-label" type="button" @click="toggleAllCollapsed">
+          <span class="group-label__chevron" :class="{ 'group-label__chevron--collapsed': collapsedProjectIds.size === hierarchy.length && hierarchy.length > 0 }">▾</span>
+          Projects
+        </button>
 
         <div v-for="project in hierarchy" :key="project.id" class="route-project grid gap-1">
           <div
@@ -261,8 +289,9 @@ onBeforeUnmount(() => {
               data-testid="project-row"
               :data-project-name="project.name"
               type="button"
-              @click="emit('selectProject', project.id)"
+              @click="toggleProjectCollapse(project.id); emit('selectProject', project.id)"
             >
+              <span class="route-collapse-chevron" :class="{ 'route-collapse-chevron--collapsed': isProjectCollapsed(project.id) }">▾</span>
               <span class="route-detail-trigger" role="button" tabindex="0" aria-label="Project details" @click="openDetail($event, 'project', project)" @keydown.enter="openDetail($event, 'project', project)">
                 <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                   <circle cx="8" cy="3.5" r="1.25" fill="currentColor" />
@@ -275,6 +304,23 @@ onBeforeUnmount(() => {
               </div>
             </button>
             <div class="route-project-actions">
+              <button
+                class="route-delete-project route-icon-button"
+                type="button"
+                data-testid="workspace.delete-project"
+                :data-project-id="project.id"
+                :aria-label="`Delete ${project.name}`"
+                title="Delete project"
+                @click.stop="emit('deleteProject', project.id)"
+              >
+                <svg class="route-icon-button__icon" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                  <path d="M4 4H12L11.5 13H4.5L4 4Z" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round" />
+                  <path d="M6.5 6.5V10.5" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" />
+                  <path d="M9.5 6.5V10.5" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" />
+                  <path d="M3 4H13" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" />
+                  <path d="M6.5 2.5H9.5V4H6.5V2.5Z" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round" />
+                </svg>
+              </button>
               <button
                 class="route-add-session route-icon-button"
                 type="button"
@@ -291,6 +337,7 @@ onBeforeUnmount(() => {
             </div>
           </div>
 
+          <template v-if="!isProjectCollapsed(project.id)">
           <div
             v-for="session in project.sessions"
             :key="session.id"
@@ -347,8 +394,9 @@ onBeforeUnmount(() => {
                 </svg>
               </button>
             </span>
-          </div>
-        </div>
+           </div>
+          </template>
+         </div>
       </div>
     </div>
   </aside>
@@ -495,12 +543,12 @@ onBeforeUnmount(() => {
 
 .route-item--parent {
   padding-right: 10px;
-  padding-left: 28px;
+  padding-left: 24px;
 }
 
 .route-detail-trigger {
   position: absolute;
-  left: 4px;
+  right: 4px;
   top: 50%;
   transform: translateY(-50%);
   width: 20px;
@@ -688,12 +736,57 @@ onBeforeUnmount(() => {
   font-size: var(--text-caption);
   font-weight: 600;
   color: var(--color-muted);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  transition: color 0.15s ease;
 }
 
-.group-label::before {
-  content: '\25BE';
+.group-label:hover {
+  color: var(--color-text-strong);
+}
+
+.group-label__chevron {
+  display: inline-block;
   font-size: var(--text-caption);
   opacity: 0.6;
+  transition: transform 0.15s ease;
+}
+
+.group-label__chevron--collapsed {
+  transform: rotate(-90deg);
+}
+
+.route-collapse-chevron {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 10px;
+  line-height: 1;
+  color: var(--color-muted);
+  opacity: 0.5;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+  flex: none;
+  user-select: none;
+}
+
+.route-item:hover .route-collapse-chevron {
+  opacity: 0.8;
+}
+
+.route-collapse-chevron--collapsed {
+  transform: translateY(-50%) rotate(-90deg);
+}
+
+.route-delete-project {
+  color: var(--color-muted);
+}
+
+.route-delete-project:hover {
+  color: var(--color-error);
 }
 
 .route-icon-button {

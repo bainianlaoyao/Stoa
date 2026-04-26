@@ -46,6 +46,7 @@ describe('AppShell', () => {
         sessions: []
       }),
       createProject: vi.fn().mockResolvedValue(baseProject),
+      deleteProject: vi.fn().mockResolvedValue(undefined),
       createSession: vi.fn().mockResolvedValue(baseSession),
       openWorkspace: vi.fn().mockResolvedValue(undefined),
       archiveSession: vi.fn().mockResolvedValue(undefined),

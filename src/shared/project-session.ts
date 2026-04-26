@@ -219,6 +219,7 @@ export interface ObservationEventListOptions {
 export interface RendererApi {
   getBootstrapState: () => Promise<BootstrapState>
   createProject: (request: CreateProjectRequest) => Promise<ProjectSummary>
+  deleteProject: (projectId: string) => Promise<void>
   createSession: (request: CreateSessionRequest) => Promise<SessionSummary>
   openWorkspace: (request: OpenWorkspaceRequest) => Promise<void>
   setActiveProject: (projectId: string) => Promise<void>

@@ -111,6 +111,7 @@ function setupStoa(overrides?: Partial<typeof window.stoa>) {
   window.stoa = {
     getBootstrapState: vi.fn().mockResolvedValue({ ...mockBootstrapState, projects: [], sessions: [] }),
     createProject: vi.fn().mockResolvedValue({ ...mockCreatedProject }),
+    deleteProject: vi.fn().mockResolvedValue(undefined),
     createSession: vi.fn().mockResolvedValue({ ...mockCreatedSession }),
     openWorkspace: vi.fn().mockResolvedValue(undefined),
     setActiveProject: vi.fn().mockResolvedValue(undefined),

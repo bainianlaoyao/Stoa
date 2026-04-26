@@ -22,6 +22,7 @@ const emit = defineEmits<{
   selectSession: [sessionId: string]
   createProject: [payload: { name: string; path: string }]
   createSession: [payload: { projectId: string; type: string; title: string }]
+  deleteProject: [projectId: string]
   archiveSession: [sessionId: string]
   restoreSession: [sessionId: string]
   openWorkspace: [request: OpenWorkspaceRequest]
@@ -59,6 +60,7 @@ const archivedSessions = computed(() => {
           @select-session="emit('selectSession', $event)"
           @create-project="emit('createProject', $event)"
           @create-session="emit('createSession', $event)"
+          @delete-project="emit('deleteProject', $event)"
           @archive-session="emit('archiveSession', $event)"
           @open-workspace="emit('openWorkspace', $event)"
         />

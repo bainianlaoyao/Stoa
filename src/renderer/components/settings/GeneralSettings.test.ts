@@ -10,6 +10,7 @@ function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
   return {
     getBootstrapState: vi.fn().mockResolvedValue({ activeProjectId: null, activeSessionId: null, terminalWebhookPort: 0, projects: [], sessions: [] }),
     createProject: vi.fn().mockResolvedValue(null),
+    deleteProject: vi.fn().mockResolvedValue(undefined),
     createSession: vi.fn().mockResolvedValue(null),
     openWorkspace: vi.fn().mockResolvedValue(undefined),
     archiveSession: vi.fn().mockResolvedValue(undefined),

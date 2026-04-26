@@ -644,6 +644,21 @@ app.whenReady().then(async () => {
     return projectSessionManager?.createProject(payload) ?? null
   })
 
+  ipcMain.handle(IPC_CHANNELS.projectDelete, async (_event, projectId: string) => {
+    if (!projectSessionManager) return
+
+    const snapshot = projectSessionManager.snapshot()
+    const projectSessions = snapshot.sessions.filter(s => s.projectId === projectId)
+    for (const session of projectSessions) {
+      sessionInputRouter?.resetSession(session.id)
+      ptyHost?.kill(session.id)
+    }
+
+    await projectSessionManager.deleteProject(projectId)
+    syncObservabilitySessions()
+    await syncUpdateStateToWindow()
+  })
+
   ipcMain.handle(IPC_CHANNELS.sessionCreate, async (_event, payload: CreateSessionRequest) => {
     const session = await projectSessionManager?.createSession(payload)
     if (session) {

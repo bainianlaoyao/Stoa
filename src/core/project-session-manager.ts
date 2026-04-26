@@ -347,6 +347,25 @@ export class ProjectSessionManager {
     await this.persist()
   }
 
+  async deleteProject(projectId: string): Promise<void> {
+    const projectIndex = this.state.projects.findIndex(p => p.id === projectId)
+    if (projectIndex === -1) return
+
+    this.state.projects.splice(projectIndex, 1)
+    this.state.sessions = this.state.sessions.filter(s => s.projectId !== projectId)
+
+    if (this.state.activeProjectId === projectId) {
+      this.state.activeProjectId = this.state.projects[0]?.id ?? null
+      if (this.state.activeProjectId) {
+        this.state.activeSessionId = this.state.sessions.find(s => s.projectId === this.state.activeProjectId)?.id ?? null
+      } else {
+        this.state.activeSessionId = null
+      }
+    }
+
+    await this.persist()
+  }
+
   async archiveSession(sessionId: string): Promise<void> {
     const session = this.state.sessions.find(s => s.id === sessionId)
     if (!session) return

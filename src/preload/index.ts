@@ -34,6 +34,9 @@ const api: RendererApi = {
   async createProject(request: CreateProjectRequest) {
     return ipcRenderer.invoke(IPC_CHANNELS.projectCreate, request)
   },
+  async deleteProject(projectId: string) {
+    return ipcRenderer.invoke(IPC_CHANNELS.projectDelete, projectId)
+  },
   async createSession(request: CreateSessionRequest) {
     return ipcRenderer.invoke(IPC_CHANNELS.sessionCreate, request)
   },
