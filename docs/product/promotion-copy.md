@@ -31,24 +31,24 @@ Stoa 是 AI CLI 时代的本地编程工作台。
 
 如果你也在用 Claude Code、Codex、OpenCode 写代码，来试试。
 
-GitHub：`[链接]`  
+GitHub：`[链接]`
 Release：`[链接]`
 
 ## 朋友圈短版
 
 你需要忘掉那些垃圾多 Agent 编程工具。
 
-Stoa 是 AI CLI 时代的本地编程工作台。
+转而来试试: Stoa AI时代的超级编程工作台。
 
-近千个测试守稳定性。  
-简洁优雅的 UI / UX。  
+近千个测试守稳定性。
+简洁优雅的 UI / UX。
 多项目、多 Agent、多 CLI 会话统一管理。
 
 不是 IDE，不是云端平台，不是聊天框。
 
 它是给认真使用 AI CLI 编程的人准备的本地调度台。
 
-GitHub：`[链接]`  
+GitHub：`[链接]`
 Release：`[链接]`
 
 ## LINUX DO
