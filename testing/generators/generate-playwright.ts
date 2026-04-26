@@ -44,7 +44,7 @@ test('${journey.id}', async () => {
     })
 
     await app.page.getByRole('button', { name: \`Archive \${session.title}\` }).click()
-    await app.page.getByRole('button', { name: 'Archive' }).click()
+    await app.page.locator('[data-activity-item="archive"]').click()
 
     const root = app.page.getByTestId('${rootTestId}')
     const restoreButton = app.page.getByTestId('${restoreButtonTestId}')

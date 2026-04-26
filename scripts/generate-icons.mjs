@@ -23,17 +23,13 @@ async function generatePngs() {
 }
 
 async function generateIco() {
-  const png16 = await sharp(svgBuffer).resize(16, 16).png().toBuffer()
-  const png32 = await sharp(svgBuffer).resize(32, 32).png().toBuffer()
-  const png48 = await sharp(svgBuffer).resize(48, 48).png().toBuffer()
-  const png256 = await sharp(svgBuffer).resize(256, 256).png().toBuffer()
-
-  const images = [
-    { width: 16, height: 16, data: png16 },
-    { width: 32, height: 32, data: png32 },
-    { width: 48, height: 48, data: png48 },
-    { width: 256, height: 256, data: png256 },
-  ]
+  const images = await Promise.all(
+    sizes.map(async (size) => ({
+      width: size,
+      height: size,
+      data: await sharp(svgBuffer).resize(size, size).png().toBuffer()
+    }))
+  )
 
   const headerSize = 6
   const dirEntrySize = 16
@@ -80,6 +76,34 @@ async function generateIco() {
   console.log('  icon.ico')
 }
 
+async function generateIcns() {
+  const icnsImages = [
+    { type: 'icp4', size: 16 },
+    { type: 'icp5', size: 32 },
+    { type: 'icp6', size: 64 },
+    { type: 'ic07', size: 128 },
+    { type: 'ic08', size: 256 },
+    { type: 'ic09', size: 512 },
+    { type: 'ic10', size: 1024 },
+  ]
+
+  const chunks = []
+  for (const image of icnsImages) {
+    const png = await sharp(svgBuffer).resize(image.size, image.size).png().toBuffer()
+    const header = Buffer.alloc(8)
+    header.write(image.type, 0, 4, 'ascii')
+    header.writeUInt32BE(png.length + 8, 4)
+    chunks.push(header, png)
+  }
+
+  const totalSize = 8 + chunks.reduce((sum, chunk) => sum + chunk.length, 0)
+  const fileHeader = Buffer.alloc(8)
+  fileHeader.write('icns', 0, 4, 'ascii')
+  fileHeader.writeUInt32BE(totalSize, 4)
+  writeFileSync(resolve(rootDir, 'build/icons/icon.icns'), Buffer.concat([fileHeader, ...chunks], totalSize))
+  console.log('  icon.icns')
+}
+
 async function generateRendererAssets() {
   const symbolSvg = readFileSync(resolve(rootDir, 'src/renderer/assets/brand/stoa-symbol.svg'))
 
@@ -95,5 +119,6 @@ async function generateRendererAssets() {
 console.log('Generating icon assets from icon-source.svg ...')
 await generatePngs()
 await generateIco()
+await generateIcns()
 await generateRendererAssets()
 console.log('Done.')

@@ -2,6 +2,7 @@ appId: dev.stoa.app
 productName: Stoa
 directories:
   output: release
+artifactName: "${productName}-${version}-${os}-${arch}.${ext}"
 files:
   - out/**
   - package.json
@@ -13,14 +14,39 @@ publish:
   repo: "${env.GH_REPO}"
   releaseType: release
 nsis:
+  artifactName: "${productName}-Setup-${version}-${os}-${arch}.${ext}"
   oneClick: false
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
+portable:
+  artifactName: "${productName}-Portable-${version}-${os}-${arch}.${ext}"
 win:
   icon: build/icons/icon.ico
   target:
     - nsis
     - target: portable
+      arch:
+        - x64
+mac:
+  icon: build/icons/icon.icns
+  category: public.app-category.developer-tools
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+    - target: zip
+      arch:
+        - x64
+        - arm64
+linux:
+  icon: build/icons/icon.png
+  category: Development
+  target:
+    - target: AppImage
+      arch:
+        - x64
+    - target: deb
       arch:
         - x64
 npmRebuild: false

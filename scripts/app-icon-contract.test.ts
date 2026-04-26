@@ -25,5 +25,6 @@ describe('packaged app icon contract', () => {
     expect(readFile('build/icons/icon.png').length).toBeGreaterThan(10_000)
     expect(readFile('build/icons/icon-256.png').length).toBeGreaterThan(2_000)
     expect(readFile('build/icons/icon.ico').length).toBeGreaterThan(3_000)
+    expect(readFile('build/icons/icon.icns').length).toBeGreaterThan(10_000)
   })
 })

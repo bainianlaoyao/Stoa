@@ -1,11 +1,13 @@
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { access, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { executableDirectory, resolvePackagedExecutable as findPackagedExecutable } from './packaging-artifacts.mjs'
 
 const root = process.cwd()
-const releaseDir = join(root, 'release', 'win-unpacked')
+const releaseDir = join(root, 'release')
+const platform = process.env.STOA_PACKAGE_PLATFORM ?? process.argv.find((arg) => arg.startsWith('--platform='))?.slice('--platform='.length) ?? process.platform
 const stateDir = join(tmpdir(), `stoa-packaged-smoke-${randomUUID()}`)
 const projectDir = join(stateDir, 'workspace')
 const smokeFile = join(stateDir, 'packaged-smoke.jsonl')
@@ -63,16 +65,14 @@ async function waitForPackagedSmoke(child, timeoutMs = 90_000, intervalMs = 250)
   throw new Error(`Timed out waiting for packaged smoke completion. Last records: ${JSON.stringify(lastRecords)}`)
 }
 
-async function resolvePackagedExecutable() {
+async function resolvePackagedSmokeExecutable() {
   await access(releaseDir)
-  const entries = await readdir(releaseDir, { withFileTypes: true })
-  const executable = entries.find((entry) => entry.isFile() && entry.name.toLowerCase().endsWith('.exe'))
-
-  if (!executable) {
-    throw new Error('No packaged executable found in release/win-unpacked.')
-  }
-
-  return join(releaseDir, executable.name)
+  return await findPackagedExecutable({
+    releaseDir,
+    platform,
+    productName: 'Stoa',
+    packageName: 'stoa'
+  })
 }
 
 async function terminateChild(child) {
@@ -100,9 +100,10 @@ let stdout = ''
 let stderr = ''
 
 try {
-  const packagedExecutable = await resolvePackagedExecutable()
-  smokeRequestPath = join(releaseDir, 'stoa-packaged-smoke-request.json')
-  smokeProbePath = join(releaseDir, 'stoa-packaged-smoke-probe.log')
+  const packagedExecutable = await resolvePackagedSmokeExecutable()
+  const packagedExecutableDir = executableDirectory(packagedExecutable)
+  smokeRequestPath = join(packagedExecutableDir, 'stoa-packaged-smoke-request.json')
+  smokeProbePath = join(packagedExecutableDir, 'stoa-packaged-smoke-probe.log')
   await mkdir(projectDir, { recursive: true })
   await writeFile(
     smokeRequestPath,
