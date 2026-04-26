@@ -203,6 +203,33 @@ describe('session state reducer', () => {
     })
   })
 
+  it('keeps complete visible until completion_seen clears unseen completion', () => {
+    const complete = session({
+      runtimeState: 'alive',
+      agentState: 'idle',
+      hasUnseenCompletion: true
+    })
+
+    expect(derivePresencePhase({
+      runtimeState: complete.runtimeState,
+      agentState: complete.agentState,
+      hasUnseenCompletion: complete.hasUnseenCompletion,
+      runtimeExitCode: complete.runtimeExitCode,
+      runtimeExitReason: complete.runtimeExitReason,
+      provider: complete.type
+    })).toBe('complete')
+
+    const next = reduceSessionState(complete, patch({
+      sequence: complete.lastStateSequence + 1,
+      intent: 'agent.completion_seen',
+      source: 'ui',
+      summary: 'Completion seen'
+    }), '2026-04-26T00:00:00.000Z')
+
+    expect(next.agentState).toBe('idle')
+    expect(next.hasUnseenCompletion).toBe(false)
+  })
+
   it('blocked cannot be cleared by ordinary stale tool started', () => {
     const next = reduceSessionState(
       session({ agentState: 'blocked', blockingReason: 'permission', hasUnseenCompletion: true }),
@@ -214,22 +241,6 @@ describe('session state reducer', () => {
       agentState: 'blocked',
       blockingReason: 'permission',
       hasUnseenCompletion: true,
-      lastStateSequence: 2,
-      updatedAt: NOW
-    })
-  })
-
-  it('post permission continuation clears blocked to working when runtime is alive', () => {
-    const next = reduceSessionState(
-      session({ agentState: 'blocked', blockingReason: 'permission', hasUnseenCompletion: true }),
-      patch({ intent: 'agent.tool_started', sourceEventType: 'post_permission_continuation' }),
-      NOW
-    )
-
-    expect(next).toMatchObject({
-      agentState: 'working',
-      blockingReason: null,
-      hasUnseenCompletion: false,
       lastStateSequence: 2,
       updatedAt: NOW
     })

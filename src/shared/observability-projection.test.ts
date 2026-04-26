@@ -85,6 +85,28 @@ describe('observability projection', () => {
     expect(mapPhaseToTone('ready')).toBe('neutral')
   })
 
+  it('keeps phase derived from session state even when metadata is present', () => {
+    const snapshot = buildSessionPresenceSnapshot(sessionFixture({
+      runtimeState: 'alive',
+      agentState: 'idle',
+      hasUnseenCompletion: false,
+      type: 'claude-code'
+    }), {
+      activeSessionId: 'other-session',
+      nowIso: '2026-04-26T00:00:00.000Z',
+      modelLabel: 'claude-sonnet',
+      lastAssistantSnippet: 'Finished the task.',
+      lastEvidenceType: 'evidence.assistant_message_observed',
+      lastEventAt: '2026-04-26T00:00:00.000Z',
+      evidenceSequence: 12,
+      sourceSequence: 12
+    })
+
+    expect(snapshot.phase).toBe('ready')
+    expect(snapshot.modelLabel).toBe('claude-sonnet')
+    expect(snapshot.lastAssistantSnippet).toBe('Finished the task.')
+  })
+
   it('builds a session presence snapshot with the approved contract', () => {
     const snapshot = buildSessionPresenceSnapshot(sessionFixture({
       agentState: 'idle',
