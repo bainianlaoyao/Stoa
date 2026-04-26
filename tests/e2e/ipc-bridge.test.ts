@@ -7,6 +7,7 @@ import type {
   CreateProjectRequest,
   CreateSessionRequest,
   ObservationEventListOptions,
+  OpenWorkspaceRequest,
   ProjectSummary,
   RendererApi,
   SessionSummary
@@ -44,6 +45,7 @@ const RENDERER_API_INVOKE_CHANNELS = [
   IPC_CHANNELS.projectBootstrap,
   IPC_CHANNELS.projectCreate,
   IPC_CHANNELS.sessionCreate,
+  IPC_CHANNELS.workspaceOpen,
   IPC_CHANNELS.projectSetActive,
   IPC_CHANNELS.sessionSetActive,
   IPC_CHANNELS.observabilityGetSessionPresence,
@@ -130,6 +132,7 @@ function createPreloadApi(bus: FakeIpcBus): RendererApi {
     getBootstrapState: () => bus.invoke(IPC_CHANNELS.projectBootstrap),
     createProject: (request: CreateProjectRequest) => bus.invoke(IPC_CHANNELS.projectCreate, request),
     createSession: (request: CreateSessionRequest) => bus.invoke(IPC_CHANNELS.sessionCreate, request),
+    openWorkspace: (request: OpenWorkspaceRequest) => bus.invoke(IPC_CHANNELS.workspaceOpen, request),
     setActiveProject: (projectId: string) => bus.invoke(IPC_CHANNELS.projectSetActive, projectId),
     setActiveSession: (sessionId: string) => bus.invoke(IPC_CHANNELS.sessionSetActive, sessionId),
     getSessionPresence: (sessionId: string) => bus.invoke(IPC_CHANNELS.observabilityGetSessionPresence, sessionId),
@@ -167,6 +170,10 @@ async function registerMainHandlers(
 
   bus.handle(IPC_CHANNELS.sessionCreate, async (_event, payload: CreateSessionRequest) => {
     return manager.createSession(payload)
+  })
+
+  bus.handle(IPC_CHANNELS.workspaceOpen, async () => {
+    return
   })
 
   bus.handle(IPC_CHANNELS.projectSetActive, async (_event, projectId: string) => {
@@ -235,6 +242,7 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
       expect(IPC_CHANNELS.projectCreate).toBe('project:create')
       expect(IPC_CHANNELS.projectSetActive).toBe('project:set-active')
       expect(IPC_CHANNELS.sessionCreate).toBe('session:create')
+      expect(IPC_CHANNELS.workspaceOpen).toBe('workspace:open')
       expect(IPC_CHANNELS.sessionSetActive).toBe('session:set-active')
       expect(IPC_CHANNELS.observabilityGetSessionPresence).toBe('observability:get-session-presence')
       expect(IPC_CHANNELS.observabilityGetProject).toBe('observability:get-project-observability')
@@ -378,6 +386,7 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
         return nullManager?.createSession(payload) ?? null
       })
 
+      bus.handle(IPC_CHANNELS.workspaceOpen, async () => { return })
       bus.handle(IPC_CHANNELS.projectSetActive, async () => { return })
       bus.handle(IPC_CHANNELS.sessionSetActive, async () => { return })
       bus.handle(IPC_CHANNELS.observabilityGetSessionPresence, async () => null)
@@ -483,6 +492,7 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
         getBootstrapState: IPC_CHANNELS.projectBootstrap,
         createProject: IPC_CHANNELS.projectCreate,
         createSession: IPC_CHANNELS.sessionCreate,
+        openWorkspace: IPC_CHANNELS.workspaceOpen,
         setActiveProject: IPC_CHANNELS.projectSetActive,
         setActiveSession: IPC_CHANNELS.sessionSetActive,
         getSessionPresence: IPC_CHANNELS.observabilityGetSessionPresence,
@@ -500,11 +510,11 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
       }
 
       const methods = Object.keys(apiMethodToChannel)
-      expect(methods).toHaveLength(17)
+      expect(methods).toHaveLength(18)
 
       const channelValues = Object.values(apiMethodToChannel)
       const uniqueChannels = new Set(channelValues)
-      expect(uniqueChannels.size).toBe(17)
+      expect(uniqueChannels.size).toBe(18)
 
       for (const channel of channelValues) {
         expect(typeof channel).toBe('string')

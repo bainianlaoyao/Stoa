@@ -5,6 +5,7 @@ import type {
   CreateProjectRequest,
   CreateSessionRequest,
   ObservationEventListOptions,
+  OpenWorkspaceRequest,
   RendererApi,
   SessionSummaryEvent,
   TerminalDataChunk
@@ -36,6 +37,9 @@ const api: RendererApi = {
   },
   async createSession(request: CreateSessionRequest) {
     return ipcRenderer.invoke(IPC_CHANNELS.sessionCreate, request)
+  },
+  async openWorkspace(request: OpenWorkspaceRequest) {
+    return ipcRenderer.invoke(IPC_CHANNELS.workspaceOpen, request)
   },
   async setActiveProject(projectId) {
     return ipcRenderer.invoke(IPC_CHANNELS.projectSetActive, projectId)

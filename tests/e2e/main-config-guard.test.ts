@@ -164,6 +164,7 @@ describe('E2E: Main Process Config Guard', () => {
         ['getBootstrapState', 'projectBootstrap'],
         ['createProject', 'projectCreate'],
         ['createSession', 'sessionCreate'],
+        ['openWorkspace', 'workspaceOpen'],
         ['setActiveProject', 'projectSetActive'],
         ['setActiveSession', 'sessionSetActive'],
         ['getSessionPresence', 'observabilityGetSessionPresence'],
@@ -266,6 +267,7 @@ describe('E2E: Main Process Config Guard', () => {
         'getBootstrapState',
         'createProject',
         'createSession',
+        'openWorkspace',
         'setActiveProject',
         'setActiveSession',
         'getSessionPresence',
@@ -319,6 +321,7 @@ describe('E2E: Main Process Config Guard', () => {
       expect(invMap.get('getBootstrapState')).toBe('project:bootstrap')
       expect(invMap.get('createProject')).toBe('project:create')
       expect(invMap.get('createSession')).toBe('session:create')
+      expect(invMap.get('openWorkspace')).toBe('workspace:open')
       expect(invMap.get('setActiveProject')).toBe('project:set-active')
       expect(invMap.get('setActiveSession')).toBe('session:set-active')
       expect(invMap.get('getSessionPresence')).toBe('observability:get-session-presence')
@@ -359,6 +362,7 @@ describe('E2E: Main Process Config Guard', () => {
       expect(constants.get('updateQuitAndInstall')).toBe('update:quit-and-install')
       expect(constants.get('updateDismiss')).toBe('update:dismiss')
       expect(constants.get('updateState')).toBe('update:state')
+      expect(constants.get('workspaceOpen')).toBe('workspace:open')
     })
   })
 

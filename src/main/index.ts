@@ -1,4 +1,5 @@
-import { BrowserWindow, Menu, dialog, app, ipcMain } from 'electron'
+import { BrowserWindow, Menu, dialog, app, ipcMain, shell } from 'electron'
+import { spawn } from 'node:child_process'
 import { appendFile, mkdir } from 'node:fs/promises'
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -9,6 +10,7 @@ import type { ListObservationEventsOptions } from '@core/observation-store'
 import { ObservabilityService } from '@core/observability-service'
 import { ProjectSessionManager } from '@core/project-session-manager'
 import { detectShell, detectProvider } from '@core/settings-detector'
+import { openWorkspace } from '@core/workspace-launcher'
 import { getProviderDescriptorByProviderId, getProviderDescriptorBySessionType } from '@shared/provider-descriptors'
 import { derivePresencePhase } from '@shared/session-state-reducer'
 import { SessionRuntimeController } from './session-runtime-controller'
@@ -17,7 +19,7 @@ import { SessionInputRouter } from './session-input-router'
 import { launchTrackedSessionRuntime } from './launch-tracked-session-runtime'
 import { syncObservabilitySessionsFromManager } from './observability-sync'
 import { UpdateService } from './update-service'
-import type { CreateProjectRequest, CreateSessionRequest } from '@shared/project-session'
+import type { CreateProjectRequest, CreateSessionRequest, OpenWorkspaceRequest } from '@shared/project-session'
 import type { UpdateState } from '@shared/update-state'
 import type { PtyHost } from '@core/pty-host'
 
@@ -646,6 +648,22 @@ app.whenReady().then(async () => {
 
     void launchSessionRuntimeWithGuard(session.id, 'session-create')
     return session
+  })
+
+  ipcMain.handle(IPC_CHANNELS.workspaceOpen, async (_event, payload: OpenWorkspaceRequest) => {
+    if (!projectSessionManager) {
+      throw new Error('Unable to open workspace: session manager is not available.')
+    }
+
+    const snapshot = projectSessionManager.snapshot()
+    await openWorkspace({
+      request: payload,
+      projects: snapshot.projects,
+      sessions: snapshot.sessions,
+      settings: projectSessionManager.getSettings(),
+      shellOpenPath: shell.openPath.bind(shell),
+      spawnProcess: spawn
+    })
   })
 
   ipcMain.handle(IPC_CHANNELS.projectSetActive, async (_event, projectId: string) => {
