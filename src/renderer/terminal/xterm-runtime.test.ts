@@ -231,3 +231,177 @@ describe('createTerminalRuntime', () => {
     expect(webgl?.disposeCount).toBe(1)
   })
 })
+
+describe('installScrollbackGuard', () => {
+  type CsiCallback = (params: (number | number[])[]) => boolean
+  type CsiHandler = { dispose: () => void }
+
+  /** Create a mock Terminal that captures registerCsiHandler calls. */
+  function createMockTerminal() {
+    const handlers: {
+      id: { prefix?: string; intermediates?: string; final: string }
+      callback: CsiCallback
+      disposed: boolean
+    }[] = []
+
+    const terminal = {
+      parser: {
+        registerCsiHandler(
+          id: { prefix?: string; intermediates?: string; final: string },
+          callback: CsiCallback
+        ): CsiHandler {
+          const entry = { id, callback, disposed: false }
+          handlers.push(entry)
+          return {
+            dispose() {
+              entry.disposed = true
+            },
+          }
+        },
+      },
+    }
+
+    return { terminal, handlers }
+  }
+
+  function findHandler(
+    handlers: ReturnType<typeof createMockTerminal>['handlers'],
+    prefix: string | undefined,
+    final: string
+  ): { callback: CsiCallback; disposed: boolean } | undefined {
+    return handlers.find(
+      h => (h.id.prefix ?? '') === (prefix ?? '') && h.id.final === final
+    )
+  }
+
+  test('registers exactly 3 CSI handlers: DECSET (h), DECRST (l), ED (J)', async () => {
+    const { createTerminalRuntime } = await import('./xterm-runtime')
+    const { installScrollbackGuard } = await import('./xterm-runtime')
+    const { terminal, handlers } = createMockTerminal()
+
+    installScrollbackGuard(terminal as unknown as Terminal)
+
+    expect(handlers).toHaveLength(3)
+    expect(handlers[0].id).toEqual({ prefix: '?', final: 'h' })
+    expect(handlers[1].id).toEqual({ prefix: '?', final: 'l' })
+    expect(handlers[2].id).toEqual({ final: 'J' })
+  })
+
+  // --- DECSET (?..h) blocking ---
+
+  test('DECSET blocks mode 1049 (alternate screen)', async () => {
+    const { installScrollbackGuard } = await import('./xterm-runtime')
+    const { terminal, handlers } = createMockTerminal()
+    installScrollbackGuard(terminal as unknown as Terminal)
+
+    const decset = findHandler(handlers, '?', 'h')
+    expect(decset?.callback([1049])).toBe(true)
+  })
+
+  test('DECSET blocks mode 1047 (alternate screen variant)', async () => {
+    const { installScrollbackGuard } = await import('./xterm-runtime')
+    const { terminal, handlers } = createMockTerminal()
+    installScrollbackGuard(terminal as unknown as Terminal)
+
+    const decset = findHandler(handlers, '?', 'h')
+    expect(decset?.callback([1047])).toBe(true)
+  })
+
+  test('DECSET blocks mode 47 (alternate screen variant)', async () => {
+    const { installScrollbackGuard } = await import('./xterm-runtime')
+    const { terminal, handlers } = createMockTerminal()
+    installScrollbackGuard(terminal as unknown as Terminal)
+
+    const decset = findHandler(handlers, '?', 'h')
+    expect(decset?.callback([47])).toBe(true)
+  })
+
+  test('DECSET passes through unrelated modes like 1 (cursor keys)', async () => {
+    const { installScrollbackGuard } = await import('./xterm-runtime')
+    const { terminal, handlers } = createMockTerminal()
+    installScrollbackGuard(terminal as unknown as Terminal)
+
+    const decset = findHandler(handlers, '?', 'h')
+    expect(decset?.callback([1])).toBe(false)
+    expect(decset?.callback([25])).toBe(false) // cursor visible
+    expect(decset?.callback([1000])).toBe(false) // mouse tracking
+  })
+
+  test('DECSET blocks when alt screen mode appears as sub-params', async () => {
+    const { installScrollbackGuard } = await import('./xterm-runtime')
+    const { terminal, handlers } = createMockTerminal()
+    installScrollbackGuard(terminal as unknown as Terminal)
+
+    const decset = findHandler(handlers, '?', 'h')
+    // Sub-param form: [[1049]] — colon-separated sub-params in one position
+    expect(decset?.callback([[1049]])).toBe(true)
+    expect(decset?.callback([[47, 1047]])).toBe(true)
+  })
+
+  // --- DECRST (?..l) blocking ---
+
+  test('DECRST blocks mode 1049 restore', async () => {
+    const { installScrollbackGuard } = await import('./xterm-runtime')
+    const { terminal, handlers } = createMockTerminal()
+    installScrollbackGuard(terminal as unknown as Terminal)
+
+    const decrst = findHandler(handlers, '?', 'l')
+    expect(decrst?.callback([1049])).toBe(true)
+    expect(decrst?.callback([1047])).toBe(true)
+    expect(decrst?.callback([47])).toBe(true)
+  })
+
+  test('DECRST passes through unrelated modes', async () => {
+    const { installScrollbackGuard } = await import('./xterm-runtime')
+    const { terminal, handlers } = createMockTerminal()
+    installScrollbackGuard(terminal as unknown as Terminal)
+
+    const decrst = findHandler(handlers, '?', 'l')
+    expect(decrst?.callback([1])).toBe(false)
+    expect(decrst?.callback([25])).toBe(false)
+  })
+
+  // --- ED3 (CSI 3J) blocking ---
+
+  test('ED handler blocks param 3 (scrollback clear)', async () => {
+    const { installScrollbackGuard } = await import('./xterm-runtime')
+    const { terminal, handlers } = createMockTerminal()
+    installScrollbackGuard(terminal as unknown as Terminal)
+
+    const ed = findHandler(handlers, undefined, 'J')
+    expect(ed?.callback([3])).toBe(true)
+  })
+
+  test('ED handler passes through params 0, 1, 2 (normal erase)', async () => {
+    const { installScrollbackGuard } = await import('./xterm-runtime')
+    const { terminal, handlers } = createMockTerminal()
+    installScrollbackGuard(terminal as unknown as Terminal)
+
+    const ed = findHandler(handlers, undefined, 'J')
+    expect(ed?.callback([0])).toBe(false)
+    expect(ed?.callback([1])).toBe(false)
+    expect(ed?.callback([2])).toBe(false)
+  })
+
+  test('ED handler passes through empty params (defaults to 0)', async () => {
+    const { installScrollbackGuard } = await import('./xterm-runtime')
+    const { terminal, handlers } = createMockTerminal()
+    installScrollbackGuard(terminal as unknown as Terminal)
+
+    const ed = findHandler(handlers, undefined, 'J')
+    // CSI J with no params — xterm.js may pass [] (ZDM fills [0])
+    expect(ed?.callback([])).toBe(false)
+  })
+
+  // --- Disposal ---
+
+  test('dispose() disposes all 3 handlers', async () => {
+    const { installScrollbackGuard } = await import('./xterm-runtime')
+    const { terminal, handlers } = createMockTerminal()
+    const guard = installScrollbackGuard(terminal as unknown as Terminal)
+
+    guard.dispose()
+
+    expect(handlers.every(h => h.disposed)).toBe(true)
+  })
+})
