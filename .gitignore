@@ -6,6 +6,7 @@ dist/
 .worktrees/
 *.png
 !build/icons/*.png
+!docs/assets/readme/*.png
 tmp/
 .claude
 .superpowers

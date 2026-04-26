@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { OpenWorkspaceRequest, ProjectSummary, SessionSummary } from '@shared/project-session'
+import vscodeIconUrl from '@renderer/assets/icons/vscode.svg'
 
 const props = defineProps<{
   project: ProjectSummary | null
@@ -36,21 +37,12 @@ function emitOpenWorkspace(target: OpenWorkspaceRequest['target']): void {
       :aria-label="t('terminal.quickActions.openIdeAria')"
       @click="emitOpenWorkspace('ide')"
     >
-      <svg
+      <img
         class="workspace-quick-actions__icon"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.8"
-        stroke-linecap="round"
-        stroke-linejoin="round"
+        :src="vscodeIconUrl"
+        alt=""
         aria-hidden="true"
-      >
-        <path d="M5.75 5.75h12.5A1.75 1.75 0 0 1 20 7.5v9a1.75 1.75 0 0 1-1.75 1.75H5.75A1.75 1.75 0 0 1 4 16.5v-9a1.75 1.75 0 0 1 1.75-1.75Z" />
-        <path d="m8 10 2.25 2.25L8 14.5" />
-        <path d="M13 14.5h3.25" />
-      </svg>
-      <span>{{ t('terminal.quickActions.openIde') }}</span>
+      />
     </button>
     <button
       type="button"
@@ -60,7 +52,7 @@ function emitOpenWorkspace(target: OpenWorkspaceRequest['target']): void {
       @click="emitOpenWorkspace('file-manager')"
     >
       <svg
-        class="workspace-quick-actions__icon"
+        class="workspace-quick-actions__icon workspace-quick-actions__icon--file-manager"
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
@@ -72,7 +64,6 @@ function emitOpenWorkspace(target: OpenWorkspaceRequest['target']): void {
         <path d="M4.75 7.25A1.75 1.75 0 0 1 6.5 5.5h3.2l1.6 1.6h6.2a1.75 1.75 0 0 1 1.75 1.75v7.65a1.75 1.75 0 0 1-1.75 1.75h-11A1.75 1.75 0 0 1 4.75 16.5V7.25Z" />
         <path d="M8 12h8" />
       </svg>
-      <span>{{ t('terminal.quickActions.openFileManager') }}</span>
     </button>
   </div>
 </template>
@@ -90,18 +81,15 @@ function emitOpenWorkspace(target: OpenWorkspaceRequest['target']): void {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
+  width: 32px;
+  height: 32px;
   min-height: 32px;
-  padding: 0 10px;
+  padding: 0;
   border: 1px solid var(--color-line);
   border-radius: var(--radius-sm);
   background: var(--color-surface-solid);
   color: var(--color-text-strong);
   font-family: var(--font-ui);
-  font-size: var(--text-body-sm);
-  font-weight: 600;
-  line-height: 1;
-  white-space: nowrap;
   cursor: pointer;
   transition: all 0.2s ease;
 }
@@ -120,8 +108,13 @@ function emitOpenWorkspace(target: OpenWorkspaceRequest['target']): void {
 
 .workspace-quick-actions__icon {
   color: var(--color-muted);
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   flex: 0 0 auto;
+}
+
+.workspace-quick-actions__icon--file-manager {
+  width: 27px;
+  height: 27px;
 }
 </style>
