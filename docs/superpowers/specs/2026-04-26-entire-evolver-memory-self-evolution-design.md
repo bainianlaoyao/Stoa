@@ -74,7 +74,7 @@ The bridge is reasonable because the two native systems already have compatible 
 | Provider session identity | `session_id` | session scope / bridge metadata | use provider-native session ID as external join |
 | Provider type | `agent` | run metadata | pass through unchanged |
 | Evidence summary | checkpoint summary / metadata | signals, run metadata | attach as source context, do not rewrite |
-| Target repo | checkpoint commit anchor | `EVOLVER_REPO_ROOT` | run Evolver in isolated worktree |
+| Target repo | patch-defined source worktree commit anchor | `EVOLVER_REPO_ROOT` | Entire patch must expose the exact commit Stoa should check out |
 | Memory assets | no ownership | `memory/evolution/*`, `assets/gep/*` | import refs only |
 | Review state | no ownership | `evolution_solidify_state.json` | delegate approve/reject to Evolver |
 
@@ -84,7 +84,7 @@ No.
 
 For this design, Evolver's final product is a native asset set, not one memory file.
 
-The important outputs are:
+The important logical outputs are:
 
 - `memory/evolution/memory_graph.jsonl`
 - `memory/evolution/evolution_solidify_state.json`
@@ -93,6 +93,8 @@ The important outputs are:
 - `assets/gep/events.jsonl`
 - `assets/gep/failed_capsules.json`
 - validation and review artifacts referenced by Evolver state
+
+When `EVOLVER_SESSION_SCOPE` is set, Evolver may place evolution and GEP assets under scoped directories such as `memory/evolution/scopes/<scope>/...` and `assets/gep/scopes/<scope>/...`. Stoa must treat these names as logical asset refs resolved through Evolver path APIs or patched JSON output, not as fixed unscoped paths.
 
 The phrase "memory file" is therefore only valid when referring to a specific projection such as `memory_graph.jsonl`.
 
@@ -164,14 +166,21 @@ entire stoa checkpoint export <checkpoint_id> --json
 
 `entire stoa checkpoints --json` returns compact checkpoint refs.
 
-Required fields:
+Required fields include native Entire identity fields plus patch-defined commit anchors.
+
+The commit anchors are not existing proven `CommittedMetadata` fields in the inspected Entire source. The Entire patch must define them explicitly:
+
+- `checkpoint_metadata_commit_sha`: commit that stores or identifies the Entire checkpoint metadata record.
+- `source_worktree_commit_sha`: commit that Stoa should use as the checkout base for the isolated Evolver worktree.
+
+Required JSON shape:
 
 ```ts
 interface EntireStoaCheckpointRef {
   checkpoint_id: string
   checkpoint_format_version: 'v1'
-  checkpoint_commit_sha: string
-  source_commit_sha: string | null
+  checkpoint_metadata_commit_sha: string
+  source_worktree_commit_sha: string | null
   session_ids: string[]
   latest_session_id: string | null
   agent: 'claude-code' | 'codex' | 'opencode' | string
@@ -184,14 +193,14 @@ interface EntireStoaCheckpointRef {
 
 `entire stoa checkpoint export <checkpoint_id> --json` returns the full bridge payload.
 
-Required fields:
+Required JSON shape:
 
 ```ts
 interface EntireStoaCheckpointExport {
   checkpoint_id: string
   checkpoint_format_version: 'v1'
-  checkpoint_commit_sha: string
-  source_commit_sha: string | null
+  checkpoint_metadata_commit_sha: string
+  source_worktree_commit_sha: string | null
   root_metadata_ref: string
   sessions: EntireStoaSessionExport[]
   token_usage: unknown
@@ -214,6 +223,7 @@ interface EntireStoaSessionExport {
 Rules:
 
 - refuse non-v1 checkpoint formats
+- define and test both commit-anchor semantics in the Entire patch before Stoa treats either field as a worktree checkout source
 - do not emit human text in `--json` mode
 - include file refs, not copied file contents, unless the export command explicitly documents inline payload mode
 - keep Entire's native names where they already exist
@@ -244,8 +254,8 @@ STOA_PROJECT_ID=<project_id>
 STOA_SESSION_ID=<local_session_id>
 STOA_PROVIDER_SESSION_ID=<provider_session_id>
 STOA_SOURCE_CHECKPOINT_ID=<checkpoint_id>
-STOA_SOURCE_CHECKPOINT_SHA=<checkpoint_commit_sha>
-STOA_SOURCE_COMMIT_SHA=<source_commit_sha>
+STOA_CHECKPOINT_METADATA_COMMIT_SHA=<checkpoint_metadata_commit_sha>
+STOA_SOURCE_WORKTREE_COMMIT_SHA=<source_worktree_commit_sha>
 ```
 
 Persist those refs into Evolver-native run, event, review, and publisher metadata.
@@ -317,8 +327,8 @@ interface EvolverBridgeRefs {
   stoa_session_id: string
   provider_session_id: string
   source_checkpoint_id: string
-  source_checkpoint_sha: string
-  source_commit_sha: string | null
+  checkpoint_metadata_commit_sha: string
+  source_worktree_commit_sha: string | null
 }
 
 interface EvolverAssetRefs {
@@ -359,8 +369,8 @@ interface MemoryEvolutionBridgeRef {
   repoRoot: string
 
   entireCheckpointId: string
-  entireCheckpointCommitSha: string
-  entireSourceCommitSha: string | null
+  entireCheckpointMetadataCommitSha: string
+  entireSourceWorktreeCommitSha: string | null
 
   evolverRunId: string | null
   evolverWorktreePath: string | null
@@ -420,11 +430,18 @@ Preferred direct-mode path:
 ```text
 Stoa
   -> evolver publish-context --target=codex --format=markdown --json
-  -> write or inject Codex-scoped generated context
-  -> Codex reads through AGENTS.md or hook-provided additionalContext
+  -> write Codex-scoped generated context
+  -> Codex reads it through an AGENTS.md reference or a patched hook path
 ```
 
-The first implementation should prefer hook-provided context when possible, because direct mode already has provider config ownership concerns around `.codex/hooks.json` and `.codex/config.toml`.
+Current Evolver hooks prove only generic recent-memory injection: `evolver-session-start.js` reads `MEMORY_GRAPH_PATH` when set, otherwise it reads a fixed Evolver-root `memory/evolution/memory_graph.jsonl`, and then emits `agent_message` / `additionalContext`.
+
+They do not yet prove scoped `publish-context` delivery.
+
+Therefore, the first implementation should prefer a generated reference file. Hook-provided scoped context becomes valid only after one of these is implemented:
+
+- Stoa sets `MEMORY_GRAPH_PATH` to the intended published/scoped memory graph input for that session.
+- Evolver's hook is patched to call `publish-context` directly and return its content as `additionalContext`.
 
 If file-based consumption is used, write a generated file under a Stoa-managed path and reference it from the provider-owned instruction surface.
 
@@ -445,8 +462,8 @@ Preferred path:
 ```text
 Stoa
   -> evolver publish-context --target=claude-code --format=markdown --json
-  -> write or inject Claude-scoped generated context
-  -> Claude Code reads through CLAUDE.md or hook-provided additionalContext
+  -> write Claude-scoped generated context
+  -> Claude Code reads it through a CLAUDE.md reference or a patched hook path
 ```
 
 If file-based consumption is used:
@@ -490,7 +507,7 @@ entire stoa checkpoint export <checkpoint_id> --json
 
 ### 2. Evolve
 
-Stoa creates an isolated git worktree from the selected checkpoint/source commit anchor.
+Stoa creates an isolated git worktree from `source_worktree_commit_sha`, the patch-defined checkout anchor exported by Entire.
 
 Stoa launches Evolver with explicit path controls:
 
@@ -504,8 +521,8 @@ STOA_PROJECT_ID=<project_id>
 STOA_SESSION_ID=<local_session_id>
 STOA_PROVIDER_SESSION_ID=<provider_session_id>
 STOA_SOURCE_CHECKPOINT_ID=<checkpoint_id>
-STOA_SOURCE_CHECKPOINT_SHA=<checkpoint_commit_sha>
-STOA_SOURCE_COMMIT_SHA=<source_commit_sha>
+STOA_CHECKPOINT_METADATA_COMMIT_SHA=<checkpoint_metadata_commit_sha>
+STOA_SOURCE_WORKTREE_COMMIT_SHA=<source_worktree_commit_sha>
 evolver run --json
 ```
 
@@ -549,8 +566,8 @@ Stoa does not store the published Markdown as source memory.
 
 Agent runtime receives the published projection through its native surface:
 
-- Codex: `AGENTS.md` reference or hook `additionalContext`
-- Claude Code: `CLAUDE.md` reference or hook `additionalContext`
+- Codex: generated context file referenced from `AGENTS.md`, or hook `additionalContext` after the hook is patched/configured for scoped publisher output
+- Claude Code: generated context file referenced from `CLAUDE.md`, or hook `additionalContext` after the hook is patched/configured for scoped publisher output
 - generic: prompt prefix, sidecar context, or generated file path
 
 ## Interface Semantics
@@ -656,8 +673,8 @@ Deliverables:
 
 Deliverables:
 
-- Codex context delivery through hook or generated reference file
-- Claude Code context delivery through hook or generated reference file
+- Codex context delivery through generated reference file first; hook delivery only after scoped publisher integration is patched/configured
+- Claude Code context delivery through generated reference file first; hook delivery only after scoped publisher integration is patched/configured
 - generic context delivery path
 - delivery status stored by hash and target
 
