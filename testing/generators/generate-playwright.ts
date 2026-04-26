@@ -192,23 +192,12 @@ test('journey.session.telemetry.claude-lifecycle', async () => {
     })).status).toBe(202)
     await expect(statusDot).toHaveAttribute('data-session-status-testid', 'session-status-blocked')
 
-    await expect((await postWebhookEvent({
+    await expect((await postClaudeHookEvent({
       port: debugState!.webhookPort!,
       secret: secret!,
-      event: {
-        event_version: 1,
-        event_id: \`evt_\${randomUUID()}\`,
-        event_type: 'claude-code.PermissionResolved',
-        timestamp: new Date().toISOString(),
-        session_id: sessionState.id,
-        project_id: sessionState.projectId,
-        source: 'provider-adapter',
-        payload: {
-          intent: 'agent.permission_resolved',
-          agentState: 'working',
-          summary: 'Permission resolved'
-        }
-      }
+      sessionId: sessionState.id,
+      projectId: sessionState.projectId,
+      body: { hook_event_name: 'PreToolUse' }
     })).status).toBe(202)
     await expect(statusDot).toHaveAttribute('data-session-status-testid', 'session-status-running')
 

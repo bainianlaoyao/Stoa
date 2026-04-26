@@ -64,7 +64,7 @@ describe('playwright skeleton generator', () => {
     expect(generated).toContain("data-session-status-testid', 'session-status-blocked'")
     expect(generated).toContain("data-session-status-testid', 'session-status-complete'")
     expect(generated).toContain("data-session-status-testid', 'session-status-failed'")
-    expect(generated).toContain("event_type: 'claude-code.PermissionResolved'")
+    expect(generated).toContain("body: { hook_event_name: 'PreToolUse' }")
     expect(generated).toContain("event_type: 'runtime.exited_failed'")
   })
 })

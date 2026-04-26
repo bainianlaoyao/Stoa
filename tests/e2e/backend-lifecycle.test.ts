@@ -11,6 +11,7 @@ import { startSessionRuntime } from '@core/session-runtime'
 import { getProvider } from '@extensions/providers'
 import { buildSessionPresenceSnapshot } from '@shared/observability-projection'
 import type { ProviderCommand, CanonicalSessionEvent, SessionStatePatchEvent } from '@shared/project-session'
+import { SessionEventBridge } from '../../src/main/session-event-bridge'
 import {
   createTestWorkspace,
   createTestGlobalStatePath,
@@ -652,9 +653,11 @@ describe('E2E: Backend Full User Lifecycle', () => {
 
   describe('Phase 5: Webhook server integration', () => {
     const activeServers: LocalWebhookServer[] = []
+    const activeBridges: SessionEventBridge[] = []
 
     afterEach(async () => {
       await Promise.allSettled(activeServers.splice(0).map(s => s.stop()))
+      await Promise.allSettled(activeBridges.splice(0).map(bridge => bridge.stop()))
     })
 
     test('webhook server starts on ephemeral port', async () => {
@@ -754,21 +757,17 @@ describe('E2E: Backend Full User Lifecycle', () => {
       const session = await manager.createSession({ projectId: project.id, type: 'claude-code', title: 'Claude Hooks' })
       await manager.markRuntimeAlive(session.id, session.externalSessionId)
 
-      let sequence = manager.snapshot().sessions.find(candidate => candidate.id === session.id)!.lastStateSequence
-      const server = createLocalWebhookServer({
-        getSessionSecret(sessionId) {
-          return sessionId === session.id ? 'claude-secret' : null
-        },
-        async onEvent(event) {
-          await manager.applySessionStatePatch(toProviderPatch(event, ++sequence))
+      const bridge = new SessionEventBridge(manager, {
+        applyProviderStatePatch: async (patch) => {
+          await manager.applySessionStatePatch(patch)
         }
       })
-      activeServers.push(server)
-      const port = await server.start()
+      activeBridges.push(bridge)
+      const port = await bridge.start()
       const headers = {
         'x-stoa-session-id': session.id,
         'x-stoa-project-id': project.id,
-        'x-stoa-secret': 'claude-secret'
+        'x-stoa-secret': bridge.issueSessionSecret(session.id)
       }
 
       expect(sessionPresence(manager, session.id).phase).toBe('ready')
@@ -783,16 +782,7 @@ describe('E2E: Backend Full User Lifecycle', () => {
         blockingReason: 'permission'
       })
 
-      await manager.applySessionStatePatch({
-        sessionId: session.id,
-        sequence: ++sequence,
-        occurredAt: new Date().toISOString(),
-        intent: 'agent.permission_resolved',
-        source: 'provider',
-        sourceEventType: 'claude-code.PermissionResolved',
-        agentState: 'working',
-        summary: 'Permission resolved'
-      })
+      await httpPost(port, '/hooks/claude-code', { hook_event_name: 'PreToolUse' }, headers)
       expect(sessionPresence(manager, session.id)).toMatchObject({ phase: 'running', agentState: 'working' })
 
       await httpPost(port, '/hooks/claude-code', { hook_event_name: 'Stop' }, headers)
