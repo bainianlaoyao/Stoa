@@ -70,11 +70,10 @@ The project-level auto evolution workflow is intended to connect requirement und
 
 ### Download the App
 
-Download the installer for your platform from [GitHub Releases](../../releases):
+Download the installer from [GitHub Releases](https://github.com/bainianlaoyao/Stoa/releases):
 
-- Windows: download the `.exe` installer
-- macOS: download the `.dmg` or `.zip` installer
-- Linux: download the `.AppImage` or distribution-specific package
+- Windows: download the `.exe` installer or portable `.exe`
+- macOS / Linux: packaging targets are configured, and formal artifacts will be published after platform-specific verification
 
 After installation, start Stoa, add a workspace, and create an AI CLI session.
 
@@ -90,11 +89,54 @@ Before using a provider, install and sign in to the corresponding CLI:
 
 If Stoa cannot detect a CLI executable automatically, configure its executable path manually in the Providers settings page.
 
+### Provider Support
+
+| Provider | CLI command | Session recovery | Structured status | Notes |
+| --- | --- | --- | --- | --- |
+| Claude Code | `claude` | Supported | Supported | Sends status events through Claude hooks. [Install docs](https://docs.anthropic.com/en/docs/claude-code/setup) |
+| OpenCode | `opencode` | Supported | Supported | Sends status events through a workspace sidecar plugin. [Install docs](https://opencode.ai/docs) |
+| Codex | `codex` | Supported | Supported | Integrated through the provider adapter layer. [Project](https://github.com/openai/codex) |
+| Shell | System shell | Not supported | Not supported | Useful for regular local terminal sessions. |
+
+## Privacy and Local-First Behavior
+
+Stoa itself is a local desktop application. Workspace organization, terminal hosting, session state, and recovery metadata are kept on your machine by default.
+
+Stoa does not provide cloud sync and does not proxy model requests. Sign-in, network access, model usage, and telemetry behavior for Claude Code, OpenCode, Codex, and other CLI tools are controlled by those tools themselves.
+
+## Security Notes
+
+- Run AI CLI sessions only in workspaces you trust.
+- Provider sidecars write the required configuration into the target workspace, such as Claude hooks or OpenCode plugin files.
+- Stoa does not bypass authentication, permission confirmation, or model policy for the CLI tools you run.
+- If you enable Claude Code permission bypass behavior, use it only in workspaces where you explicitly understand the risk.
+
+## State Storage
+
+Stoa stores application state, workspace indexes, session metadata, and recovery information locally. Provider sidecar configuration is written into the relevant project directory, such as `.claude/` or `.opencode/`.
+
+See [State Storage and Recovery](docs/operations/state-storage-and-recovery.md) for the recovery design.
+
 ## Supported Platforms
 
 Stoa is built with Electron and targets Windows, macOS, and Linux.
 
-Current development and screenshots are primarily based on Windows. Other platform installers are published and verified as part of the release flow.
+The 0.1.0 release prioritizes Windows artifacts. macOS and Linux packaging targets are configured, but those artifacts should be built, signed, and smoke-tested on the appropriate platforms before being published as official downloads.
+
+## What Stoa Is Not
+
+- It is not an IDE replacement.
+- It is not a general-purpose terminal emulator project.
+- It is not a cloud agent platform.
+- It does not infer agent state by scraping terminal output.
+- It does not take over authentication, model selection, or cloud behavior from the CLI tools you run.
+
+## Roadmap
+
+- Stabilize the Windows, macOS, and Linux installer release pipeline.
+- Continue hardening provider status feedback and recovery for Claude Code, OpenCode, Codex, and future providers.
+- Advance project-level auto evolution: context understanding, plan generation, execution, test verification, and behavior asset updates.
+- Improve workspace templates, provider configuration, and long-running session management.
 
 ## Basic Usage
 
@@ -121,6 +163,20 @@ At this stage, improvements are allowed to be breaking changes by default. The p
 - [Local Development Environment](docs/engineering/local-dev-environment.md)
 - [State Storage and Recovery](docs/operations/state-storage-and-recovery.md)
 - [Release and Update Runbook](docs/operations/release-and-update-runbook.md)
+
+## FAQ
+
+### What if Stoa cannot find a CLI tool?
+
+First make sure the CLI is installed and signed in on your machine. If Stoa cannot detect the executable automatically, configure the path manually in Settings -> Providers.
+
+### Why can terminal output and session status differ?
+
+Terminal output is for humans to read. Stoa's running, waiting for input, error, and recovery states come from structured status channels, avoiding unreliable inference from terminal text.
+
+### Will closing or switching workspaces lose sessions?
+
+Stoa is designed to reduce session loss risk. Providers that support recovery use the CLI's own session capabilities when possible; regular shell sessions do not provide the same level of external recovery.
 
 ## Contributing and Quality Gate
 
@@ -203,4 +259,4 @@ Core architecture boundaries:
 
 ## License
 
-This repository has not declared a formal license yet. Check the future `LICENSE` file before using, redistributing, or building derivative work from the project.
+Stoa is released under the [Apache License 2.0](LICENSE).
