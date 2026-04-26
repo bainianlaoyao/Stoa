@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
+import type { Terminal } from '@xterm/xterm'
 
 vi.mock('@xterm/xterm', () => {
   class Terminal {
