@@ -158,6 +158,41 @@ describe('session runtime callbacks and defaults', () => {
 
       expect(markRuntimeExited).toHaveBeenCalledWith('session_op_1', 137, 'opencode exited (137)')
     })
+
+    test('onExit callback logs markRuntimeExited failures instead of leaving an unhandled rejection', async () => {
+      const ptyHost = createCapturingPtyHost()
+      const persistError = new Error('persist failed after exit')
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      try {
+        await startSessionRuntime({
+          session: createBaseSession(),
+          webhookPort: 43127,
+          provider: createProvider(),
+          ptyHost: ptyHost as never,
+          manager: {
+            markRuntimeStarting: vi.fn(async () => {}),
+            markRuntimeAlive: vi.fn(async () => {}),
+            markRuntimeExited: vi.fn(async () => {
+              throw persistError
+            }),
+            appendTerminalData: vi.fn(async () => {})
+          } as never
+        })
+
+        const onExit = ptyHost.onExit!
+        onExit(0)
+
+        await vi.waitFor(() => {
+          expect(consoleError).toHaveBeenCalledWith(
+            '[session-runtime] Failed to mark runtime exit for session_op_1:',
+            persistError
+          )
+        })
+      } finally {
+        consoleError.mockRestore()
+      }
+    })
   })
 
   describe('markRuntimeStarting is called before markRuntimeAlive', () => {

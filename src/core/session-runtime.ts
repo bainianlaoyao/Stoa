@@ -117,7 +117,11 @@ export async function startSessionRuntime(options: StartSessionRuntimeOptions): 
       (exitCode) => {
         exitObservedDuringStart = true
         console.log(`[session-runtime] Process exited for ${session.id} with code ${exitCode}`)
-        void manager.markRuntimeExited(session.id, exitCode, `${session.type} exited (${exitCode})`)
+        void manager
+          .markRuntimeExited(session.id, exitCode, `${session.type} exited (${exitCode})`)
+          .catch((error) => {
+            console.error(`[session-runtime] Failed to mark runtime exit for ${session.id}:`, error)
+          })
       }
     )
   } catch (error) {

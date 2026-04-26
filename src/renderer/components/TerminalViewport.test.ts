@@ -19,9 +19,11 @@ vi.mock('@xterm/xterm', () => {
     rows = 24
     writes: string[] = []
     unicode = { activeVersion: '6' }
+    registeredCsiHandlers: unknown[] = []
 
     parser = {
-      registerCsiHandler(_id: unknown, _callback: (params: (number | number[])[]) => boolean) {
+      registerCsiHandler: (id: unknown, callback: (params: (number | number[])[]) => boolean) => {
+        this.registeredCsiHandlers.push({ id, callback })
         return { dispose: () => {} }
       },
     }
@@ -584,6 +586,33 @@ describe('TerminalViewport', () => {
     const { Terminal } = await import('@xterm/xterm')
     const instance = (Terminal as unknown as { instances: Array<{ options: Record<string, unknown> }> }).instances.at(-1)
     expect(instance?.options.fontSize).toBe(18)
+  })
+
+  test('installs scrollback guard for codex sessions so TUI output keeps scrollback history', async () => {
+    const codexSession = sessionSummary({
+      id: 'session_codex_1',
+      type: 'codex',
+      title: 'Codex',
+      recoveryMode: 'resume-external',
+      externalSessionId: 'codex-ext-1',
+    })
+
+    const { default: TerminalViewport } = await import('./TerminalViewport.vue')
+    mount(TerminalViewport, {
+      props: { project: baseProject, session: codexSession },
+    })
+    await flushTerminal()
+
+    const { Terminal } = await import('@xterm/xterm')
+    const instance = (Terminal as unknown as {
+      instances: Array<{ registeredCsiHandlers: Array<{ id: unknown }> }>
+    }).instances.at(-1)
+
+    expect(instance?.registeredCsiHandlers.map(handler => handler.id)).toEqual([
+      { prefix: '?', final: 'h' },
+      { prefix: '?', final: 'l' },
+      { final: 'J' },
+    ])
   })
 
   test('uses terminal subtheme tokens instead of repeated rgba literals in component styles', () => {

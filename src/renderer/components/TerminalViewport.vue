@@ -106,7 +106,11 @@ function setupTerminal() {
   localTerminal.open(terminalContainer.value)
   localTerminal.focus()
 
-  if (props.session.type === 'opencode') {
+  if (
+    props.session.type === 'opencode'
+    || props.session.type === 'codex'
+    || props.session.type === 'claude-code'
+  ) {
     scrollbackGuard = installScrollbackGuard(localTerminal)
   }
 
