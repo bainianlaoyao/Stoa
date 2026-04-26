@@ -23,6 +23,7 @@ export type SessionStateIntent =
   | 'agent.tool_started'
   | 'agent.tool_completed'
   | 'agent.turn_completed'
+  | 'agent.turn_interrupted'
   | 'agent.completion_seen'
   | 'agent.permission_requested'
   | 'agent.permission_resolved'

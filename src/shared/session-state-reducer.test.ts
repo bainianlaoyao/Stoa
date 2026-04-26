@@ -230,6 +230,24 @@ describe('session state reducer', () => {
     expect(next.hasUnseenCompletion).toBe(false)
   })
 
+  it('turn interrupted moves active agent states back to idle without showing completion', () => {
+    for (const agentState of ['working', 'blocked'] as const) {
+      const next = reduceSessionState(
+        session({ agentState, hasUnseenCompletion: true, blockingReason: 'permission' }),
+        patch({ intent: 'agent.turn_interrupted', source: 'ui' }),
+        NOW
+      )
+
+      expect(next).toMatchObject({
+        agentState: 'idle',
+        hasUnseenCompletion: false,
+        blockingReason: null,
+        lastStateSequence: 2,
+        updatedAt: NOW
+      })
+    }
+  })
+
   it('blocked cannot be cleared by ordinary stale tool started', () => {
     const next = reduceSessionState(
       session({ agentState: 'blocked', blockingReason: 'permission', hasUnseenCompletion: true }),

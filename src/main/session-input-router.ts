@@ -16,6 +16,7 @@ export interface SessionInputRouterOptions {
   codexSubmitInputMinIntervalMs?: number
   nowMs?: () => number
   sleep?: (ms: number) => Promise<void>
+  onUserInterrupt?: (sessionId: string, sessionType: Exclude<SessionType, 'shell'>) => Promise<void> | void
 }
 
 export class SessionInputRouter {
@@ -26,6 +27,7 @@ export class SessionInputRouter {
   private readonly codexSubmitInputMinIntervalMs: number
   private readonly nowMs: () => number
   private readonly sleep: (ms: number) => Promise<void>
+  private readonly onUserInterrupt?: (sessionId: string, sessionType: Exclude<SessionType, 'shell'>) => Promise<void> | void
 
   constructor(
     private readonly sessions: SessionInputSessionLookup,
@@ -36,6 +38,7 @@ export class SessionInputRouter {
     this.codexSubmitInputMinIntervalMs = options.codexSubmitInputMinIntervalMs ?? 120
     this.nowMs = options.nowMs ?? (() => Date.now())
     this.sleep = options.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)))
+    this.onUserInterrupt = options.onUserInterrupt
   }
 
   async send(sessionId: string, data: string): Promise<void> {
@@ -44,6 +47,13 @@ export class SessionInputRouter {
     }
 
     const sessionType = this.sessions.getSessionType(sessionId)
+    if (isAgentSessionType(sessionType) && isUserInterruptInput(data)) {
+      this.resetSession(sessionId)
+      this.transport.write(sessionId, data)
+      await this.onUserInterrupt?.(sessionId, sessionType)
+      return
+    }
+
     const frames = sessionType === 'codex' ? expandCodexFrames(data) : [data]
     if (frames.length === 0) {
       return
@@ -142,4 +152,12 @@ function isCodexPlainFrame(data: string): boolean {
 
 function isCodexSubmitFrame(data: string): boolean {
   return data === '\r' || data === '\n'
+}
+
+function isAgentSessionType(sessionType: SessionType | null): sessionType is Exclude<SessionType, 'shell'> {
+  return sessionType === 'codex' || sessionType === 'claude-code' || sessionType === 'opencode'
+}
+
+function isUserInterruptInput(data: string): boolean {
+  return data.includes('\u0003')
 }

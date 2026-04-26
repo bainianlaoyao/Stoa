@@ -218,6 +218,31 @@ describe('SessionRuntimeController', () => {
     })
   })
 
+  test('markAgentTurnInterrupted clears running presence and pushes ready snapshot', async () => {
+    const { window: win, sent } = createMockWindow()
+    const project = await manager.createProject({ path: await createTestWorkspace('ctrl-interrupt-'), name: 'test' })
+    const session = await manager.createSession({ projectId: project.id, type: 'codex', title: 'Codex' })
+    await manager.markRuntimeAlive(session.id, 'codex-real-123')
+    await manager.applySessionStatePatch(providerPatch(session.id, 'agent.turn_started', 2, 'UserPromptSubmit'))
+    const observability = new ObservabilityService(new InMemoryObservationStore(), {
+      nowIso: () => '2026-01-01T00:00:06.000Z'
+    })
+    const controller = new SessionRuntimeController(manager, () => win, undefined, observability)
+
+    await controller.markAgentTurnInterrupted(session.id, 'User interrupted current turn')
+
+    const updated = manager.snapshot().sessions.find((candidate) => candidate.id === session.id)!
+    expect(updated.agentState).toBe('idle')
+    expect(updated.hasUnseenCompletion).toBe(false)
+    expect(updated.summary).toBe('User interrupted current turn')
+    expect(sent.find((item) => item.channel === IPC_CHANNELS.observabilitySessionPresenceChanged)?.data).toMatchObject({
+      sessionId: session.id,
+      phase: 'ready',
+      agentState: 'idle',
+      hasUnseenCompletion: false
+    })
+  })
+
   test('manager snapshot sync excludes archived sessions from observability bootstrap aggregates', async () => {
     const activeProject = await manager.createProject({ path: await createTestWorkspace('ctrl-bootstrap-a-'), name: 'Active' })
     const archivedProject = await manager.createProject({ path: await createTestWorkspace('ctrl-bootstrap-b-'), name: 'Archived' })

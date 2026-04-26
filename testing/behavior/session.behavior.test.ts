@@ -74,6 +74,8 @@ describe('session behavior assets', () => {
     expect(sessionPresenceRunningBehavior.expects).toContain('session.presence.phase=running')
     expect(sessionPresenceRunningBehavior.expects).toContain('session.presence.priority=medium')
     expect(sessionPresenceRunningBehavior.invalidPreconditions).toContain('session.agentState=blocked')
+    expect(sessionPresenceRunningBehavior.interruptions).toContain('user.interruptsAgentTurn')
+    expect(sessionPresenceRunningBehavior.recovery).toContain('userInterruptReturnsReadyWithoutCompletion')
   })
 
   it('declares complete presence as UI-only unread completion', () => {

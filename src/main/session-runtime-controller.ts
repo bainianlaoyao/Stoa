@@ -58,6 +58,11 @@ export class SessionRuntimeController implements SessionRuntimeManager {
     this.finishSessionStateChange(patch.sessionId)
   }
 
+  async markAgentTurnInterrupted(sessionId: string, summary: string): Promise<void> {
+    await this.manager.markAgentTurnInterrupted(sessionId, summary)
+    this.finishSessionStateChange(sessionId)
+  }
+
   async setActiveSession(sessionId: string): Promise<void> {
     await this.manager.setActiveSession(sessionId)
     this.finishSessionStateChange(sessionId)

@@ -128,6 +128,33 @@ function createSessionExternalId(type: SessionType, externalSessionId?: string |
     : null
 }
 
+function normalizeAppSettings(settings?: Partial<AppSettings>): AppSettings {
+  const defaults = structuredClone(DEFAULT_SETTINGS)
+  if (!settings) {
+    return defaults
+  }
+
+  return {
+    shellPath: typeof settings.shellPath === 'string' ? settings.shellPath : defaults.shellPath,
+    terminalFontSize: typeof settings.terminalFontSize === 'number'
+      ? Math.max(12, Math.min(24, settings.terminalFontSize))
+      : defaults.terminalFontSize,
+    terminalFontFamily: typeof settings.terminalFontFamily === 'string'
+      ? settings.terminalFontFamily
+      : defaults.terminalFontFamily,
+    providers: typeof settings.providers === 'object' && settings.providers !== null
+      ? { ...settings.providers }
+      : defaults.providers,
+    workspaceIde: isWorkspaceIdeSetting(settings.workspaceIde)
+      ? { ...settings.workspaceIde }
+      : defaults.workspaceIde,
+    claudeDangerouslySkipPermissions: typeof settings.claudeDangerouslySkipPermissions === 'boolean'
+      ? settings.claudeDangerouslySkipPermissions
+      : defaults.claudeDangerouslySkipPermissions,
+    locale: typeof settings.locale === 'string' ? settings.locale : defaults.locale
+  }
+}
+
 function resolveActiveProjectId(projects: ProjectSummary[], activeProjectId: string | null): string | null {
   if (!activeProjectId) {
     return null
@@ -185,9 +212,7 @@ export class ProjectSessionManager {
     this.globalStatePath = globalStatePath
     this.persistDisabled = persistDisabled
     this.hasPersistedProjects = initialState.projects.length > 0
-    this.settings = persistedSettings
-      ? structuredClone(persistedSettings)
-      : structuredClone(DEFAULT_SETTINGS)
+    this.settings = normalizeAppSettings(persistedSettings)
   }
 
   static async create(options: ProjectSessionManagerOptions): Promise<ProjectSessionManager> {
@@ -326,6 +351,10 @@ export class ProjectSessionManager {
 
   async markCompletionSeen(sessionId: string): Promise<void> {
     await this.applyRuntimePatch(sessionId, 'agent.completion_seen', 'Completion seen', { source: 'ui' })
+  }
+
+  async markAgentTurnInterrupted(sessionId: string, summary: string): Promise<void> {
+    await this.applyRuntimePatch(sessionId, 'agent.turn_interrupted', summary, { source: 'ui' })
   }
 
   async setActiveProject(projectId: string): Promise<void> {

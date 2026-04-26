@@ -126,6 +126,13 @@ export function reduceSessionState(
         next.hasUnseenCompletion = true
       }
       break
+    case 'agent.turn_interrupted':
+      if (session.runtimeState === 'alive' && (session.agentState === 'working' || session.agentState === 'blocked')) {
+        next.agentState = 'idle'
+        next.hasUnseenCompletion = false
+        next.blockingReason = null
+      }
+      break
     case 'agent.completion_seen':
       next.hasUnseenCompletion = false
       break

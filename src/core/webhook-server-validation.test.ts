@@ -297,6 +297,28 @@ describe('webhook event validation', () => {
       expect(events).toHaveLength(1)
     })
 
+    test('accepts user interruption events as canonical presence updates', async () => {
+      const { server, events } = createTestServer()
+      const port = await server.start()
+
+      const response = await postJson(
+        port,
+        createValidEvent({
+          event_type: 'agent.turn_interrupted',
+          payload: {
+            intent: 'agent.turn_interrupted',
+            agentState: 'idle',
+            hasUnseenCompletion: false,
+            summary: 'Turn interrupted'
+          }
+        }),
+        'secret-1'
+      )
+
+      expect(response.statusCode).toBe(202)
+      expect(events[0]!.payload.intent).toBe('agent.turn_interrupted')
+    })
+
     test('accepts event with extra fields (correlation_id)', async () => {
       const { server, events } = createTestServer()
       const port = await server.start()

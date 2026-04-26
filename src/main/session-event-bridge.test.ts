@@ -355,6 +355,53 @@ describe('SessionEventBridge', () => {
     )
   })
 
+  test('canonical user interruption events are recorded as ready presence evidence', async () => {
+    const manager = ProjectSessionManager.createForTest()
+    const controller = {
+      applyProviderStatePatch: vi.fn(async () => {})
+    }
+    const observability = {
+      ingest: vi.fn(() => true)
+    }
+    const bridge = new SessionEventBridge(manager, controller, observability, {
+      nowIso: () => '2026-01-01T00:00:11.000Z'
+    })
+    bridges.push(bridge)
+
+    const port = await bridge.start()
+    const secret = bridge.issueSessionSecret('session_1')
+    const canonical = createCanonicalEvent({
+      event_id: 'evt_interrupted',
+      event_type: 'agent.turn_interrupted',
+      payload: {
+        intent: 'agent.turn_interrupted',
+        agentState: 'idle',
+        hasUnseenCompletion: false,
+        summary: 'Turn interrupted'
+      }
+    })
+    const response = await postEvent(port, canonical, secret)
+
+    expect(response.statusCode).toBe(202)
+    expect(controller.applyProviderStatePatch).toHaveBeenCalledWith(
+      expect.objectContaining<Partial<SessionStatePatchEvent>>({
+        intent: 'agent.turn_interrupted',
+        agentState: 'idle',
+        hasUnseenCompletion: false,
+        summary: 'Turn interrupted'
+      })
+    )
+    expect(observability.ingest).toHaveBeenCalledWith(
+      expect.objectContaining<Partial<ObservationEvent>>({
+        eventId: 'evt_interrupted',
+        category: 'presence',
+        type: 'presence.ready',
+        severity: 'info',
+        retention: 'operational'
+      })
+    )
+  })
+
   test('canonical event externalSessionId is reflected in observability after manager apply and sync', async () => {
     const stateDir = await createTestTempDir('session-event-bridge-state-')
     const workspaceDir = await createTestTempDir('session-event-bridge-workspace-')

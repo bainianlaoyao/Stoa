@@ -70,9 +70,9 @@ export const useSettingsStore = defineStore('settings', () => {
     return detected
   }
 
-  async function detectAndSetVscode(): Promise<string | null> {
+  async function detectAndSetVscode(force?: boolean): Promise<string | null> {
     const detected = await window.stoa.detectVscode()
-    if (detected && !workspaceIde.value.executablePath) {
+    if (detected && (force || !workspaceIde.value.executablePath)) {
       await updateSetting('workspaceIde', { id: workspaceIde.value.id, executablePath: detected })
     }
     return detected

@@ -12,6 +12,7 @@ const store = useSettingsStore()
 const detectedShell = ref<string | null>(null)
 const detectedVscode = ref<string | null>(null)
 const detecting = ref(true)
+const detectingVscode = ref(false)
 
 const fontSizeOptions = Array.from({ length: 13 }, (_, i) => ({
   value: String(i + 12),
@@ -58,6 +59,13 @@ async function handleWorkspaceIdeBrowse(): Promise<void> {
       executablePath: path
     })
   }
+}
+
+async function handleVscodeAutoDetect(): Promise<void> {
+  detectingVscode.value = true
+  const detected = await store.detectAndSetVscode(true)
+  detectedVscode.value = detected
+  detectingVscode.value = false
 }
 
 function handleWorkspaceIdeChange(value: string): void {
@@ -159,6 +167,11 @@ async function handleLanguageChange(value: string): Promise<void> {
         </p>
         <p v-else-if="store.workspaceIde.executablePath && store.workspaceIde.executablePath !== detectedVscode" class="settings-item__hint">{{ t('general.workspaceIdeSection.customPath') }}</p>
         <p v-else-if="detectedVscode" class="settings-item__hint settings-item__hint--success">{{ t('general.workspaceIdeSection.autoDetected') }}</p>
+        <div v-if="!detecting" class="settings-item__detect-row">
+          <button class="btn-ghost btn-ghost--sm" type="button" :disabled="detectingVscode" @click="handleVscodeAutoDetect">
+            {{ detectingVscode ? t('general.workspaceIdeSection.detecting') : t('general.workspaceIdeSection.autoDetect') }}
+          </button>
+        </div>
       </section>
 
       <section class="settings-card" aria-label="Terminal font size">
@@ -311,6 +324,16 @@ async function handleLanguageChange(value: string): Promise<void> {
 
 .settings-item__hint--warning {
   color: var(--color-attention);
+}
+
+.settings-item__detect-row {
+  margin-top: 4px;
+}
+
+.btn-ghost--sm {
+  font-size: 11px;
+  padding: 3px 8px;
+  min-height: unset;
 }
 
 @media (max-width: 980px) {

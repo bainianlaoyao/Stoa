@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   sessionPresenceBlockedJourney,
   sessionPresenceFailedJourney,
+  sessionPresenceInterruptedJourney,
   sessionPresenceReadyJourney,
   sessionPresenceRunningJourney,
   sessionTelemetryClaudeLifecycleJourney,
@@ -54,6 +55,8 @@ describe('session telemetry journey', () => {
 
     expect(sessionPresenceRunningJourney.behavior).toBe('session.presence.running')
     expect(sessionPresenceRunningJourney.act).toContain('post.claude.userPromptSubmitHook')
+    expect(sessionPresenceInterruptedJourney.behavior).toBe('session.presence.running')
+    expect(sessionPresenceInterruptedJourney.act).toEqual(['send.agentInterruptInput', 'observe.presence.ready'])
 
     expect(sessionPresenceBlockedJourney.behavior).toBe('session.presence.blocked')
     expect(sessionPresenceBlockedJourney.assert).toContain('command.sessionRequiresUserIntervention')

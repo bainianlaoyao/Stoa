@@ -234,6 +234,7 @@ function mapIntentToObservation(intent: CanonicalSessionEvent['payload']['intent
       return { category: 'presence', type: 'presence.blocked', severity: 'attention', retention: 'critical' }
     case 'agent.permission_resolved':
     case 'agent.recovered':
+    case 'agent.turn_interrupted':
       return { category: 'presence', type: 'presence.ready', severity: 'info', retention: 'operational' }
     case 'agent.turn_failed':
       return { category: 'presence', type: 'presence.failed', severity: 'error', retention: 'critical' }

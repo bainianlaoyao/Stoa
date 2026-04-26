@@ -75,6 +75,34 @@ describe('ProjectSessionManager', () => {
     expect(reloaded.getSettings().claudeDangerouslySkipPermissions).toBe(true)
   })
 
+  test('fills missing persisted settings with current defaults', async () => {
+    const globalStatePath = await createTempGlobalStatePath()
+    await writeFile(globalStatePath, JSON.stringify({
+      version: 3,
+      active_project_id: null,
+      active_session_id: null,
+      projects: [],
+      settings: {
+        shellPath: 'C:\\WINDOWS\\system32\\cmd.exe',
+        terminalFontSize: 14,
+        terminalFontFamily: 'JetBrains Mono',
+        providers: {},
+        claudeDangerouslySkipPermissions: true,
+        locale: 'en'
+      }
+    }), 'utf-8')
+
+    const manager = await ProjectSessionManager.create({
+      webhookPort: null,
+      globalStatePath
+    })
+
+    expect(manager.getSettings().workspaceIde).toEqual(DEFAULT_SETTINGS.workspaceIde)
+
+    const persisted = JSON.parse(await readFile(globalStatePath, 'utf-8')) as { settings?: { workspaceIde?: unknown } }
+    expect(persisted.settings?.workspaceIde).toEqual(DEFAULT_SETTINGS.workspaceIde)
+  })
+
   test('rejects startup when persisted global state is corrupted', async () => {
     const globalStatePath = await createTempGlobalStatePath()
     await writeFile(globalStatePath, '{broken json', 'utf-8')

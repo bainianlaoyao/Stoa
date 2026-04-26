@@ -127,8 +127,8 @@ export const sessionPresenceRunningBehavior = defineBehavior({
     'command.sessionStatusRunningVisible'
   ],
   invalidPreconditions: ['session.runtimeState=starting', 'session.agentState=blocked', 'session.agentState=error'],
-  interruptions: ['provider.permissionRequest.duringRunning', 'provider.stopHook.duringRunning'],
-  recovery: ['runningDoesNotOverrideBlocked', 'runningDoesNotOverrideFailed'],
+  interruptions: ['provider.permissionRequest.duringRunning', 'provider.stopHook.duringRunning', 'user.interruptsAgentTurn'],
+  recovery: ['runningDoesNotOverrideBlocked', 'runningDoesNotOverrideFailed', 'userInterruptReturnsReadyWithoutCompletion'],
   observationLayers: ['ui', 'renderer-store', 'main-debug-state', 'persisted-state'],
   risk: 'medium',
   coverageBudget: 'high'

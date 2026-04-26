@@ -41,7 +41,8 @@ export default {
       detecting: '\u6B63\u5728\u641C\u7D22 VS Code\u2026',
       autoDetected: '\u5DF2\u81EA\u52A8\u68C0\u6D4B\u5230 VS Code',
       autoDetectedWith: '\u81EA\u52A8\u68C0\u6D4B\uFF1A{path}',
-      customPath: '\u4F7F\u7528\u81EA\u5B9A\u4E49\u8DEF\u5F84'
+      customPath: '\u4F7F\u7528\u81EA\u5B9A\u4E49\u8DEF\u5F84',
+      autoDetect: '\u81EA\u52A8\u68C0\u6D4B'
     },
     typographySection: {
       title: '\u7EC8\u7AEF\u5B57\u4F53',

@@ -41,7 +41,8 @@ export default {
       detecting: 'Searching for VS Code\u2026',
       autoDetected: 'VS Code detected automatically',
       autoDetectedWith: 'Auto-detected: {path}',
-      customPath: 'Using custom path'
+      customPath: 'Using custom path',
+      autoDetect: 'Auto-detect'
     },
     typographySection: {
       title: 'Terminal typography',

@@ -426,6 +426,11 @@ app.whenReady().then(async () => {
       write(sessionId, data) {
         ptyHost?.write(sessionId, data)
       }
+    },
+    {
+      async onUserInterrupt(sessionId, sessionType) {
+        await runtimeController?.markAgentTurnInterrupted(sessionId, `${sessionType} turn interrupted by user`)
+      }
     }
   )
 

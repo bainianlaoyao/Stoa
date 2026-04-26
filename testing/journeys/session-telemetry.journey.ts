@@ -40,6 +40,16 @@ export const sessionPresenceRunningJourney = defineJourney({
   variants: ['claude-hook']
 })
 
+export const sessionPresenceInterruptedJourney = defineJourney({
+  id: 'journey.session.presence.interrupted',
+  behavior: 'session.presence.running',
+  usageMode: 'active_workflow',
+  setup: ['project.withCodexSession', 'session.runtimeAlive', 'post.codex.userPromptSubmitHook'],
+  act: ['send.agentInterruptInput', 'observe.presence.ready'],
+  assert: ['command.sessionStatusReadyVisible', 'session.hasUnseenCompletion=false'],
+  variants: ['codex-input-interrupt']
+})
+
 export const sessionPresenceBlockedJourney = defineJourney({
   id: 'journey.session.presence.blocked',
   behavior: 'session.presence.blocked',

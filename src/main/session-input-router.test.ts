@@ -135,4 +135,44 @@ describe('SessionInputRouter', () => {
 
     expect(writes).toEqual(['A'])
   })
+
+  test('codex interrupt input cancels queued draft frames and reports user interruption immediately', async () => {
+    let releaseSleep: (() => void) | undefined
+    const writes: string[] = []
+    const interruptions: Array<{ sessionId: string; sessionType: string }> = []
+
+    const router = new SessionInputRouter(
+      { getSessionType: () => 'codex' },
+      {
+        write(_sessionId, data) {
+          writes.push(data)
+        }
+      },
+      {
+        codexPlainInputMinIntervalMs: 35,
+        nowMs: () => 0,
+        sleep: () =>
+          new Promise<void>((resolve) => {
+            releaseSleep = resolve
+          }),
+        onUserInterrupt(sessionId, sessionType) {
+          interruptions.push({ sessionId, sessionType })
+        }
+      }
+    )
+
+    const pending = router.send('codex-1', 'AB')
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(writes).toEqual(['A'])
+
+    await router.send('codex-1', '\u0003')
+    if (releaseSleep) {
+      releaseSleep()
+    }
+    await pending
+
+    expect(writes).toEqual(['A', '\u0003'])
+    expect(interruptions).toEqual([{ sessionId: 'codex-1', sessionType: 'codex' }])
+  })
 })

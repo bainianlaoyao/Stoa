@@ -64,8 +64,9 @@ Current Stoa mitigation for this boundary is intentionally narrow:
 - normalize Codex plain-text multi-character input at the main-process ingress before PTY write
 - split plain-text chunks into an ordered character stream
 - keep control sequences containing `ESC` raw and unsplit
+- treat explicit user interrupt control input (`Ctrl+C` / ETX) for agent providers as a local `agent.turn_interrupted` state patch, because Codex does not reliably emit a `Stop` hook when a user cancels the current turn
 
-This is an ingress workaround, not state inference. Real session state still has to come from provider-emitted hooks.
+This is an ingress workaround, not terminal-output inference. Real session state still comes from provider-emitted hooks except for explicit user-owned cancellation input, which is authoritative because the user action originated in Stoa.
 
 ---
 
