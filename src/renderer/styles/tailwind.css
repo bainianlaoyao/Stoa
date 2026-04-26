@@ -13,6 +13,8 @@
   --color-muted: #808792;
   --color-subtle: #a6acb5;
   --color-accent: #0055ff;
+  --color-active-indicator: var(--color-accent);
+  --color-active-fill: rgba(0, 85, 255, 0.06);
   --color-success: #10b981;
   --color-warning: #f59e0b;
   --color-attention: #d97706;

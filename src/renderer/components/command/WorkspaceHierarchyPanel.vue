@@ -237,10 +237,10 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <aside class="min-h-0 overflow-hidden rounded-[var(--radius-sm)] bg-surface border border-line" data-testid="workspace-hierarchy-panel" aria-label="Workspace hierarchy">
+  <aside class="min-h-0 overflow-hidden rounded-[var(--radius-sm)] bg-surface" data-testid="workspace-hierarchy-panel" aria-label="Workspace hierarchy">
     <div class="min-h-0 overflow-auto p-2.5 grid gap-3 align-content-start" data-testid="route-body">
       <div class="grid gap-1" data-testid="route-actions">
-        <button class="route-action flex items-center justify-between gap-2 px-2.5 py-2 border border-line rounded-[var(--radius-sm)] bg-surface-solid text-text-strong shadow-card cursor-pointer transition-all duration-200 hover:bg-black-faint focus-visible:bg-black-faint focus-visible:outline-none" type="button" data-testid="workspace.new-project" @click="showNewProject = true">
+        <button class="route-action flex items-center justify-between gap-2 px-2.5 py-2 rounded-[var(--radius-sm)] bg-surface-solid text-text-strong cursor-pointer transition-all duration-200 hover:bg-black-faint focus-visible:bg-black-faint focus-visible:outline-none" type="button" data-testid="workspace.new-project" @click="showNewProject = true">
           <span class="text-xs font-semibold tracking-[0.05em]">New Project</span>
           <span class="w-[18px] h-[18px] grid place-items-center rounded-[var(--radius-sm)] bg-canvas text-text-strong text-xs">+</span>
         </button>
@@ -400,16 +400,27 @@ onBeforeUnmount(() => {
   min-width: 0;
 }
 
-.route-project-actions,
+.route-project-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.route-project:hover .route-project-actions,
+.route-project:focus-within .route-project-actions {
+  opacity: 1;
+}
+
 .route-row-actions {
   margin-left: auto;
   display: flex;
   align-items: center;
   gap: 6px;
   flex: none;
-}
-
-.route-row-actions {
   position: absolute;
   right: 4px;
   top: 50%;
@@ -428,7 +439,7 @@ onBeforeUnmount(() => {
   grid-template-columns: 20px minmax(0, 1fr);
   gap: 8px;
   align-items: center;
-  padding: 6px 8px 6px 4px;
+  padding: 5px 8px 5px 10px;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   background: transparent;
@@ -436,13 +447,13 @@ onBeforeUnmount(() => {
   text-align: left;
   cursor: pointer;
   transition: all 0.2s ease;
+  position: relative;
 }
 
 .route-item.child {
-  grid-template-columns: 8px auto minmax(0, 1fr);
-  gap: 8px;
-  padding: 6px 8px 6px 10px;
-  padding-left: 24px;
+  grid-template-columns: 6px 14px minmax(0, 1fr);
+  gap: 6px;
+  padding: 4px 8px 4px 38px;
 }
 
 .route-item:hover:not(.route-item--active),
@@ -452,9 +463,33 @@ onBeforeUnmount(() => {
 }
 
 .route-item--active {
-  background: var(--color-surface-solid);
-  border-color: var(--color-line);
-  box-shadow: var(--shadow-card);
+  background: var(--color-active-fill);
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.route-item--active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--color-active-indicator);
+}
+
+.route-item--active .route-name {
+  font-weight: 700;
+}
+
+.route-item--active .route-session-label {
+  color: var(--color-text);
+  font-weight: 500;
+}
+
+.route-item:not(.route-item--active) .route-session-label {
+  color: var(--color-subtle);
 }
 
 .route-item--parent {
@@ -473,6 +508,12 @@ onBeforeUnmount(() => {
   place-items: center;
   cursor: pointer;
   transition: all 0.15s ease;
+  opacity: 0;
+}
+
+.route-item:hover .route-detail-trigger,
+.route-item:focus-within .route-detail-trigger {
+  opacity: 1;
 }
 
 .route-detail-trigger svg {
@@ -632,13 +673,13 @@ onBeforeUnmount(() => {
   width: 24px;
   height: 24px;
   padding: 0;
-  border: 1px solid var(--color-line);
+  border: 0;
   border-radius: var(--radius-sm);
   background: var(--color-surface-solid);
   color: var(--color-muted);
   display: grid;
   place-items: center;
-  box-shadow: var(--shadow-card);
+  box-shadow: none;
   cursor: pointer;
   transition: all 0.2s ease;
 }
