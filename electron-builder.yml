@@ -7,6 +7,7 @@ files:
   - package.json
 asarUnpack:
   - node_modules/node-pty/**
+  - out/tools/entire-bridge/**
 publish:
   provider: github
   owner: "${env.GH_OWNER}"
