@@ -75,7 +75,7 @@ describe('PtyHost', () => {
         ['-l'],
         {
           cwd: '/home',
-          name: 'xterm-color',
+          name: 'xterm-256color',
           cols: 120,
           rows: 30,
           env: { PATH: '/usr/bin' },

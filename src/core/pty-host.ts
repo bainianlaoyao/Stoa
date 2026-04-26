@@ -11,7 +11,7 @@ export class PtyHost {
   start(runtimeId: string, command: ProviderCommand, onData: (data: string) => void, onExit: (exitCode: number) => void): PtySession {
     const terminal = pty.spawn(command.command, command.args, {
       cwd: command.cwd,
-      name: 'xterm-color',
+      name: 'xterm-256color',
       cols: 120,
       rows: 30,
       env: command.env
