@@ -41,11 +41,12 @@ Release：`[链接]`
 转而来试试: Stoa , 一个真正好用的编程工作台。
 
 通过近千个测试守护稳定性。
-简洁优雅的 UI / UX
+简洁优雅的 UI / UX 让你把所有经历都能专注在vibe coding.
 支持多种 CLI 工具: claude code, codex, opencode, 一个应用统一管理。
 
+由chatgpt 5.5和他忠诚的助理编写.
 
-GitHub：`[链接]`
+GitHub：
 Release：`[链接]`
 
 ## LINUX DO
