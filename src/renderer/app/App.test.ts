@@ -673,6 +673,52 @@ describe('App (root)', () => {
   })
 
   describe('cleanup', () => {
+    it('keeps update listeners active after mount until unmount', async () => {
+      const unsubscribeUpdate = vi.fn()
+      setupStoa({
+        onUpdateState: vi.fn().mockReturnValue(unsubscribeUpdate)
+      })
+
+      wrapper = await mountApp(pinia)
+      await flush()
+
+      expect(unsubscribeUpdate).not.toHaveBeenCalled()
+    })
+
+    it('keeps observability listeners active after mount until unmount', async () => {
+      const unsubscribeSessionPresence = vi.fn()
+      const unsubscribeProjectObservability = vi.fn()
+      const unsubscribeAppObservability = vi.fn()
+      setupStoa({
+        getBootstrapState: vi.fn().mockResolvedValue({
+          activeProjectId: 'project_1',
+          activeSessionId: 'session_1',
+          terminalWebhookPort: 0,
+          projects: [{ id: 'project_1', name: 'test', path: '/test', createdAt: 't', updatedAt: 't' }],
+          sessions: [createSessionSummary({
+            id: 'session_1',
+            projectId: 'project_1',
+            type: 'claude-code',
+            agentState: 'working',
+            title: 'test session',
+            summary: 'running',
+            recoveryMode: 'resume-external',
+            externalSessionId: 'claude-session-1'
+          })]
+        }),
+        onSessionPresenceChanged: vi.fn().mockReturnValue(unsubscribeSessionPresence),
+        onProjectObservabilityChanged: vi.fn().mockReturnValue(unsubscribeProjectObservability),
+        onAppObservabilityChanged: vi.fn().mockReturnValue(unsubscribeAppObservability)
+      })
+
+      wrapper = await mountApp(pinia)
+      await flush()
+
+      expect(unsubscribeSessionPresence).not.toHaveBeenCalled()
+      expect(unsubscribeProjectObservability).not.toHaveBeenCalled()
+      expect(unsubscribeAppObservability).not.toHaveBeenCalled()
+    })
+
     it('unsubscribes update listeners on unmount', async () => {
       const unsubscribeUpdate = vi.fn()
       setupStoa({

@@ -83,14 +83,11 @@ describe('TerminalMetaBar', () => {
     expect(wrapper.text()).toContain('Provider is waiting for confirmation.')
   })
 
-  it('falls back to existing raw props when no active view model is available', () => {
+  it('does not render raw session state without an active view model', () => {
     const wrapper = mount(TerminalMetaBar, { props: { project: mockProject, session: mockSession, activeViewModel: null } })
 
-    expect(wrapper.find('.terminal-meta').exists()).toBe(true)
-    expect(wrapper.text()).toContain('project_1')
-    expect(wrapper.text()).toContain('session_1')
-    expect(wrapper.text()).toContain('opencode')
-    expect(wrapper.text()).toContain('alive / working')
+    expect(wrapper.text()).not.toContain('alive / working')
+    expect(wrapper.find('[data-testid="terminal-status-bar"]').exists()).toBe(false)
   })
 
   it('with project null: renders nothing', () => {

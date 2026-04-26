@@ -2,6 +2,34 @@ import { mount } from '@vue/test-utils'
 import { describe, expect, test } from 'vitest'
 import { nextTick } from 'vue'
 import WorkspaceList from './WorkspaceList.vue'
+import type { SessionPresenceSnapshot } from '@shared/observability'
+
+const sessionPresenceMap: Record<string, SessionPresenceSnapshot> = {
+  session_op_1: {
+    sessionId: 'session_op_1',
+    projectId: 'project_alpha',
+    providerId: 'opencode',
+    providerLabel: 'OpenCode',
+    modelLabel: null,
+    phase: 'running',
+    runtimeState: 'alive',
+    agentState: 'working',
+    hasUnseenCompletion: false,
+    runtimeExitCode: null,
+    runtimeExitReason: null,
+    confidence: 'authoritative',
+    health: 'healthy',
+    blockingReason: null,
+    lastAssistantSnippet: null,
+    lastEventAt: '2026-04-26T00:00:00.000Z',
+    lastEvidenceType: null,
+    hasUnreadTurn: false,
+    recoveryPointerState: 'trusted',
+    evidenceSequence: 1,
+    sourceSequence: 1,
+    updatedAt: '2026-04-26T00:00:00.000Z'
+  }
+}
 
 describe('WorkspaceList', () => {
   test('renders project to session hierarchy and emits session creation target', async () => {
@@ -46,7 +74,8 @@ describe('WorkspaceList', () => {
         projectName: 'alpha',
         projectPath: 'D:/alpha',
         sessionTitle: 'Deploy',
-        sessionType: 'opencode'
+        sessionType: 'opencode',
+        sessionPresenceMap
       }
     })
 
