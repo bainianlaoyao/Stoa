@@ -6,7 +6,7 @@
 
 [中文版](README.zh-CN.md)
 
-Stoa is a fully open-source local workspace for AI-powered development.
+Stoa is a fully open-source local workspace for AI-powered development, built to make managing ten agents at once feel as effortless as taking a sip of water.
 
 It gives developers a clean, focused desktop console for managing multiple projects, multiple agents, and multiple CLI sessions. Its core paths are maintained by nearly one thousand tests, with the goal of turning AI CLI workflows from temporary terminal sessions into a stable, recoverable, production-grade experience.
 
