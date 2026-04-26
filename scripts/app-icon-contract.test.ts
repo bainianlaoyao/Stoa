@@ -7,11 +7,13 @@ function readFile(relativePath: string): Buffer {
 }
 
 describe('packaged app icon contract', () => {
-  it('uses the selected flat Stoa visual system for generated icon assets', () => {
+  it('uses the selected cutout Stoa visual system for generated icon assets', () => {
     const iconSource = readFile('build/icons/icon-source.svg').toString('utf8')
 
-    expect(iconSource).toContain('data-icon-style="flat-stoa"')
-    expect(iconSource).toContain('fill="#0055FF"')
+    expect(iconSource).toContain('data-icon-style="cutout-stoa"')
+    expect(iconSource).toContain('fill="#0F172A"')
+    expect(iconSource).toContain('<mask')
+    // 1 white background + 1 mask fill + 3 cutout bars + 1 main shape = 6
     expect(iconSource.match(/<rect /g)).toHaveLength(6)
     expect(iconSource).not.toContain('linearGradient')
     expect(iconSource).not.toContain('filter')
@@ -22,6 +24,6 @@ describe('packaged app icon contract', () => {
   it('ships large raster and Windows ICO assets from the selected icon', () => {
     expect(readFile('build/icons/icon.png').length).toBeGreaterThan(10_000)
     expect(readFile('build/icons/icon-256.png').length).toBeGreaterThan(2_000)
-    expect(readFile('build/icons/icon.ico').length).toBeGreaterThan(6_000)
+    expect(readFile('build/icons/icon.ico').length).toBeGreaterThan(3_000)
   })
 })

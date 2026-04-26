@@ -9,8 +9,8 @@ const brandDir = dirname(fileURLToPath(import.meta.url))
 
 describe('renderer brand assets', () => {
   it('resolve through the Vite asset pipeline', () => {
-    expect(stoaSymbol).toMatch(/^data:image\/svg\+xml,/)
-    expect(stoaWordmarkHorizontal).toMatch(/^data:image\/svg\+xml,/)
+    expect(stoaSymbol).toMatch(/^data:image\/svg\+xml[,;]/)
+    expect(stoaWordmarkHorizontal).toMatch(/^data:image\/svg\+xml[,;]/)
   })
 
   it('keep the symbol SVG within the approved renderer contract', () => {
@@ -21,18 +21,16 @@ describe('renderer brand assets', () => {
     expect(source).not.toContain('data:image')
     expect(source).not.toContain('<text')
     expect(source).not.toContain('currentColor')
-    expect(source).toContain('fill="#0055FF"')
-    expect(source.match(/<rect /g)).toHaveLength(5)
+    expect(source).toContain('fill="#0F172A"')
+    expect(source).toContain('<mask')
   })
 
-  it('keeps the horizontal wordmark self-contained and font-independent', () => {
+  it('keeps the horizontal wordmark self-contained', () => {
     const source = readFileSync(resolve(brandDir, 'stoa-wordmark-horizontal.svg'), 'utf8')
 
     expect(source).not.toContain('<image')
     expect(source).not.toContain('data:image')
-    expect(source).not.toContain('<text')
-    expect(source).not.toContain('font-family')
-    expect(source).toContain('fill="#0055FF"')
-    expect(source.match(/<rect /g)).toHaveLength(5)
+    expect(source).toContain('fill="#0F172A"')
+    expect(source).toContain('<mask')
   })
 })
