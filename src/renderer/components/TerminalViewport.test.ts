@@ -5,7 +5,8 @@ import { mount } from '@vue/test-utils'
 import { describe, expect, test, vi, beforeEach, afterEach } from 'vitest'
 import { nextTick } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
-import type { ProjectSummary, SessionSummary, SessionSummaryEvent } from '@shared/project-session'
+import type { ProjectSummary, SessionSummary } from '@shared/project-session'
+import type { SessionPresenceSnapshot } from '@shared/observability'
 import { useSettingsStore } from '@renderer/stores/settings'
 
 const terminalViewportPath = resolve(dirname(fileURLToPath(import.meta.url)), 'TerminalViewport.vue')
@@ -90,7 +91,7 @@ vi.mock('@xterm/xterm/css/xterm.css', () => ({}))
 function createMockApi() {
   const callbacks = {
     terminalData: [] as Array<(chunk: { sessionId: string; data: string }) => void>,
-    sessionEvent: [] as Array<(event: SessionSummaryEvent) => void>,
+    sessionPresence: [] as Array<(snapshot: SessionPresenceSnapshot) => void>,
   }
 
   return {
@@ -104,11 +105,11 @@ function createMockApi() {
         if (idx >= 0) callbacks.terminalData.splice(idx, 1)
       }
     }),
-    onSessionEvent: vi.fn((cb: (event: SessionSummaryEvent) => void) => {
-      callbacks.sessionEvent.push(cb)
+    onSessionPresenceChanged: vi.fn((cb: (snapshot: SessionPresenceSnapshot) => void) => {
+      callbacks.sessionPresence.push(cb)
       return () => {
-        const idx = callbacks.sessionEvent.indexOf(cb)
-        if (idx >= 0) callbacks.sessionEvent.splice(idx, 1)
+        const idx = callbacks.sessionPresence.indexOf(cb)
+        if (idx >= 0) callbacks.sessionPresence.splice(idx, 1)
       }
     }),
     callbacks,
@@ -233,7 +234,7 @@ describe('TerminalViewport', () => {
     await flushTerminal()
 
     expect(mockApi.onTerminalData).toHaveBeenCalled()
-    expect(mockApi.onSessionEvent).toHaveBeenCalled()
+    expect(mockApi.onSessionPresenceChanged).toHaveBeenCalled()
   })
 
   test('replays the latest terminal backlog before consuming live chunks', async () => {
@@ -302,8 +303,8 @@ describe('TerminalViewport', () => {
     mockApi.callbacks.terminalData.forEach((cb) => {
       cb({ sessionId: 'session_op_1', data: 'live-before-replay' })
     })
-    mockApi.callbacks.sessionEvent.forEach((cb) => {
-      cb({ session: sessionSummary({ runtimeState: 'exited', runtimeExitCode: 0, runtimeExitReason: 'clean', summary: 'done' }) })
+    mockApi.callbacks.sessionPresence.forEach((cb) => {
+      cb({ sessionId: 'session_op_1', runtimeState: 'exited', runtimeExitCode: 0, runtimeExitReason: 'clean' } as SessionPresenceSnapshot)
     })
 
     resolveReplay('restored-frame')
@@ -334,8 +335,8 @@ describe('TerminalViewport', () => {
       mockApi.callbacks.terminalData.forEach((cb) => {
         cb({ sessionId: 'session_op_1', data: 'live-while-hung' })
       })
-      mockApi.callbacks.sessionEvent.forEach((cb) => {
-        cb({ session: sessionSummary({ runtimeState: 'exited', runtimeExitCode: 0, runtimeExitReason: 'clean', summary: 'done' }) })
+      mockApi.callbacks.sessionPresence.forEach((cb) => {
+        cb({ sessionId: 'session_op_1', runtimeState: 'exited', runtimeExitCode: 0, runtimeExitReason: 'clean' } as SessionPresenceSnapshot)
       })
       await flushTerminal()
 

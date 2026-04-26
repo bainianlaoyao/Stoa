@@ -20,7 +20,7 @@ export function toSessionRowViewModel(
 
   return {
     ...baseViewModel,
-    updatedAgoLabel: formatRelativeAge(presence.updatedAt, nowIso)
+    updatedAgoLabel: formatRelativeAge(presence.lastEventAt, nowIso)
   }
 }
 
@@ -37,7 +37,7 @@ export function toActiveSessionViewModel(
     phaseLabel: phaseLabel(presence.phase),
     confidenceLabel: confidenceLabel(presence.confidence),
     tone: mapPhaseToTone(presence.phase),
-    lastUpdatedLabel: formatRelativeAge(presence.updatedAt, nowIso),
+    lastUpdatedLabel: formatRelativeAge(presence.lastEventAt, nowIso),
     snippet: presence.lastAssistantSnippet,
     explanation: explanationForPresence(presence)
   }
@@ -70,8 +70,8 @@ function explanationForPresence(presence: SessionPresenceSnapshot): string | nul
   return null
 }
 
-function formatRelativeAge(updatedAt: string, nowIso: string): string {
-  const elapsedMs = Date.parse(nowIso) - Date.parse(updatedAt)
+function formatRelativeAge(timestamp: string, nowIso: string): string {
+  const elapsedMs = Date.parse(nowIso) - Date.parse(timestamp)
 
   if (!Number.isFinite(elapsedMs) || elapsedMs < 0) {
     return '0s ago'

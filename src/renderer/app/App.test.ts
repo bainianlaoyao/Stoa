@@ -324,21 +324,18 @@ describe('App (root)', () => {
       const store = useWorkspaceStore(pinia)
 
       expect(window.stoa.getSessionPresence).toHaveBeenCalledWith('session_1')
-      expect(window.stoa.onSessionPresenceChanged).toHaveBeenCalledOnce()
+      expect(window.stoa.onSessionPresenceChanged).toHaveBeenCalledTimes(2)
       expect(store.activeSessionPresence?.sourceSequence).toBe(2)
-      expect(sessionPresenceListeners).toHaveLength(1)
+      expect(sessionPresenceListeners).toHaveLength(2)
 
-      const sessionPresenceListener = sessionPresenceListeners[0]
-      if (!sessionPresenceListener) {
-        throw new Error('Expected session presence listener to be registered')
+      for (const sessionPresenceListener of sessionPresenceListeners) {
+        sessionPresenceListener(createSessionPresenceSnapshot({
+          phase: 'blocked',
+          blockingReason: 'permission',
+          sourceSequence: 3,
+          updatedAt: '2026-04-24T08:00:01.000Z'
+        }))
       }
-
-      sessionPresenceListener(createSessionPresenceSnapshot({
-        phase: 'blocked',
-        blockingReason: 'permission',
-        sourceSequence: 3,
-        updatedAt: '2026-04-24T08:00:01.000Z'
-      }))
       await flush()
 
       expect(store.activeSessionPresence?.phase).toBe('blocked')
@@ -764,7 +761,7 @@ describe('App (root)', () => {
       wrapper.unmount()
       wrapper = undefined
 
-      expect(unsubscribeSessionPresence).toHaveBeenCalledOnce()
+      expect(unsubscribeSessionPresence).toHaveBeenCalledTimes(2)
       expect(unsubscribeProjectObservability).toHaveBeenCalledOnce()
       expect(unsubscribeAppObservability).toHaveBeenCalledOnce()
     })

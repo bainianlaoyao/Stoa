@@ -7,6 +7,7 @@ import { useI18n } from 'vue-i18n'
 import type { FitAddon } from '@xterm/addon-fit'
 import type { IDisposable, Terminal } from '@xterm/xterm'
 import type { ProjectSummary, SessionSummary, TerminalDataChunk } from '@shared/project-session'
+import type { SessionPresenceSnapshot } from '@shared/observability'
 
 const props = defineProps<{
   project: ProjectSummary | null
@@ -186,8 +187,12 @@ function setupTerminal() {
     }
   })
 
-  unsubscribeEvents = stoa.onSessionEvent((event) => {
-    if (event.session.id === sessionId && event.session.runtimeState === 'exited') {
+  unsubscribeEvents = stoa.onSessionPresenceChanged((snapshot) => {
+    if (snapshot.sessionId !== sessionId) {
+      return
+    }
+
+    if (snapshot.runtimeState === 'exited') {
       queueOrWrite('\r\n\x1b[90m[session exited]\x1b[0m')
     }
   })

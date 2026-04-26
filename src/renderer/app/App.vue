@@ -90,6 +90,7 @@ async function handleRestoreSession(sessionId: string): Promise<void> {
 
 let unsubscribeSessionEvent: (() => void) | null = null
 let unsubscribeUpdateState: (() => void) | null = null
+let isUnmounted = false
 
 onMounted(async () => {
   unsubscribeUpdateState = window.stoa.onUpdateState((state) => {
@@ -97,12 +98,24 @@ onMounted(async () => {
   })
 
   const bootstrapState = await window.stoa.getBootstrapState()
+  if (isUnmounted) {
+    return
+  }
+
   workspaceStore.hydrate(bootstrapState)
   await workspaceStore.hydrateObservability()
+  if (isUnmounted) {
+    workspaceStore.unsubscribeObservability()
+    return
+  }
+
   await Promise.all([
     settingsStore.loadSettings(),
     updateStore.refresh()
   ])
+  if (isUnmounted) {
+    return
+  }
 
   unsubscribeSessionEvent = window.stoa?.onSessionEvent?.((event: SessionSummaryEvent) => {
     workspaceStore.updateSession(event.session.id, event.session)
@@ -110,6 +123,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  isUnmounted = true
   unsubscribeSessionEvent?.()
   unsubscribeUpdateState?.()
   workspaceStore.unsubscribeObservability()

@@ -446,6 +446,7 @@ test.describe('Electron push and webhook journeys', () => {
       expect(sessionState).toBeDefined()
       const sessionBefore = await waitForSessionSnapshot(app.electronApp, sessionState!.id)
       const statusDot = session.row.locator('[data-testid="session-status-dot"]')
+      await expect(statusDot).toHaveAttribute('data-session-status-testid', 'session-status-ready')
       const statusBefore = await statusDot.getAttribute('data-session-status-testid')
       expect(statusBefore).toBeTruthy()
 
