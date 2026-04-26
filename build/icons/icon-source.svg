@@ -1,10 +1,12 @@
-<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg" data-icon-style="flat-stoa">
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg" data-icon-style="cutout-stoa">
   <rect width="1024" height="1024" rx="224" fill="#FFFFFF"/>
-  <g fill="#0055FF">
-    <rect x="218" y="220" width="588" height="128" rx="8"/>
-    <rect x="256" y="402" width="118" height="330" rx="8"/>
-    <rect x="453" y="402" width="118" height="330" rx="8"/>
-    <rect x="650" y="402" width="118" height="330" rx="8"/>
-    <rect x="218" y="786" width="588" height="74" rx="8"/>
-  </g>
+  <defs>
+    <mask id="cutout-symmetric">
+      <rect width="1024" height="1024" fill="white"/>
+      <rect x="332" y="448" width="72" height="224" rx="12" fill="black"/>
+      <rect x="476" y="448" width="72" height="224" rx="12" fill="black"/>
+      <rect x="620" y="448" width="72" height="224" rx="12" fill="black"/>
+    </mask>
+  </defs>
+  <rect x="260" y="260" width="504" height="504" rx="40" fill="#0F172A" mask="url(#cutout-symmetric)"/>
 </svg>

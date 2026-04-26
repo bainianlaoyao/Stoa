@@ -1,13 +1,12 @@
-<svg width="220" height="64" viewBox="0 0 220 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <g fill="#0055FF">
-    <rect x="6" y="6" width="52" height="11.35"/>
-    <rect x="9.78" y="20.18" width="10.4" height="28.36"/>
-    <rect x="26.8" y="20.18" width="10.4" height="28.36"/>
-    <rect x="43.82" y="20.18" width="10.4" height="28.36"/>
-    <rect x="6" y="51.38" width="52" height="6.62"/>
-  </g>
-  <path d="M76 24C76 21.7909 77.7909 20 80 20H97V26H82V31H93C95.2091 31 97 32.7909 97 35V40C97 42.2091 95.2091 44 93 44H76V38H91V37H80C77.7909 37 76 35.2091 76 33V24Z" fill="#1A1A1A"/>
-  <path d="M101 20H129V26H118V44H112V26H101V20Z" fill="#1A1A1A"/>
-  <path d="M148.5 20L160 44H153.4L150.9 38.5H139.1L136.6 44H130L141.5 20H148.5ZM141.8 32.8H148.2L145 25.7L141.8 32.8Z" fill="#1A1A1A"/>
-  <path d="M163 32C163 24.268 169.268 18 177 18C184.732 18 191 24.268 191 32C191 39.732 184.732 46 177 46C169.268 46 163 39.732 163 32ZM169.2 32C169.2 36.3078 172.692 39.8 177 39.8C181.308 39.8 184.8 36.3078 184.8 32C184.8 27.6922 181.308 24.2 177 24.2C172.692 24.2 169.2 27.6922 169.2 32Z" fill="#1A1A1A"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 160" width="500" height="160">
+  <defs>
+    <mask id="cutout-stoa-symmetric">
+      <rect width="100%" height="100%" fill="white"/>
+      <rect x="48" y="50" width="20" height="60" rx="2" fill="black"/>
+      <rect x="80" y="50" width="20" height="60" rx="2" fill="black"/>
+      <rect x="112" y="50" width="20" height="60" rx="2" fill="black"/>
+    </mask>
+  </defs>
+  <rect x="30" y="30" width="120" height="100" rx="8" fill="#0F172A" mask="url(#cutout-stoa-symmetric)"/>
+  <text x="175" y="112" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="88" font-weight="600" fill="#0F172A" letter-spacing="-1.5">Stoa</text>
 </svg>

@@ -1,9 +1,11 @@
 <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <g fill="#0055FF">
-    <rect x="6" y="6" width="52" height="11.35"/>
-    <rect x="9.78" y="20.18" width="10.4" height="28.36"/>
-    <rect x="26.8" y="20.18" width="10.4" height="28.36"/>
-    <rect x="43.82" y="20.18" width="10.4" height="28.36"/>
-    <rect x="6" y="51.38" width="52" height="6.62"/>
-  </g>
+  <defs>
+    <mask id="cutout-symmetric">
+      <rect width="64" height="64" fill="white"/>
+      <rect x="17" y="22" width="5" height="20" rx="1" fill="black"/>
+      <rect x="29.5" y="22" width="5" height="20" rx="1" fill="black"/>
+      <rect x="42" y="22" width="5" height="20" rx="1" fill="black"/>
+    </mask>
+  </defs>
+  <rect x="10" y="10" width="44" height="44" rx="4" fill="#0F172A" mask="url(#cutout-symmetric)"/>
 </svg>
