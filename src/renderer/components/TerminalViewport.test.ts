@@ -19,6 +19,12 @@ vi.mock('@xterm/xterm', () => {
     writes: string[] = []
     unicode = { activeVersion: '6' }
 
+    parser = {
+      registerCsiHandler(_id: unknown, _callback: (params: (number | number[])[]) => boolean) {
+        return { dispose: () => {} }
+      },
+    }
+
     constructor(options: Record<string, unknown> = {}) {
       this.options = options
       Terminal.instances.push(this)

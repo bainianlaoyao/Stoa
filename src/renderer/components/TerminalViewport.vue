@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { watch, onMounted, onBeforeUnmount, nextTick, useTemplateRef } from 'vue'
 import '@xterm/xterm/css/xterm.css'
-import { createTerminalRuntime } from '@renderer/terminal/xterm-runtime'
+import { createTerminalRuntime, installScrollbackGuard } from '@renderer/terminal/xterm-runtime'
 import { useSettingsStore } from '@renderer/stores/settings'
 import { useI18n } from 'vue-i18n'
 import type { FitAddon } from '@xterm/addon-fit'
-import type { Terminal } from '@xterm/xterm'
+import type { IDisposable, Terminal } from '@xterm/xterm'
 import type { ProjectSummary, SessionSummary, TerminalDataChunk } from '@shared/project-session'
 
 const props = defineProps<{
@@ -23,6 +23,7 @@ let resizeObserver: ResizeObserver | null = null
 let unsubscribeData: (() => void) | null = null
 let unsubscribeEvents: (() => void) | null = null
 let dataDisposable: { dispose(): void } | null = null
+let scrollbackGuard: IDisposable | null = null
 let pendingFitResolve: (() => void) | null = null
 let mountVersion = 0
 let setupScheduleVersion = 0
@@ -35,6 +36,8 @@ function disposeTerminal() {
   pendingFitResolve = null
   dataDisposable?.dispose()
   dataDisposable = null
+  scrollbackGuard?.dispose()
+  scrollbackGuard = null
   unsubscribeData?.()
   unsubscribeData = null
   unsubscribeEvents?.()
@@ -47,11 +50,11 @@ function disposeTerminal() {
   terminal = null
 }
 
-function writeChunk(targetTerminal: Terminal, data: string): Promise<void> {
-  return new Promise((resolve) => {
-    targetTerminal.write(data, () => resolve())
-  })
-}
+  function writeChunk(targetTerminal: Terminal, data: string): Promise<void> {
+    return new Promise((resolve) => {
+      targetTerminal.write(data, () => resolve())
+    })
+  }
 
 function scheduleTerminalSetup() {
   const localScheduleVersion = ++setupScheduleVersion
@@ -97,6 +100,10 @@ function setupTerminal() {
   fitAddon = localFitAddon
   localTerminal.open(terminalContainer.value)
   localTerminal.focus()
+
+  if (props.session.type === 'opencode') {
+    scrollbackGuard = installScrollbackGuard(localTerminal)
+  }
 
   const isActiveMount = () => mountVersion === localMountVersion && terminal === localTerminal
   const enqueueWrite = (data: string) => {
