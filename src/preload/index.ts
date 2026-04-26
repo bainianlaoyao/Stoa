@@ -6,7 +6,6 @@ import type {
   CreateSessionRequest,
   ObservationEventListOptions,
   RendererApi,
-  SessionSummaryEvent,
   TerminalDataChunk
 } from '@shared/project-session'
 import type {
@@ -80,11 +79,6 @@ const api: RendererApi = {
     const handler = (_event: Electron.IpcRendererEvent, chunk: TerminalDataChunk) => callback(chunk)
     ipcRenderer.on(IPC_CHANNELS.terminalData, handler)
     return () => ipcRenderer.removeListener(IPC_CHANNELS.terminalData, handler)
-  },
-  onSessionEvent(callback: (event: SessionSummaryEvent) => void) {
-    const handler = (_event: Electron.IpcRendererEvent, event: SessionSummaryEvent) => callback(event)
-    ipcRenderer.on(IPC_CHANNELS.sessionEvent, handler)
-    return () => ipcRenderer.removeListener(IPC_CHANNELS.sessionEvent, handler)
   },
   async getSessionPresence(sessionId: string) {
     return ipcRenderer.invoke(IPC_CHANNELS.observabilityGetSessionPresence, sessionId) as Promise<SessionPresenceSnapshot | null>

@@ -103,8 +103,19 @@ function createPresenceSnapshot(overrides: Partial<SessionPresenceSnapshot> = {}
 
 describe('CommandSurface', () => {
   it('uses the command panel wrapper structure', () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const store = useWorkspaceStore(pinia)
+    store.hydrate({
+      activeProjectId: 'project_alpha',
+      activeSessionId: 'session_1',
+      terminalWebhookPort: 0,
+      projects: [activeProject],
+      sessions: [activeSession]
+    })
+
     const wrapper = mount(CommandSurface, {
-      global: { plugins: [createPinia()] },
+      global: { plugins: [pinia] },
       props: {
         hierarchy,
         activeProject,
@@ -122,8 +133,19 @@ describe('CommandSurface', () => {
   })
 
   it('derives a visible running status from session state before observability snapshots arrive', () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const store = useWorkspaceStore(pinia)
+    store.hydrate({
+      activeProjectId: 'project_alpha',
+      activeSessionId: 'session_1',
+      terminalWebhookPort: 0,
+      projects: [activeProject],
+      sessions: [activeSession]
+    })
+
     const wrapper = mount(CommandSurface, {
-      global: { plugins: [createPinia()] },
+      global: { plugins: [pinia] },
       props: {
         hierarchy,
         activeProject,
@@ -179,8 +201,19 @@ describe('CommandSurface', () => {
   })
 
   it('forwards archiveSession from WorkspaceHierarchyPanel', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const store = useWorkspaceStore(pinia)
+    store.hydrate({
+      activeProjectId: 'project_alpha',
+      activeSessionId: 'session_1',
+      terminalWebhookPort: 0,
+      projects: [activeProject],
+      sessions: [activeSession]
+    })
+
     const wrapper = mount(CommandSurface, {
-      global: { plugins: [createPinia()] },
+      global: { plugins: [pinia] },
       props: {
         hierarchy,
         activeProject,

@@ -5,7 +5,6 @@ import WorkspaceHierarchyPanel from './WorkspaceHierarchyPanel.vue'
 import TerminalViewport from '@renderer/components/TerminalViewport.vue'
 import { useWorkspaceStore } from '@renderer/stores/workspaces'
 import { toSessionRowViewModel } from '@renderer/stores/observability-view-models'
-import { buildSessionPresenceSnapshot } from '@shared/observability-projection'
 import type { ProjectSummary, SessionSummary } from '@shared/project-session'
 import type { ProjectHierarchyNode } from '@renderer/stores/workspaces'
 
@@ -34,10 +33,10 @@ const sessionRowViewModels = computed(() => {
 
   for (const project of props.hierarchy) {
     for (const session of project.sessions) {
-      const presence = sessionPresenceMap.value[session.id] ?? buildSessionPresenceSnapshot(session, {
-        activeSessionId: props.activeSessionId,
-        nowIso
-      })
+      const presence = sessionPresenceMap.value[session.id]
+      if (!presence) {
+        continue
+      }
 
       viewModels[session.id] = toSessionRowViewModel(session, presence, nowIso)
     }

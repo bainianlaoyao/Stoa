@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount } from 'vue'
 import { storeToRefs } from 'pinia'
-import type { SessionType, SessionSummaryEvent } from '@shared/project-session'
+import type { SessionType } from '@shared/project-session'
 import AppShell from '@renderer/components/AppShell.vue'
 import UpdatePrompt from '@renderer/components/update/UpdatePrompt.vue'
 import { useWorkspaceStore } from '@renderer/stores/workspaces'
@@ -88,7 +88,6 @@ async function handleRestoreSession(sessionId: string): Promise<void> {
   }
 }
 
-let unsubscribeSessionEvent: (() => void) | null = null
 let unsubscribeUpdateState: (() => void) | null = null
 let isUnmounted = false
 
@@ -116,15 +115,10 @@ onMounted(async () => {
   if (isUnmounted) {
     return
   }
-
-  unsubscribeSessionEvent = window.stoa?.onSessionEvent?.((event: SessionSummaryEvent) => {
-    workspaceStore.updateSession(event.session.id, event.session)
-  })
 })
 
 onBeforeUnmount(() => {
   isUnmounted = true
-  unsubscribeSessionEvent?.()
   unsubscribeUpdateState?.()
   workspaceStore.unsubscribeObservability()
 })

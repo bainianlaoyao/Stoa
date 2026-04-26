@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, test } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { IPC_CHANNELS } from '@core/ipc-channels'
 import { useWorkspaceStore } from '@renderer/stores/workspaces'
-import type { RendererApi, SessionSummary, SessionSummaryEvent, TerminalDataChunk } from '@shared/project-session'
+import type { RendererApi, SessionSummary, TerminalDataChunk } from '@shared/project-session'
+import type { SessionPresenceSnapshot } from '@shared/observability'
 import { FakeIpcPushBus } from './helpers'
 
 function createPreloadApi(bus: FakeIpcPushBus): RendererApi {
@@ -20,10 +21,10 @@ function createPreloadApi(bus: FakeIpcPushBus): RendererApi {
       bus.on(IPC_CHANNELS.terminalData, handler)
       return () => bus.removeListener(IPC_CHANNELS.terminalData, handler)
     },
-    onSessionEvent(callback) {
-      const handler = (_event: undefined, event: SessionSummaryEvent) => callback(event)
-      bus.on(IPC_CHANNELS.sessionEvent, handler)
-      return () => bus.removeListener(IPC_CHANNELS.sessionEvent, handler)
+    onSessionPresenceChanged(callback) {
+      const handler = (_event: undefined, snapshot: SessionPresenceSnapshot) => callback(snapshot)
+      bus.on(IPC_CHANNELS.observabilitySessionPresenceChanged, handler)
+      return () => bus.removeListener(IPC_CHANNELS.observabilitySessionPresenceChanged, handler)
     }
   }
 }
@@ -79,110 +80,120 @@ describe('E2E: IPC Push Harness', () => {
     ])
   })
 
-  test('delivers ordered session:event lifecycle payloads for the same session', () => {
+  test('delivers ordered session presence lifecycle payloads for the same session', () => {
     const bus = new FakeIpcPushBus()
     const api = createPreloadApi(bus)
-    const received: SessionSummaryEvent[] = []
+    const received: SessionPresenceSnapshot[] = []
 
-    api.onSessionEvent((event) => {
-      received.push(event)
+    api.onSessionPresenceChanged((snapshot) => {
+      received.push(snapshot)
     })
 
-    bus.push(IPC_CHANNELS.sessionEvent, {
-      session: createSessionSummary({
-        summary: 'booting sidecar',
-        runtimeState: 'starting',
-        lastStateSequence: 1
-      })
+    const baseSnapshot: SessionPresenceSnapshot = {
+      sessionId: 'session_op_1',
+      projectId: 'project_alpha',
+      providerId: 'opencode',
+      providerLabel: 'OpenCode',
+      modelLabel: null,
+      phase: 'running',
+      runtimeState: 'starting',
+      agentState: 'unknown',
+      hasUnseenCompletion: false,
+      runtimeExitCode: null,
+      runtimeExitReason: null,
+      confidence: 'authoritative',
+      health: 'healthy',
+      blockingReason: null,
+      lastAssistantSnippet: null,
+      lastEventAt: '2026-01-01T00:00:00.000Z',
+      lastEvidenceType: null,
+      hasUnreadTurn: false,
+      recoveryPointerState: 'trusted',
+      evidenceSequence: 1,
+      sourceSequence: 1,
+      updatedAt: '2026-01-01T00:00:00.000Z'
+    }
+
+    bus.push(IPC_CHANNELS.observabilitySessionPresenceChanged, {
+      ...baseSnapshot,
+      runtimeState: 'starting',
+      phase: 'running',
+      sourceSequence: 1
     })
 
-    bus.push(IPC_CHANNELS.sessionEvent, {
-      session: createSessionSummary({
-        summary: 'attached',
-        runtimeState: 'alive',
-        agentState: 'working',
-        lastStateSequence: 2
-      })
+    bus.push(IPC_CHANNELS.observabilitySessionPresenceChanged, {
+      ...baseSnapshot,
+      runtimeState: 'alive',
+      agentState: 'working',
+      phase: 'running',
+      sourceSequence: 2
     })
 
-    bus.push(IPC_CHANNELS.sessionEvent, {
-      session: createSessionSummary({
-        summary: 'process exited',
-        runtimeState: 'exited',
-        agentState: 'idle',
-        runtimeExitCode: 0,
-        runtimeExitReason: 'clean',
-        lastStateSequence: 3
-      })
+    bus.push(IPC_CHANNELS.observabilitySessionPresenceChanged, {
+      ...baseSnapshot,
+      runtimeState: 'exited',
+      agentState: 'idle',
+      runtimeExitCode: 0,
+      runtimeExitReason: 'clean',
+      phase: 'ready',
+      sourceSequence: 3
     })
 
-    expect(received).toEqual([
-      {
-        session: createSessionSummary({
-          summary: 'booting sidecar',
-          runtimeState: 'starting',
-          lastStateSequence: 1
-        })
-      },
-      {
-        session: createSessionSummary({
-          summary: 'attached',
-          runtimeState: 'alive',
-          agentState: 'working',
-          lastStateSequence: 2
-        })
-      },
-      {
-        session: createSessionSummary({
-          summary: 'process exited',
-          runtimeState: 'exited',
-          agentState: 'idle',
-          runtimeExitCode: 0,
-          runtimeExitReason: 'clean',
-          lastStateSequence: 3
-        })
-      }
-    ])
+    expect(received).toHaveLength(3)
+    expect(received[0]!.runtimeState).toBe('starting')
+    expect(received[1]!.runtimeState).toBe('alive')
+    expect(received[2]!.runtimeState).toBe('exited')
   })
 
   test('unsubscribe stops further push delivery', () => {
     const bus = new FakeIpcPushBus()
     const api = createPreloadApi(bus)
-    const received: SessionSummaryEvent[] = []
+    const received: SessionPresenceSnapshot[] = []
 
-    const unsubscribe = api.onSessionEvent((event) => {
-      received.push(event)
+    const baseSnapshot: SessionPresenceSnapshot = {
+      sessionId: 'session_op_1',
+      projectId: 'project_alpha',
+      providerId: 'opencode',
+      providerLabel: 'OpenCode',
+      modelLabel: null,
+      phase: 'running',
+      runtimeState: 'starting',
+      agentState: 'unknown',
+      hasUnseenCompletion: false,
+      runtimeExitCode: null,
+      runtimeExitReason: null,
+      confidence: 'authoritative',
+      health: 'healthy',
+      blockingReason: null,
+      lastAssistantSnippet: null,
+      lastEventAt: '2026-01-01T00:00:00.000Z',
+      lastEvidenceType: null,
+      hasUnreadTurn: false,
+      recoveryPointerState: 'trusted',
+      evidenceSequence: 1,
+      sourceSequence: 1,
+      updatedAt: '2026-01-01T00:00:00.000Z'
+    }
+
+    const unsubscribe = api.onSessionPresenceChanged((snapshot) => {
+      received.push(snapshot)
     })
 
-    bus.push(IPC_CHANNELS.sessionEvent, {
-      session: createSessionSummary({
-        summary: 'booting',
-        runtimeState: 'starting',
-        lastStateSequence: 1
-      })
+    bus.push(IPC_CHANNELS.observabilitySessionPresenceChanged, {
+      ...baseSnapshot,
+      sourceSequence: 1
     })
     unsubscribe()
-    bus.push(IPC_CHANNELS.sessionEvent, {
-      session: createSessionSummary({
-        summary: 'ready',
-        runtimeState: 'alive',
-        agentState: 'working',
-        lastStateSequence: 2
-      })
+    bus.push(IPC_CHANNELS.observabilitySessionPresenceChanged, {
+      ...baseSnapshot,
+      sourceSequence: 2
     })
 
-    expect(received).toEqual([
-      {
-        session: createSessionSummary({
-          summary: 'booting',
-          runtimeState: 'starting',
-          lastStateSequence: 1
-        })
-      }
-    ])
+    expect(received).toHaveLength(1)
+    expect(received[0]!.sourceSequence).toBe(1)
   })
 
-  test('session:event subscription updates workspace store state through push callbacks', () => {
+  test('session presence subscription updates workspace store state through push callbacks', () => {
     const bus = new FakeIpcPushBus()
     const api = createPreloadApi(bus)
     const store = useWorkspaceStore()
@@ -205,42 +216,55 @@ describe('E2E: IPC Push Harness', () => {
       ]
     })
 
-    api.onSessionEvent((event) => {
-      store.updateSession(event.session.id, event.session)
+    const baseSnapshot: SessionPresenceSnapshot = {
+      sessionId: 'session_op_1',
+      projectId: 'project_alpha',
+      providerId: 'opencode',
+      providerLabel: 'OpenCode',
+      modelLabel: null,
+      phase: 'running',
+      runtimeState: 'alive',
+      agentState: 'working',
+      hasUnseenCompletion: false,
+      runtimeExitCode: null,
+      runtimeExitReason: null,
+      confidence: 'authoritative',
+      health: 'healthy',
+      blockingReason: null,
+      lastAssistantSnippet: null,
+      lastEventAt: '2026-01-01T00:00:00.000Z',
+      lastEvidenceType: null,
+      hasUnreadTurn: false,
+      recoveryPointerState: 'trusted',
+      evidenceSequence: 1,
+      sourceSequence: 1,
+      updatedAt: '2026-01-01T00:00:00.000Z'
+    }
+
+    api.onSessionPresenceChanged((snapshot) => {
+      store.applySessionPresenceSnapshot(snapshot)
     })
 
-    bus.push(IPC_CHANNELS.sessionEvent, {
-      session: createSessionSummary({
-        summary: 'attached',
-        runtimeState: 'alive',
-        agentState: 'working',
-        lastStateSequence: 1
-      })
+    bus.push(IPC_CHANNELS.observabilitySessionPresenceChanged, {
+      ...baseSnapshot,
+      runtimeState: 'alive',
+      agentState: 'working',
+      sourceSequence: 1
     })
 
-    expect(store.sessions[0]?.runtimeState).toBe('alive')
-    expect(store.sessions[0]?.agentState).toBe('working')
-    expect(store.sessions[0]?.summary).toBe('attached')
-    expect(store.activeSession?.runtimeState).toBe('alive')
-    expect(store.activeSession?.agentState).toBe('working')
-    expect(store.activeSession?.summary).toBe('attached')
+    expect(store.activeSessionPresence?.runtimeState).toBe('alive')
+    expect(store.activeSessionPresence?.agentState).toBe('working')
 
-    bus.push(IPC_CHANNELS.sessionEvent, {
-      session: createSessionSummary({
-        summary: 'process exited',
-        runtimeState: 'exited',
-        agentState: 'idle',
-        runtimeExitCode: 0,
-        runtimeExitReason: 'clean',
-        lastStateSequence: 2
-      })
+    bus.push(IPC_CHANNELS.observabilitySessionPresenceChanged, {
+      ...baseSnapshot,
+      runtimeState: 'exited',
+      agentState: 'idle',
+      runtimeExitCode: 0,
+      runtimeExitReason: 'clean',
+      sourceSequence: 2
     })
 
-    expect(store.sessions[0]?.runtimeState).toBe('exited')
-    expect(store.sessions[0]?.agentState).toBe('idle')
-    expect(store.sessions[0]?.summary).toBe('process exited')
-    expect(store.activeSession?.runtimeState).toBe('exited')
-    expect(store.activeSession?.agentState).toBe('idle')
-    expect(store.activeSession?.summary).toBe('process exited')
+    expect(store.activeSessionPresence?.runtimeState).toBe('exited')
+    expect(store.activeSessionPresence?.agentState).toBe('idle')
   })
 })

@@ -92,6 +92,10 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
     activeProjectId.value = state.activeProjectId
     activeSessionId.value = state.activeSessionId
     terminalWebhookPort.value = state.terminalWebhookPort
+
+    for (const session of state.sessions) {
+      syncSessionPresenceFromSummary(session)
+    }
   }
 
   async function hydrateObservability(): Promise<void> {
@@ -321,6 +325,7 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
     projectHierarchy,
     hydrate,
     hydrateObservability,
+    applySessionPresenceSnapshot,
     addProject,
     addSession,
     updateSession,

@@ -4,7 +4,7 @@ import { PtyHost } from '@core/pty-host'
 import { ProjectSessionManager } from '@core/project-session-manager'
 import { startSessionRuntime } from '@core/session-runtime'
 import type { SessionRuntimeManager } from '@core/session-runtime'
-import type { SessionSummaryEvent } from '@shared/project-session'
+import type { SessionSummary } from '@shared/project-session'
 import type { ProviderCommand } from '@shared/project-session'
 import type { ProviderDefinition } from '@extensions/providers'
 import { useWorkspaceStore } from '@renderer/stores/workspaces'
@@ -44,13 +44,13 @@ function waitForExit(signal: Promise<void>, timeoutMs = 10_000): Promise<void> {
 }
 
 interface StoreCapturingManager extends SessionRuntimeManager {
-  events: SessionSummaryEvent[]
+  events: SessionSummary[]
   terminalData: Array<{ sessionId: string; data: string }>
   exitSignal: Promise<void>
 }
 
 function createStoreCapturingManager(delegate: ProjectSessionManager): StoreCapturingManager {
-  const events: SessionSummaryEvent[] = []
+  const events: SessionSummary[] = []
   const terminalData: Array<{ sessionId: string; data: string }> = []
   let resolveExit: (() => void) | undefined
   const exitSignal = new Promise<void>((resolve) => { resolveExit = resolve })
@@ -60,7 +60,7 @@ function createStoreCapturingManager(delegate: ProjectSessionManager): StoreCapt
       throw new Error(`Session ${sessionId} not found in manager snapshot`)
     }
 
-    events.push({ session })
+    events.push(session)
   }
 
   return {
@@ -93,10 +93,10 @@ function createStoreCapturingManager(delegate: ProjectSessionManager): StoreCapt
 
 function replayEventsToStore(
   store: ReturnType<typeof useWorkspaceStore>,
-  events: SessionSummaryEvent[]
+  events: SessionSummary[]
 ): void {
-  for (const event of events) {
-    store.updateSession(event.session.id, event.session)
+  for (const session of events) {
+    store.updateSession(session.id, session)
   }
 }
 
@@ -276,9 +276,9 @@ describe('E2E: Store Lifecycle Synchronization', () => {
       await waitForExit(capturing.exitSignal)
 
       expect(capturing.events).toHaveLength(3)
-      expect(capturing.events[0]!.session.runtimeState).toBe('starting')
-      expect(capturing.events[1]!.session.runtimeState).toBe('alive')
-      expect(capturing.events[2]!.session.runtimeState).toBe('exited')
+      expect(capturing.events[0]!.runtimeState).toBe('starting')
+      expect(capturing.events[1]!.runtimeState).toBe('alive')
+      expect(capturing.events[2]!.runtimeState).toBe('exited')
     })
 
     test('replaying events to store produces same state as backend snapshot', async () => {
@@ -329,7 +329,7 @@ describe('E2E: Store Lifecycle Synchronization', () => {
       await waitForExit(capturing.exitSignal)
 
       expect(capturing.events).toHaveLength(3)
-      expect(capturing.events[0]!.session.runtimeState).toBe('starting')
+      expect(capturing.events[0]!.runtimeState).toBe('starting')
       expect(capturing.terminalData.length).toBeGreaterThan(0)
       expect(capturing.terminalData.every(c => c.sessionId === session.id)).toBe(true)
       expect(capturing.terminalData.map(c => c.data).join('')).toContain('sync-e2e')

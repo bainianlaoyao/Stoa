@@ -87,12 +87,6 @@ describe('SessionRuntimeController', () => {
     }))
 
     expect(sent.some(event => event.channel === IPC_CHANNELS.observabilitySessionPresenceChanged)).toBe(true)
-    expect(sent.find(event => event.channel === IPC_CHANNELS.sessionEvent)?.data).toMatchObject({
-      session: {
-        id: session.id,
-        agentState: 'working'
-      }
-    })
   })
 
   test('markRuntimeStarting updates manager and pushes observability snapshots', async () => {
@@ -106,13 +100,6 @@ describe('SessionRuntimeController', () => {
     const updated = manager.snapshot().sessions[0]!
     expect(updated.runtimeState).toBe('starting')
     expect(updated.summary).toBe('starting shell')
-    expect(sent.find(event => event.channel === IPC_CHANNELS.sessionEvent)?.data).toMatchObject({
-      session: {
-        id: session.id,
-        runtimeState: 'starting',
-        summary: 'starting shell'
-      }
-    })
   })
 
   test('markRuntimeAlive pushes presence without setting agent working', async () => {
@@ -131,12 +118,11 @@ describe('SessionRuntimeController', () => {
     expect(updated.agentState).toBe('unknown')
     expect(updated.externalSessionId).toBe('opencode-real-123')
     expect(sent.map((item) => item.channel)).toEqual([
-      IPC_CHANNELS.sessionEvent,
       IPC_CHANNELS.observabilitySessionPresenceChanged,
       IPC_CHANNELS.observabilityProjectChanged,
       IPC_CHANNELS.observabilityAppChanged
     ])
-    expect(sent[1]!.data).toMatchObject({
+    expect(sent[0]!.data).toMatchObject({
       sessionId: session.id,
       phase: 'ready',
       runtimeState: 'alive',
@@ -193,20 +179,12 @@ describe('SessionRuntimeController', () => {
     expect(updated.agentState).toBe('blocked')
     expect(updated.blockingReason).toBe('permission')
     expect(updated.externalSessionId).toBe('opencode-real-456')
-    expect(sent.find(event => event.channel === IPC_CHANNELS.sessionEvent)?.data).toMatchObject({
-      session: {
-        id: session.id,
-        agentState: 'blocked',
-        blockingReason: 'permission'
-      }
-    })
     expect(sent.map((item) => item.channel)).toEqual([
-      IPC_CHANNELS.sessionEvent,
       IPC_CHANNELS.observabilitySessionPresenceChanged,
       IPC_CHANNELS.observabilityProjectChanged,
       IPC_CHANNELS.observabilityAppChanged
     ])
-    expect(sent[1]!.data).toMatchObject({
+    expect(sent[0]!.data).toMatchObject({
       sessionId: session.id,
       phase: 'blocked',
       agentState: 'blocked',
@@ -232,12 +210,6 @@ describe('SessionRuntimeController', () => {
     const updated = manager.snapshot().sessions.find((candidate) => candidate.id === complete.id)!
     expect(updated.agentState).toBe('idle')
     expect(updated.hasUnseenCompletion).toBe(false)
-    expect(sent.find(event => event.channel === IPC_CHANNELS.sessionEvent)?.data).toMatchObject({
-      session: {
-        id: complete.id,
-        hasUnseenCompletion: false
-      }
-    })
     expect(sent.find((item) => item.channel === IPC_CHANNELS.observabilitySessionPresenceChanged)?.data).toMatchObject({
       sessionId: complete.id,
       phase: 'ready',

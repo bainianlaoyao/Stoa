@@ -1,10 +1,9 @@
 import { randomUUID } from 'node:crypto'
 import { request } from 'node:http'
 import { afterEach, describe, expect, test } from 'vitest'
-import { IPC_CHANNELS } from '@core/ipc-channels'
 import { ProjectSessionManager } from '@core/project-session-manager'
 import { readProjectSessions } from '@core/state-store'
-import type { CanonicalSessionEvent, SessionSummaryEvent } from '@shared/project-session'
+import type { CanonicalSessionEvent } from '@shared/project-session'
 import { SessionRuntimeController } from '../../src/main/session-runtime-controller'
 import { SessionEventBridge } from '../../src/main/session-event-bridge'
 import {
@@ -105,26 +104,6 @@ async function waitFor(check: () => boolean | Promise<boolean>, timeoutMs = 10_0
   }
 }
 
-function getSessionEvents(sent: Array<{ channel: string; data: unknown }>): SessionSummaryEvent[] {
-  return sent
-    .filter(entry => entry.channel === IPC_CHANNELS.sessionEvent)
-    .map(entry => {
-      expect(entry.data).toEqual({
-        session: expect.objectContaining({
-          id: expect.any(String)
-        })
-      })
-      expect(entry.data).not.toHaveProperty('sessionId')
-      expect(entry.data).not.toHaveProperty('status')
-
-      return entry.data as SessionSummaryEvent
-    })
-}
-
-function getLatestSessionEvent(sent: Array<{ channel: string; data: unknown }>): SessionSummaryEvent | undefined {
-  return getSessionEvents(sent).at(-1)
-}
-
 function getSessionState(manager: ProjectSessionManager, sessionId: string) {
   const session = manager.snapshot().sessions.find(candidate => candidate.id === sessionId)
   if (!session) {
@@ -205,17 +184,15 @@ describe('E2E: webhook runtime integration', () => {
     expect(response.statusCode).toBe(202)
     expect(JSON.parse(response.body)).toEqual({ accepted: true })
 
-    await waitFor(() => getLatestSessionEvent(harness.sent)?.session.runtimeState === 'alive')
+    await waitFor(() => getSessionState(harness.manager, harness.session.id).runtimeState === 'alive')
 
-    expect(getLatestSessionEvent(harness.sent)).toEqual({
-      session: expect.objectContaining({
-        id: harness.session.id,
-        runtimeState: 'alive',
-        agentState: 'unknown',
-        hasUnseenCompletion: false,
-        summary: 'event accepted',
-        externalSessionId: 'opencode-real-123'
-      })
+    expect(getSessionState(harness.manager, harness.session.id)).toMatchObject({
+      id: harness.session.id,
+      runtimeState: 'alive',
+      agentState: 'unknown',
+      hasUnseenCompletion: false,
+      summary: 'event accepted',
+      externalSessionId: 'opencode-real-123'
     })
 
     expect(getSessionState(harness.manager, harness.session.id).runtimeState).toBe('alive')
@@ -283,7 +260,6 @@ describe('E2E: webhook runtime integration', () => {
     expect(missingSecretResponse.statusCode).toBe(401)
     expect(JSON.parse(missingSecretResponse.body)).toEqual({ accepted: false, reason: 'invalid_secret' })
 
-    expect(getSessionEvents(harness.sent)).toHaveLength(0)
     expect(getSessionState(harness.manager, harness.session.id)).toMatchObject({
       runtimeState: 'created',
       agentState: 'unknown',
@@ -325,19 +301,17 @@ describe('E2E: webhook runtime integration', () => {
     await waitFor(async () => {
       const diskSessions = await readProjectSessions(harness.workspaceDir)
       const persistedSession = diskSessions.sessions.find(candidate => candidate.session_id === harness.session.id)
-      return getLatestSessionEvent(harness.sent)?.session.agentState === 'idle'
-        && getLatestSessionEvent(harness.sent)?.session.hasUnseenCompletion === true
+      return getSessionState(harness.manager, harness.session.id).agentState === 'idle'
+        && getSessionState(harness.manager, harness.session.id).hasUnseenCompletion === true
         && persistedSession?.agent_state === 'idle'
     })
 
-    expect(getLatestSessionEvent(harness.sent)).toEqual({
-      session: expect.objectContaining({
-        id: harness.session.id,
-        agentState: 'idle',
-        hasUnseenCompletion: true,
-        summary: 'session.idle',
-        externalSessionId: 'opencode-real-456'
-      })
+    expect(getSessionState(harness.manager, harness.session.id)).toMatchObject({
+      id: harness.session.id,
+      agentState: 'idle',
+      hasUnseenCompletion: true,
+      summary: 'session.idle',
+      externalSessionId: 'opencode-real-456'
     })
 
     const idleDiskSessions = await readProjectSessions(harness.workspaceDir)
@@ -380,7 +354,7 @@ describe('E2E: webhook runtime integration', () => {
     await waitFor(async () => {
       const diskSessions = await readProjectSessions(harness.workspaceDir)
       const persistedSession = diskSessions.sessions.find(candidate => candidate.session_id === harness.session.id)
-      return getLatestSessionEvent(harness.sent)?.session.runtimeState === 'alive'
+      return getSessionState(harness.manager, harness.session.id).runtimeState === 'alive'
         && persistedSession?.last_summary === 'session.started'
     })
 
@@ -408,30 +382,16 @@ describe('E2E: webhook runtime integration', () => {
     await waitFor(async () => {
       const diskSessions = await readProjectSessions(harness.workspaceDir)
       const persistedSession = diskSessions.sessions.find(candidate => candidate.session_id === harness.session.id)
-      return getLatestSessionEvent(harness.sent)?.session.runtimeState === 'exited'
-        && getLatestSessionEvent(harness.sent)?.session.runtimeExitReason === 'clean'
+      return getSessionState(harness.manager, harness.session.id).runtimeState === 'exited'
+        && getSessionState(harness.manager, harness.session.id).runtimeExitReason === 'clean'
         && persistedSession?.runtime_state === 'exited'
     })
 
-    expect(getSessionEvents(harness.sent).map(event => ({
-      runtimeState: event.session.runtimeState,
-      runtimeExitReason: event.session.runtimeExitReason,
-      summary: event.session.summary,
-      externalSessionId: event.session.externalSessionId
-    }))).toEqual([
-      {
-        runtimeState: 'alive',
-        runtimeExitReason: null,
-        summary: 'session.started',
-        externalSessionId: 'opencode-real-789'
-      },
-      {
-        runtimeState: 'exited',
-        runtimeExitReason: 'clean',
-        summary: 'session.completed',
-        externalSessionId: 'opencode-real-789'
-      }
-    ])
+    const finalState = getSessionState(harness.manager, harness.session.id)
+    expect(finalState.runtimeState).toBe('exited')
+    expect(finalState.runtimeExitReason).toBe('clean')
+    expect(finalState.summary).toBe('session.completed')
+    expect(finalState.externalSessionId).toBe('opencode-real-789')
 
     const exitedDiskSessions = await readProjectSessions(harness.workspaceDir)
     const exitedPersistedSession = exitedDiskSessions.sessions.find(
@@ -474,19 +434,17 @@ describe('E2E: webhook runtime integration', () => {
     await waitFor(async () => {
       const diskSessions = await readProjectSessions(harness.workspaceDir)
       const persistedSession = diskSessions.sessions.find(candidate => candidate.session_id === harness.session.id)
-      return getLatestSessionEvent(harness.sent)?.session.agentState === 'idle'
-        && getLatestSessionEvent(harness.sent)?.session.hasUnseenCompletion === true
+      return getSessionState(harness.manager, harness.session.id).agentState === 'idle'
+        && getSessionState(harness.manager, harness.session.id).hasUnseenCompletion === true
         && persistedSession?.agent_state === 'idle'
     })
 
-    expect(getLatestSessionEvent(harness.sent)).toEqual({
-      session: expect.objectContaining({
-        id: harness.session.id,
-        agentState: 'idle',
-        hasUnseenCompletion: true,
-        summary: 'Turn complete',
-        externalSessionId: 'codex-real-321'
-      })
+    expect(getSessionState(harness.manager, harness.session.id)).toMatchObject({
+      id: harness.session.id,
+      agentState: 'idle',
+      hasUnseenCompletion: true,
+      summary: 'Turn complete',
+      externalSessionId: 'codex-real-321'
     })
 
     const diskSessions = await readProjectSessions(harness.workspaceDir)
@@ -521,19 +479,17 @@ describe('E2E: webhook runtime integration', () => {
     await waitFor(async () => {
       const diskSessions = await readProjectSessions(harness.workspaceDir)
       const persistedSession = diskSessions.sessions.find(candidate => candidate.session_id === harness.session.id)
-      return getLatestSessionEvent(harness.sent)?.session.agentState === 'idle'
-        && getLatestSessionEvent(harness.sent)?.session.hasUnseenCompletion === true
+      return getSessionState(harness.manager, harness.session.id).agentState === 'idle'
+        && getSessionState(harness.manager, harness.session.id).hasUnseenCompletion === true
         && persistedSession?.agent_state === 'idle'
     })
 
-    expect(getLatestSessionEvent(harness.sent)).toEqual({
-      session: expect.objectContaining({
-        id: harness.session.id,
-        agentState: 'idle',
-        hasUnseenCompletion: true,
-        summary: 'Stop',
-        externalSessionId: initialExternalSessionId
-      })
+    expect(getSessionState(harness.manager, harness.session.id)).toMatchObject({
+      id: harness.session.id,
+      agentState: 'idle',
+      hasUnseenCompletion: true,
+      summary: 'Stop',
+      externalSessionId: initialExternalSessionId
     })
 
     const diskSessions = await readProjectSessions(harness.workspaceDir)
@@ -569,7 +525,7 @@ describe('E2E: webhook runtime integration', () => {
       { 'x-stoa-secret': harness.secret }
     )
 
-    await waitFor(() => getSessionEvents(harness.sent).length === 1)
+    await waitFor(() => getSessionState(harness.manager, harness.session.id).runtimeState === 'alive')
     expect(getSessionState(harness.manager, harness.session.id).externalSessionId).toBe('original-session')
 
     await httpPost(
@@ -589,13 +545,9 @@ describe('E2E: webhook runtime integration', () => {
       { 'x-stoa-secret': harness.secret }
     )
 
-    await waitFor(() => getSessionEvents(harness.sent).length === 2)
+    await waitFor(() => getSessionState(harness.manager, harness.session.id).externalSessionId === 'resumed-session-abc')
 
     expect(getSessionState(harness.manager, harness.session.id).externalSessionId).toBe('resumed-session-abc')
-
-    const events = getSessionEvents(harness.sent)
-    expect(events[0]!.session.externalSessionId).toBe('original-session')
-    expect(events[1]!.session.externalSessionId).toBe('resumed-session-abc')
 
     const diskSessions = await readProjectSessions(harness.workspaceDir)
     const persistedSession = diskSessions.sessions.find(candidate => candidate.session_id === harness.session.id)
