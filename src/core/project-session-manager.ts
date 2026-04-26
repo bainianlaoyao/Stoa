@@ -192,6 +192,10 @@ export class ProjectSessionManager {
           providers: {
             ...DEFAULT_SETTINGS.providers,
             ...persistedSettings.providers
+          },
+          workspaceIde: {
+            ...DEFAULT_SETTINGS.workspaceIde,
+            ...persistedSettings.workspaceIde
           }
         }
       : { ...DEFAULT_SETTINGS }
@@ -416,7 +420,11 @@ export class ProjectSessionManager {
   }
 
   getSettings(): AppSettings {
-    return { ...this.settings }
+    return {
+      ...this.settings,
+      providers: { ...this.settings.providers },
+      workspaceIde: { ...this.settings.workspaceIde }
+    }
   }
 
   async setSetting(key: string, value: unknown): Promise<void> {
@@ -428,6 +436,8 @@ export class ProjectSessionManager {
       this.settings.terminalFontFamily = value
     } else if (key === 'providers' && typeof value === 'object' && value !== null) {
       this.settings.providers = value as Record<string, string>
+    } else if (key === 'workspaceIde' && isWorkspaceIdeSetting(value)) {
+      this.settings.workspaceIde = value
     } else if (key === 'claudeDangerouslySkipPermissions' && typeof value === 'boolean') {
       this.settings.claudeDangerouslySkipPermissions = value
     }
@@ -555,4 +565,13 @@ export class ProjectSessionManager {
 function shouldApplyPatchSummary(session: SessionSummary, patch: SessionStatePatchEvent): boolean {
   return patch.intent !== 'runtime.alive'
     || (session.agentState !== 'blocked' && session.agentState !== 'error')
+}
+
+function isWorkspaceIdeSetting(value: unknown): value is AppSettings['workspaceIde'] {
+  if (typeof value !== 'object' || value === null) {
+    return false
+  }
+
+  const candidate = value as { id?: unknown; executablePath?: unknown }
+  return candidate.id === 'vscode' && typeof candidate.executablePath === 'string'
 }

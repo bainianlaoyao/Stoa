@@ -126,8 +126,22 @@ export interface AppSettings {
   terminalFontSize: number
   terminalFontFamily: string
   providers: Record<string, string>
+  workspaceIde: WorkspaceIdeSettings
   claudeDangerouslySkipPermissions: boolean
   locale: string
+}
+
+export type WorkspaceOpenTarget = 'ide' | 'file-manager'
+export type WorkspaceIdeId = 'vscode'
+
+export interface WorkspaceIdeSettings {
+  id: WorkspaceIdeId
+  executablePath: string
+}
+
+export interface OpenWorkspaceRequest {
+  sessionId: string
+  target: WorkspaceOpenTarget
 }
 
 export const BUILTIN_FONT_FAMILIES = ['JetBrains Mono', 'Cascadia Mono'] as const
@@ -137,6 +151,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
   terminalFontSize: 14,
   terminalFontFamily: 'JetBrains Mono',
   providers: {},
+  workspaceIde: {
+    id: 'vscode',
+    executablePath: ''
+  },
   claudeDangerouslySkipPermissions: false,
   locale: 'en'
 }
@@ -205,6 +223,7 @@ export interface RendererApi {
   getBootstrapState: () => Promise<BootstrapState>
   createProject: (request: CreateProjectRequest) => Promise<ProjectSummary>
   createSession: (request: CreateSessionRequest) => Promise<SessionSummary>
+  openWorkspace: (request: OpenWorkspaceRequest) => Promise<void>
   setActiveProject: (projectId: string) => Promise<void>
   setActiveSession: (sessionId: string) => Promise<void>
   archiveSession: (sessionId: string) => Promise<void>
