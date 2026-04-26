@@ -466,6 +466,148 @@ describe('SessionEventBridge', () => {
     })
   })
 
+  test('claude PreToolUse after PermissionRequest infers permission resolved before resuming running state', async () => {
+    const stateDir = await createTestTempDir('session-event-bridge-state-')
+    const workspaceDir = await createTestTempDir('session-event-bridge-workspace-')
+    tempDirs.push(stateDir, workspaceDir)
+    const manager = await ProjectSessionManager.create({
+      webhookPort: null,
+      globalStatePath: join(stateDir, 'global.json')
+    })
+    const project = await manager.createProject({
+      name: 'P1',
+      path: workspaceDir
+    })
+    const session = await manager.createSession({
+      projectId: project.id,
+      type: 'claude-code',
+      title: 'Claude Session'
+    })
+    await manager.markRuntimeAlive(session.id, session.externalSessionId)
+
+    const controller = {
+      applyProviderStatePatch: vi.fn(async (patch: SessionStatePatchEvent) => {
+        await manager.applySessionStatePatch(patch)
+      })
+    }
+    const bridge = new SessionEventBridge(manager, controller)
+    bridges.push(bridge)
+
+    const port = await bridge.start()
+    const secret = bridge.issueSessionSecret(session.id)
+    const headers = {
+      'x-stoa-secret': secret,
+      'x-stoa-session-id': session.id,
+      'x-stoa-project-id': project.id
+    }
+
+    expect((await postClaudeHook(port, { hook_event_name: 'PermissionRequest' }, headers)).statusCode).toBe(202)
+    expect((await postClaudeHook(port, { hook_event_name: 'PreToolUse' }, headers)).statusCode).toBe(202)
+
+    expect(controller.applyProviderStatePatch).toHaveBeenCalledTimes(3)
+    expect(controller.applyProviderStatePatch).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining<Partial<SessionStatePatchEvent>>({
+        intent: 'agent.permission_requested',
+        sourceEventType: 'claude-code.PermissionRequest'
+      })
+    )
+    expect(controller.applyProviderStatePatch).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining<Partial<SessionStatePatchEvent>>({
+        intent: 'agent.permission_resolved',
+        sourceEventType: 'claude-code.PermissionResolvedInferred',
+        agentState: 'working',
+        summary: 'Permission resolved (inferred)'
+      })
+    )
+    expect(controller.applyProviderStatePatch).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining<Partial<SessionStatePatchEvent>>({
+        intent: 'agent.tool_started',
+        sourceEventType: 'claude-code.PreToolUse'
+      })
+    )
+    expect(manager.snapshot().sessions.find(candidate => candidate.id === session.id)).toMatchObject({
+      runtimeState: 'alive',
+      agentState: 'working',
+      blockingReason: null,
+      hasUnseenCompletion: false,
+      summary: 'PreToolUse'
+    })
+  })
+
+  test('claude Stop after PermissionRequest infers permission resolved before completing the turn', async () => {
+    const stateDir = await createTestTempDir('session-event-bridge-state-')
+    const workspaceDir = await createTestTempDir('session-event-bridge-workspace-')
+    tempDirs.push(stateDir, workspaceDir)
+    const manager = await ProjectSessionManager.create({
+      webhookPort: null,
+      globalStatePath: join(stateDir, 'global.json')
+    })
+    const project = await manager.createProject({
+      name: 'P1',
+      path: workspaceDir
+    })
+    const session = await manager.createSession({
+      projectId: project.id,
+      type: 'claude-code',
+      title: 'Claude Session'
+    })
+    await manager.markRuntimeAlive(session.id, session.externalSessionId)
+
+    const controller = {
+      applyProviderStatePatch: vi.fn(async (patch: SessionStatePatchEvent) => {
+        await manager.applySessionStatePatch(patch)
+      })
+    }
+    const bridge = new SessionEventBridge(manager, controller)
+    bridges.push(bridge)
+
+    const port = await bridge.start()
+    const secret = bridge.issueSessionSecret(session.id)
+    const headers = {
+      'x-stoa-secret': secret,
+      'x-stoa-session-id': session.id,
+      'x-stoa-project-id': project.id
+    }
+
+    expect((await postClaudeHook(port, { hook_event_name: 'PermissionRequest' }, headers)).statusCode).toBe(202)
+    expect((await postClaudeHook(port, { hook_event_name: 'Stop' }, headers)).statusCode).toBe(202)
+
+    expect(controller.applyProviderStatePatch).toHaveBeenCalledTimes(3)
+    expect(controller.applyProviderStatePatch).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining<Partial<SessionStatePatchEvent>>({
+        intent: 'agent.permission_requested',
+        sourceEventType: 'claude-code.PermissionRequest'
+      })
+    )
+    expect(controller.applyProviderStatePatch).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining<Partial<SessionStatePatchEvent>>({
+        intent: 'agent.permission_resolved',
+        sourceEventType: 'claude-code.PermissionResolvedInferred',
+        agentState: 'working',
+        summary: 'Permission resolved (inferred)'
+      })
+    )
+    expect(controller.applyProviderStatePatch).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining<Partial<SessionStatePatchEvent>>({
+        intent: 'agent.turn_completed',
+        sourceEventType: 'claude-code.Stop'
+      })
+    )
+    expect(manager.snapshot().sessions.find(candidate => candidate.id === session.id)).toMatchObject({
+      runtimeState: 'alive',
+      agentState: 'idle',
+      blockingReason: null,
+      hasUnseenCompletion: true,
+      summary: 'Stop'
+    })
+  })
+
   test('main shutdown path awaits bridge stop before re-triggering quit', () => {
     const indexSource = readFileSync(join(process.cwd(), 'src/main/index.ts'), 'utf8')
 

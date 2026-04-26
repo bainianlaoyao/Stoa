@@ -61,8 +61,10 @@ export class SessionEventBridge {
         // Preserve per-session ordering even if a previous event failed.
       })
       .then(async () => {
-        this.observability?.ingest(this.toObservationEvent(event))
-        await this.controller.applyProviderStatePatch(this.toSessionStatePatch(event))
+        for (const expandedEvent of this.expandSessionEvents(event)) {
+          this.observability?.ingest(this.toObservationEvent(expandedEvent))
+          await this.controller.applyProviderStatePatch(this.toSessionStatePatch(expandedEvent))
+        }
       })
 
     this.sessionEventQueues.set(event.session_id, next)
@@ -74,6 +76,11 @@ export class SessionEventBridge {
     next.then(cleanup, cleanup)
 
     return await next
+  }
+
+  private expandSessionEvents(event: CanonicalSessionEvent): CanonicalSessionEvent[] {
+    const inferredPermissionResolved = this.inferClaudePermissionResolved(event)
+    return inferredPermissionResolved ? [inferredPermissionResolved, event] : [event]
   }
 
   private toObservationEvent(event: CanonicalSessionEvent): ObservationEvent {
@@ -126,6 +133,38 @@ export class SessionEventBridge {
     }
   }
 
+  private inferClaudePermissionResolved(event: CanonicalSessionEvent): CanonicalSessionEvent | null {
+    if (!isClaudePermissionContinuationEvent(event)) {
+      return null
+    }
+
+    const session = this.manager.snapshot().sessions.find((candidate) => candidate.id === event.session_id)
+    if (!session || session.type !== 'claude-code') {
+      return null
+    }
+
+    if (session.agentState !== 'blocked' || session.blockingReason !== 'permission') {
+      return null
+    }
+
+    return {
+      event_version: 1,
+      event_id: randomUUID(),
+      event_type: 'claude-code.PermissionResolvedInferred',
+      timestamp: event.timestamp,
+      session_id: event.session_id,
+      project_id: event.project_id,
+      correlation_id: event.correlation_id,
+      source: event.source,
+      payload: {
+        intent: 'agent.permission_resolved',
+        agentState: 'working',
+        summary: 'Permission resolved (inferred)',
+        externalSessionId: event.payload.externalSessionId
+      }
+    }
+  }
+
   private allocateProviderPatchSequence(sessionId: string): number {
     const session = this.manager.snapshot().sessions.find((candidate) => candidate.id === sessionId)
     const lastManagerSequence = session?.lastStateSequence ?? 0
@@ -154,6 +193,10 @@ export class SessionEventBridge {
     this.port = null
     await this.manager.setTerminalWebhookPort(null)
   }
+}
+
+function isClaudePermissionContinuationEvent(event: CanonicalSessionEvent): boolean {
+  return event.event_type === 'claude-code.PreToolUse' || event.event_type === 'claude-code.Stop'
 }
 
 function mapIntentToObservation(intent: CanonicalSessionEvent['payload']['intent']): {

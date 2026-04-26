@@ -113,9 +113,7 @@ export function reduceSessionState(
       markAgentWorkingIfRuntimeAlive(session, next)
       break
     case 'agent.tool_started':
-      if (patch.sourceEventType === 'post_permission_continuation') {
-        markAgentWorkingIfRuntimeAlive(session, next)
-      } else if (session.agentState !== 'blocked') {
+      if (session.agentState !== 'blocked') {
         markAgentWorkingIfRuntimeAlive(session, next)
       }
       break
