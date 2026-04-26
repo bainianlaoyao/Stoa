@@ -47,7 +47,8 @@ export default {
     typographySection: {
       title: 'Terminal typography',
       description: 'Keep command output legible while preserving the tighter console density.',
-      badge: 'Mono UI'
+      badge: 'Mono UI',
+      fontSize: 'Font Size'
     },
     languageSection: {
       title: 'Display language',
@@ -73,7 +74,14 @@ export default {
     customPath: 'Custom path',
     notFound: 'Not found \u2014 click Browse to locate',
     placeholderMissing: 'not found',
-    selectExecutable: 'Select {provider} executable'
+    selectExecutable: 'Select {provider} executable',
+    sessionProviders: 'Session providers',
+    sessionProvidersRadial: 'Session providers (radial)',
+    createSession: 'Create {provider} session',
+    claude: {
+      skipPermissions: 'Skip Claude permission prompts',
+      skipPermissionsDescription: 'Append `--dangerously-skip-permissions` when starting or resuming Claude sessions.'
+    }
   },
 
   about: {
@@ -89,7 +97,38 @@ export default {
       github: 'GitHub',
       documentation: 'Documentation',
       reportIssue: 'Report Issue'
+    },
+    updates: {
+      title: 'Updates',
+      description: 'Current build and release state for this installation.',
+      currentVersion: 'Current version',
+      latestVersion: 'Latest version',
+      status: 'Status',
+      lastChecked: 'Last checked',
+      neverChecked: 'Never checked',
+      checkForUpdates: 'Check for updates',
+      checking: 'Checking...',
+      noActivity: 'No recent update activity.',
+      statusAvailable: 'Update available',
+      statusDownloaded: 'Ready to install',
+      statusChecking: 'Checking for updates',
+      statusDownloading: 'Downloading update',
+      statusUpToDate: 'Up to date',
+      statusDisabled: 'Updates unavailable',
+      statusError: 'Update error',
+      statusIdle: 'Idle'
     }
+  },
+
+  updatePrompt: {
+    titleDownloaded: 'Ready to install',
+    titleAvailable: 'Update available',
+    defaultMessage: 'A new build is ready for this installation.',
+    version: 'Version {version}',
+    warning: 'Installing will close active sessions.',
+    dismiss: 'Not now',
+    install: 'Install now',
+    download: 'Download now'
   },
 
   newProject: {
@@ -111,7 +150,14 @@ export default {
     projectPath: 'Project path',
     newProject: 'New project',
     sessionTitle: 'Session title',
-    sessionType: 'Session type'
+    sessionType: 'Session type',
+    projectDetails: 'Project details',
+    deleteProject: 'Delete {name}',
+    deleteProjectTitle: 'Delete project',
+    addSessionTo: 'Add session to {name}',
+    addSessionTitle: 'Add session \u00B7 long-press for radial',
+    archiveSession: 'Archive {title}',
+    archiveSessionTitle: 'Archive session'
   },
 
   archive: {
@@ -131,10 +177,9 @@ export default {
     notBound: 'not bound',
     emptyTitle: 'No session to display',
     emptyHint: 'Create a project first, then create a session under it.',
+    activeSession: 'Active session',
     quickActions: {
-      openIde: 'Open in VS Code',
       openIdeAria: 'Open workspace in VS Code',
-      openFileManager: 'Reveal in File Browser',
       openFileManagerAria: 'Reveal workspace in file browser'
     }
   },
@@ -143,5 +188,12 @@ export default {
     command: 'Command panel',
     archive: 'Archive',
     settings: 'Settings'
+  },
+
+  windowControls: {
+    minimize: 'Minimize',
+    restore: 'Restore',
+    maximize: 'Maximize',
+    close: 'Close'
   }
 }

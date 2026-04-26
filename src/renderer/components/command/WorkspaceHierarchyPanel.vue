@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { SessionRowViewModel } from '@shared/observability'
 import type { SessionType } from '@shared/project-session'
 import { getProviderDescriptorBySessionType } from '@shared/provider-descriptors'
 import type { ProjectHierarchyNode } from '@renderer/stores/workspaces'
 import NewProjectModal from './NewProjectModal.vue'
+
+const { t } = useI18n()
 import ProviderFloatingCard from './ProviderFloatingCard.vue'
 import ProviderRadialMenu from './ProviderRadialMenu.vue'
 
@@ -266,7 +269,7 @@ onBeforeUnmount(() => {
     <div class="min-h-0 overflow-auto p-2.5 grid gap-3 align-content-start" data-testid="route-body">
       <div class="grid gap-1" data-testid="route-actions">
         <button class="route-action flex items-center justify-between gap-2 px-2.5 py-2 rounded-[var(--radius-sm)] bg-surface-solid text-text-strong cursor-pointer transition-all duration-200 hover:bg-black-faint focus-visible:bg-black-faint focus-visible:outline-none" type="button" data-testid="workspace.new-project" @click="showNewProject = true">
-          <span class="text-xs font-semibold tracking-[0.05em]">New Project</span>
+          <span class="text-xs font-semibold tracking-[0.05em]">{{ t('workspace.newProject') }}</span>
           <span class="w-[18px] h-[18px] grid place-items-center rounded-[var(--radius-sm)] bg-canvas text-text-strong text-xs">+</span>
         </button>
       </div>
@@ -274,7 +277,7 @@ onBeforeUnmount(() => {
       <div class="grid gap-1">
         <button class="group-label" type="button" @click="toggleAllCollapsed">
           <span class="group-label__chevron" :class="{ 'group-label__chevron--collapsed': collapsedProjectIds.size === hierarchy.length && hierarchy.length > 0 }">▾</span>
-          Projects
+          {{ t('workspace.eyebrow') }}
         </button>
 
         <div v-for="project in hierarchy" :key="project.id" class="route-project grid gap-1">
@@ -292,7 +295,7 @@ onBeforeUnmount(() => {
               @click="toggleProjectCollapse(project.id); emit('selectProject', project.id)"
             >
               <span class="route-collapse-chevron" :class="{ 'route-collapse-chevron--collapsed': isProjectCollapsed(project.id) }">▾</span>
-              <span class="route-detail-trigger" role="button" tabindex="0" aria-label="Project details" @click="openDetail($event, 'project', project)" @keydown.enter="openDetail($event, 'project', project)">
+              <span class="route-detail-trigger" role="button" tabindex="0" :aria-label="t('workspace.projectDetails')" @click="openDetail($event, 'project', project)" @keydown.enter="openDetail($event, 'project', project)">
                 <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                   <circle cx="8" cy="3.5" r="1.25" fill="currentColor" />
                   <circle cx="8" cy="8" r="1.25" fill="currentColor" />
@@ -309,8 +312,8 @@ onBeforeUnmount(() => {
                 type="button"
                 data-testid="workspace.delete-project"
                 :data-project-id="project.id"
-                :aria-label="`Delete ${project.name}`"
-                title="Delete project"
+                :aria-label="t('workspace.deleteProject', { name: project.name })"
+                :title="t('workspace.deleteProjectTitle')"
                 @click.stop="emit('deleteProject', project.id)"
               >
                 <svg class="route-icon-button__icon" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -326,8 +329,8 @@ onBeforeUnmount(() => {
                 type="button"
                 data-testid="workspace.add-session"
                 :data-project-id="project.id"
-                :aria-label="`Add session to ${project.name}`"
-                title="Add session · long-press for radial"
+                :aria-label="t('workspace.addSessionTo', { name: project.name })"
+                :title="t('workspace.addSessionTitle')"
                 @mousedown="onAddButtonMouseDown($event, project.id)"
                 @mouseup="onAddButtonMouseUp"
                 @mouseleave="onAddButtonMouseLeave"
@@ -372,8 +375,8 @@ onBeforeUnmount(() => {
                 type="button"
                 data-testid="workspace.archive-session"
                 :data-session-id="session.id"
-                :aria-label="`Archive ${session.title}`"
-                title="Archive session"
+                :aria-label="t('workspace.archiveSession', { title: session.title })"
+                :title="t('workspace.archiveSessionTitle')"
                 :data-row-archive="session.id"
                 @click.stop="emit('archiveSession', session.id)"
               >

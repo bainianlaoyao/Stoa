@@ -246,7 +246,7 @@ describe('WorkspaceHierarchyPanel', () => {
       const wrapper = mountPanel()
       const button = wrapper.find('[data-testid="route-actions"] .route-action')
       expect(button.exists()).toBe(true)
-      expect(button.text()).toContain('New Project')
+      expect(button.text()).toContain('New project')
     })
 
     it('renders project names in parent rows', () => {

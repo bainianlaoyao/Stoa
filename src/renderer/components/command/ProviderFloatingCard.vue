@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { SessionType } from '@shared/project-session'
+
+const { t } = useI18n()
 import { getProviderDescriptorBySessionType } from '@shared/provider-descriptors'
 import { PROVIDER_ICONS } from '@renderer/composables/provider-icons'
 
@@ -37,7 +40,7 @@ function emitCreate(type: SessionType) {
       class="provider-floating-card"
       data-testid="provider-card"
       role="group"
-      aria-label="Session providers"
+      :aria-label="t('providers.sessionProviders')"
       :style="cardStyle"
     >
       <button
@@ -47,7 +50,7 @@ function emitCreate(type: SessionType) {
         class="provider-icon-cell"
         data-testid="provider-card.item"
         :data-provider-type="provider.type"
-        :aria-label="`Create ${provider.providerName} session`"
+        :aria-label="t('providers.createSession', { provider: provider.providerName })"
         @click="emitCreate(provider.type)"
       >
         <img

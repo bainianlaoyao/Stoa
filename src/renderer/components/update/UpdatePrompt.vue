@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import BaseModal from '@renderer/components/primitives/BaseModal.vue'
 import type { UpdateState } from '@shared/update-state'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   visible: boolean
@@ -15,11 +18,11 @@ const emit = defineEmits<{
 }>()
 
 const title = computed(() => {
-  return props.state.phase === 'downloaded' ? 'Ready to install' : 'Update available'
+  return props.state.phase === 'downloaded' ? t('updatePrompt.titleDownloaded') : t('updatePrompt.titleAvailable')
 })
 
 const bodyMessage = computed(() => {
-  return props.state.message ?? 'A new build is ready for this installation.'
+  return props.state.message ?? t('updatePrompt.defaultMessage')
 })
 
 const versionLabel = computed(() => {
@@ -35,12 +38,12 @@ const versionLabel = computed(() => {
   >
     <div data-testid="update-prompt" class="update-prompt">
       <p class="update-prompt__message">{{ bodyMessage }}</p>
-      <p v-if="versionLabel" class="update-prompt__version">Version {{ versionLabel }}</p>
+      <p v-if="versionLabel" class="update-prompt__version">{{ t('updatePrompt.version', { version: versionLabel }) }}</p>
       <p
         v-if="state.phase === 'downloaded' && state.requiresSessionWarning"
         class="update-prompt__warning"
       >
-        Installing will close active sessions.
+        {{ t('updatePrompt.warning') }}
       </p>
 
       <div class="update-prompt__actions">
@@ -50,7 +53,7 @@ const versionLabel = computed(() => {
           data-update-action="dismiss"
           @click="emit('dismiss')"
         >
-          Not now
+          {{ t('updatePrompt.dismiss') }}
         </button>
         <button
           v-if="state.phase === 'downloaded'"
@@ -59,7 +62,7 @@ const versionLabel = computed(() => {
           data-update-action="install"
           @click="emit('install')"
         >
-          Install now
+          {{ t('updatePrompt.install') }}
         </button>
         <button
           v-else
@@ -68,7 +71,7 @@ const versionLabel = computed(() => {
           data-update-action="download"
           @click="emit('download')"
         >
-          Download now
+          {{ t('updatePrompt.download') }}
         </button>
       </div>
     </div>

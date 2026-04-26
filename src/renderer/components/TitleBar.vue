@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { useI18n } from 'vue-i18n'
 import stoaLogo from '@renderer/assets/icons/gemini-svg.svg'
+
+const { t } = useI18n()
 
 const isMaximized = ref(false)
 
@@ -43,7 +46,7 @@ onBeforeUnmount(() => {
     <div class="ml-auto flex h-full" style="-webkit-app-region: no-drag;">
       <button
         class="inline-flex items-center justify-center w-[46px] h-full text-subtle hover:text-text hover:bg-black-soft transition-all duration-200"
-        aria-label="Minimize"
+        :aria-label="t('windowControls.minimize')"
         type="button"
         @click="minimize"
       >
@@ -51,7 +54,7 @@ onBeforeUnmount(() => {
       </button>
       <button
         class="inline-flex items-center justify-center w-[46px] h-full text-subtle hover:text-text hover:bg-black-soft transition-all duration-200"
-        :aria-label="isMaximized ? 'Restore' : 'Maximize'"
+        :aria-label="isMaximized ? t('windowControls.restore') : t('windowControls.maximize')"
         type="button"
         @click="toggleMaximize"
       >
@@ -65,7 +68,7 @@ onBeforeUnmount(() => {
       </button>
       <button
         class="inline-flex items-center justify-center w-[46px] h-full text-subtle hover:text-text hover:bg-black-soft transition-all duration-200"
-        aria-label="Close"
+        :aria-label="t('windowControls.close')"
         type="button"
         @click="close"
       >

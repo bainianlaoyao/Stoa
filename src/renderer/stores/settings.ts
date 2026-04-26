@@ -2,7 +2,7 @@ import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import type { AppSettings, WorkspaceIdeSettings } from '@shared/project-session'
 import { BUILTIN_FONT_FAMILIES } from '@shared/project-session'
-import i18n, { SUPPORTED_LOCALES, DEFAULT_LOCALE } from '@renderer/i18n'
+import i18n, { SUPPORTED_LOCALES } from '@renderer/i18n'
 import type { SupportedLocale } from '@renderer/i18n'
 
 export const useSettingsStore = defineStore('settings', () => {
@@ -12,7 +12,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const providers = ref<Record<string, string>>({})
   const workspaceIde = ref<WorkspaceIdeSettings>({ id: 'vscode', executablePath: '' })
   const claudeDangerouslySkipPermissions = ref(false)
-  const locale = ref<string>(DEFAULT_LOCALE)
+  const locale = ref<string>(i18n.global.locale.value as string)
   const loaded = ref(false)
 
   async function loadSettings(): Promise<void> {
@@ -28,6 +28,8 @@ export const useSettingsStore = defineStore('settings', () => {
       claudeDangerouslySkipPermissions.value = settings.claudeDangerouslySkipPermissions === true
       if (settings.locale && SUPPORTED_LOCALES.includes(settings.locale as SupportedLocale)) {
         locale.value = settings.locale
+      } else {
+        locale.value = i18n.global.locale.value as SupportedLocale
       }
     }
     loaded.value = true

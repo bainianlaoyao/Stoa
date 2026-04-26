@@ -192,7 +192,7 @@ async function handleLanguageChange(value: string): Promise<void> {
           @update:model-value="handleFontFamilyChange"
         />
         <GlassFormField
-          label="Font Size"
+          :label="t('general.typographySection.fontSize')"
           type="select"
           :model-value="String(store.terminalFontSize)"
           :options="fontSizeOptions"

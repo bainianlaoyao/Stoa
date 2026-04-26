@@ -165,7 +165,8 @@ describe('AboutSettings', () => {
 
     expect(wrapper.text()).toContain('Update available')
     expect(wrapper.text()).toContain('Update 0.2.0 is available.')
-    expect(wrapper.text()).toContain('Latest version: 0.2.0')
+    expect(wrapper.text()).toContain('Latest version')
+    expect(wrapper.text()).toContain('0.2.0')
   })
 
   it('clicking check for updates calls the update store bridge action', async () => {

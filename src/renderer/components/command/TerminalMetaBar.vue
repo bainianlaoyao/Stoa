@@ -1,6 +1,9 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import type { ActiveSessionViewModel } from '@shared/observability'
 import type { ProjectSummary, SessionSummary } from '@shared/project-session'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   project: ProjectSummary | null
@@ -13,7 +16,7 @@ const props = defineProps<{
   <div v-if="activeViewModel" class="terminal-meta" data-testid="terminal-status-bar">
     <template v-if="activeViewModel">
       <div class="terminal-meta__headline">
-        <span class="terminal-meta__eyebrow">{{ project?.name ?? 'Active session' }}</span>
+        <span class="terminal-meta__eyebrow">{{ project?.name ?? t('terminal.activeSession') }}</span>
         <strong class="terminal-meta__title">{{ activeViewModel.title }}</strong>
       </div>
 

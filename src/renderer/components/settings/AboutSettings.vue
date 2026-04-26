@@ -9,30 +9,30 @@ const updateStore = useUpdateStore()
 
 const currentVersion = computed(() => updateStore.state.currentVersion)
 const latestVersion = computed(() => updateStore.state.downloadedVersion ?? updateStore.state.availableVersion)
-const updateMessage = computed(() => updateStore.state.message ?? 'No recent update activity.')
+const updateMessage = computed(() => updateStore.state.message ?? t('about.updates.noActivity'))
 const lastCheckedText = computed(() => {
   return updateStore.state.lastCheckedAt
     ? new Date(updateStore.state.lastCheckedAt).toLocaleString()
-    : 'Never checked'
+    : t('about.updates.neverChecked')
 })
 const updateStatusLabel = computed(() => {
   switch (updateStore.state.phase) {
     case 'available':
-      return 'Update available'
+      return t('about.updates.statusAvailable')
     case 'downloaded':
-      return 'Ready to install'
+      return t('about.updates.statusDownloaded')
     case 'checking':
-      return 'Checking for updates'
+      return t('about.updates.statusChecking')
     case 'downloading':
-      return 'Downloading update'
+      return t('about.updates.statusDownloading')
     case 'up-to-date':
-      return 'Up to date'
+      return t('about.updates.statusUpToDate')
     case 'disabled':
-      return 'Updates unavailable'
+      return t('about.updates.statusDisabled')
     case 'error':
-      return 'Update error'
+      return t('about.updates.statusError')
     default:
-      return 'Idle'
+      return t('about.updates.statusIdle')
   }
 })
 const updateStatusTone = computed(() => {
@@ -81,30 +81,30 @@ async function handleCheckForUpdates(): Promise<void> {
       </section>
 
       <div class="settings-about__sidebar">
-        <section class="settings-card settings-about__status-card" aria-label="Update status">
+        <section class="settings-card settings-about__status-card" :aria-label="t('about.updates.title')">
           <div class="settings-card__header">
             <div>
-              <h4 class="settings-card__title">Updates</h4>
-              <p class="settings-card__description">Current build and release state for this installation.</p>
+              <h4 class="settings-card__title">{{ t('about.updates.title') }}</h4>
+              <p class="settings-card__description">{{ t('about.updates.description') }}</p>
             </div>
             <span class="settings-card__badge" :class="updateStatusTone">{{ updateStatusLabel }}</span>
           </div>
 
           <div class="settings-about__status-grid">
             <div class="settings-about__status-row">
-              <span class="settings-about__status-label">Current version</span>
+              <span class="settings-about__status-label">{{ t('about.updates.currentVersion') }}: </span>
               <strong class="settings-about__status-value">{{ currentVersion }}</strong>
             </div>
             <div v-if="latestVersion" class="settings-about__status-row">
-              <span class="settings-about__status-label">Latest version</span>
-              <strong class="settings-about__status-value">Latest version: {{ latestVersion }}</strong>
+              <span class="settings-about__status-label">{{ t('about.updates.latestVersion') }}: </span>
+              <strong class="settings-about__status-value">{{ latestVersion }}</strong>
             </div>
             <div class="settings-about__status-row settings-about__status-row--stacked">
-              <span class="settings-about__status-label">Status</span>
+              <span class="settings-about__status-label">{{ t('about.updates.status') }}: </span>
               <p class="settings-about__status-message">{{ updateMessage }}</p>
             </div>
             <div class="settings-about__status-row">
-              <span class="settings-about__status-label">Last checked</span>
+              <span class="settings-about__status-label">{{ t('about.updates.lastChecked') }}: </span>
               <span class="settings-about__status-meta">{{ lastCheckedText }}</span>
             </div>
           </div>
@@ -117,7 +117,7 @@ async function handleCheckForUpdates(): Promise<void> {
               :disabled="isChecking"
               @click="void handleCheckForUpdates()"
             >
-              {{ isChecking ? 'Checking...' : 'Check for updates' }}
+              {{ isChecking ? t('about.updates.checking') : t('about.updates.checkForUpdates') }}
             </button>
           </div>
         </section>

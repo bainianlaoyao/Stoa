@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { SessionType } from '@shared/project-session'
+
+const { t } = useI18n()
 import { getProviderDescriptorBySessionType } from '@shared/provider-descriptors'
 import { PROVIDER_ICONS } from '@renderer/composables/provider-icons'
 
@@ -87,7 +90,7 @@ function createSession(type: SessionType) {
       class="radial-menu"
       data-testid="provider-radial"
       role="group"
-      aria-label="Session providers (radial)"
+      :aria-label="t('providers.sessionProvidersRadial')"
       :style="menuStyle"
     >
       <div
@@ -102,7 +105,7 @@ function createSession(type: SessionType) {
         class="radial-menu__item"
         data-testid="provider-radial.item"
         :data-provider-type="provider.type"
-        :aria-label="`Create ${getProviderDescriptorBySessionType(provider.type).displayName} session`"
+        :aria-label="t('providers.createSession', { provider: getProviderDescriptorBySessionType(provider.type).displayName })"
         :style="provider.style"
         @mouseup="onItemMouseUp($event, provider.type)"
         @click="onItemClick($event, provider.type)"

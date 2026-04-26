@@ -103,10 +103,8 @@ function handleClaudeDangerouslySkipPermissionsChange(value: boolean): void {
         >
           <div class="settings-toggle__label">
             <span class="settings-toggle__copy">
-              <span class="settings-toggle__title">Skip Claude permission prompts</span>
-              <span class="settings-toggle__description">
-                Append <code>--dangerously-skip-permissions</code> when starting or resuming Claude sessions.
-              </span>
+              <span class="settings-toggle__title">{{ t('providers.claude.skipPermissions') }}</span>
+              <span class="settings-toggle__description" v-html="t('providers.claude.skipPermissionsDescription')" />
             </span>
             <Switch
               :model-value="store.claudeDangerouslySkipPermissions"

@@ -47,7 +47,8 @@ export default {
     typographySection: {
       title: '\u7EC8\u7AEF\u5B57\u4F53',
       description: '\u4FDD\u6301\u547D\u4EE4\u8F93\u51FA\u6E05\u6670\u53EF\u8BFB\uFF0C\u540C\u65F6\u7EF4\u6301\u63A7\u5236\u53F0\u7D27\u51D1\u7684\u884C\u8DDD\u3002',
-      badge: '\u7B49\u5BBD UI'
+      badge: '\u7B49\u5BBD UI',
+      fontSize: '\u5B57\u4F53\u5927\u5C0F'
     },
     languageSection: {
       title: '\u663E\u793A\u8BED\u8A00',
@@ -73,7 +74,14 @@ export default {
     customPath: '\u81EA\u5B9A\u4E49\u8DEF\u5F84',
     notFound: '\u672A\u627E\u5230 \u2014 \u70B9\u51FB\u6D4F\u89C8\u4EE5\u5B9A\u4F4D',
     placeholderMissing: '\u672A\u627E\u5230',
-    selectExecutable: '\u9009\u62E9 {provider} \u53EF\u6267\u884C\u6587\u4EF6'
+    selectExecutable: '\u9009\u62E9 {provider} \u53EF\u6267\u884C\u6587\u4EF6',
+    sessionProviders: '\u4F1A\u8BDD\u63D0\u4F9B\u5546',
+    sessionProvidersRadial: '\u4F1A\u8BDD\u63D0\u4F9B\u5546\uFF08\u73AF\u5F62\uFF09',
+    createSession: '\u521B\u5EFA {provider} \u4F1A\u8BDD',
+    claude: {
+      skipPermissions: '\u8DF3\u8FC7 Claude \u6743\u9650\u63D0\u793A',
+      skipPermissionsDescription: '\u5728\u542F\u52A8\u6216\u6062\u590D Claude \u4F1A\u8BDD\u65F6\u8FFD\u52A0 `--dangerously-skip-permissions`\u3002'
+    }
   },
 
   about: {
@@ -89,7 +97,38 @@ export default {
       github: 'GitHub',
       documentation: '\u6587\u6863',
       reportIssue: '\u62A5\u544A\u95EE\u9898'
+    },
+    updates: {
+      title: '\u66F4\u65B0',
+      description: '\u5F53\u524D\u5B89\u88C5\u7684\u6784\u5EFA\u548C\u53D1\u5E03\u72B6\u6001\u3002',
+      currentVersion: '\u5F53\u524D\u7248\u672C',
+      latestVersion: '\u6700\u65B0\u7248\u672C',
+      status: '\u72B6\u6001',
+      lastChecked: '\u4E0A\u6B21\u68C0\u67E5',
+      neverChecked: '\u4ECE\u672A\u68C0\u67E5',
+      checkForUpdates: '\u68C0\u67E5\u66F4\u65B0',
+      checking: '\u68C0\u67E5\u4E2D...',
+      noActivity: '\u6CA1\u6709\u6700\u8FD1\u7684\u66F4\u65B0\u6D3B\u52A8\u3002',
+      statusAvailable: '\u6709\u53EF\u7528\u66F4\u65B0',
+      statusDownloaded: '\u5DF2\u51C6\u5907\u597D\u5B89\u88C5',
+      statusChecking: '\u6B63\u5728\u68C0\u67E5\u66F4\u65B0',
+      statusDownloading: '\u6B63\u5728\u4E0B\u8F7D\u66F4\u65B0',
+      statusUpToDate: '\u5DF2\u662F\u6700\u65B0\u7248\u672C',
+      statusDisabled: '\u66F4\u65B0\u4E0D\u53EF\u7528',
+      statusError: '\u66F4\u65B0\u51FA\u9519',
+      statusIdle: '\u7A7A\u95F2'
     }
+  },
+
+  updatePrompt: {
+    titleDownloaded: '\u5DF2\u51C6\u5907\u597D\u5B89\u88C5',
+    titleAvailable: '\u6709\u53EF\u7528\u66F4\u65B0',
+    defaultMessage: '\u65B0\u7248\u672C\u5DF2\u51C6\u5907\u597D\u5B89\u88C5\u3002',
+    version: '\u7248\u672C {version}',
+    warning: '\u5B89\u88C5\u5C06\u5173\u95ED\u6D3B\u52A8\u4F1A\u8BDD\u3002',
+    dismiss: '\u4EE5\u540E\u518D\u8BF4',
+    install: '\u7ACB\u5373\u5B89\u88C5',
+    download: '\u7ACB\u5373\u4E0B\u8F7D'
   },
 
   newProject: {
@@ -111,7 +150,14 @@ export default {
     projectPath: '\u9879\u76EE\u8DEF\u5F84',
     newProject: '\u65B0\u5EFA\u9879\u76EE',
     sessionTitle: '\u4F1A\u8BDD\u6807\u9898',
-    sessionType: '\u4F1A\u8BDD\u7C7B\u578B'
+    sessionType: '\u4F1A\u8BDD\u7C7B\u578B',
+    projectDetails: '\u9879\u76EE\u8BE6\u60C5',
+    deleteProject: '\u5220\u9664 {name}',
+    deleteProjectTitle: '\u5220\u9664\u9879\u76EE',
+    addSessionTo: '\u5411 {name} \u6DFB\u52A0\u4F1A\u8BDD',
+    addSessionTitle: '\u6DFB\u52A0\u4F1A\u8BDD \u00B7 \u957F\u6309\u663E\u793A\u73AF\u5F62\u83DC\u5355',
+    archiveSession: '\u5F52\u6863 {title}',
+    archiveSessionTitle: '\u5F52\u6863\u4F1A\u8BDD'
   },
 
   archive: {
@@ -131,10 +177,9 @@ export default {
     notBound: '\u672A\u7ED1\u5B9A',
     emptyTitle: '\u6CA1\u6709\u53EF\u663E\u793A\u7684\u4F1A\u8BDD',
     emptyHint: '\u5148\u521B\u5EFA\u9879\u76EE\uFF0C\u518D\u5728\u9879\u76EE\u4E0B\u521B\u5EFA\u4F1A\u8BDD\u3002',
+    activeSession: '\u6D3B\u52A8\u4F1A\u8BDD',
     quickActions: {
-      openIde: '\u7528 VS Code \u6253\u5F00',
       openIdeAria: '\u5728 VS Code \u4E2D\u6253\u5F00\u5DE5\u4F5C\u533A',
-      openFileManager: '\u5728\u6587\u4EF6\u6D4F\u89C8\u5668\u4E2D\u663E\u793A',
       openFileManagerAria: '\u5728\u6587\u4EF6\u6D4F\u89C8\u5668\u4E2D\u663E\u793A\u5DE5\u4F5C\u533A'
     }
   },
@@ -143,5 +188,12 @@ export default {
     command: '\u547D\u4EE4\u9762\u677F',
     archive: '\u5F52\u6863',
     settings: '\u8BBE\u7F6E'
+  },
+
+  windowControls: {
+    minimize: '\u6700\u5C0F\u5316',
+    restore: '\u8FD8\u539F',
+    maximize: '\u6700\u5927\u5316',
+    close: '\u5173\u95ED'
   }
 }
