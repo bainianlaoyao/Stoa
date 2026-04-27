@@ -99,7 +99,7 @@ function buildEvidenceKey(event: CanonicalSessionEvent): string {
     throw new Error('Cannot compute an evidence key without event.evidence')
   }
 
-  return `${evidence.rawSource.provider}:${evidence.providerSessionId ?? 'unknown-session'}:${evidence.turnId ?? event.event_id}`
+  return `${evidence.rawSource.provider}:${evidence.providerSessionId ?? ''}:${evidence.turnId ?? event.event_id}`
 }
 
 function createAtomicTempFilePath(filePath: string): string {

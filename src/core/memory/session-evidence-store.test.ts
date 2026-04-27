@@ -92,4 +92,40 @@ describe('SessionEvidenceStore', () => {
     })
     expect(await readFile(result.snapshotPath, 'utf8')).toBe('{"summary":"captured"}')
   })
+
+  test('uses the event id as the final evidence-key segment and preserves an empty provider-session segment when unavailable', async () => {
+    const projectPath = await createTestTempDir('session-evidence-store-fallback-')
+    const store = new SessionEvidenceStore()
+    const event = createEvent({
+      event_id: 'event-fallback-77',
+      evidence: {
+        rawSource: {
+          provider: 'codex',
+          channel: 'notify',
+          rawEventName: 'agent-turn-complete'
+        },
+        inputMessages: ['Summarize the failure.'],
+        lastAssistantMessage: 'Captured the failure summary.'
+      }
+    })
+
+    const result = await store.persist({
+      projectPath,
+      event,
+      snapshot: {
+        kind: 'turn-slice',
+        fileName: 'turn-slice.json',
+        content: Buffer.from('{"summary":"captured"}', 'utf8')
+      }
+    })
+
+    const metadata = JSON.parse(await readFile(result.metadataPath, 'utf8'))
+    expect(result.evidenceKey).toBe('codex::event-fallback-77')
+    expect(metadata).toMatchObject({
+      provider: 'codex',
+      providerSessionId: null,
+      turnId: null,
+      evidenceKey: 'codex::event-fallback-77'
+    })
+  })
 })
