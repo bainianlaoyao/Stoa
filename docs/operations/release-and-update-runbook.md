@@ -2,23 +2,37 @@
 
 ## Scope
 
-This runbook covers the Windows-only release flow for `stoa`.
+This runbook covers the Windows release flow for Stoa.
 
-- `main` pushes run cloud verification only.
-- `v*` tags publish the formal GitHub Release.
-- The formal end-user artifact is the NSIS installer.
+- Releases are cut locally: tag → build → package → `gh` CLI upload.
+- The formal end-user artifacts are the NSIS installer and the portable executable.
 - In-app updates stay user-confirmed. The app does not silently download or install updates.
 
 ## Release Inputs
 
-- `package.json.version` is the only release version source of truth.
-- Tags must match `v<package.json.version>` exactly.
-- Formal release publication happens only from `.github/workflows/release.yml`.
-- Local `pnpm run package` is for validation only. It does not publish a GitHub Release.
+- `package.json` `version` is the only release version source of truth.
+- Tags must match `v<package.json.version>` exactly (e.g. version `0.1.1` → tag `v0.1.1`).
 
-## Local Preflight
+## Full Release Procedure
 
-Run this before cutting a tag:
+### Step 1 — Bump Version
+
+Edit `package.json` on `main`:
+
+```json
+{ "version": "X.Y.Z" }
+```
+
+Commit:
+
+```bash
+git add package.json
+git commit -m "chore: bump version to X.Y.Z"
+```
+
+### Step 2 — Local Preflight
+
+Run the quality gate before tagging:
 
 ```bash
 pnpm run test:generate
@@ -26,75 +40,92 @@ pnpm run typecheck
 pnpm vitest run
 pnpm run test:e2e
 pnpm run test:behavior-coverage
+```
+
+### Step 3 — Tag and Push
+
+```bash
+git tag vX.Y.Z
+git push origin main --tags
+```
+
+This pushes both the version bump commit and the tag to remote.
+
+### Step 4 — Create GitHub Release (Draft Notes First)
+
+Write release notes to a temp file, then create the release:
+
+```powershell
+# Write notes (or prepare them in advance)
+gh release create vX.Y.Z --title "Stoa vX.Y.Z" --notes-file release-notes.md
+```
+
+The release is now published on GitHub with tag `vX.Y.Z` but has no artifacts yet.
+
+### Step 5 — Build and Package
+
+```bash
+# Ensure deps are installed
+pnpm install
+
+# Build
 pnpm run build
+
+# Package (NSIS installer + portable exe)
+$env:GH_OWNER = "bainianlaoyao"
+$env:GH_REPO   = "Stoa"
 pnpm run package
+```
+
+Output goes to `release/`:
+
+| Artifact | Description |
+| --- | --- |
+| `Stoa-Setup-X.Y.Z-win-x64.exe` | NSIS installer |
+| `Stoa-Setup-X.Y.Z-win-x64.exe.blockmap` | Delta update blockmap |
+| `Stoa-Portable-X.Y.Z-win-x64.exe` | Portable (no-install) executable |
+| `latest.yml` | Auto-update metadata |
+
+### Step 6 — Upload Artifacts
+
+```powershell
+gh release upload vX.Y.Z `
+  "release/Stoa-Setup-X.Y.Z-win-x64.exe" `
+  "release/Stoa-Setup-X.Y.Z-win-x64.exe.blockmap" `
+  "release/Stoa-Portable-X.Y.Z-win-x64.exe" `
+  "release/latest.yml"
+```
+
+### Step 7 — Smoke Test
+
+Optionally verify the packaged build:
+
+```bash
 pnpm run verify:packaging
 pnpm run verify:release-smoke
 ```
 
 `pnpm run verify:release-smoke` launches the packaged `Stoa.exe`, creates a shell session through the packaged runtime path, sends a marker command, verifies terminal replay, and exits.
 
-## Cut A Release
+### Step 8 — Announce
 
-1. Update `package.json.version`.
-2. Run the local preflight commands.
-3. Commit the version bump and release changes to `main`.
-4. Create tag `vX.Y.Z`.
-5. Push the branch and tag.
+The release is now live at:
+`https://github.com/bainianlaoyao/Stoa/releases/tag/vX.Y.Z`
 
-Example:
+## One-Shot Checklist
 
-```bash
-git tag v0.1.0
-git push origin main --follow-tags
 ```
-
-## GitHub Workflow Behavior
-
-### `ci.yml`
-
-Runs on pull requests and `main` pushes.
-
-It must pass:
-
-- `pnpm run test:generate`
-- `pnpm run typecheck`
-- `pnpm vitest run`
-- `pnpm run test:e2e`
-- `pnpm run test:behavior-coverage`
-- `pnpm run build`
-- `pnpm run package`
-- `pnpm run verify:packaging`
-- `pnpm run verify:release-smoke`
-
-### `release.yml`
-
-Runs only on `v*` tags.
-
-It:
-
-- rejects tag and `package.json.version` mismatches
-- reruns the full verification gate
-- builds the NSIS installer
-- publishes a non-draft GitHub Release through `electron-builder`
-
-Required runtime variables:
-
-- `GH_OWNER`
-- `GH_REPO`
-- `GITHUB_TOKEN`
-
-`releaseType: release` is configured in `electron-builder.yml`, so updater-visible releases are published as standard releases, not drafts.
-
-## Expected Release Artifacts
-
-Each formal Windows release should contain:
-
-- `Stoa Setup X.Y.Z.exe`
-- `Stoa Setup X.Y.Z.exe.blockmap`
-- `latest.yml`
-
-The local packaging baseline also keeps `release/win-unpacked/Stoa.exe` for smoke validation.
+1. Edit package.json version on main
+2. git commit -m "chore: bump version to X.Y.Z"
+3. Run quality gate (test:generate, typecheck, vitest, test:e2e, behavior-coverage)
+4. git tag vX.Y.Z
+5. git push origin main --tags
+6. gh release create vX.Y.Z --title "Stoa vX.Y.Z" --notes-file notes.md
+7. pnpm install && pnpm run build
+8. $env:GH_OWNER="bainianlaoyao"; $env:GH_REPO="Stoa"; pnpm run package
+9. gh release upload vX.Y.Z release/Stoa-Setup-X.Y.Z-win-x64.exe ...
+10. (Optional) pnpm run verify:release-smoke
+```
 
 ## Installed App Update Flow
 

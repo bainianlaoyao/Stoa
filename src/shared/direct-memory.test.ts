@@ -22,7 +22,9 @@ describe('direct memory bridge contracts', () => {
           turn_id: 'turn-1',
           metadata_ref: '.entire/checkpoints/chk_1/sessions/provider-session-1/metadata.json',
           transcript_ref: '.entire/checkpoints/chk_1/sessions/provider-session-1/transcript.jsonl',
+          transcript_text: '{"type":"item.added"}\n',
           prompt_ref: null,
+          prompt_text: null,
           summary: 'implemented feature',
           initial_attribution: { files: 2 }
         }
@@ -43,16 +45,24 @@ describe('direct memory bridge contracts', () => {
       memory_dir: 'C:/repo/.stoa/direct-memory/run_1/memory',
       evolution_dir: 'C:/repo/.stoa/direct-memory/run_1/memory/evolution',
       gep_assets_dir: 'C:/repo/.stoa/direct-memory/run_1/assets/gep',
+      session_scope: 'provider-session-1',
       selected_gene_id: 'gene_1',
       signals: ['test_failure'],
-      mutation_id: 'mut_1',
-      review_state_ref: 'memory/evolution/evolution_solidify_state.json',
-      assets: {
+      review_status: 'pending',
+      exit_code: 0,
+      artifact_refs: {
+        review_state_ref: 'memory/evolution/evolution_solidify_state.json',
         genes_ref: 'assets/gep/genes.json',
+        genes_jsonl_ref: 'assets/gep/genes.jsonl',
         capsules_ref: 'assets/gep/capsules.json',
+        capsules_jsonl_ref: 'assets/gep/capsules.jsonl',
         events_ref: 'assets/gep/events.jsonl',
+        candidates_ref: 'assets/gep/candidates.jsonl',
+        external_candidates_ref: 'assets/gep/external_candidates.jsonl',
         failed_capsules_ref: 'assets/gep/failed_capsules.json',
-        memory_graph_ref: 'memory/evolution/memory_graph.jsonl'
+        memory_graph_ref: 'memory/evolution/memory_graph.jsonl',
+        stdout_ref: 'memory/evolution/stoa-evolver-run.stdout.log',
+        stderr_ref: 'memory/evolution/stoa-evolver-run.stderr.log'
       },
       bridge: {
         project_id: 'project_1',
@@ -68,23 +78,23 @@ describe('direct memory bridge contracts', () => {
     const published: EvolverPublishedContext = {
       ok: true,
       target: 'codex',
-      format: 'markdown',
+      format: 'jsonl',
       run_id: run.run_id,
       source_checkpoint_id: 'chk_1',
-      selected_assets: [
-        { kind: 'gene', id: 'gene_1', ref: 'assets/gep/genes.json#gene_1', score: 0.9, reason: 'matched signal' }
+      source_refs: [
+        { kind: 'gene', id: 'gene_1', ref: 'assets/gep/genes.json', score: 0.9, reason: 'matched signal' }
       ],
-      content: '# Evolution Context\n\nUse the stable fix.',
+      content: '{"type":"MemoryGraphEvent"}\n',
       metadata: {
         generated_at: '2026-04-26T00:00:00.000Z',
-        token_budget: 2000,
-        selection_policy: 'scoped-relevance-v1'
+        token_budget: null,
+        selection_policy: 'evolver-native-memory-graph-v1'
       },
       bridge: run.bridge,
       error: null
     }
 
-    expect(published.selected_assets[0]!.kind).toBe('gene')
+    expect(published.source_refs[0]!.kind).toBe('gene')
     expect(typeof published.content).toBe('string')
   })
 

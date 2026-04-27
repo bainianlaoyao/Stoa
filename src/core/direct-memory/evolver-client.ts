@@ -1,10 +1,7 @@
 import type {
   EvolverBridgeRefs,
-  EvolverPublishedContext,
   EvolverStoaReviewState,
-  EvolverStoaRunResult,
-  PublishedContextFormat,
-  PublishedContextTarget
+  EvolverStoaRunResult
 } from '@shared/direct-memory'
 import { runJsonCommand as defaultRunJsonCommand } from './command-runner'
 
@@ -18,6 +15,7 @@ type RunJsonCommand = <TOutput>(options: {
 export interface EvolverClientOptions {
   command: string
   cwd: string
+  argsPrefix?: string[]
   runJsonCommand?: RunJsonCommand
 }
 
@@ -33,18 +31,20 @@ export interface EvolverRunOptions {
 export class EvolverClient {
   private readonly command: string
   private readonly cwd: string
+  private readonly argsPrefix: string[]
   private readonly runJsonCommand: RunJsonCommand
 
   constructor(options: EvolverClientOptions) {
     this.command = options.command
     this.cwd = options.cwd
+    this.argsPrefix = options.argsPrefix ?? []
     this.runJsonCommand = options.runJsonCommand ?? defaultRunJsonCommand
   }
 
   async run(options: EvolverRunOptions): Promise<EvolverStoaRunResult> {
     return await this.runJsonCommand<EvolverStoaRunResult>({
       command: this.command,
-      args: ['run', '--json'],
+      args: [...this.argsPrefix, 'run', '--json'],
       cwd: this.cwd,
       env: {
         ...process.env,
@@ -66,7 +66,7 @@ export class EvolverClient {
   async review(): Promise<EvolverStoaReviewState> {
     return await this.runJsonCommand<EvolverStoaReviewState>({
       command: this.command,
-      args: ['review', '--json'],
+      args: [...this.argsPrefix, 'review', '--json'],
       cwd: this.cwd
     })
   }
@@ -74,7 +74,7 @@ export class EvolverClient {
   async approveReview(): Promise<EvolverStoaReviewState> {
     return await this.runJsonCommand<EvolverStoaReviewState>({
       command: this.command,
-      args: ['review', '--approve', '--json'],
+      args: [...this.argsPrefix, 'review', '--approve', '--json'],
       cwd: this.cwd
     })
   }
@@ -82,15 +82,7 @@ export class EvolverClient {
   async rejectReview(): Promise<EvolverStoaReviewState> {
     return await this.runJsonCommand<EvolverStoaReviewState>({
       command: this.command,
-      args: ['review', '--reject', '--json'],
-      cwd: this.cwd
-    })
-  }
-
-  async publishContext(target: PublishedContextTarget, format: PublishedContextFormat): Promise<EvolverPublishedContext> {
-    return await this.runJsonCommand<EvolverPublishedContext>({
-      command: this.command,
-      args: ['publish-context', `--target=${target}`, `--format=${format}`, '--json'],
+      args: [...this.argsPrefix, 'review', '--reject', '--json'],
       cwd: this.cwd
     })
   }

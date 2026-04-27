@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { execFile } from 'node:child_process'
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createClaudeCodeProvider } from './claude-code-provider'
@@ -165,13 +166,171 @@ describe('claude-code provider', () => {
       expect(content).toContain('STOA_SESSION_SECRET')
       expect(Object.keys(settings.hooks).sort()).toEqual([
         'PermissionRequest',
+        'PostToolUse',
         'PreToolUse',
+        'SessionStart',
         'Stop',
         'StopFailure',
         'UserPromptSubmit'
       ])
+      expect(content).toContain('node .claude/hooks/stoa-evolver-session-start.cjs')
+      expect(content).toContain('node .claude/hooks/stoa-evolver-session-end.cjs')
+      expect(content).toContain('node .claude/hooks/stoa-evolver-signal-detect.cjs')
       expect(content).not.toContain('session_claude_env')
       expect(content).not.toContain('secret-env')
+    } finally {
+      await rm(workspaceDir, { recursive: true, force: true })
+    }
+  })
+
+  test('installSidecar writes Claude-local Evolver wrapper scripts', async () => {
+    const workspaceDir = await mkdtemp(join(tmpdir(), 'stoa-claude-evolver-wrapper-'))
+    try {
+      const provider = createClaudeCodeProvider()
+
+      await provider.installSidecar({
+        session_id: 'session_claude_evolver',
+        project_id: 'project_alpha',
+        path: workspaceDir,
+        title: 'Claude Alpha',
+        type: 'claude-code',
+        external_session_id: 'external-evolver'
+      }, {
+        webhookPort: 43127,
+        sessionSecret: 'secret-env',
+        providerPort: 43128
+      })
+
+      const startWrapper = await readFile(join(workspaceDir, '.claude', 'hooks', 'stoa-evolver-session-start.cjs'), 'utf8')
+      expect(startWrapper).toContain('EVOLVER_ROOT')
+      expect(startWrapper).toContain('evolver-session-start.js')
+      expect(startWrapper).toContain('research/upstreams/evolver')
+    } finally {
+      await rm(workspaceDir, { recursive: true, force: true })
+    }
+  })
+
+  test('generated Claude Evolver session-start wrapper consumes MEMORY_GRAPH_PATH', async () => {
+    const workspaceDir = await mkdtemp(join(tmpdir(), 'stoa-claude-evolver-run-'))
+    try {
+      const provider = createClaudeCodeProvider()
+
+      await provider.installSidecar({
+        session_id: 'session_claude_evolver_run',
+        project_id: 'project_alpha',
+        path: workspaceDir,
+        title: 'Claude Alpha',
+        type: 'claude-code',
+        external_session_id: 'external-evolver-run'
+      }, {
+        webhookPort: 43127,
+        sessionSecret: 'secret-env',
+        providerPort: 43128
+      })
+
+      const memoryGraphPath = join(workspaceDir, 'memory_graph.jsonl')
+      await writeFile(memoryGraphPath, [
+        JSON.stringify({
+          timestamp: '2026-04-27T00:00:00.000Z',
+          signals: ['tooling_preference'],
+          outcome: {
+            status: 'success',
+            score: 0.9,
+            note: 'Use uv instead of pip for Python package management.'
+          }
+        })
+      ].join('\n') + '\n', 'utf8')
+
+      const stdout = await new Promise<string>((resolve, reject) => {
+        execFile(
+          'node',
+          [join(workspaceDir, '.claude', 'hooks', 'stoa-evolver-session-start.cjs')],
+          {
+            cwd: workspaceDir,
+            env: {
+              ...process.env,
+              MEMORY_GRAPH_PATH: memoryGraphPath
+            },
+            windowsHide: true
+          },
+          (error, output, stderr) => {
+            if (error) {
+              reject(new Error(stderr || error.message))
+              return
+            }
+            resolve(output)
+          }
+        )
+      })
+
+      const parsed = JSON.parse(stdout) as { agent_message?: string; additionalContext?: string }
+      expect(parsed.agent_message).toContain('[Evolution Memory]')
+      expect(parsed.additionalContext).toContain('Use successful approaches.')
+    } finally {
+      await rm(workspaceDir, { recursive: true, force: true })
+    }
+  })
+
+  test('generated Claude Evolver session-start wrapper auto-loads published Stoa context file', async () => {
+    const workspaceDir = await mkdtemp(join(tmpdir(), 'stoa-claude-evolver-auto-context-'))
+    try {
+      const provider = createClaudeCodeProvider()
+
+      await provider.installSidecar({
+        session_id: 'session_claude_evolver_auto_context',
+        project_id: 'project_alpha',
+        path: workspaceDir,
+        title: 'Claude Alpha',
+        type: 'claude-code',
+        external_session_id: 'external-evolver-auto-context'
+      }, {
+        webhookPort: 43127,
+        sessionSecret: 'secret-env',
+        providerPort: 43128
+      })
+
+      const generatedDir = join(workspaceDir, '.stoa', 'generated', 'evolver-context')
+      const fakeEvolverRoot = join(workspaceDir, 'fake-evolver-root')
+      await mkdir(generatedDir, { recursive: true })
+      await mkdir(fakeEvolverRoot, { recursive: true })
+      await writeFile(join(fakeEvolverRoot, 'package.json'), JSON.stringify({ name: '@evomap/evolver' }) + '\n', 'utf8')
+      await writeFile(join(generatedDir, 'claude-code.jsonl'), [
+        JSON.stringify({
+          timestamp: '2026-04-27T00:00:00.000Z',
+          signals: ['tooling_preference'],
+          outcome: {
+            status: 'success',
+            score: 0.9,
+            note: 'Use uv instead of pip for Python package management.'
+          }
+        })
+      ].join('\n') + '\n', 'utf8')
+
+      const stdout = await new Promise<string>((resolve, reject) => {
+        execFile(
+          'node',
+          [join(workspaceDir, '.claude', 'hooks', 'stoa-evolver-session-start.cjs')],
+          {
+            cwd: workspaceDir,
+            env: {
+              ...process.env,
+              EVOLVER_ROOT: fakeEvolverRoot
+            },
+            windowsHide: true
+          },
+          (error, output, stderr) => {
+            if (error) {
+              reject(new Error(stderr || error.message))
+              return
+            }
+            resolve(output)
+          }
+        )
+      })
+
+      const parsed = JSON.parse(stdout) as { agent_message?: string; additionalContext?: string }
+      expect(parsed.agent_message).toContain('Use uv instead of pip')
+      expect(parsed.additionalContext).toContain('Use successful approaches.')
     } finally {
       await rm(workspaceDir, { recursive: true, force: true })
     }

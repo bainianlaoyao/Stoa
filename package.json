@@ -11,6 +11,7 @@
     "build:entire-bridge": "node scripts/build-entire-bridge.mjs --build",
     "test:entire-bridge": "node scripts/build-entire-bridge.mjs --test",
     "verify:entire-bridge": "node scripts/build-entire-bridge.mjs",
+    "experiment:first-round": "tsx scripts/run-real-first-round-experiment.ts",
     "preview": "electron-vite preview",
     "package": "node -e \"const { spawnSync } = require('node:child_process'); const env = { ...process.env, GH_OWNER: process.env.GH_OWNER || 'local-dev', GH_REPO: process.env.GH_REPO || 'stoa-local' }; const cli = require.resolve('electron-builder/out/cli/cli.js'); const result = spawnSync(process.execPath, [cli, '--config', 'electron-builder.yml'], { stdio: 'inherit', env }); process.exit(result.status ?? 1);\"",
     "package:local": "pnpm run build && pnpm run package",

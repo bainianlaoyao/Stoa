@@ -2,7 +2,6 @@ import { describe, expect, test, vi } from 'vitest'
 import { EvolverClient } from './evolver-client'
 import type {
   EvolverBridgeRefs,
-  EvolverPublishedContext,
   EvolverStoaReviewState,
   EvolverStoaRunResult
 } from '@shared/direct-memory'
@@ -25,22 +24,35 @@ describe('EvolverClient', () => {
       memory_dir: 'C:/repo/.stoa/direct-memory/run_1/memory',
       evolution_dir: 'C:/repo/.stoa/direct-memory/run_1/evolution',
       gep_assets_dir: 'C:/repo/.stoa/direct-memory/run_1/assets/gep',
+      session_scope: 'provider-session-1',
       selected_gene_id: null,
       signals: [],
-      mutation_id: null,
-      review_state_ref: null,
-      assets: {
+      review_status: 'none',
+      exit_code: 0,
+      artifact_refs: {
+        review_state_ref: null,
         genes_ref: 'genes.json',
+        genes_jsonl_ref: 'genes.jsonl',
         capsules_ref: 'capsules.json',
+        capsules_jsonl_ref: 'capsules.jsonl',
         events_ref: 'events.jsonl',
+        candidates_ref: 'candidates.jsonl',
+        external_candidates_ref: 'external_candidates.jsonl',
         failed_capsules_ref: 'failed_capsules.json',
-        memory_graph_ref: null
+        memory_graph_ref: null,
+        stdout_ref: 'stdout.log',
+        stderr_ref: 'stderr.log'
       },
       bridge,
       error: null
     }
     const runner = vi.fn().mockResolvedValue(result)
-    const client = new EvolverClient({ command: 'evolver', cwd: 'C:/repo', runJsonCommand: runner })
+    const client = new EvolverClient({
+      command: 'node',
+      cwd: 'C:/repo',
+      argsPrefix: ['index.js'],
+      runJsonCommand: runner
+    })
 
     await expect(client.run({
       bridge,
@@ -52,8 +64,8 @@ describe('EvolverClient', () => {
     })).resolves.toEqual(result)
 
     expect(runner).toHaveBeenCalledWith({
-      command: 'evolver',
-      args: ['run', '--json'],
+      command: 'node',
+      args: ['index.js', 'run', '--json'],
       cwd: 'C:/repo',
       env: expect.objectContaining({
         EVOLVER_REPO_ROOT: 'C:/worktree',
@@ -71,7 +83,7 @@ describe('EvolverClient', () => {
     })
   })
 
-  test('delegates review and publish commands', async () => {
+  test('delegates review commands', async () => {
     const review: EvolverStoaReviewState = {
       ok: true,
       status: 'pending',
@@ -85,34 +97,18 @@ describe('EvolverClient', () => {
       bridge,
       error: null
     }
-    const published: EvolverPublishedContext = {
-      ok: true,
-      target: 'codex',
-      format: 'markdown',
-      run_id: 'run_1',
-      source_checkpoint_id: 'chk_1',
-      selected_assets: [],
-      content: 'context',
-      metadata: {
-        generated_at: '2026-04-26T00:00:00.000Z',
-        token_budget: null,
-        selection_policy: 'test'
-      },
-      bridge,
-      error: null
-    }
     const runner = vi.fn()
       .mockResolvedValueOnce(review)
       .mockResolvedValueOnce({ ...review, status: 'approved' })
-      .mockResolvedValueOnce(published)
+      .mockResolvedValueOnce({ ...review, status: 'rejected' })
     const client = new EvolverClient({ command: 'evolver', cwd: 'C:/repo', runJsonCommand: runner })
 
     await expect(client.review()).resolves.toEqual(review)
     await expect(client.approveReview()).resolves.toMatchObject({ status: 'approved' })
-    await expect(client.publishContext('codex', 'markdown')).resolves.toEqual(published)
+    await expect(client.rejectReview()).resolves.toMatchObject({ status: 'rejected' })
 
     expect(runner).toHaveBeenNthCalledWith(1, { command: 'evolver', args: ['review', '--json'], cwd: 'C:/repo' })
     expect(runner).toHaveBeenNthCalledWith(2, { command: 'evolver', args: ['review', '--approve', '--json'], cwd: 'C:/repo' })
-    expect(runner).toHaveBeenNthCalledWith(3, { command: 'evolver', args: ['publish-context', '--target=codex', '--format=markdown', '--json'], cwd: 'C:/repo' })
+    expect(runner).toHaveBeenNthCalledWith(3, { command: 'evolver', args: ['review', '--reject', '--json'], cwd: 'C:/repo' })
   })
 })

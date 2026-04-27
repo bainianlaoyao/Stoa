@@ -431,11 +431,19 @@ describe('E2E: Provider Integration', () => {
       expect(content).toContain('STOA_SESSION_SECRET')
       expect(Object.keys(settings.hooks).sort()).toEqual([
         'PermissionRequest',
+        'PostToolUse',
         'PreToolUse',
+        'SessionStart',
         'Stop',
         'StopFailure',
         'UserPromptSubmit'
       ])
+      expect(content).toContain('node .claude/hooks/stoa-evolver-session-start.cjs')
+      expect(content).toContain('node .claude/hooks/stoa-evolver-signal-detect.cjs')
+      expect(content).toContain('node .claude/hooks/stoa-evolver-session-end.cjs')
+      await expect(stat(join(workspaceDir, '.claude', 'hooks', 'stoa-evolver-session-start.cjs'))).resolves.toMatchObject({ isFile: expect.any(Function) })
+      await expect(stat(join(workspaceDir, '.claude', 'hooks', 'stoa-evolver-signal-detect.cjs'))).resolves.toMatchObject({ isFile: expect.any(Function) })
+      await expect(stat(join(workspaceDir, '.claude', 'hooks', 'stoa-evolver-session-end.cjs'))).resolves.toMatchObject({ isFile: expect.any(Function) })
       expect(content).not.toContain('secret-claude')
       expect(content).not.toContain(target.session_id)
     })

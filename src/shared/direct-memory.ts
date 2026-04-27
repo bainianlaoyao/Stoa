@@ -2,7 +2,7 @@ import type { SessionType } from './project-session'
 
 export type DirectMemoryProviderType = Extract<SessionType, 'claude-code' | 'codex' | 'opencode'>
 export type PublishedContextTarget = DirectMemoryProviderType | 'generic'
-export type PublishedContextFormat = 'markdown' | 'json'
+export type PublishedContextFormat = 'jsonl'
 
 export interface EntireStoaCheckpointRef {
   checkpoint_id: string
@@ -36,7 +36,9 @@ export interface EntireStoaSessionExport {
   turn_id: string | null
   metadata_ref: string
   transcript_ref: string | null
+  transcript_text: string | null
   prompt_ref: string | null
+  prompt_text: string | null
   summary: string | null
   initial_attribution: unknown
 }
@@ -50,12 +52,19 @@ export interface EvolverBridgeRefs {
   source_worktree_commit_sha: string | null
 }
 
-export interface EvolverAssetRefs {
-  genes_ref: string
-  capsules_ref: string
-  events_ref: string
-  failed_capsules_ref: string
+export interface EvolverArtifactRefs {
+  review_state_ref: string | null
+  genes_ref: string | null
+  genes_jsonl_ref: string | null
+  capsules_ref: string | null
+  capsules_jsonl_ref: string | null
+  events_ref: string | null
+  candidates_ref: string | null
+  external_candidates_ref: string | null
+  failed_capsules_ref: string | null
   memory_graph_ref: string | null
+  stdout_ref: string | null
+  stderr_ref: string | null
 }
 
 export interface EvolverStoaRunResult {
@@ -65,11 +74,12 @@ export interface EvolverStoaRunResult {
   memory_dir: string
   evolution_dir: string
   gep_assets_dir: string
+  session_scope: string
   selected_gene_id: string | null
   signals: string[]
-  mutation_id: string | null
-  review_state_ref: string | null
-  assets: EvolverAssetRefs
+  review_status: 'none' | 'pending' | 'approved' | 'rejected' | 'failed'
+  exit_code: number
+  artifact_refs: EvolverArtifactRefs
   bridge: EvolverBridgeRefs
   error: string | null
 }
@@ -88,8 +98,18 @@ export interface EvolverStoaReviewState {
   error: string | null
 }
 
-export interface EvolverPublishedAssetRef {
-  kind: 'gene' | 'capsule' | 'event' | 'failed_capsule' | 'memory_graph_entry'
+export interface PublishedContextSourceRef {
+  kind:
+    | 'checkpoint_root'
+    | 'checkpoint_session'
+    | 'gene'
+    | 'capsule'
+    | 'event_log'
+    | 'failed_capsules'
+    | 'memory_graph'
+    | 'review_state'
+    | 'stdout'
+    | 'stderr'
   id: string
   ref: string
   score: number | null
@@ -102,8 +122,8 @@ export interface EvolverPublishedContext {
   format: PublishedContextFormat
   run_id: string | null
   source_checkpoint_id: string | null
-  selected_assets: EvolverPublishedAssetRef[]
-  content: string | object
+  source_refs: PublishedContextSourceRef[]
+  content: string
   metadata: {
     generated_at: string
     token_budget: number | null

@@ -7,8 +7,7 @@ import { DirectMemoryBridgeStore } from './bridge-store'
 import type {
   EntireStoaCheckpointExport,
   EvolverPublishedContext,
-  EvolverStoaRunResult,
-  PublishedContextTarget
+  EvolverStoaRunResult
 } from '@shared/direct-memory'
 
 const tempDirs: string[] = []
@@ -27,7 +26,9 @@ function checkpoint(): EntireStoaCheckpointExport {
       turn_id: null,
       metadata_ref: 'session-metadata.json',
       transcript_ref: null,
+      transcript_text: null,
       prompt_ref: null,
+      prompt_text: null,
       summary: 'checkpoint summary',
       initial_attribution: null
     }],
@@ -44,16 +45,24 @@ function runResult(): EvolverStoaRunResult {
     memory_dir: 'C:/memory',
     evolution_dir: 'C:/evolution',
     gep_assets_dir: 'C:/assets',
+    session_scope: 'provider-session-1',
     selected_gene_id: 'gene_1',
     signals: ['test_failure'],
-    mutation_id: 'mut_1',
-    review_state_ref: 'state.json',
-    assets: {
+    review_status: 'pending',
+    exit_code: 0,
+    artifact_refs: {
+      review_state_ref: 'state.json',
       genes_ref: 'genes.json',
+      genes_jsonl_ref: 'genes.jsonl',
       capsules_ref: 'capsules.json',
+      capsules_jsonl_ref: 'capsules.jsonl',
       events_ref: 'events.jsonl',
+      candidates_ref: 'candidates.jsonl',
+      external_candidates_ref: 'external_candidates.jsonl',
       failed_capsules_ref: 'failed_capsules.json',
-      memory_graph_ref: 'memory_graph.jsonl'
+      memory_graph_ref: 'memory_graph.jsonl',
+      stdout_ref: 'stdout.log',
+      stderr_ref: 'stderr.log'
     },
     bridge: {
       project_id: 'project_1',
@@ -67,15 +76,17 @@ function runResult(): EvolverStoaRunResult {
   }
 }
 
-function published(target: PublishedContextTarget = 'codex'): EvolverPublishedContext {
+function published(target: 'codex' | 'generic' = 'codex'): EvolverPublishedContext {
   return {
     ok: true,
     target,
-    format: target === 'generic' ? 'json' : 'markdown',
+    format: 'jsonl',
     run_id: 'run_1',
     source_checkpoint_id: 'chk_1',
-    selected_assets: [],
-    content: target === 'generic' ? { instructions: [] } : '# Context',
+    source_refs: [],
+    content: target === 'generic'
+      ? '{"type":"MemoryGraphEvent","target":"generic"}\n'
+      : '{"type":"MemoryGraphEvent","target":"codex"}\n',
     metadata: {
       generated_at: '2026-04-26T00:00:00.000Z',
       token_budget: null,
@@ -103,11 +114,11 @@ describe('DirectMemoryOrchestrator', () => {
   test('runs checkpoint to Evolver to published context happy path', async () => {
     const entire = { exportCheckpoint: vi.fn().mockResolvedValue(checkpoint()) }
     const evolver = {
-      run: vi.fn().mockResolvedValue(runResult()),
-      publishContext: vi.fn().mockResolvedValue(published('codex'))
+      run: vi.fn().mockResolvedValue(runResult())
     }
     const createWorktree = vi.fn().mockResolvedValue({ path: join(repoRoot, '.stoa/direct-memory/worktrees/run_1'), sourceWorktreeCommitSha: 'source-sha' })
-    const orchestrator = new DirectMemoryOrchestrator({ entire, evolver, store, createWorktree })
+    const buildPublishedContext = vi.fn().mockResolvedValue(published('codex'))
+    const orchestrator = new DirectMemoryOrchestrator({ entire, evolver, store, createWorktree, buildPublishedContext })
 
     const result = await orchestrator.evolveAndPublish({
       projectId: 'project_1',
@@ -133,7 +144,13 @@ describe('DirectMemoryOrchestrator', () => {
       sessionScope: 'provider-session-1'
     }))
     expect(result.delivery.hash).toMatch(/^sha256:/)
-    await expect(readFile(result.delivery.filePath, 'utf-8')).resolves.toBe('# Context')
+    expect(buildPublishedContext).toHaveBeenCalledWith({
+      checkpoint: expect.objectContaining({ checkpoint_id: 'chk_1' }),
+      run: expect.objectContaining({ run_id: 'run_1' }),
+      repoRoot,
+      target: 'codex'
+    })
+    await expect(readFile(result.delivery.filePath, 'utf-8')).resolves.toBe('{"type":"MemoryGraphEvent","target":"codex"}\n')
     await expect(store.list()).resolves.toEqual([
       expect.objectContaining({
         evolverRunId: 'run_1',
@@ -145,7 +162,7 @@ describe('DirectMemoryOrchestrator', () => {
 
   test('stops before Evolver when Entire export fails', async () => {
     const entire = { exportCheckpoint: vi.fn().mockRejectedValue(new Error('no checkpoint')) }
-    const evolver = { run: vi.fn(), publishContext: vi.fn() }
+    const evolver = { run: vi.fn() }
     const orchestrator = new DirectMemoryOrchestrator({
       entire,
       evolver,
@@ -169,12 +186,14 @@ describe('DirectMemoryOrchestrator', () => {
   test('persists failed Evolver run refs without publishing', async () => {
     const failedRun = { ...runResult(), ok: false, error: 'mutation failed' }
     const entire = { exportCheckpoint: vi.fn().mockResolvedValue(checkpoint()) }
-    const evolver = { run: vi.fn().mockResolvedValue(failedRun), publishContext: vi.fn() }
+    const evolver = { run: vi.fn().mockResolvedValue(failedRun) }
+    const buildPublishedContext = vi.fn()
     const orchestrator = new DirectMemoryOrchestrator({
       entire,
       evolver,
       store,
-      createWorktree: vi.fn().mockResolvedValue({ path: join(repoRoot, 'worktree'), sourceWorktreeCommitSha: 'source-sha' })
+      createWorktree: vi.fn().mockResolvedValue({ path: join(repoRoot, 'worktree'), sourceWorktreeCommitSha: 'source-sha' }),
+      buildPublishedContext
     })
 
     await expect(orchestrator.evolveAndPublish({
@@ -187,7 +206,7 @@ describe('DirectMemoryOrchestrator', () => {
       target: 'codex'
     })).rejects.toThrow('mutation failed')
 
-    expect(evolver.publishContext).not.toHaveBeenCalled()
+    expect(buildPublishedContext).not.toHaveBeenCalled()
     await expect(store.list()).resolves.toEqual([
       expect.objectContaining({
         evolverRunId: 'run_1',

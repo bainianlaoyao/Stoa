@@ -9,6 +9,7 @@ import type {
 } from '@shared/direct-memory'
 import type { DirectMemoryBridgeStore } from './bridge-store'
 import type { DirectMemoryWorktree } from './worktree'
+import { buildPublishedContext as defaultBuildPublishedContext } from './published-context-builder'
 import { createDirectMemoryWorktree } from './worktree'
 import { writePublishedContext, type DeliveredContext } from './context-delivery'
 
@@ -25,7 +26,6 @@ interface EvolverLike {
     gepAssetsDir: string
     sessionScope: string
   }) => Promise<EvolverStoaRunResult>
-  publishContext: (target: PublishedContextTarget, format: 'markdown' | 'json') => Promise<EvolverPublishedContext>
 }
 
 export interface EvolveAndPublishRequest {
@@ -56,6 +56,12 @@ export class DirectMemoryOrchestrator {
       runId: string
       sourceWorktreeCommitSha: string | null
     }) => Promise<DirectMemoryWorktree>
+    buildPublishedContext?: (input: {
+      checkpoint: EntireStoaCheckpointExport
+      run: EvolverStoaRunResult
+      repoRoot: string
+      target: PublishedContextTarget
+    }) => Promise<EvolverPublishedContext>
     nowIso?: () => string
   }) {}
 
@@ -106,7 +112,7 @@ export class DirectMemoryOrchestrator {
       memoryDir: run.memory_dir,
       evolutionDir: run.evolution_dir,
       gepAssetsDir: run.gep_assets_dir,
-      reviewStateRef: run.review_state_ref,
+      reviewStateRef: run.artifact_refs.review_state_ref,
       createdAt: startedAt,
       updatedAt: this.now()
     })
@@ -116,10 +122,12 @@ export class DirectMemoryOrchestrator {
       throw new Error(run.error ?? 'Evolver run failed')
     }
 
-    const published = await this.options.evolver.publishContext(
-      request.target,
-      request.target === 'generic' ? 'json' : 'markdown'
-    )
+    const published = await (this.options.buildPublishedContext ?? defaultBuildPublishedContext)({
+      checkpoint,
+      run,
+      repoRoot: request.repoRoot,
+      target: request.target
+    })
     const delivery = await writePublishedContext(request.repoRoot, published)
     await this.options.store.updateDelivery({
       projectId: request.projectId,
