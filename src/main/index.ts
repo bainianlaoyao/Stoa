@@ -8,8 +8,9 @@ import { InMemoryObservationStore } from '@core/observation-store'
 import type { ListObservationEventsOptions } from '@core/observation-store'
 import { ObservabilityService } from '@core/observability-service'
 import { ProjectSessionManager } from '@core/project-session-manager'
+import { resolveRuntimePaths as resolveProviderRuntimePaths } from '@core/provider-path-resolver'
 import { detectShell, detectProvider } from '@core/settings-detector'
-import { getProviderDescriptorByProviderId, getProviderDescriptorBySessionType } from '@shared/provider-descriptors'
+import { getProviderDescriptorByProviderId } from '@shared/provider-descriptors'
 import { derivePresencePhase } from '@shared/session-state-reducer'
 import { SessionRuntimeController } from './session-runtime-controller'
 import { SessionEventBridge } from './session-event-bridge'
@@ -17,6 +18,7 @@ import { SessionInputRouter } from './session-input-router'
 import { launchTrackedSessionRuntime } from './launch-tracked-session-runtime'
 import { syncObservabilitySessionsFromManager } from './observability-sync'
 import { UpdateService } from './update-service'
+import { DEFAULT_SETTINGS } from '@shared/project-session'
 import type { CreateProjectRequest, CreateSessionRequest } from '@shared/project-session'
 import type { UpdateState } from '@shared/update-state'
 import type { PtyHost } from '@core/pty-host'
@@ -459,30 +461,14 @@ app.whenReady().then(async () => {
     providerPath: string | null
     claudeDangerouslySkipPermissions: boolean
   }> {
-    const descriptor = getProviderDescriptorBySessionType(sessionType)
-    const settings = projectSessionManager?.getSettings()
-    const configuredShellPath = settings?.shellPath?.trim() ?? ''
-    const shellPath = configuredShellPath.length > 0 ? configuredShellPath : await detectShell()
-
-    if (descriptor.providerId === 'local-shell') {
-      return {
-        shellPath,
-        providerPath: null,
-        claudeDangerouslySkipPermissions: settings?.claudeDangerouslySkipPermissions === true
+    return await resolveProviderRuntimePaths(
+      sessionType,
+      projectSessionManager?.getSettings() ?? DEFAULT_SETTINGS,
+      {
+        detectShell,
+        detectProvider
       }
-    }
-
-    const configuredProviderPath = settings?.providers[descriptor.providerId]?.trim() ?? ''
-    const providerPath =
-      configuredProviderPath.length > 0
-        ? configuredProviderPath
-        : await detectProvider(descriptor.executableName, shellPath)
-
-    return {
-      shellPath,
-      providerPath,
-      claudeDangerouslySkipPermissions: settings?.claudeDangerouslySkipPermissions === true
-    }
+    )
   }
 
   async function launchSessionRuntimeWithGuard(

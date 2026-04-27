@@ -75,6 +75,23 @@ describe('ProjectSessionManager', () => {
     expect(reloaded.getSettings().claudeDangerouslySkipPermissions).toBe(true)
   })
 
+  test('persists memory AI provider setting across reloads', async () => {
+    const globalStatePath = await createTempGlobalStatePath()
+    const manager = await ProjectSessionManager.create({
+      webhookPort: null,
+      globalStatePath
+    })
+
+    await manager.setSetting('memoryAiProvider', 'codex')
+
+    const reloaded = await ProjectSessionManager.create({
+      webhookPort: null,
+      globalStatePath
+    })
+
+    expect(reloaded.getSettings().memoryAiProvider).toBe('codex')
+  })
+
   test('rejects startup when persisted global state is corrupted', async () => {
     const globalStatePath = await createTempGlobalStatePath()
     await writeFile(globalStatePath, '{broken json', 'utf-8')

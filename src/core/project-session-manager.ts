@@ -416,7 +416,10 @@ export class ProjectSessionManager {
   }
 
   getSettings(): AppSettings {
-    return { ...this.settings }
+    return {
+      ...this.settings,
+      providers: { ...this.settings.providers }
+    }
   }
 
   async setSetting(key: string, value: unknown): Promise<void> {
@@ -428,8 +431,12 @@ export class ProjectSessionManager {
       this.settings.terminalFontFamily = value
     } else if (key === 'providers' && typeof value === 'object' && value !== null) {
       this.settings.providers = value as Record<string, string>
+    } else if (key === 'memoryAiProvider' && (value === 'codex' || value === 'claude-code')) {
+      this.settings.memoryAiProvider = value
     } else if (key === 'claudeDangerouslySkipPermissions' && typeof value === 'boolean') {
       this.settings.claudeDangerouslySkipPermissions = value
+    } else if (key === 'locale' && typeof value === 'string') {
+      this.settings.locale = value
     }
     await this.persist()
   }

@@ -8,6 +8,7 @@ import type {
 import type { BlockingReason } from '@shared/observability'
 
 export type SessionType = 'shell' | 'opencode' | 'codex' | 'claude-code'
+export type MemoryAiProvider = 'codex' | 'claude-code'
 export type SessionRecoveryMode = 'fresh-shell' | 'resume-external'
 export type SessionRuntimeState = 'created' | 'starting' | 'alive' | 'exited' | 'failed_to_start'
 export type SessionAgentState = 'unknown' | 'idle' | 'working' | 'blocked' | 'error'
@@ -126,6 +127,7 @@ export interface AppSettings {
   terminalFontSize: number
   terminalFontFamily: string
   providers: Record<string, string>
+  memoryAiProvider: MemoryAiProvider
   claudeDangerouslySkipPermissions: boolean
   locale: string
 }
@@ -137,6 +139,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   terminalFontSize: 14,
   terminalFontFamily: 'JetBrains Mono',
   providers: {},
+  memoryAiProvider: 'claude-code',
   claudeDangerouslySkipPermissions: false,
   locale: 'en'
 }
