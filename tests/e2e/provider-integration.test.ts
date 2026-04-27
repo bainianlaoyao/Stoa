@@ -23,6 +23,39 @@ async function createTempDir(prefix: string): Promise<string> {
   return dir
 }
 
+async function postCanonicalEvent(
+  port: number,
+  secret: string,
+  event: Record<string, unknown>
+): Promise<{ statusCode: number; body: string }> {
+  return await new Promise((resolve, reject) => {
+    const payload = JSON.stringify(event)
+    const req = request(
+      {
+        host: '127.0.0.1',
+        port,
+        path: '/events',
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'content-length': Buffer.byteLength(payload),
+          'x-stoa-secret': secret
+        }
+      },
+      (response) => {
+        let body = ''
+        response.setEncoding('utf8')
+        response.on('data', (chunk) => { body += chunk })
+        response.on('end', () => resolve({ statusCode: response.statusCode ?? 0, body }))
+      }
+    )
+
+    req.on('error', reject)
+    req.write(payload)
+    req.end()
+  })
+}
+
 function createTarget(overrides: Partial<ProviderRuntimeTarget> = {}): ProviderRuntimeTarget {
   return {
     session_id: 'session_test_001',
@@ -885,6 +918,50 @@ describe('E2E: Provider Integration', () => {
       const parsed = JSON.parse(body)
       expect(parsed.accepted).toBe(true)
       expect(parsed.ignored).toBe(true)
+      expect(acceptedEvents).toHaveLength(0)
+    })
+
+    test('full pipeline: malformed notify-style canonical event is rejected at /events', async () => {
+      const server = createLocalWebhookServer({
+        getSessionSecret(sessionId) {
+          return sessionId === 'session_flow_004' ? 'flow-secret-4' : null
+        },
+        onEvent(event) {
+          acceptedEvents.push(event)
+        }
+      })
+      webhookServers.push(server)
+      const port = await server.start()
+
+      const { statusCode, body } = await postCanonicalEvent(port, 'flow-secret-4', {
+        event_version: 1,
+        event_id: 'evt-notify-bad',
+        event_type: 'agent-turn-complete',
+        timestamp: new Date().toISOString(),
+        session_id: 'session_flow_004',
+        project_id: 'project_flow_004',
+        source: 'provider-adapter',
+        payload: {
+          intent: 'agent.turn_completed',
+          agentState: 'idle',
+          hasUnseenCompletion: true,
+          summary: 'agent-turn-complete',
+          externalSessionId: 'codex-thread-bad'
+        },
+        evidence: {
+          rawSource: {
+            provider: 'codex',
+            channel: 'notify',
+            rawEventName: '   '
+          },
+          providerSessionId: 'codex-thread-bad',
+          turnId: 'turn-bad',
+          inputMessages: ['Run tests']
+        }
+      })
+
+      expect(statusCode).toBe(400)
+      expect(JSON.parse(body)).toEqual({ accepted: false, reason: 'invalid_event' })
       expect(acceptedEvents).toHaveLength(0)
     })
   })

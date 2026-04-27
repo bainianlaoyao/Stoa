@@ -42,6 +42,10 @@ const OPTIONAL_EVIDENCE_STRING_FIELDS = [
   'model'
 ] as const
 
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0
+}
+
 export interface LocalWebhookServerOptions {
   onEvent?: (event: CanonicalSessionEvent) => Promise<void> | void
   getSessionSecret?: (sessionId: string) => string | null
@@ -161,13 +165,13 @@ function isMemoryRuntimeEvidence(value: unknown): boolean {
     || !VALID_MEMORY_RUNTIME_PROVIDERS.has(rawSourceRecord.provider)
     || typeof rawSourceRecord.channel !== 'string'
     || !VALID_MEMORY_RUNTIME_CHANNELS.has(rawSourceRecord.channel)
-    || typeof rawSourceRecord.rawEventName !== 'string'
+    || !isNonEmptyString(rawSourceRecord.rawEventName)
   ) {
     return false
   }
 
   for (const field of OPTIONAL_EVIDENCE_STRING_FIELDS) {
-    if (evidence[field] !== undefined && typeof evidence[field] !== 'string') {
+    if (evidence[field] !== undefined && !isNonEmptyString(evidence[field])) {
       return false
     }
   }
