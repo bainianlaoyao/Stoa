@@ -88,6 +88,14 @@ vi.mock('@xterm/addon-webgl', () => {
   }
 })
 
+vi.mock('@xterm/addon-serialize', () => {
+  return {
+    SerializeAddon: class {
+      serialize() { return '' }
+    },
+  }
+})
+
 vi.mock('@xterm/xterm/css/xterm.css', () => ({}))
 
 function createMockApi() {

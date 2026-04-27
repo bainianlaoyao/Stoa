@@ -80,6 +80,14 @@ vi.mock('@xterm/addon-webgl', () => {
   return { WebglAddon }
 })
 
+vi.mock('@xterm/addon-serialize', () => {
+  return {
+    SerializeAddon: class {
+      serialize() { return '' }
+    },
+  }
+})
+
 describe('createTerminalRuntime', () => {
   beforeEach(async () => {
     vi.resetModules()
@@ -100,7 +108,7 @@ describe('createTerminalRuntime', () => {
     expect(terminal.options.convertEol).toBeUndefined()
   })
 
-  test('loads fit/unicode11/web-links/webgl addons and activates unicode11', async () => {
+  test('loads fit/unicode11/web-links/serialize/webgl addons and activates unicode11', async () => {
     const { createTerminalRuntime } = await import('./xterm-runtime')
 
     const runtime = createTerminalRuntime('linux', vi.fn(), true)
@@ -109,7 +117,7 @@ describe('createTerminalRuntime', () => {
       unicode: { activeVersion: string }
     }
 
-    expect(terminal.loadedAddons).toHaveLength(4)
+    expect(terminal.loadedAddons).toHaveLength(5)
     expect(terminal.unicode.activeVersion).toBe('11')
   })
 

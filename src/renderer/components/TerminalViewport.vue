@@ -30,6 +30,7 @@ let unsubscribeEvents: (() => void) | null = null
 let dataDisposable: { dispose(): void } | null = null
 let scrollbackGuard: IDisposable | null = null
 let pendingFitResolve: (() => void) | null = null
+let resizeDebounceTimer: ReturnType<typeof setTimeout> | null = null
 let mountVersion = 0
 let setupScheduleVersion = 0
 const REPLAY_FALLBACK_TIMEOUT_MS = 1_000
@@ -49,6 +50,10 @@ function disposeTerminal() {
   unsubscribeEvents = null
   resizeObserver?.disconnect()
   resizeObserver = null
+  if (resizeDebounceTimer !== null) {
+    clearTimeout(resizeDebounceTimer)
+    resizeDebounceTimer = null
+  }
   fitAddon?.dispose()
   fitAddon = null
   terminal?.dispose()
@@ -94,7 +99,7 @@ function setupTerminal() {
   const fitSettled = new Promise<void>((resolve) => { localFitResolve = resolve })
   pendingFitResolve = localFitResolve
 
-  const { terminal: localTerminal, fitAddon: localFitAddon } = createTerminalRuntime(
+  const { terminal: localTerminal, fitAddon: localFitAddon, serializeAddon: localSerializeAddon } = createTerminalRuntime(
     undefined,
     undefined,
     undefined,
@@ -183,9 +188,28 @@ function setupTerminal() {
 
   resizeObserver = new ResizeObserver(() => {
     if (!isActiveMount()) return
-    localFitAddon.fit()
-    const { cols, rows } = localTerminal
-    stoa.sendSessionResize(sessionId, cols, rows)
+
+    if (resizeDebounceTimer !== null) {
+      clearTimeout(resizeDebounceTimer)
+    }
+    resizeDebounceTimer = setTimeout(() => {
+      if (!isActiveMount()) return
+      resizeDebounceTimer = null
+
+      const prevBufferLength = localTerminal.buffer.active.length
+      const snapshot = localSerializeAddon.serialize()
+
+      localFitAddon.fit()
+
+      const newBufferLength = localTerminal.buffer.active.length
+      if (newBufferLength < prevBufferLength) {
+        localTerminal.clear()
+        localTerminal.write(snapshot)
+      }
+
+      const { cols, rows } = localTerminal
+      stoa.sendSessionResize(sessionId, cols, rows)
+    }, 150)
   })
   resizeObserver.observe(terminalContainer.value)
 

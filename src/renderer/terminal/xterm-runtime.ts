@@ -1,5 +1,6 @@
 import { FitAddon } from '@xterm/addon-fit'
 import { Unicode11Addon } from '@xterm/addon-unicode11'
+import { SerializeAddon } from '@xterm/addon-serialize'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { Terminal } from '@xterm/xterm'
@@ -16,6 +17,7 @@ declare global {
 export interface XtermRuntime {
   terminal: Terminal
   fitAddon: FitAddon
+  serializeAddon: SerializeAddon
   unicode11Addon: Unicode11Addon
   webLinksAddon: WebLinksAddon
   webglAddon: WebglAddon | null
@@ -167,6 +169,9 @@ export function createTerminalRuntime(
   terminal.unicode.activeVersion = '11'
   terminal.loadAddon(webLinksAddon)
 
+  const serializeAddon = new SerializeAddon()
+  terminal.loadAddon(serializeAddon)
+
   terminal.onSelectionChange(() => {
     const text = terminal.getSelection()
     if (text) {
@@ -196,6 +201,7 @@ export function createTerminalRuntime(
   return {
     terminal,
     fitAddon,
+    serializeAddon,
     unicode11Addon,
     webLinksAddon,
     webglAddon,
