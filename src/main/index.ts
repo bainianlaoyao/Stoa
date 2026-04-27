@@ -461,14 +461,20 @@ app.whenReady().then(async () => {
     providerPath: string | null
     claudeDangerouslySkipPermissions: boolean
   }> {
-    return await resolveProviderRuntimePaths(
+    const settings = projectSessionManager?.getSettings() ?? DEFAULT_SETTINGS
+    const resolvedPaths = await resolveProviderRuntimePaths(
       sessionType,
-      projectSessionManager?.getSettings() ?? DEFAULT_SETTINGS,
+      settings,
       {
         detectShell,
         detectProvider
       }
     )
+
+    return {
+      ...resolvedPaths,
+      claudeDangerouslySkipPermissions: settings.claudeDangerouslySkipPermissions === true
+    }
   }
 
   async function launchSessionRuntimeWithGuard(

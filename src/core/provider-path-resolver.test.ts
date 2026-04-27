@@ -18,10 +18,10 @@ describe('provider-path-resolver', () => {
     })
 
     expect(result).toEqual({
-      shellPath: 'C:/Program Files/PowerShell/7/pwsh.exe',
+      shellPath: null,
       providerPath: 'D:/tools/codex.exe'
     })
-    expect(detectShell).toHaveBeenCalledOnce()
+    expect(detectShell).not.toHaveBeenCalled()
     expect(detectProvider).not.toHaveBeenCalled()
   })
 

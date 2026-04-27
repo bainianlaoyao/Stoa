@@ -11,10 +11,6 @@ export interface ResolvedProviderExecutablePath {
   providerPath: string | null
 }
 
-export interface ResolvedRuntimePaths extends ResolvedProviderExecutablePath {
-  claudeDangerouslySkipPermissions: boolean
-}
-
 function resolveConfiguredShellPath(settings: AppSettings): string {
   return settings.shellPath.trim()
 }
@@ -33,15 +29,20 @@ export async function resolveProviderExecutablePath(
     throw new Error(`Unknown provider id: ${providerId}`)
   }
 
+  const configuredProviderPath = resolveConfiguredProviderPath(settings, providerId)
+  if (configuredProviderPath.length > 0) {
+    return {
+      shellPath: null,
+      providerPath: configuredProviderPath
+    }
+  }
+
   const configuredShellPath = resolveConfiguredShellPath(settings)
   const shellPath = configuredShellPath.length > 0
     ? configuredShellPath
     : await dependencies.detectShell()
 
-  const configuredProviderPath = resolveConfiguredProviderPath(settings, providerId)
-  const providerPath = configuredProviderPath.length > 0
-    ? configuredProviderPath
-    : await dependencies.detectProvider(descriptor.executableName, shellPath)
+  const providerPath = await dependencies.detectProvider(descriptor.executableName, shellPath)
 
   return {
     shellPath,
@@ -53,9 +54,8 @@ export async function resolveRuntimePaths(
   sessionType: SessionType,
   settings: AppSettings,
   dependencies: ProviderPathResolverDependencies
-): Promise<ResolvedRuntimePaths> {
+): Promise<ResolvedProviderExecutablePath> {
   const descriptor = getProviderDescriptorBySessionType(sessionType)
-  const claudeDangerouslySkipPermissions = settings.claudeDangerouslySkipPermissions === true
 
   if (descriptor.providerId === 'local-shell') {
     const configuredShellPath = resolveConfiguredShellPath(settings)
@@ -63,14 +63,9 @@ export async function resolveRuntimePaths(
       shellPath: configuredShellPath.length > 0
         ? configuredShellPath
         : await dependencies.detectShell(),
-      providerPath: null,
-      claudeDangerouslySkipPermissions
+      providerPath: null
     }
   }
 
-  const resolved = await resolveProviderExecutablePath(descriptor.providerId, settings, dependencies)
-  return {
-    ...resolved,
-    claudeDangerouslySkipPermissions
-  }
+  return await resolveProviderExecutablePath(descriptor.providerId, settings, dependencies)
 }
