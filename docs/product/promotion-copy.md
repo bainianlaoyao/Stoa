@@ -36,18 +36,23 @@ Release：`[链接]`
 
 ## 朋友圈短版
 
-你需要忘掉那些垃圾多 Agent 编程工具。
+忘掉你见过的那些垃圾多 Agent 工具。
 
-转而来试试: Stoa , 一个真正好用的编程工作台。
+来试试 **Stoa** ( ´▽` )ﾉ
 
-通过近千个测试守护稳定性。
-简洁优雅的 UI / UX 让你把所有经历都能专注在vibe coding.
-支持多种 CLI 工具: claude code, codex, opencode, 一个应用统一管理。
+用近千个测试用例把关, 稳定性清新脱俗。
 
-由chatgpt 5.5和他忠诚的助理编写.
+界面和交互简洁优雅，没有杂音, 让你专注 vibe coding。
+一个应用统一管理 claude code、codex、opencode 等 CLI 工具。
 
-GitHub：
-Release：`[链接]`
+项目级的自我进化能力，已经在路上了
+
+——由 gpt-5.5 和他忠诚的助理小石 编写
+
+下载/试用：[https://github.com/bainianlaoyao/Stoa/releases](https://github.com/bainianlaoyao/Stoa/releases)
+源码在这里：[https://github.com/bainianlaoyao/Stoa](https://github.com/bainianlaoyao/Stoa)
+
+
 
 ## LINUX DO
 
