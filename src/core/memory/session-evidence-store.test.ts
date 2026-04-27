@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { describe, expect, test } from 'vitest'
@@ -68,6 +69,13 @@ describe('SessionEvidenceStore', () => {
       source: 'provider-adapter',
       intent: 'agent.turn_completed',
       summary: 'Stop',
+      payload: {
+        intent: 'agent.turn_completed',
+        agentState: 'idle',
+        hasUnseenCompletion: true,
+        summary: 'Stop',
+        externalSessionId: 'provider-session-77'
+      },
       provider: 'codex',
       providerSessionId: 'provider-session-77',
       turnId: 'turn-77',
@@ -93,9 +101,11 @@ describe('SessionEvidenceStore', () => {
     expect(await readFile(result.snapshotPath, 'utf8')).toBe('{"summary":"captured"}')
   })
 
-  test('uses the event id as the final evidence-key segment and preserves an empty provider-session segment when unavailable', async () => {
+  test('uses a deterministic snapshot hash as the evidence-key fallback and preserves an empty provider-session segment when unavailable', async () => {
     const projectPath = await createTestTempDir('session-evidence-store-fallback-')
     const store = new SessionEvidenceStore()
+    const snapshotContent = Buffer.from('{"summary":"captured"}', 'utf8')
+    const expectedFallback = `snapshot-sha256-${createHash('sha256').update(snapshotContent).digest('hex')}`
     const event = createEvent({
       event_id: 'event-fallback-77',
       evidence: {
@@ -115,17 +125,17 @@ describe('SessionEvidenceStore', () => {
       snapshot: {
         kind: 'turn-slice',
         fileName: 'turn-slice.json',
-        content: Buffer.from('{"summary":"captured"}', 'utf8')
+        content: snapshotContent
       }
     })
 
     const metadata = JSON.parse(await readFile(result.metadataPath, 'utf8'))
-    expect(result.evidenceKey).toBe('codex::event-fallback-77')
+    expect(result.evidenceKey).toBe(`codex::${expectedFallback}`)
     expect(metadata).toMatchObject({
       provider: 'codex',
       providerSessionId: null,
       turnId: null,
-      evidenceKey: 'codex::event-fallback-77'
+      evidenceKey: `codex::${expectedFallback}`
     })
   })
 })

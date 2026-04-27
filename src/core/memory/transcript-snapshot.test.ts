@@ -93,6 +93,13 @@ describe('createTranscriptSnapshot', () => {
       timestamp: '2026-04-28T12:00:00.000Z',
       intent: 'agent.turn_completed',
       summary: 'Stop',
+      payload: {
+        intent: 'agent.turn_completed',
+        agentState: 'idle',
+        hasUnseenCompletion: true,
+        summary: 'Stop',
+        externalSessionId: 'provider-session-1'
+      },
       evidence: {
         rawSource: {
           provider: 'codex',
@@ -108,6 +115,55 @@ describe('createTranscriptSnapshot', () => {
         toolUseId: 'tool-7',
         cwd: '/repo/app',
         model: 'gpt-5-codex'
+      }
+    })
+  })
+
+  test('preserves the full normalized payload for failed turns when transcript capture falls back to a turn slice', async () => {
+    const snapshot = await createTranscriptSnapshot(createEvent({
+      event_type: 'claude-code.StopFailure',
+      payload: {
+        intent: 'agent.turn_failed',
+        agentState: 'error',
+        summary: 'StopFailure',
+        error: 'rate_limit',
+        externalSessionId: 'provider-session-1'
+      },
+      evidence: {
+        rawSource: {
+          provider: 'claude-code',
+          channel: 'hook',
+          rawEventName: 'StopFailure'
+        },
+        providerSessionId: 'provider-session-1',
+        transcriptPath: '/missing/transcript.jsonl',
+        promptText: 'Ship the patch.',
+        lastAssistantMessage: 'The provider request failed.'
+      }
+    }))
+
+    expect(snapshot.kind).toBe('turn-slice')
+    expect(JSON.parse(snapshot.content.toString('utf8'))).toMatchObject({
+      eventType: 'claude-code.StopFailure',
+      intent: 'agent.turn_failed',
+      summary: 'StopFailure',
+      payload: {
+        intent: 'agent.turn_failed',
+        agentState: 'error',
+        summary: 'StopFailure',
+        error: 'rate_limit',
+        externalSessionId: 'provider-session-1'
+      },
+      evidence: {
+        rawSource: {
+          provider: 'claude-code',
+          channel: 'hook',
+          rawEventName: 'StopFailure'
+        },
+        providerSessionId: 'provider-session-1',
+        transcriptPath: '/missing/transcript.jsonl',
+        promptText: 'Ship the patch.',
+        lastAssistantMessage: 'The provider request failed.'
       }
     })
   })

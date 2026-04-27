@@ -18,6 +18,7 @@ interface ExtractedTurnSlice {
   timestamp: string
   intent: CanonicalSessionEvent['payload']['intent']
   summary: string
+  payload: CanonicalSessionEvent['payload']
   evidence: NonNullable<CanonicalSessionEvent['evidence']>
 }
 
@@ -59,6 +60,7 @@ function buildTurnSlice(event: CanonicalSessionEvent): ExtractedTurnSlice {
     timestamp: event.timestamp,
     intent: event.payload.intent,
     summary: event.payload.summary,
+    payload: event.payload,
     evidence: event.evidence
   }
 }

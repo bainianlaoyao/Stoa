@@ -782,8 +782,9 @@ describe('SessionEventBridge', () => {
   test('persists canonical evidence snapshots under the owning project without changing state patch behavior', async () => {
     const stateDir = await createTestTempDir('session-event-bridge-store-state-')
     const workspaceDir = await createTestTempDir('session-event-bridge-store-workspace-')
+    const otherWorkspaceDir = await createTestTempDir('session-event-bridge-store-other-workspace-')
     const transcriptPath = join(workspaceDir, 'provider-transcript.jsonl')
-    tempDirs.push(stateDir, workspaceDir)
+    tempDirs.push(stateDir, workspaceDir, otherWorkspaceDir)
     await writeFile(transcriptPath, '{"role":"assistant","content":"Fixed the evidence persistence."}\n', 'utf8')
 
     const manager = await ProjectSessionManager.create({
@@ -791,6 +792,7 @@ describe('SessionEventBridge', () => {
       globalStatePath: join(stateDir, 'global.json')
     })
     const project = await manager.createProject({ name: 'Demo', path: workspaceDir, defaultSessionType: 'codex' })
+    const otherProject = await manager.createProject({ name: 'Other', path: otherWorkspaceDir, defaultSessionType: 'codex' })
     const session = await manager.createSession({
       projectId: project.id,
       type: 'codex',
@@ -810,7 +812,7 @@ describe('SessionEventBridge', () => {
     const response = await postEvent(port, createCanonicalEvent({
       event_id: 'event-evidence-1',
       session_id: session.id,
-      project_id: project.id,
+      project_id: otherProject.id,
       evidence: {
         rawSource: {
           provider: 'codex',
@@ -866,6 +868,88 @@ describe('SessionEventBridge', () => {
     expect(await readFile(join(evidenceDir, 'transcript.jsonl'), 'utf8')).toBe(
       '{"role":"assistant","content":"Fixed the evidence persistence."}\n'
     )
+  })
+
+  test('evidence persistence failures are logged without blocking the provider state patch', async () => {
+    const stateDir = await createTestTempDir('session-event-bridge-persist-failure-state-')
+    const workspaceDir = await createTestTempDir('session-event-bridge-persist-failure-workspace-')
+    tempDirs.push(stateDir, workspaceDir)
+
+    const manager = await ProjectSessionManager.create({
+      webhookPort: null,
+      globalStatePath: join(stateDir, 'global.json')
+    })
+    const project = await manager.createProject({ name: 'Demo', path: workspaceDir, defaultSessionType: 'codex' })
+    const session = await manager.createSession({
+      projectId: project.id,
+      type: 'codex',
+      title: 'Codex Session',
+      externalSessionId: 'provider-session-bridge'
+    })
+    await manager.markRuntimeAlive(session.id, 'provider-session-bridge')
+
+    const controller = {
+      applyProviderStatePatch: vi.fn(async () => {})
+    }
+    const evidenceStore = {
+      persist: vi.fn(async () => {
+        throw new Error('disk full')
+      })
+    }
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const bridge = new SessionEventBridge(manager, controller, undefined, {
+      evidenceStore,
+      transcriptSnapshotter: async () => ({
+        kind: 'turn-slice',
+        fileName: 'turn-slice.json',
+        content: Buffer.from('{"summary":"captured"}', 'utf8')
+      })
+    })
+    bridges.push(bridge)
+
+    try {
+      const port = await bridge.start()
+      const secret = bridge.issueSessionSecret(session.id)
+      const response = await postEvent(port, createCanonicalEvent({
+        event_id: 'event-evidence-failure',
+        session_id: session.id,
+        project_id: project.id,
+        evidence: {
+          rawSource: {
+            provider: 'codex',
+            channel: 'hook',
+            rawEventName: 'Stop'
+          },
+          providerSessionId: 'provider-session-bridge',
+          lastAssistantMessage: 'Fixed the evidence persistence.'
+        }
+      }), secret)
+
+      expect(response.statusCode).toBe(202)
+      expect(controller.applyProviderStatePatch).toHaveBeenCalledWith({
+        sessionId: session.id,
+        sequence: 2,
+        occurredAt: expect.any(String),
+        intent: 'agent.turn_completed',
+        source: 'provider',
+        sourceEventType: 'session.idle',
+        runtimeState: undefined,
+        agentState: 'idle',
+        hasUnseenCompletion: true,
+        runtimeExitCode: undefined,
+        runtimeExitReason: undefined,
+        blockingReason: undefined,
+        summary: 'session.idle',
+        externalSessionId: 'opencode-real-123'
+      })
+      expect(evidenceStore.persist).toHaveBeenCalledTimes(1)
+      expect(consoleError).toHaveBeenCalledWith(
+        `[session-event-bridge] Failed to persist evidence for session ${session.id} event event-evidence-failure:`,
+        expect.any(Error)
+      )
+    } finally {
+      consoleError.mockRestore()
+    }
   })
 
   test('main shutdown path awaits bridge stop before re-triggering quit', () => {

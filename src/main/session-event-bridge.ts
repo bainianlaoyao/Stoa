@@ -14,9 +14,13 @@ interface ObservabilityIngester {
   ingest: (event: ObservationEvent) => boolean
 }
 
+interface EvidenceStoreLike {
+  persist: SessionEvidenceStore['persist']
+}
+
 interface SessionEventBridgeOptions {
   nowIso?: () => string
-  evidenceStore?: SessionEvidenceStore
+  evidenceStore?: EvidenceStoreLike
   transcriptSnapshotter?: (event: CanonicalSessionEvent) => Promise<Awaited<ReturnType<typeof createTranscriptSnapshot>>>
 }
 
@@ -25,7 +29,7 @@ export class SessionEventBridge {
   private readonly providerPatchSequences = new Map<string, number>()
   private readonly sessionEventQueues = new Map<string, Promise<void>>()
   private readonly nowIso: () => string
-  private readonly evidenceStore: SessionEvidenceStore
+  private readonly evidenceStore: EvidenceStoreLike
   private readonly transcriptSnapshotter: (event: CanonicalSessionEvent) => Promise<Awaited<ReturnType<typeof createTranscriptSnapshot>>>
   private server: ReturnType<typeof createLocalWebhookServer> | null = null
   private port: number | null = null
@@ -217,18 +221,25 @@ export class SessionEventBridge {
     }
 
     const snapshot = await this.transcriptSnapshotter(event)
-    await this.evidenceStore.persist({
-      projectPath,
-      event,
-      snapshot
-    })
+    try {
+      await this.evidenceStore.persist({
+        projectPath,
+        event,
+        snapshot
+      })
+    } catch (error) {
+      console.error(
+        `[session-event-bridge] Failed to persist evidence for session ${event.session_id} event ${event.event_id}:`,
+        error
+      )
+    }
   }
 
   private resolveProjectPath(event: CanonicalSessionEvent): string | null {
     const snapshot = this.manager.snapshot()
-    const project =
-      snapshot.projects.find(candidate => candidate.id === event.project_id)
-      ?? snapshot.projects.find(candidate => candidate.id === snapshot.sessions.find(session => session.id === event.session_id)?.projectId)
+    const session = snapshot.sessions.find(candidate => candidate.id === event.session_id)
+    const resolvedProjectId = session?.projectId ?? event.project_id
+    const project = snapshot.projects.find(candidate => candidate.id === resolvedProjectId)
 
     return project?.path ?? null
   }

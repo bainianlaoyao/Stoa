@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import type { TranscriptSnapshotArtifact } from '@core/memory/transcript-snapshot'
@@ -27,6 +27,7 @@ interface PersistedSessionEvidenceMetadata {
   source: CanonicalSessionEvent['source']
   intent: CanonicalSessionEvent['payload']['intent']
   summary: string
+  payload: CanonicalSessionEvent['payload']
   provider: NonNullable<CanonicalSessionEvent['evidence']>['rawSource']['provider']
   providerSessionId: string | null
   turnId: string | null
@@ -57,7 +58,7 @@ export class SessionEvidenceStore {
     )
     const metadataPath = join(eventDirectoryPath, 'metadata.json')
     const snapshotPath = join(eventDirectoryPath, input.snapshot.fileName)
-    const evidenceKey = buildEvidenceKey(input.event)
+    const evidenceKey = buildEvidenceKey(input.event, input.snapshot)
 
     await mkdir(eventDirectoryPath, { recursive: true })
     await writeBufferAtomically(snapshotPath, input.snapshot.content)
@@ -71,6 +72,7 @@ export class SessionEvidenceStore {
       source: input.event.source,
       intent: input.event.payload.intent,
       summary: input.event.payload.summary,
+      payload: input.event.payload,
       provider: evidence.rawSource.provider,
       providerSessionId: evidence.providerSessionId ?? null,
       turnId: evidence.turnId ?? null,
@@ -93,13 +95,27 @@ export class SessionEvidenceStore {
   }
 }
 
-function buildEvidenceKey(event: CanonicalSessionEvent): string {
+function buildEvidenceKey(
+  event: CanonicalSessionEvent,
+  snapshot: TranscriptSnapshotArtifact
+): string {
   const evidence = event.evidence
   if (!evidence) {
     throw new Error('Cannot compute an evidence key without event.evidence')
   }
 
-  return `${evidence.rawSource.provider}:${evidence.providerSessionId ?? ''}:${evidence.turnId ?? event.event_id}`
+  return `${evidence.rawSource.provider}:${evidence.providerSessionId ?? ''}:${resolveStableEvidenceSuffix(event, snapshot)}`
+}
+
+function resolveStableEvidenceSuffix(
+  event: CanonicalSessionEvent,
+  snapshot: TranscriptSnapshotArtifact
+): string {
+  if (event.evidence?.turnId) {
+    return event.evidence.turnId
+  }
+
+  return `snapshot-sha256-${createHash('sha256').update(snapshot.content).digest('hex')}`
 }
 
 function createAtomicTempFilePath(filePath: string): string {
