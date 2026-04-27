@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { rm } from 'node:fs/promises'
+import { readFile, rm, writeFile } from 'node:fs/promises'
 import { request } from 'node:http'
 import { join } from 'node:path'
 import { afterEach, describe, expect, test, vi } from 'vitest'
@@ -776,6 +776,95 @@ describe('SessionEventBridge', () => {
           }
         })
       })
+    )
+  })
+
+  test('persists canonical evidence snapshots under the owning project without changing state patch behavior', async () => {
+    const stateDir = await createTestTempDir('session-event-bridge-store-state-')
+    const workspaceDir = await createTestTempDir('session-event-bridge-store-workspace-')
+    const transcriptPath = join(workspaceDir, 'provider-transcript.jsonl')
+    tempDirs.push(stateDir, workspaceDir)
+    await writeFile(transcriptPath, '{"role":"assistant","content":"Fixed the evidence persistence."}\n', 'utf8')
+
+    const manager = await ProjectSessionManager.create({
+      webhookPort: null,
+      globalStatePath: join(stateDir, 'global.json')
+    })
+    const project = await manager.createProject({ name: 'Demo', path: workspaceDir, defaultSessionType: 'codex' })
+    const session = await manager.createSession({
+      projectId: project.id,
+      type: 'codex',
+      title: 'Codex Session',
+      externalSessionId: 'provider-session-bridge'
+    })
+    await manager.markRuntimeAlive(session.id, 'provider-session-bridge')
+
+    const controller = {
+      applyProviderStatePatch: vi.fn(async () => {})
+    }
+    const bridge = new SessionEventBridge(manager, controller)
+    bridges.push(bridge)
+
+    const port = await bridge.start()
+    const secret = bridge.issueSessionSecret(session.id)
+    const response = await postEvent(port, createCanonicalEvent({
+      event_id: 'event-evidence-1',
+      session_id: session.id,
+      project_id: project.id,
+      evidence: {
+        rawSource: {
+          provider: 'codex',
+          channel: 'hook',
+          rawEventName: 'Stop'
+        },
+        providerSessionId: 'provider-session-bridge',
+        turnId: 'turn-evidence-1',
+        transcriptPath,
+        lastAssistantMessage: 'Fixed the evidence persistence.'
+      }
+    }), secret)
+
+    expect(response.statusCode).toBe(202)
+    expect(controller.applyProviderStatePatch).toHaveBeenCalledWith({
+      sessionId: session.id,
+      sequence: 2,
+      occurredAt: expect.any(String),
+      intent: 'agent.turn_completed',
+      source: 'provider',
+      sourceEventType: 'session.idle',
+      runtimeState: undefined,
+      agentState: 'idle',
+      hasUnseenCompletion: true,
+      runtimeExitCode: undefined,
+      runtimeExitReason: undefined,
+      blockingReason: undefined,
+      summary: 'session.idle',
+      externalSessionId: 'opencode-real-123'
+    })
+
+    const evidenceDir = join(
+      workspaceDir,
+      '.stoa',
+      'memory',
+      'evidence',
+      session.id,
+      'event-evidence-1'
+    )
+    const metadata = JSON.parse(await readFile(join(evidenceDir, 'metadata.json'), 'utf8'))
+    expect(metadata).toMatchObject({
+      provider: 'codex',
+      providerSessionId: 'provider-session-bridge',
+      turnId: 'turn-evidence-1',
+      evidenceKey: 'codex:provider-session-bridge:turn-evidence-1',
+      transcriptPointer: transcriptPath,
+      snapshot: {
+        kind: 'provider-transcript',
+        fileName: 'transcript.jsonl',
+        sourceTranscriptPath: transcriptPath
+      }
+    })
+    expect(await readFile(join(evidenceDir, 'transcript.jsonl'), 'utf8')).toBe(
+      '{"role":"assistant","content":"Fixed the evidence persistence."}\n'
     )
   })
 

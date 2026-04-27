@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto'
+import { SessionEvidenceStore } from '@core/memory/session-evidence-store'
+import { createTranscriptSnapshot } from '@core/memory/transcript-snapshot'
 import { createLocalWebhookServer } from '@core/webhook-server'
 import type { ProjectSessionManager } from '@core/project-session-manager'
 import type { CanonicalSessionEvent, SessionStatePatchEvent } from '@shared/project-session'
@@ -14,6 +16,8 @@ interface ObservabilityIngester {
 
 interface SessionEventBridgeOptions {
   nowIso?: () => string
+  evidenceStore?: SessionEvidenceStore
+  transcriptSnapshotter?: (event: CanonicalSessionEvent) => Promise<Awaited<ReturnType<typeof createTranscriptSnapshot>>>
 }
 
 export class SessionEventBridge {
@@ -21,6 +25,8 @@ export class SessionEventBridge {
   private readonly providerPatchSequences = new Map<string, number>()
   private readonly sessionEventQueues = new Map<string, Promise<void>>()
   private readonly nowIso: () => string
+  private readonly evidenceStore: SessionEvidenceStore
+  private readonly transcriptSnapshotter: (event: CanonicalSessionEvent) => Promise<Awaited<ReturnType<typeof createTranscriptSnapshot>>>
   private server: ReturnType<typeof createLocalWebhookServer> | null = null
   private port: number | null = null
 
@@ -31,6 +37,8 @@ export class SessionEventBridge {
     options: SessionEventBridgeOptions = {}
   ) {
     this.nowIso = options.nowIso ?? (() => new Date().toISOString())
+    this.evidenceStore = options.evidenceStore ?? new SessionEvidenceStore()
+    this.transcriptSnapshotter = options.transcriptSnapshotter ?? createTranscriptSnapshot
   }
 
   async start(): Promise<number> {
@@ -62,6 +70,7 @@ export class SessionEventBridge {
       })
       .then(async () => {
         for (const expandedEvent of this.expandSessionEvents(event)) {
+          await this.persistEvidenceIfPresent(expandedEvent)
           this.observability?.ingest(this.toObservationEvent(expandedEvent))
           await this.controller.applyProviderStatePatch(this.toSessionStatePatch(expandedEvent))
         }
@@ -195,6 +204,33 @@ export class SessionEventBridge {
     const nextSequence = Math.max(lastManagerSequence, lastAllocatedSequence) + 1
     this.providerPatchSequences.set(sessionId, nextSequence)
     return nextSequence
+  }
+
+  private async persistEvidenceIfPresent(event: CanonicalSessionEvent): Promise<void> {
+    if (!event.evidence) {
+      return
+    }
+
+    const projectPath = this.resolveProjectPath(event)
+    if (!projectPath) {
+      return
+    }
+
+    const snapshot = await this.transcriptSnapshotter(event)
+    await this.evidenceStore.persist({
+      projectPath,
+      event,
+      snapshot
+    })
+  }
+
+  private resolveProjectPath(event: CanonicalSessionEvent): string | null {
+    const snapshot = this.manager.snapshot()
+    const project =
+      snapshot.projects.find(candidate => candidate.id === event.project_id)
+      ?? snapshot.projects.find(candidate => candidate.id === snapshot.sessions.find(session => session.id === event.session_id)?.projectId)
+
+    return project?.path ?? null
   }
 
   issueSessionSecret(sessionId: string): string {
