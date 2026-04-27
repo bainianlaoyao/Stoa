@@ -7,6 +7,8 @@ describe('hook event adapter', () => {
       {
         hook_event_name: 'Stop',
         session_id: 'claude-external-1',
+        transcript_path: '/tmp/claude-transcript.jsonl',
+        cwd: '/repo/app',
         last_assistant_message: 'I completed the implementation.'
       },
       {
@@ -25,8 +27,19 @@ describe('hook event adapter', () => {
         intent: 'agent.turn_completed',
         agentState: 'idle',
         hasUnseenCompletion: true,
-        summary: 'Stop',
-        snippet: 'I completed the implementation.'
+        summary: 'Stop'
+      },
+      evidence: {
+        rawSource: {
+          provider: 'claude-code',
+          channel: 'hook',
+          rawEventName: 'Stop'
+        },
+        hookEventName: 'Stop',
+        providerSessionId: 'claude-external-1',
+        transcriptPath: '/tmp/claude-transcript.jsonl',
+        lastAssistantMessage: 'I completed the implementation.',
+        cwd: '/repo/app'
       }
     })
   })
@@ -49,7 +62,9 @@ describe('hook event adapter', () => {
   test('adapts Claude UserPromptSubmit hook into turn started state patch event', () => {
     const event = adaptClaudeCodeHook(
       {
-        hook_event_name: 'UserPromptSubmit'
+        hook_event_name: 'UserPromptSubmit',
+        session_id: 'claude-external-2',
+        prompt: 'Investigate the runtime error.'
       },
       {
         sessionId: 'session_internal_running',
@@ -65,6 +80,16 @@ describe('hook event adapter', () => {
         intent: 'agent.turn_started',
         agentState: 'working',
         summary: 'UserPromptSubmit'
+      },
+      evidence: {
+        rawSource: {
+          provider: 'claude-code',
+          channel: 'hook',
+          rawEventName: 'UserPromptSubmit'
+        },
+        hookEventName: 'UserPromptSubmit',
+        providerSessionId: 'claude-external-2',
+        promptText: 'Investigate the runtime error.'
       }
     })
   })
@@ -73,7 +98,10 @@ describe('hook event adapter', () => {
     const event = adaptClaudeCodeHook(
       {
         hook_event_name: 'PreToolUse',
-        tool_name: 'Bash'
+        session_id: 'claude-external-3',
+        cwd: '/repo/app',
+        tool_name: 'Bash',
+        tool_use_id: 'toolu_123'
       },
       {
         sessionId: 'session_internal_running',
@@ -88,8 +116,19 @@ describe('hook event adapter', () => {
       payload: {
         intent: 'agent.tool_started',
         agentState: 'working',
-        summary: 'PreToolUse',
-        toolName: 'Bash'
+        summary: 'PreToolUse'
+      },
+      evidence: {
+        rawSource: {
+          provider: 'claude-code',
+          channel: 'hook',
+          rawEventName: 'PreToolUse'
+        },
+        hookEventName: 'PreToolUse',
+        providerSessionId: 'claude-external-3',
+        toolName: 'Bash',
+        toolUseId: 'toolu_123',
+        cwd: '/repo/app'
       }
     })
   })
@@ -116,8 +155,16 @@ describe('hook event adapter', () => {
         intent: 'agent.permission_requested',
         agentState: 'blocked',
         summary: 'PermissionRequest',
-        toolName: 'Bash',
         blockingReason: 'permission'
+      },
+      evidence: {
+        rawSource: {
+          provider: 'claude-code',
+          channel: 'hook',
+          rawEventName: 'PermissionRequest'
+        },
+        hookEventName: 'PermissionRequest',
+        toolName: 'Bash'
       }
     })
   })
@@ -167,6 +214,9 @@ describe('codex hook adapter', () => {
     const event = adaptCodexHook(
       {
         hook_event_name: 'SessionStart',
+        session_id: 'codex-session-1',
+        transcript_path: '/tmp/codex-transcript.jsonl',
+        cwd: '/repo/codex',
         turn_id: 'turn_1',
         model: 'gpt-4o'
       },
@@ -184,6 +234,19 @@ describe('codex hook adapter', () => {
         intent: 'agent.turn_started',
         agentState: 'working',
         summary: 'SessionStart',
+        externalSessionId: 'codex-session-1'
+      },
+      evidence: {
+        rawSource: {
+          provider: 'codex',
+          channel: 'hook',
+          rawEventName: 'SessionStart'
+        },
+        hookEventName: 'SessionStart',
+        providerSessionId: 'codex-session-1',
+        turnId: 'turn_1',
+        transcriptPath: '/tmp/codex-transcript.jsonl',
+        cwd: '/repo/codex',
         model: 'gpt-4o'
       }
     })
@@ -193,7 +256,9 @@ describe('codex hook adapter', () => {
     const event = adaptCodexHook(
       {
         hook_event_name: 'UserPromptSubmit',
-        turn_id: 'turn_2'
+        session_id: 'codex-session-2',
+        turn_id: 'turn_2',
+        prompt: 'Add the missing state transition.'
       },
       codexContext
     )
@@ -209,6 +274,17 @@ describe('codex hook adapter', () => {
         intent: 'agent.turn_started',
         agentState: 'working',
         summary: 'UserPromptSubmit'
+      },
+      evidence: {
+        rawSource: {
+          provider: 'codex',
+          channel: 'hook',
+          rawEventName: 'UserPromptSubmit'
+        },
+        hookEventName: 'UserPromptSubmit',
+        providerSessionId: 'codex-session-2',
+        turnId: 'turn_2',
+        promptText: 'Add the missing state transition.'
       }
     })
   })
@@ -217,7 +293,9 @@ describe('codex hook adapter', () => {
     const event = adaptCodexHook(
       {
         hook_event_name: 'PreToolUse',
+        session_id: 'codex-session-3',
         turn_id: 'turn_3',
+        cwd: '/repo/codex',
         tool_name: 'Write',
         tool_use_id: 'tooluse_abc'
       },
@@ -234,9 +312,20 @@ describe('codex hook adapter', () => {
       payload: {
         intent: 'agent.tool_started',
         agentState: 'working',
-        summary: 'PreToolUse',
+        summary: 'PreToolUse'
+      },
+      evidence: {
+        rawSource: {
+          provider: 'codex',
+          channel: 'hook',
+          rawEventName: 'PreToolUse'
+        },
+        hookEventName: 'PreToolUse',
+        providerSessionId: 'codex-session-3',
+        turnId: 'turn_3',
         toolName: 'Write',
-        toolUseId: 'tooluse_abc'
+        toolUseId: 'tooluse_abc',
+        cwd: '/repo/codex'
       }
     })
   })
@@ -245,6 +334,7 @@ describe('codex hook adapter', () => {
     const event = adaptCodexHook(
       {
         hook_event_name: 'PostToolUse',
+        session_id: 'codex-session-4',
         turn_id: 'turn_4',
         tool_name: 'Bash',
         tool_use_id: 'tooluse_def',
@@ -263,10 +353,20 @@ describe('codex hook adapter', () => {
       payload: {
         intent: 'agent.tool_started',
         agentState: 'working',
-        summary: 'PostToolUse',
-        model: 'o3',
+        summary: 'PostToolUse'
+      },
+      evidence: {
+        rawSource: {
+          provider: 'codex',
+          channel: 'hook',
+          rawEventName: 'PostToolUse'
+        },
+        hookEventName: 'PostToolUse',
+        providerSessionId: 'codex-session-4',
+        turnId: 'turn_4',
         toolName: 'Bash',
-        toolUseId: 'tooluse_def'
+        toolUseId: 'tooluse_def',
+        model: 'o3'
       }
     })
   })
@@ -275,7 +375,9 @@ describe('codex hook adapter', () => {
     const event = adaptCodexHook(
       {
         hook_event_name: 'Stop',
-        turn_id: 'turn_5'
+        session_id: 'codex-session-5',
+        turn_id: 'turn_5',
+        last_assistant_message: 'Implementation complete.'
       },
       codexContext
     )
@@ -292,8 +394,30 @@ describe('codex hook adapter', () => {
         agentState: 'idle',
         hasUnseenCompletion: true,
         summary: 'Stop'
+      },
+      evidence: {
+        rawSource: {
+          provider: 'codex',
+          channel: 'hook',
+          rawEventName: 'Stop'
+        },
+        hookEventName: 'Stop',
+        providerSessionId: 'codex-session-5',
+        turnId: 'turn_5',
+        lastAssistantMessage: 'Implementation complete.'
       }
     })
+  })
+
+  test('throws when a recognized Codex hook contains malformed evidence fields', () => {
+    expect(() => adaptCodexHook(
+      {
+        hook_event_name: 'PreToolUse',
+        turn_id: 123,
+        tool_name: 'Write'
+      },
+      codexContext
+    )).toThrow('Invalid Codex hook evidence')
   })
 
   test('returns null for unknown Codex hook events', () => {

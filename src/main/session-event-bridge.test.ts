@@ -684,12 +684,99 @@ describe('SessionEventBridge', () => {
 
     await postClaudeHook(port, {
       hook_event_name: 'Stop',
+      session_id: 'claude-external-1',
+      transcript_path: '/tmp/claude-transcript.jsonl',
+      cwd: '/repo/app',
       last_assistant_message: 'Done with the task.'
     }, headers)
 
     const evidenceEvent = ingested.find(e => e.type === 'presence.complete')
     expect(evidenceEvent).toBeDefined()
-    expect(evidenceEvent!.payload).toHaveProperty('summary')
+    expect(evidenceEvent!.payload).toMatchObject({
+      summary: 'Stop',
+      snippet: 'Done with the task.',
+      evidence: {
+        rawSource: {
+          provider: 'claude-code',
+          channel: 'hook',
+          rawEventName: 'Stop'
+        },
+        hookEventName: 'Stop',
+        providerSessionId: 'claude-external-1',
+        transcriptPath: '/tmp/claude-transcript.jsonl',
+        lastAssistantMessage: 'Done with the task.',
+        cwd: '/repo/app'
+      }
+    })
+  })
+
+  test('forwards canonical notify evidence without changing the provider state patch', async () => {
+    const manager = ProjectSessionManager.createForTest()
+    const controller = {
+      applyProviderStatePatch: vi.fn(async () => {})
+    }
+    const observability = {
+      ingest: vi.fn(() => true)
+    }
+    const bridge = new SessionEventBridge(manager, controller, observability, {
+      nowIso: () => '2026-01-01T00:00:10.000Z'
+    })
+    bridges.push(bridge)
+
+    const port = await bridge.start()
+    const secret = bridge.issueSessionSecret('session_1')
+    const canonical = createCanonicalEvent({
+      evidence: {
+        rawSource: {
+          provider: 'codex',
+          channel: 'notify',
+          rawEventName: 'agent-turn-complete'
+        },
+        providerSessionId: 'codex-thread-7',
+        turnId: 'turn-7',
+        cwd: '/repo/codex',
+        inputMessages: ['Run the test suite'],
+        lastAssistantMessage: 'Tests are green.'
+      }
+    })
+    const response = await postEvent(port, canonical, secret)
+
+    expect(response.statusCode).toBe(202)
+    expect(controller.applyProviderStatePatch).toHaveBeenCalledWith({
+      sessionId: 'session_1',
+      sequence: 1,
+      occurredAt: expect.any(String),
+      intent: 'agent.turn_completed',
+      source: 'provider',
+      sourceEventType: 'session.idle',
+      runtimeState: undefined,
+      agentState: 'idle',
+      hasUnseenCompletion: true,
+      runtimeExitCode: undefined,
+      runtimeExitReason: undefined,
+      blockingReason: undefined,
+      summary: 'session.idle',
+      externalSessionId: 'opencode-real-123'
+    })
+    expect(observability.ingest).toHaveBeenCalledWith(
+      expect.objectContaining<Partial<ObservationEvent>>({
+        payload: expect.objectContaining({
+          summary: 'session.idle',
+          evidence: {
+            rawSource: {
+              provider: 'codex',
+              channel: 'notify',
+              rawEventName: 'agent-turn-complete'
+            },
+            providerSessionId: 'codex-thread-7',
+            turnId: 'turn-7',
+            cwd: '/repo/codex',
+            inputMessages: ['Run the test suite'],
+            lastAssistantMessage: 'Tests are green.'
+          }
+        })
+      })
+    )
   })
 
   test('main shutdown path awaits bridge stop before re-triggering quit', () => {

@@ -759,7 +759,7 @@ describe('E2E: Provider Integration', () => {
       expect(content).toContain('x-stoa-secret')
     })
 
-    test('notify-stoa.mjs extracts last-assistant-message as snippet', async () => {
+    test('notify-stoa.mjs writes normalized evidence for legacy notify payloads', async () => {
       const workspaceDir = await createTempDir('stoa-codex-notify-snippet-')
       const provider = getProvider('codex')
       const target = createTarget({ path: workspaceDir, type: 'codex' })
@@ -770,8 +770,16 @@ describe('E2E: Provider Integration', () => {
       const notifyPath = join(workspaceDir, '.codex', 'notify-stoa.mjs')
       const content = await readFile(notifyPath, 'utf8')
 
+      expect(content).toContain('const evidence = {')
+      expect(content).toContain('rawSource:')
+      expect(content).toContain("provider: 'codex'")
+      expect(content).toContain("channel: 'notify'")
+      expect(content).toContain("rawEventName: String(parsed.type)")
+      expect(content).toContain("parsed['thread-id']")
+      expect(content).toContain("parsed['turn-id']")
+      expect(content).toContain("parsed['input-messages']")
       expect(content).toContain("parsed['last-assistant-message']")
-      expect(content).toContain('snippet:')
+      expect(content).toContain('lastAssistantMessage:')
     })
 
     test('full pipeline: webhook server receives and converts Codex PreToolUse hook into a working patch', async () => {
@@ -813,9 +821,22 @@ describe('E2E: Provider Integration', () => {
       expect(event.source).toBe('provider-adapter')
       expect(event.payload.intent).toBe('agent.tool_started')
       expect(event.payload.agentState).toBe('working')
-      expect(event.payload.toolName).toBe('Bash')
-      expect(event.payload.toolUseId).toBe('tooluse-001')
-      expect(event.payload.model).toBe('codex-1')
+      expect(event.payload.summary).toBe('PreToolUse')
+      expect(event.payload.externalSessionId).toBe('codex-thread-abc')
+      expect(event.evidence).toMatchObject({
+        rawSource: {
+          provider: 'codex',
+          channel: 'hook',
+          rawEventName: 'PreToolUse'
+        },
+        hookEventName: 'PreToolUse',
+        providerSessionId: 'codex-thread-abc',
+        turnId: 'turn-001',
+        cwd: '/home/user/project',
+        model: 'codex-1',
+        toolName: 'Bash',
+        toolUseId: 'tooluse-001'
+      })
     })
 
     test('full pipeline: Stop event produces a completion patch', async () => {
@@ -946,6 +967,18 @@ describe('E2E: Provider Integration', () => {
           intent: 'agent.turn_started',
           agentState: 'working',
           summary: 'SessionStart',
+          externalSessionId: 'codex-uuid-start'
+        },
+        evidence: {
+          rawSource: {
+            provider: 'codex',
+            channel: 'hook',
+            rawEventName: 'SessionStart'
+          },
+          hookEventName: 'SessionStart',
+          providerSessionId: 'codex-uuid-start',
+          turnId: 'turn-start-001',
+          cwd: '/home/user/project',
           model: 'o4-mini'
         }
       })
@@ -980,7 +1013,17 @@ describe('E2E: Provider Integration', () => {
         payload: {
           intent: 'agent.tool_started',
           agentState: 'working',
-          summary: 'PreToolUse',
+          summary: 'PreToolUse'
+        },
+        evidence: {
+          rawSource: {
+            provider: 'codex',
+            channel: 'hook',
+            rawEventName: 'PreToolUse'
+          },
+          hookEventName: 'PreToolUse',
+          providerSessionId: 'codex-uuid-tool',
+          turnId: 'turn-tool-001',
           toolName: 'Bash',
           toolUseId: 'tooluse-bash-001'
         }
@@ -1137,8 +1180,19 @@ describe('E2E: Provider Integration', () => {
           agentState: 'idle',
           hasUnseenCompletion: true,
           summary: 'agent-turn-complete',
-          externalSessionId: 'codex-thread-notify-1',
-          snippet: 'Build completed successfully.'
+          externalSessionId: 'codex-thread-notify-1'
+        },
+        evidence: {
+          rawSource: {
+            provider: 'codex',
+            channel: 'notify',
+            rawEventName: 'agent-turn-complete'
+          },
+          providerSessionId: 'codex-thread-notify-1',
+          turnId: 'turn-notify-001',
+          cwd: '/home/user/project',
+          lastAssistantMessage: 'Build completed successfully.',
+          inputMessages: ['Run cargo build']
         }
       })
     })

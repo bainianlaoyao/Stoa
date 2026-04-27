@@ -5,6 +5,7 @@ import type {
   ProjectObservabilitySnapshot,
   SessionPresenceSnapshot
 } from './observability'
+import type { MemoryRuntimeEvidence } from './memory-runtime'
 import type { BlockingReason } from '@shared/observability'
 
 export type SessionType = 'shell' | 'opencode' | 'codex' | 'claude-code'
@@ -59,6 +60,7 @@ export interface SessionStatePatchPayload {
   model?: string
   snippet?: string
   toolName?: string
+  toolUseId?: string
   error?: string
 }
 
@@ -257,6 +259,7 @@ export interface CanonicalSessionEvent {
   correlation_id?: string
   source: 'hook-sidecar' | 'provider-adapter' | 'system-recovery'
   payload: SessionStatePatchPayload
+  evidence?: MemoryRuntimeEvidence
 }
 
 export interface ProviderCommandContext {

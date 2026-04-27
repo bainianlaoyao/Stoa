@@ -85,20 +85,23 @@ export class SessionEventBridge {
 
   private toObservationEvent(event: CanonicalSessionEvent): ObservationEvent {
     const mapping = mapIntentToObservation(event.payload.intent)
+    const model = event.evidence?.model ?? event.payload.model
+    const snippet = event.evidence?.lastAssistantMessage ?? event.payload.snippet
+    const toolName = event.evidence?.toolName ?? event.payload.toolName
     const payload: Record<string, unknown> = {
       summary: event.payload.summary
     }
 
-    if (event.payload.model !== undefined) {
-      payload.model = event.payload.model
+    if (model !== undefined) {
+      payload.model = model
     }
 
-    if (event.payload.snippet !== undefined) {
-      payload.snippet = event.payload.snippet
+    if (snippet !== undefined) {
+      payload.snippet = snippet
     }
 
-    if (event.payload.toolName !== undefined) {
-      payload.toolName = event.payload.toolName
+    if (toolName !== undefined) {
+      payload.toolName = toolName
     }
 
     if (event.payload.error !== undefined) {
@@ -107,6 +110,10 @@ export class SessionEventBridge {
 
     if (event.payload.externalSessionId !== undefined) {
       payload.externalSessionId = event.payload.externalSessionId
+    }
+
+    if (event.evidence !== undefined) {
+      payload.evidence = event.evidence
     }
 
     return {

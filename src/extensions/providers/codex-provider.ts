@@ -89,6 +89,19 @@ if (parsed.type === 'agent-turn-complete') {
   process.exit(0)
 }
 
+const evidence = {
+  rawSource: {
+    provider: 'codex',
+    channel: 'notify',
+    rawEventName: String(parsed.type)
+  },
+  providerSessionId: parsed['thread-id'] ?? parsed['thread_id'] ?? undefined,
+  turnId: parsed['turn-id'] ?? parsed['turn_id'] ?? undefined,
+  cwd: parsed.cwd ?? undefined,
+  inputMessages: parsed['input-messages'] ?? parsed['input_messages'] ?? undefined,
+  lastAssistantMessage: parsed['last-assistant-message'] ?? parsed['last_assistant_message'] ?? undefined
+}
+
 await fetch(\`http://127.0.0.1:\${webhookPort}/events\`, {
   method: 'POST',
   headers: {
@@ -105,9 +118,9 @@ await fetch(\`http://127.0.0.1:\${webhookPort}/events\`, {
     source: 'provider-adapter',
     payload: {
       ...patch,
-      externalSessionId: parsed['thread-id'] ?? parsed['thread_id'] ?? undefined,
-      snippet: parsed['last-assistant-message'] ?? undefined
-    }
+      externalSessionId: parsed['thread-id'] ?? parsed['thread_id'] ?? undefined
+    },
+    evidence
   })
 })
 `,

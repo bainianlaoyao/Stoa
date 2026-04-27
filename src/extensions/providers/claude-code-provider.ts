@@ -4,6 +4,11 @@ import type { CanonicalSessionEvent, ProviderCommand, ProviderCommandContext } f
 import type { ProviderDefinition, ProviderRuntimeTarget } from './index'
 
 const CLAUDE_HOOK_EVENTS = ['UserPromptSubmit', 'PreToolUse', 'Stop', 'StopFailure', 'PermissionRequest'] as const
+const STOA_HOOK_ALLOWED_ENV_VARS = [
+  'STOA_SESSION_ID',
+  'STOA_PROJECT_ID',
+  'STOA_SESSION_SECRET'
+] as const
 const EVOLVER_HOOK_SCRIPT_NAMES = {
   sessionStart: 'stoa-evolver-session-start.cjs',
   signalDetect: 'stoa-evolver-signal-detect.cjs',
@@ -71,11 +76,8 @@ function createStoaHttpHook(context: ProviderCommandContext): ClaudeHookMatcher 
         'x-stoa-project-id': '${STOA_PROJECT_ID}',
         'x-stoa-secret': '${STOA_SESSION_SECRET}'
       },
-      allowedEnvVars: [
-        'STOA_SESSION_ID',
-        'STOA_PROJECT_ID',
-        'STOA_SESSION_SECRET'
-      ],
+      // Claude already posts the raw hook payload; Stoa normalizes evidence on receipt.
+      allowedEnvVars: [...STOA_HOOK_ALLOWED_ENV_VARS],
       timeout: 5
     }]
   }

@@ -1,5 +1,12 @@
 import { randomUUID } from 'node:crypto'
 import type { CanonicalSessionEvent } from '@shared/project-session'
+import type { MemoryRuntimeEvidence, MemoryRuntimeEvidenceProvider } from '@shared/memory-runtime'
+
+export class InvalidHookEvidenceError extends Error {
+  constructor(provider: MemoryRuntimeEvidenceProvider) {
+    super(`Invalid ${provider === 'codex' ? 'Codex' : 'Claude'} hook evidence`)
+  }
+}
 
 export function adaptClaudeCodeHook(
   body: Record<string, unknown>,
@@ -18,13 +25,11 @@ export function adaptClaudeCodeHook(
     return null
   }
 
-  const model = stringField(body.model)
-  const snippet = stringField(body.last_assistant_message) ?? stringField(body.assistant_message) ?? stringField(body.summary)
-  const toolName = stringField(body.tool_name)
+  const evidence = buildClaudeHookEvidence(body, hookEventName)
   const error = hookEventName === 'StopFailure'
     ? stringField(body.stop_hook_active) ?? stringField(body.error_details) ?? stringField(body.error) ?? 'api_error'
     : stringField(body.error_details) ?? stringField(body.error)
-  const externalSessionId = stringField(body.session_id)
+  const externalSessionId = evidence.providerSessionId
 
   return {
     event_version: 1,
@@ -37,12 +42,10 @@ export function adaptClaudeCodeHook(
     payload: {
       ...patch,
       summary: hookEventName,
-      ...(model ? { model } : {}),
-      ...(snippet ? { snippet } : {}),
-      ...(toolName ? { toolName } : {}),
       ...(error ? { error } : {}),
       ...(externalSessionId ? { externalSessionId } : {})
-    }
+    },
+    evidence
   }
 }
 
@@ -63,11 +66,12 @@ export function adaptCodexHook(
     return null
   }
 
-  const turnId = stringField(body.turn_id)
-  const model = stringField(body.model)
-  const toolName = stringField(body.tool_name)
-  const toolUseId = stringField(body.tool_use_id)
-  const externalSessionId = stringField(body.thread_id) ?? stringField(body['thread-id'])
+  const evidence = buildCodexHookEvidence(body, hookEventName)
+  const turnId = evidence.turnId
+  const externalSessionId =
+    evidence.providerSessionId
+    ?? requiredOptionalStringField(body, 'thread_id', 'codex')
+    ?? requiredOptionalStringField(body, 'thread-id', 'codex')
 
   return {
     event_version: 1,
@@ -80,11 +84,56 @@ export function adaptCodexHook(
     payload: {
       ...patch,
       summary: hookEventName,
-      ...(model ? { model } : {}),
-      ...(toolName ? { toolName } : {}),
-      ...(toolUseId ? { toolUseId } : {}),
       ...(externalSessionId ? { externalSessionId } : {})
-    }
+    },
+    evidence
+  }
+}
+
+function buildClaudeHookEvidence(
+  body: Record<string, unknown>,
+  hookEventName: string
+): MemoryRuntimeEvidence {
+  return {
+    rawSource: {
+      provider: 'claude-code',
+      channel: 'hook',
+      rawEventName: hookEventName
+    },
+    hookEventName,
+    providerSessionId: requiredOptionalStringField(body, 'session_id', 'claude-code'),
+    transcriptPath: requiredOptionalStringField(body, 'transcript_path', 'claude-code'),
+    lastAssistantMessage:
+      requiredOptionalStringField(body, 'last_assistant_message', 'claude-code')
+      ?? requiredOptionalStringField(body, 'assistant_message', 'claude-code'),
+    promptText: requiredOptionalStringField(body, 'prompt', 'claude-code'),
+    toolName: requiredOptionalStringField(body, 'tool_name', 'claude-code'),
+    toolUseId: requiredOptionalStringField(body, 'tool_use_id', 'claude-code'),
+    cwd: requiredOptionalStringField(body, 'cwd', 'claude-code'),
+    model: requiredOptionalStringField(body, 'model', 'claude-code')
+  }
+}
+
+function buildCodexHookEvidence(
+  body: Record<string, unknown>,
+  hookEventName: string
+): MemoryRuntimeEvidence {
+  return {
+    rawSource: {
+      provider: 'codex',
+      channel: 'hook',
+      rawEventName: hookEventName
+    },
+    hookEventName,
+    providerSessionId: requiredOptionalStringField(body, 'session_id', 'codex'),
+    turnId: requiredOptionalStringField(body, 'turn_id', 'codex'),
+    transcriptPath: requiredOptionalStringField(body, 'transcript_path', 'codex'),
+    lastAssistantMessage: requiredOptionalStringField(body, 'last_assistant_message', 'codex'),
+    promptText: requiredOptionalStringField(body, 'prompt', 'codex'),
+    toolName: requiredOptionalStringField(body, 'tool_name', 'codex'),
+    toolUseId: requiredOptionalStringField(body, 'tool_use_id', 'codex'),
+    cwd: requiredOptionalStringField(body, 'cwd', 'codex'),
+    model: requiredOptionalStringField(body, 'model', 'codex')
   }
 }
 
@@ -131,4 +180,21 @@ function mapCodexHookToPatch(hookEventName: string): {
 
 function stringField(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value : null
+}
+
+function requiredOptionalStringField(
+  body: Record<string, unknown>,
+  key: string,
+  provider: MemoryRuntimeEvidenceProvider
+): string | undefined {
+  if (!(key in body) || body[key] === undefined) {
+    return undefined
+  }
+
+  const value = body[key]
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new InvalidHookEvidenceError(provider)
+  }
+
+  return value
 }
