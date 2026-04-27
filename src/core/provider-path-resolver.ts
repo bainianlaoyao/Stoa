@@ -56,9 +56,9 @@ export async function resolveRuntimePaths(
   dependencies: ProviderPathResolverDependencies
 ): Promise<ResolvedProviderExecutablePath> {
   const descriptor = getProviderDescriptorBySessionType(sessionType)
+  const configuredShellPath = resolveConfiguredShellPath(settings)
 
   if (descriptor.providerId === 'local-shell') {
-    const configuredShellPath = resolveConfiguredShellPath(settings)
     return {
       shellPath: configuredShellPath.length > 0
         ? configuredShellPath
@@ -67,5 +67,15 @@ export async function resolveRuntimePaths(
     }
   }
 
-  return await resolveProviderExecutablePath(descriptor.providerId, settings, dependencies)
+  const resolved = await resolveProviderExecutablePath(descriptor.providerId, settings, dependencies)
+  if (!descriptor.prefersShellWrap) {
+    return resolved
+  }
+
+  return {
+    shellPath: configuredShellPath.length > 0
+      ? configuredShellPath
+      : resolved.shellPath ?? await dependencies.detectShell(),
+    providerPath: resolved.providerPath
+  }
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { DEFAULT_SETTINGS } from '@shared/project-session'
-import { resolveProviderExecutablePath } from './provider-path-resolver'
+import { resolveProviderExecutablePath, resolveRuntimePaths } from './provider-path-resolver'
 
 describe('provider-path-resolver', () => {
   it('returns the configured executable path for a provider without running detection', async () => {
@@ -39,5 +39,27 @@ describe('provider-path-resolver', () => {
       providerPath: '/usr/local/bin/claude'
     })
     expect(detectProvider).toHaveBeenCalledWith('claude', '/bin/zsh')
+  })
+
+  it('preserves shell wrapping for configured shell-wrapped runtime providers', async () => {
+    const detectShell = vi.fn().mockResolvedValue('/bin/zsh')
+    const detectProvider = vi.fn().mockResolvedValue('ignored')
+
+    const result = await resolveRuntimePaths('opencode', {
+      ...DEFAULT_SETTINGS,
+      providers: {
+        opencode: '/usr/local/bin/opencode'
+      }
+    }, {
+      detectShell,
+      detectProvider
+    })
+
+    expect(result).toEqual({
+      shellPath: '/bin/zsh',
+      providerPath: '/usr/local/bin/opencode'
+    })
+    expect(detectShell).toHaveBeenCalledOnce()
+    expect(detectProvider).not.toHaveBeenCalled()
   })
 })
