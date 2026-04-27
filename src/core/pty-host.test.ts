@@ -78,7 +78,7 @@ describe('PtyHost', () => {
           name: 'xterm-256color',
           cols: 120,
           rows: 30,
-          env: { PATH: '/usr/bin' },
+          env: { PATH: '/usr/bin', COLORTERM: 'truecolor', TERM_PROGRAM: 'xterm.js' },
         }
       )
     })

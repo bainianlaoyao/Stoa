@@ -14,14 +14,6 @@ vi.mock('@xterm/xterm', () => {
     loadAddon(addon: unknown) {
       this.loadedAddons.push(addon)
     }
-
-    onSelectionChange(_handler: () => void) {
-      return { dispose: () => {} }
-    }
-
-    getSelection() {
-      return ''
-    }
   }
 
   return { Terminal }
@@ -80,6 +72,24 @@ vi.mock('@xterm/addon-webgl', () => {
   return { WebglAddon }
 })
 
+vi.mock('@xterm/addon-clipboard', () => {
+  return {
+    ClipboardAddon: class {},
+  }
+})
+
+vi.mock('@xterm/addon-search', () => {
+  return {
+    SearchAddon: class {},
+  }
+})
+
+vi.mock('@xterm/addon-serialize', () => {
+  return {
+    SerializeAddon: class {},
+  }
+})
+
 describe('createTerminalRuntime', () => {
   beforeEach(async () => {
     vi.resetModules()
@@ -88,7 +98,7 @@ describe('createTerminalRuntime', () => {
     ;(WebglAddon as unknown as { lastInstance: unknown }).lastInstance = null
   })
 
-  test('enables windowsPty heuristics on Windows and does not set convertEol', async () => {
+  test('enables windowsPty heuristics on Windows and sets convertEol to false', async () => {
     const { createTerminalRuntime } = await import('./xterm-runtime')
 
     const runtime = createTerminalRuntime('win32', vi.fn(), true)
@@ -97,10 +107,10 @@ describe('createTerminalRuntime', () => {
     }
 
     expect(terminal.options.windowsPty).toEqual({ backend: 'conpty' })
-    expect(terminal.options.convertEol).toBeUndefined()
+    expect(terminal.options.convertEol).toBe(false)
   })
 
-  test('loads fit/unicode11/web-links/webgl addons and activates unicode11', async () => {
+  test('loads all addons and activates unicode11', async () => {
     const { createTerminalRuntime } = await import('./xterm-runtime')
 
     const runtime = createTerminalRuntime('linux', vi.fn(), true)
@@ -109,7 +119,7 @@ describe('createTerminalRuntime', () => {
       unicode: { activeVersion: string }
     }
 
-    expect(terminal.loadedAddons).toHaveLength(4)
+    expect(terminal.loadedAddons).toHaveLength(7)
     expect(terminal.unicode.activeVersion).toBe('11')
   })
 
