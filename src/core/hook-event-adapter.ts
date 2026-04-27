@@ -94,7 +94,7 @@ function buildClaudeHookEvidence(
   body: Record<string, unknown>,
   hookEventName: string
 ): MemoryRuntimeEvidence {
-  return {
+  return compactEvidence({
     rawSource: {
       provider: 'claude-code',
       channel: 'hook',
@@ -111,14 +111,14 @@ function buildClaudeHookEvidence(
     toolUseId: requiredOptionalStringField(body, 'tool_use_id', 'claude-code'),
     cwd: requiredOptionalStringField(body, 'cwd', 'claude-code'),
     model: requiredOptionalStringField(body, 'model', 'claude-code')
-  }
+  })
 }
 
 function buildCodexHookEvidence(
   body: Record<string, unknown>,
   hookEventName: string
 ): MemoryRuntimeEvidence {
-  return {
+  return compactEvidence({
     rawSource: {
       provider: 'codex',
       channel: 'hook',
@@ -127,14 +127,14 @@ function buildCodexHookEvidence(
     hookEventName,
     providerSessionId: requiredOptionalStringField(body, 'session_id', 'codex'),
     turnId: requiredOptionalStringField(body, 'turn_id', 'codex'),
-    transcriptPath: requiredOptionalStringField(body, 'transcript_path', 'codex'),
-    lastAssistantMessage: requiredOptionalStringField(body, 'last_assistant_message', 'codex'),
+    transcriptPath: nullableOptionalStringField(body, 'transcript_path', 'codex'),
+    lastAssistantMessage: nullableOptionalStringField(body, 'last_assistant_message', 'codex'),
     promptText: requiredOptionalStringField(body, 'prompt', 'codex'),
     toolName: requiredOptionalStringField(body, 'tool_name', 'codex'),
     toolUseId: requiredOptionalStringField(body, 'tool_use_id', 'codex'),
     cwd: requiredOptionalStringField(body, 'cwd', 'codex'),
     model: requiredOptionalStringField(body, 'model', 'codex')
-  }
+  })
 }
 
 function mapClaudeHookToPatch(hookEventName: string): {
@@ -197,4 +197,27 @@ function requiredOptionalStringField(
   }
 
   return value
+}
+
+function nullableOptionalStringField(
+  body: Record<string, unknown>,
+  key: string,
+  provider: MemoryRuntimeEvidenceProvider
+): string | undefined {
+  if (!(key in body) || body[key] === undefined || body[key] === null) {
+    return undefined
+  }
+
+  const value = body[key]
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new InvalidHookEvidenceError(provider)
+  }
+
+  return value
+}
+
+function compactEvidence(evidence: MemoryRuntimeEvidence): MemoryRuntimeEvidence {
+  return Object.fromEntries(
+    Object.entries(evidence).filter(([, value]) => value !== undefined)
+  ) as MemoryRuntimeEvidence
 }

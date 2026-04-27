@@ -409,6 +409,42 @@ describe('codex hook adapter', () => {
     })
   })
 
+  test('normalizes documented nullable Codex hook fields to absence', () => {
+    const event = adaptCodexHook(
+      {
+        hook_event_name: 'Stop',
+        session_id: 'codex-session-nullable',
+        turn_id: 'turn-nullable',
+        transcript_path: null,
+        last_assistant_message: null
+      },
+      codexContext
+    )
+
+    expect(event).toMatchObject({
+      event_type: 'codex.Stop',
+      payload: {
+        intent: 'agent.turn_completed',
+        agentState: 'idle',
+        hasUnseenCompletion: true,
+        summary: 'Stop',
+        externalSessionId: 'codex-session-nullable'
+      },
+      evidence: {
+        rawSource: {
+          provider: 'codex',
+          channel: 'hook',
+          rawEventName: 'Stop'
+        },
+        hookEventName: 'Stop',
+        providerSessionId: 'codex-session-nullable',
+        turnId: 'turn-nullable'
+      }
+    })
+    expect(event?.evidence).not.toHaveProperty('transcriptPath')
+    expect(event?.evidence).not.toHaveProperty('lastAssistantMessage')
+  })
+
   test('throws when a recognized Codex hook contains malformed evidence fields', () => {
     expect(() => adaptCodexHook(
       {

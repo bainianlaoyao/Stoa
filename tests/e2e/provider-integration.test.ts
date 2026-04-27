@@ -1197,6 +1197,42 @@ describe('E2E: Provider Integration', () => {
       })
     })
 
+    test('spawning notify-stoa.mjs omits nullable assistant output from canonical evidence', async () => {
+      const server = createLocalWebhookServer({
+        getSessionSecret(id) { return id === 'notify-sess-nullable' ? 'notify-secret-nullable' : null },
+        onEvent(event) { notifyEvents.push(event) }
+      })
+      notifyServers.push(server)
+      const port = await server.start()
+
+      const { exitCode } = await spawnNotifySidecar(
+        port, 'notify-sess-nullable', 'notify-proj-nullable', 'notify-secret-nullable',
+        {
+          type: 'agent-turn-complete',
+          'thread-id': 'codex-thread-notify-nullable',
+          'turn-id': 'turn-notify-nullable',
+          cwd: '/home/user/project',
+          'last-assistant-message': null,
+          'input-messages': ['Run cargo build']
+        }
+      )
+
+      expect(exitCode).toBe(0)
+      expect(notifyEvents).toHaveLength(1)
+      expect(notifyEvents[0]!.evidence).toMatchObject({
+        rawSource: {
+          provider: 'codex',
+          channel: 'notify',
+          rawEventName: 'agent-turn-complete'
+        },
+        providerSessionId: 'codex-thread-notify-nullable',
+        turnId: 'turn-notify-nullable',
+        cwd: '/home/user/project',
+        inputMessages: ['Run cargo build']
+      })
+      expect(notifyEvents[0]!.evidence).not.toHaveProperty('lastAssistantMessage')
+    })
+
     test('spawning notify-stoa.mjs with non-agent-turn-complete payload exits silently', async () => {
       const server = createLocalWebhookServer({
         getSessionSecret(id) { return id === 'notify-sess-2' ? 'notify-secret-2' : null },

@@ -60,7 +60,6 @@ export interface SessionStatePatchPayload {
   model?: string
   snippet?: string
   toolName?: string
-  toolUseId?: string
   error?: string
 }
 

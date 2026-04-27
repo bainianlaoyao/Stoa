@@ -28,7 +28,7 @@ const VALID_RUNTIME_STATES = new Set(['created', 'starting', 'alive', 'exited', 
 const VALID_AGENT_STATES = new Set(['unknown', 'idle', 'working', 'blocked', 'error'])
 const VALID_RUNTIME_EXIT_REASONS = new Set(['clean', 'failed'])
 const VALID_BLOCKING_REASONS = new Set(['permission', 'elicitation', 'resume-confirmation', 'provider-error'])
-const OPTIONAL_STRING_FIELDS = ['model', 'snippet', 'toolName', 'toolUseId', 'error'] as const
+const OPTIONAL_STRING_FIELDS = ['model', 'snippet', 'toolName', 'error'] as const
 const OPTIONAL_EVIDENCE_STRING_FIELDS = [
   'hookEventName',
   'providerSessionId',
@@ -112,6 +112,10 @@ function isCanonicalSessionEvent(value: unknown): value is CanonicalSessionEvent
     && payload.blockingReason !== null
     && !VALID_BLOCKING_REASONS.has(payload.blockingReason as string)
   ) {
+    return false
+  }
+
+  if (payload.toolUseId !== undefined) {
     return false
   }
 

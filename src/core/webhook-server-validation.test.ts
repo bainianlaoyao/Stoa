@@ -413,8 +413,6 @@ describe('webhook event validation', () => {
       ['invalid snippet null', { snippet: null }],
       ['invalid toolName type', { toolName: [] }],
       ['invalid toolName null', { toolName: null }],
-      ['invalid toolUseId type', { toolUseId: [] }],
-      ['invalid toolUseId null', { toolUseId: null }],
       ['invalid error type', { error: { message: 'nope' } }],
       ['invalid error null', { error: null }]
     ])('rejects %s', async (_name, payloadOverrides) => {
@@ -426,6 +424,24 @@ describe('webhook event validation', () => {
           agentState: 'working',
           summary: 'event rejected',
           ...payloadOverrides
+        }
+      })
+
+      const response = await postJson(port, event, 'secret-1')
+
+      expect(response.statusCode).toBe(400)
+      expect(JSON.parse(response.body)).toEqual({ accepted: false, reason: 'invalid_event' })
+    })
+
+    test('rejects payload.toolUseId because it is evidence-only state', async () => {
+      const { server } = createTestServer()
+      const port = await server.start()
+      const event = createValidEvent({
+        payload: {
+          intent: 'agent.tool_started',
+          agentState: 'working',
+          summary: 'event rejected',
+          toolUseId: 'toolu_123'
         }
       })
 
@@ -667,6 +683,41 @@ describe('webhook event validation', () => {
 
       expect(response.statusCode).toBe(400)
       expect(JSON.parse(response.body)).toEqual({ accepted: false, reason: 'invalid_hook_event' })
+    })
+
+    test('accepts documented nullable Codex hook fields and normalizes them away', async () => {
+      const { server, events } = createTestServer('secret-1')
+      const port = await server.start()
+
+      const response = await postCodexHook(
+        port,
+        {
+          hook_event_name: 'Stop',
+          session_id: 'codex-session-nullable',
+          turn_id: 'turn-nullable',
+          transcript_path: null,
+          last_assistant_message: null
+        },
+        {
+          'x-stoa-session-id': 'session_test',
+          'x-stoa-project-id': 'project_1',
+          'x-stoa-secret': 'secret-1'
+        }
+      )
+
+      expect(response.statusCode).toBe(202)
+      expect(events).toHaveLength(1)
+      expect(events[0]!.evidence).toMatchObject({
+        rawSource: {
+          provider: 'codex',
+          channel: 'hook',
+          rawEventName: 'Stop'
+        },
+        providerSessionId: 'codex-session-nullable',
+        turnId: 'turn-nullable'
+      })
+      expect(events[0]!.evidence).not.toHaveProperty('transcriptPath')
+      expect(events[0]!.evidence).not.toHaveProperty('lastAssistantMessage')
     })
   })
 })
