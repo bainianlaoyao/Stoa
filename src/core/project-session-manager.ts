@@ -435,8 +435,6 @@ export class ProjectSessionManager {
       this.settings.memoryAiProvider = value
     } else if (key === 'claudeDangerouslySkipPermissions' && typeof value === 'boolean') {
       this.settings.claudeDangerouslySkipPermissions = value
-    } else if (key === 'locale' && typeof value === 'string') {
-      this.settings.locale = value
     }
     await this.persist()
   }
