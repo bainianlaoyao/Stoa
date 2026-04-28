@@ -9,6 +9,7 @@
     "src/renderer/**/*.ts",
     "src/renderer/**/*.vue",
     "src/extensions/**/*.ts",
+    "src/core/memory/bundled-evolver.ts",
     "src/shared/**/*.ts"
   ]
 }

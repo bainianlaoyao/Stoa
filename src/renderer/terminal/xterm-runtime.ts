@@ -1,6 +1,8 @@
+import { ClipboardAddon } from '@xterm/addon-clipboard'
 import { FitAddon } from '@xterm/addon-fit'
-import { Unicode11Addon } from '@xterm/addon-unicode11'
+import { SearchAddon } from '@xterm/addon-search'
 import { SerializeAddon } from '@xterm/addon-serialize'
+import { Unicode11Addon } from '@xterm/addon-unicode11'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { Terminal } from '@xterm/xterm'
@@ -21,6 +23,7 @@ export interface XtermRuntime {
   unicode11Addon: Unicode11Addon
   webLinksAddon: WebLinksAddon
   webglAddon: WebglAddon | null
+  searchAddon: SearchAddon
 }
 
 export type ExternalLinkOpener = (uri: string) => void
@@ -151,10 +154,33 @@ export function createTerminalRuntime(
   const terminal = new Terminal({
     fontFamily: fontFamily || resolveTerminalFontFamily(),
     fontSize,
+    fontWeight: 'normal',
+    fontWeightBold: 'bold',
     lineHeight: 1,
+    letterSpacing: 0,
+
+    cursorBlink: true,
+    cursorStyle: 'block',
+    cursorInactiveStyle: 'outline',
+
+    scrollback: 100_000,
+    scrollOnUserInput: true,
+    scrollOnEraseInDisplay: true,
+    smoothScrollDuration: 0,
+    scrollSensitivity: 1,
+    fastScrollSensitivity: 5,
+
+    customGlyphs: true,
+    drawBoldTextInBrightColors: true,
+    minimumContrastRatio: 4.5,
+
+    rightClickSelectsWord: platform !== 'darwin',
+    altClickMovesCursor: true,
+
+    convertEol: false,
+    disableStdin: false,
     theme: resolveTerminalTheme(),
     allowProposedApi: true,
-    scrollback: 100_000,
     windowsPty: platform === 'win32' ? { backend: 'conpty' } : undefined,
   })
 
@@ -163,21 +189,16 @@ export function createTerminalRuntime(
   const webLinksAddon = new WebLinksAddon((_event, uri) => {
     openExternal(uri)
   })
+  const searchAddon = new SearchAddon()
+  const serializeAddon = new SerializeAddon()
 
   terminal.loadAddon(fitAddon)
   terminal.loadAddon(unicode11Addon)
   terminal.unicode.activeVersion = '11'
   terminal.loadAddon(webLinksAddon)
-
-  const serializeAddon = new SerializeAddon()
+  terminal.loadAddon(new ClipboardAddon())
+  terminal.loadAddon(searchAddon)
   terminal.loadAddon(serializeAddon)
-
-  terminal.onSelectionChange(() => {
-    const text = terminal.getSelection()
-    if (text) {
-      navigator.clipboard.writeText(text).catch(() => {})
-    }
-  })
 
   let webglAddon: WebglAddon | null = null
   if (enableWebgl) {
@@ -205,6 +226,7 @@ export function createTerminalRuntime(
     unicode11Addon,
     webLinksAddon,
     webglAddon,
+    searchAddon
   }
 }
 

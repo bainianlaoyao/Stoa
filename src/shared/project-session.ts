@@ -5,9 +5,11 @@ import type {
   ProjectObservabilitySnapshot,
   SessionPresenceSnapshot
 } from './observability'
+import type { MemoryRuntimeEvidence } from './memory-runtime'
 import type { BlockingReason } from '@shared/observability'
 
 export type SessionType = 'shell' | 'opencode' | 'codex' | 'claude-code'
+export type MemoryAiProvider = 'codex' | 'claude-code' | 'api'
 export type SessionRecoveryMode = 'fresh-shell' | 'resume-external'
 export type SessionRuntimeState = 'created' | 'starting' | 'alive' | 'exited' | 'failed_to_start'
 export type SessionAgentState = 'unknown' | 'idle' | 'working' | 'blocked' | 'error'
@@ -128,6 +130,7 @@ export interface AppSettings {
   terminalFontSize: number
   terminalFontFamily: string
   providers: Record<string, string>
+  memoryAiProvider: MemoryAiProvider
   workspaceIde: WorkspaceIdeSettings
   claudeDangerouslySkipPermissions: boolean
   locale: string
@@ -153,6 +156,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   terminalFontSize: 14,
   terminalFontFamily: 'JetBrains Mono',
   providers: {},
+  memoryAiProvider: 'claude-code',
   workspaceIde: {
     id: 'vscode',
     executablePath: ''
@@ -210,6 +214,10 @@ export interface TerminalDataChunk {
   data: string
 }
 
+export interface SessionSummaryEvent {
+  session: SessionSummary
+}
+
 export interface ObservationEventListOptions {
   limit: number
   cursor?: string
@@ -230,6 +238,7 @@ export interface RendererApi {
   sendSessionInput: (sessionId: string, data: string) => Promise<void>
   sendSessionResize: (sessionId: string, cols: number, rows: number) => Promise<void>
   onTerminalData: (callback: (chunk: TerminalDataChunk) => void) => () => void
+  onSessionEvent: (callback: (event: SessionSummaryEvent) => void) => () => void
   getSessionPresence: (sessionId: string) => Promise<SessionPresenceSnapshot | null>
   getProjectObservability: (projectId: string) => Promise<ProjectObservabilitySnapshot | null>
   getAppObservability: () => Promise<AppObservabilitySnapshot | null>
@@ -272,6 +281,7 @@ export interface CanonicalSessionEvent {
   correlation_id?: string
   source: 'hook-sidecar' | 'provider-adapter' | 'system-recovery'
   payload: SessionStatePatchPayload
+  evidence?: MemoryRuntimeEvidence
 }
 
 export interface ProviderCommandContext {

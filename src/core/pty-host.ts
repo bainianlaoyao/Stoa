@@ -14,7 +14,7 @@ export class PtyHost {
       name: 'xterm-256color',
       cols: 120,
       rows: 30,
-      env: command.env
+      env: { ...command.env, COLORTERM: 'truecolor', TERM_PROGRAM: 'xterm.js' }
     })
 
     terminal.onData(onData)

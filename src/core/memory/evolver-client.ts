@@ -1,0 +1,230 @@
+import { randomUUID } from 'node:crypto'
+import { mkdir, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import type {
+  DeliveryEnvelope,
+  EvidenceRef,
+  EvolverDistillationCompleteResult,
+  EvolverDistillationPrepareResult,
+  EvolverPublishedContext,
+  EvolverReviewExport,
+  EvolverReviewState,
+  EvolverRunResult,
+  ProcessTurnResult
+} from '@shared/memory-runtime'
+import { runJsonCommand as defaultRunJsonCommand } from './command-runner'
+
+type RunJsonCommand = (options: {
+  command: string
+  args: string[]
+  cwd: string
+  env?: NodeJS.ProcessEnv
+}) => Promise<unknown>
+
+export interface EvolverClientOptions {
+  command: string
+  cwd: string
+  argsPrefix?: string[]
+  env?: NodeJS.ProcessEnv
+  runJsonCommand?: RunJsonCommand
+}
+
+export interface EvolverRunOptions {
+  projectId: string
+  stoaSessionId: string
+  providerSessionId: string
+  repoRoot: string
+  memoryDir: string
+  evolutionDir: string
+  gepAssetsDir: string
+  sessionScope: string
+}
+
+export interface WarmStartOptions {
+  projectRoot: string
+  consumer: 'claude-code' | 'codex' | 'opencode' | 'generic'
+  stoaSessionId: string
+  providerSessionId?: string
+}
+
+export interface RecallOptions extends WarmStartOptions {
+  taskText: string
+}
+
+export interface ObserveWriteOptions {
+  projectRoot: string
+  stoaSessionId: string
+  providerSessionId?: string
+  turnId?: string
+  evidenceRefs: EvidenceRef[]
+}
+
+export interface ProcessTurnOptions {
+  projectRoot: string
+  stoaSessionId: string
+  providerSessionId?: string
+  turnId: string
+  evidenceRefs: EvidenceRef[]
+  jobId?: string
+}
+
+export class EvolverClient {
+  private readonly command: string
+  private readonly cwd: string
+  private readonly argsPrefix: string[]
+  private readonly env: NodeJS.ProcessEnv
+  private readonly runJsonCommand: RunJsonCommand
+
+  constructor(options: EvolverClientOptions) {
+    this.command = options.command
+    this.cwd = options.cwd
+    this.argsPrefix = options.argsPrefix ?? []
+    this.env = {
+      ...process.env,
+      EVOLVER_QUIET_PARENT_GIT: 'true',
+      ...options.env
+    }
+    this.runJsonCommand = options.runJsonCommand ?? defaultRunJsonCommand
+  }
+
+  async warmStart(options: WarmStartOptions): Promise<DeliveryEnvelope | null> {
+    return await this.runHostBridgeCommand<DeliveryEnvelope | null>('warm-start', options)
+  }
+
+  async recall(options: RecallOptions): Promise<DeliveryEnvelope | null> {
+    return await this.runHostBridgeCommand<DeliveryEnvelope | null>('recall', options)
+  }
+
+  async observeWrite(options: ObserveWriteOptions): Promise<void> {
+    await this.runHostBridgeCommand<unknown>('observe-write', options)
+  }
+
+  async processTurn(options: ProcessTurnOptions): Promise<ProcessTurnResult> {
+    return await this.runHostBridgeCommand<ProcessTurnResult>('process-turn', options)
+  }
+
+  async run(options: EvolverRunOptions): Promise<EvolverRunResult> {
+    return await this.runJsonCommand({
+      command: this.command,
+      args: [...this.argsPrefix, 'run', '--json'],
+      cwd: this.cwd,
+      env: {
+        ...this.env,
+        EVOLVER_REPO_ROOT: options.repoRoot,
+        MEMORY_DIR: options.memoryDir,
+        EVOLUTION_DIR: options.evolutionDir,
+        GEP_ASSETS_DIR: options.gepAssetsDir,
+        EVOLVER_SESSION_SCOPE: options.sessionScope,
+        STOA_PROJECT_ID: options.projectId,
+        STOA_SESSION_ID: options.stoaSessionId,
+        STOA_PROVIDER_SESSION_ID: options.providerSessionId
+      }
+    }) as EvolverRunResult
+  }
+
+  async review(): Promise<EvolverReviewState> {
+    return await this.runJsonCommand({
+      command: this.command,
+      args: [...this.argsPrefix, 'review', '--json'],
+      cwd: this.cwd,
+      env: this.env
+    }) as EvolverReviewState
+  }
+
+  async exportReview(): Promise<EvolverReviewExport> {
+    return await this.runJsonCommand({
+      command: this.command,
+      args: [...this.argsPrefix, 'review', '--export', '--json'],
+      cwd: this.cwd,
+      env: this.env
+    }) as EvolverReviewExport
+  }
+
+  async approveReview(): Promise<EvolverReviewState> {
+    return await this.runJsonCommand({
+      command: this.command,
+      args: [...this.argsPrefix, 'review', '--approve', '--json'],
+      cwd: this.cwd,
+      env: this.env
+    }) as EvolverReviewState
+  }
+
+  async rejectReview(): Promise<EvolverReviewState> {
+    return await this.runJsonCommand({
+      command: this.command,
+      args: [...this.argsPrefix, 'review', '--reject', '--json'],
+      cwd: this.cwd,
+      env: this.env
+    }) as EvolverReviewState
+  }
+
+  async publishContext(target: EvolverPublishedContext['target']): Promise<EvolverPublishedContext> {
+    return await this.runJsonCommand({
+      command: this.command,
+      args: [...this.argsPrefix, 'publish-context', `--target=${target}`, '--json'],
+      cwd: this.cwd,
+      env: this.env
+    }) as EvolverPublishedContext
+  }
+
+  async prepareDistillation(): Promise<EvolverDistillationPrepareResult> {
+    return await this.runJsonCommand({
+      command: this.command,
+      args: [...this.argsPrefix, 'distill', '--prepare', '--json'],
+      cwd: this.cwd,
+      env: this.env
+    }) as EvolverDistillationPrepareResult
+  }
+
+  async completeDistillation(responseFilePath: string): Promise<EvolverDistillationCompleteResult> {
+    return await this.runJsonCommand({
+      command: this.command,
+      args: [...this.argsPrefix, 'distill', '--complete', `--response-file=${responseFilePath}`, '--json'],
+      cwd: this.cwd,
+      env: this.env
+    }) as EvolverDistillationCompleteResult
+  }
+
+  private async runHostBridgeCommand<TOutput>(
+    action: 'warm-start' | 'recall' | 'observe-write' | 'process-turn',
+    payload: object
+  ): Promise<TOutput> {
+    const projectRoot = readProjectRoot(payload as Record<string, unknown>)
+    const requestFilePath = await this.writeBridgeRequestFile(action, payload)
+
+    return await this.runJsonCommand({
+      command: this.command,
+      args: [...this.argsPrefix, 'host-bridge', action, `--request-file=${requestFilePath}`, '--json'],
+      cwd: this.cwd,
+      env: {
+        ...this.env,
+        STOA_EVOLVER_PROJECT_ROOT: projectRoot,
+        EVOLVER_REPO_ROOT: projectRoot,
+        MEMORY_DIR: join(projectRoot, '.stoa', 'evolver', 'memory'),
+        EVOLUTION_DIR: join(projectRoot, '.stoa', 'evolver', 'memory', 'evolution'),
+        GEP_ASSETS_DIR: join(projectRoot, '.stoa', 'evolver', 'assets', 'gep')
+      }
+    }) as TOutput
+  }
+
+  private async writeBridgeRequestFile(
+    action: string,
+    payload: object
+  ): Promise<string> {
+    const directoryPath = join(this.cwd, '.stoa', 'memory', 'bridge-requests')
+    await mkdir(directoryPath, { recursive: true })
+
+    const filePath = join(directoryPath, `${action}-${Date.now()}-${randomUUID()}.json`)
+    await writeFile(filePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8')
+    return filePath
+  }
+}
+
+function readProjectRoot(payload: Record<string, unknown>): string {
+  const projectRoot = payload.projectRoot
+  if (typeof projectRoot !== 'string' || projectRoot.trim().length === 0) {
+    throw new Error('Host bridge payload must include a non-empty projectRoot')
+  }
+
+  return projectRoot
+}

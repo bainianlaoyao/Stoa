@@ -4,10 +4,15 @@ import { useI18n } from 'vue-i18n'
 import { Switch } from '@headlessui/vue'
 import { listProviderDescriptors } from '@shared/provider-descriptors'
 import { useSettingsStore } from '@renderer/stores/settings'
+import GlassFormField from '../primitives/GlassFormField.vue'
 import GlassPathField from '../primitives/GlassPathField.vue'
 
 const { t } = useI18n()
 const store = useSettingsStore()
+const memoryAiProviderOptions = [
+  { value: 'claude-code', label: 'Claude Code' },
+  { value: 'codex', label: 'Codex' }
+]
 
 const providerList = listProviderDescriptors()
   .filter(provider => provider.providerId !== 'local-shell')
@@ -49,6 +54,12 @@ function isClaudeCodeProvider(providerId: string): boolean {
 function handleClaudeDangerouslySkipPermissionsChange(value: boolean): void {
   void store.updateSetting('claudeDangerouslySkipPermissions', value)
 }
+
+function handleMemoryAiProviderChange(value: string): void {
+  if (value === 'claude-code' || value === 'codex') {
+    void store.updateSetting('memoryAiProvider', value)
+  }
+}
 </script>
 
 <template>
@@ -64,6 +75,32 @@ function handleClaudeDangerouslySkipPermissionsChange(value: boolean): void {
     </header>
 
     <div class="settings-section">
+      <section class="settings-card" aria-label="Memory AI provider">
+        <div class="settings-card__header">
+          <div>
+            <h4 class="settings-card__title">Memory AI provider</h4>
+            <p class="settings-card__description">
+              Choose which provider contract future memory-runtime subprocesses should target.
+            </p>
+          </div>
+          <span class="settings-card__badge">Contract</span>
+        </div>
+
+        <div class="settings-inline-field" data-settings-field="memory-ai-provider">
+          <GlassFormField
+            label="Memory AI provider"
+            type="select"
+            :model-value="store.memoryAiProvider"
+            :options="memoryAiProviderOptions"
+            @update:model-value="handleMemoryAiProviderChange"
+          />
+        </div>
+
+        <p class="settings-item__hint">
+          This does not start a memory runtime yet. It only locks the persisted provider selection for upcoming work.
+        </p>
+      </section>
+
       <section
         v-for="provider in providerList"
         :key="provider.id"
@@ -209,6 +246,10 @@ function handleClaudeDangerouslySkipPermissionsChange(value: boolean): void {
 }
 
 .settings-field__main {
+  min-width: 0;
+}
+
+.settings-inline-field {
   min-width: 0;
 }
 

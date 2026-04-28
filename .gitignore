@@ -16,3 +16,5 @@ release/
 test-results/
 .codex/
 .stoa/
+.cache/
+.env.test

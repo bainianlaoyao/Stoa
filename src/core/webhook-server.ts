@@ -1,11 +1,13 @@
 import express, { type Express } from 'express'
 import type { AddressInfo } from 'node:net'
 import type { CanonicalSessionEvent } from '@shared/project-session'
-import { adaptClaudeCodeHook, adaptCodexHook } from './hook-event-adapter'
+import { adaptClaudeCodeHook, adaptCodexHook, InvalidHookEvidenceError } from './hook-event-adapter'
 
 const WEBHOOK_DEBUG = process.env.VIBECODING_E2E === '1'
 
 const VALID_SOURCES = new Set(['hook-sidecar', 'provider-adapter', 'system-recovery'])
+const VALID_MEMORY_RUNTIME_PROVIDERS = new Set(['claude-code', 'codex'])
+const VALID_MEMORY_RUNTIME_CHANNELS = new Set(['hook', 'notify'])
 const VALID_INTENTS = new Set([
   'runtime.created',
   'runtime.starting',
@@ -29,9 +31,25 @@ const VALID_AGENT_STATES = new Set(['unknown', 'idle', 'working', 'blocked', 'er
 const VALID_RUNTIME_EXIT_REASONS = new Set(['clean', 'failed'])
 const VALID_BLOCKING_REASONS = new Set(['permission', 'elicitation', 'resume-confirmation', 'provider-error'])
 const OPTIONAL_STRING_FIELDS = ['model', 'snippet', 'toolName', 'error'] as const
+const OPTIONAL_EVIDENCE_STRING_FIELDS = [
+  'hookEventName',
+  'providerSessionId',
+  'turnId',
+  'transcriptPath',
+  'lastAssistantMessage',
+  'promptText',
+  'toolName',
+  'toolUseId',
+  'cwd',
+  'model'
+] as const
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0
+}
 
 export interface LocalWebhookServerOptions {
-  onEvent?: (event: CanonicalSessionEvent) => Promise<void> | void
+  onEvent?: (event: CanonicalSessionEvent) => Promise<unknown> | unknown
   getSessionSecret?: (sessionId: string) => string | null
   port?: number
 }
@@ -103,6 +121,10 @@ function isCanonicalSessionEvent(value: unknown): value is CanonicalSessionEvent
     return false
   }
 
+  if (payload.toolUseId !== undefined) {
+    return false
+  }
+
   for (const field of OPTIONAL_STRING_FIELDS) {
     if (payload[field] !== undefined && typeof payload[field] !== 'string') {
       return false
@@ -117,7 +139,49 @@ function isCanonicalSessionEvent(value: unknown): value is CanonicalSessionEvent
     return false
   }
 
+  if (event.evidence !== undefined && !isMemoryRuntimeEvidence(event.evidence)) {
+    return false
+  }
+
   if (payload.intent === 'agent.permission_resolved' && payload.agentState === 'blocked') {
+    return false
+  }
+
+  return true
+}
+
+function isMemoryRuntimeEvidence(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null) {
+    return false
+  }
+
+  const evidence = value as Record<string, unknown>
+  const rawSource = evidence.rawSource
+  if (typeof rawSource !== 'object' || rawSource === null) {
+    return false
+  }
+
+  const rawSourceRecord = rawSource as Record<string, unknown>
+  if (
+    typeof rawSourceRecord.provider !== 'string'
+    || !VALID_MEMORY_RUNTIME_PROVIDERS.has(rawSourceRecord.provider)
+    || typeof rawSourceRecord.channel !== 'string'
+    || !VALID_MEMORY_RUNTIME_CHANNELS.has(rawSourceRecord.channel)
+    || !isNonEmptyString(rawSourceRecord.rawEventName)
+  ) {
+    return false
+  }
+
+  for (const field of OPTIONAL_EVIDENCE_STRING_FIELDS) {
+    if (evidence[field] !== undefined && !isNonEmptyString(evidence[field])) {
+      return false
+    }
+  }
+
+  if (
+    evidence.inputMessages !== undefined
+    && (!Array.isArray(evidence.inputMessages) || evidence.inputMessages.some((entry) => typeof entry !== 'string'))
+  ) {
     return false
   }
 
@@ -147,8 +211,13 @@ export function createLocalWebhookServer(options: LocalWebhookServerOptions = {}
       return
     }
 
-    await options.onEvent?.(request.body)
-    response.status(202).json({ accepted: true })
+    const result = await options.onEvent?.(request.body)
+    if (result === undefined || result === null) {
+      response.status(202).json({ accepted: true })
+      return
+    }
+
+    response.status(200).json(result)
   })
 
   app.post('/hooks/claude-code', async (request, response) => {
@@ -172,17 +241,37 @@ export function createLocalWebhookServer(options: LocalWebhookServerOptions = {}
       return
     }
 
-    const event = adaptClaudeCodeHook(body as Record<string, unknown>, {
-      sessionId,
-      projectId
-    })
+    let event: CanonicalSessionEvent | null
+    try {
+      event = adaptClaudeCodeHook(body as Record<string, unknown>, {
+        sessionId,
+        projectId
+      })
+    } catch (error) {
+      if (error instanceof InvalidHookEvidenceError) {
+        response.status(400).json({ accepted: false, reason: 'invalid_hook_event' })
+        return
+      }
+
+      throw error
+    }
     if (!event) {
       response.status(202).json({ accepted: true, ignored: true })
       return
     }
 
-    await options.onEvent?.(event)
-    response.status(202).json({ accepted: true })
+    if (!isCanonicalSessionEvent(event)) {
+      response.status(400).json({ accepted: false, reason: 'invalid_hook_event' })
+      return
+    }
+
+    const result = await options.onEvent?.(event)
+    if (result === undefined || result === null) {
+      response.status(202).json({ accepted: true })
+      return
+    }
+
+    response.status(200).json(result)
   })
 
   app.post('/hooks/codex', async (request, response) => {
@@ -220,10 +309,20 @@ export function createLocalWebhookServer(options: LocalWebhookServerOptions = {}
       return
     }
 
-    const event = adaptCodexHook(body as Record<string, unknown>, {
-      sessionId,
-      projectId
-    })
+    let event: CanonicalSessionEvent | null
+    try {
+      event = adaptCodexHook(body as Record<string, unknown>, {
+        sessionId,
+        projectId
+      })
+    } catch (error) {
+      if (error instanceof InvalidHookEvidenceError) {
+        response.status(400).json({ accepted: false, reason: 'invalid_hook_event' })
+        return
+      }
+
+      throw error
+    }
     if (!event) {
       if (WEBHOOK_DEBUG) {
         console.log('[webhook-debug] codex hook ignored', {
@@ -239,6 +338,11 @@ export function createLocalWebhookServer(options: LocalWebhookServerOptions = {}
       return
     }
 
+    if (!isCanonicalSessionEvent(event)) {
+      response.status(400).json({ accepted: false, reason: 'invalid_hook_event' })
+      return
+    }
+
     if (WEBHOOK_DEBUG) {
       console.log('[webhook-debug] codex hook accepted', {
         sessionId,
@@ -247,8 +351,13 @@ export function createLocalWebhookServer(options: LocalWebhookServerOptions = {}
         intent: event.payload.intent
       })
     }
-    await options.onEvent?.(event)
-    response.status(202).json({ accepted: true })
+    const result = await options.onEvent?.(event)
+    if (result === undefined || result === null) {
+      response.status(202).json({ accepted: true })
+      return
+    }
+
+    response.status(200).json(result)
   })
 
   return {

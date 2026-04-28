@@ -1,17 +1,23 @@
 import { BrowserWindow, Menu, dialog, app, ipcMain, shell } from 'electron'
 import { spawn } from 'node:child_process'
-import { appendFile, mkdir } from 'node:fs/promises'
+import { exec as execChildProcess } from 'node:child_process'
+import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { autoUpdater } from 'electron-updater'
 import { IPC_CHANNELS } from '@core/ipc-channels'
+import { getClaudeCodePublishedContextPath } from '@core/memory/claude-code-injector'
+import { resolveBundledEvolverCli } from '@core/memory/bundled-evolver'
+import { EvolverClient } from '@core/memory/evolver-client'
 import { InMemoryObservationStore } from '@core/observation-store'
 import type { ListObservationEventsOptions } from '@core/observation-store'
 import { ObservabilityService } from '@core/observability-service'
 import { ProjectSessionManager } from '@core/project-session-manager'
 import { detectShell, detectProvider, detectVscode } from '@core/settings-detector'
 import { openWorkspace } from '@core/workspace-launcher'
-import { getProviderDescriptorByProviderId, getProviderDescriptorBySessionType } from '@shared/provider-descriptors'
+import { resolveRuntimePaths as resolveProviderRuntimePaths } from '@core/provider-path-resolver'
+import { getProvider } from '@extensions/providers'
+import { getProviderDescriptorByProviderId } from '@shared/provider-descriptors'
 import { derivePresencePhase } from '@shared/session-state-reducer'
 import { SessionRuntimeController } from './session-runtime-controller'
 import { SessionEventBridge } from './session-event-bridge'
@@ -19,6 +25,7 @@ import { SessionInputRouter } from './session-input-router'
 import { launchTrackedSessionRuntime } from './launch-tracked-session-runtime'
 import { syncObservabilitySessionsFromManager } from './observability-sync'
 import { UpdateService } from './update-service'
+import { DEFAULT_SETTINGS } from '@shared/project-session'
 import type { CreateProjectRequest, CreateSessionRequest, OpenWorkspaceRequest } from '@shared/project-session'
 import type { UpdateState } from '@shared/update-state'
 import type { PtyHost } from '@core/pty-host'
@@ -241,6 +248,58 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+async function execShellCommand(
+  command: string,
+  cwd: string,
+  env: NodeJS.ProcessEnv
+): Promise<string> {
+  return await new Promise<string>((resolve, reject) => {
+    execChildProcess(
+      command,
+      {
+        cwd,
+        env,
+        windowsHide: true
+      },
+      (error, stdout, stderr) => {
+        if (error) {
+          reject(new Error(stderr || error.message))
+          return
+        }
+
+        resolve(stdout)
+      }
+    )
+  })
+}
+
+function parseJsonTail(stdout: string): unknown {
+  const trimmed = stdout.trim()
+  if (!trimmed) {
+    throw new Error('Expected JSON output but command stdout was empty.')
+  }
+
+  try {
+    return JSON.parse(trimmed) as unknown
+  } catch {
+    const lines = trimmed.split(/\r?\n/)
+    for (let index = 1; index < lines.length; index += 1) {
+      const candidate = lines.slice(index).join('\n').trim()
+      if (!candidate) {
+        continue
+      }
+
+      try {
+        return JSON.parse(candidate) as unknown
+      } catch {
+        // Keep scanning.
+      }
+    }
+  }
+
+  throw new Error(`Expected JSON output but could not parse stdout:\n${stdout}`)
+}
+
 async function waitForValue<T>(
   readValue: () => Promise<T | null>,
   description: string,
@@ -442,7 +501,22 @@ app.whenReady().then(async () => {
     },
     observabilityService
   )
-  sessionEventBridge = new SessionEventBridge(projectSessionManager, runtimeController, observabilityService)
+  let evolverBridge: EvolverClient | undefined
+  try {
+    const bundledEvolverCli = await resolveBundledEvolverCli(process.cwd())
+    evolverBridge = new EvolverClient({
+      command: bundledEvolverCli.command,
+      cwd: bundledEvolverCli.repoRoot,
+      argsPrefix: bundledEvolverCli.argsPrefix,
+      env: bundledEvolverCli.env
+    })
+  } catch (error) {
+    console.warn('[main] Bundled Evolver bridge is unavailable. Memory orchestration will stay disabled.', error)
+  }
+
+  sessionEventBridge = new SessionEventBridge(projectSessionManager, runtimeController, observabilityService, {
+    evolverBridge
+  })
   updateService = new UpdateService({
     app,
     updater: autoUpdater,
@@ -475,29 +549,19 @@ app.whenReady().then(async () => {
     providerPath: string | null
     claudeDangerouslySkipPermissions: boolean
   }> {
-    const descriptor = getProviderDescriptorBySessionType(sessionType)
-    const settings = projectSessionManager?.getSettings()
-    const configuredShellPath = settings?.shellPath?.trim() ?? ''
-    const shellPath = configuredShellPath.length > 0 ? configuredShellPath : await detectShell()
-
-    if (descriptor.providerId === 'local-shell') {
-      return {
-        shellPath,
-        providerPath: null,
-        claudeDangerouslySkipPermissions: settings?.claudeDangerouslySkipPermissions === true
+    const settings = projectSessionManager?.getSettings() ?? DEFAULT_SETTINGS
+    const resolvedPaths = await resolveProviderRuntimePaths(
+      sessionType,
+      settings,
+      {
+        detectShell,
+        detectProvider
       }
-    }
-
-    const configuredProviderPath = settings?.providers[descriptor.providerId]?.trim() ?? ''
-    const providerPath =
-      configuredProviderPath.length > 0
-        ? configuredProviderPath
-        : await detectProvider(descriptor.executableName, shellPath)
+    )
 
     return {
-      shellPath,
-      providerPath,
-      claudeDangerouslySkipPermissions: settings?.claudeDangerouslySkipPermissions === true
+      ...resolvedPaths,
+      claudeDangerouslySkipPermissions: settings.claudeDangerouslySkipPermissions === true
     }
   }
 
@@ -620,6 +684,65 @@ app.whenReady().then(async () => {
         sessionId: session.id,
         marker: packagedSmokeMarker,
         replayLength: terminalReplay.length
+      })
+
+      const publishedContextPath = getClaudeCodePublishedContextPath(packagedSmokeProjectDir)
+      await mkdir(dirname(publishedContextPath), { recursive: true })
+      await writeFile(
+        publishedContextPath,
+        `${JSON.stringify({
+          timestamp: '2026-04-28T00:00:00.000Z',
+          signals: ['packaged_smoke'],
+          outcome: {
+            status: 'unknown',
+            score: null,
+            note: 'Packaged smoke memory context is available to Claude SessionStart.'
+          }
+        })}\n`,
+        'utf8'
+      )
+
+      const claudeProvider = getProvider('claude-code')
+      await claudeProvider.installSidecar({
+        session_id: 'packaged-smoke-claude',
+        project_id: project.id,
+        path: packagedSmokeProjectDir,
+        title: 'packaged-smoke-claude',
+        type: 'claude-code',
+        external_session_id: 'packaged-smoke-claude'
+      }, {
+        webhookPort,
+        sessionSecret: 'packaged-smoke-secret',
+        providerPort: 0
+      })
+
+      const hookSettings = JSON.parse(await readFile(join(packagedSmokeProjectDir, '.claude', 'settings.local.json'), 'utf8')) as {
+        hooks?: Record<string, Array<{ hooks?: Array<{ command?: string }> }>>
+      }
+      const sessionStartCommand = hookSettings.hooks?.SessionStart?.[0]?.hooks?.[0]?.command
+      if (!sessionStartCommand) {
+        throw new Error('Packaged smoke Claude SessionStart hook command is missing.')
+      }
+
+      const sessionStartOutput = await execShellCommand(
+        sessionStartCommand,
+        packagedSmokeProjectDir,
+        {
+          ...process.env,
+          EVOLVER_SESSION_START_DEDUP: '0'
+        }
+      )
+      const sessionStartPayload = parseJsonTail(sessionStartOutput) as {
+        agent_message?: string
+        additionalContext?: string
+      }
+      const injectedMemoryText = `${sessionStartPayload.agent_message ?? ''}\n${sessionStartPayload.additionalContext ?? ''}`
+      if (!injectedMemoryText.includes('Packaged smoke memory context is available')) {
+        throw new Error(`Packaged smoke Claude SessionStart hook did not surface the published memory.\nOutput: ${sessionStartOutput}`)
+      }
+      await recordPackagedSmoke('claude-session-start-verified', {
+        command: sessionStartCommand,
+        publishedContextPath
       })
 
       ptyHost.kill(session.id)

@@ -6,8 +6,12 @@ artifactName: "${productName}-${version}-${os}-${arch}.${ext}"
 files:
   - out/**
   - package.json
+extraResources:
+  - from: research/upstreams/evolver
+    to: evolver
 asarUnpack:
   - node_modules/node-pty/**
+  - out/tools/entire-bridge/**
 publish:
   provider: github
   owner: "${env.GH_OWNER}"

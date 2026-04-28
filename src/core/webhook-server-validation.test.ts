@@ -109,6 +109,43 @@ async function postClaudeHook(
   })
 }
 
+async function postCodexHook(
+  port: number,
+  body: unknown,
+  headers: Record<string, string> = {}
+): Promise<{ statusCode: number; body: string }> {
+  return await new Promise((resolve, reject) => {
+    const payload = JSON.stringify(body)
+    const req = request(
+      {
+        host: '127.0.0.1',
+        port,
+        path: '/hooks/codex',
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'content-length': Buffer.byteLength(payload),
+          ...headers
+        }
+      },
+      (response) => {
+        let data = ''
+        response.setEncoding('utf8')
+        response.on('data', (chunk) => {
+          data += chunk
+        })
+        response.on('end', () => {
+          resolve({ statusCode: response.statusCode ?? 0, body: data })
+        })
+      }
+    )
+
+    req.on('error', reject)
+    req.write(payload)
+    req.end()
+  })
+}
+
 async function getHealth(
   port: number
 ): Promise<{ statusCode: number; body: string }> {
@@ -334,6 +371,42 @@ describe('webhook event validation', () => {
       expect(events[0]!.correlation_id).toBe('corr-123')
     })
 
+    test('accepts canonical events carrying normalized evidence', async () => {
+      const { server, events } = createTestServer()
+      const port = await server.start()
+
+      const response = await postJson(
+        port,
+        createValidEvent({
+          evidence: {
+            rawSource: {
+              provider: 'codex',
+              channel: 'notify',
+              rawEventName: 'agent-turn-complete'
+            },
+            providerSessionId: 'codex-thread-1',
+            turnId: 'turn-1',
+            cwd: '/repo/app',
+            inputMessages: ['Run tests'],
+            lastAssistantMessage: 'Done.'
+          }
+        }),
+        'secret-1'
+      )
+
+      expect(response.statusCode).toBe(202)
+      expect(events).toHaveLength(1)
+      expect(events[0]!.evidence).toMatchObject({
+        rawSource: {
+          provider: 'codex',
+          channel: 'notify',
+          rawEventName: 'agent-turn-complete'
+        },
+        providerSessionId: 'codex-thread-1',
+        inputMessages: ['Run tests']
+      })
+    })
+
     test('rejects event with empty payload object', async () => {
       const { server } = createTestServer()
       const port = await server.start()
@@ -375,6 +448,55 @@ describe('webhook event validation', () => {
           ...payloadOverrides
         }
       })
+
+      const response = await postJson(port, event, 'secret-1')
+
+      expect(response.statusCode).toBe(400)
+      expect(JSON.parse(response.body)).toEqual({ accepted: false, reason: 'invalid_event' })
+    })
+
+    test('rejects payload.toolUseId because it is evidence-only state', async () => {
+      const { server } = createTestServer()
+      const port = await server.start()
+      const event = createValidEvent({
+        payload: {
+          intent: 'agent.tool_started',
+          agentState: 'working',
+          summary: 'event rejected',
+          toolUseId: 'toolu_123'
+        }
+      })
+
+      const response = await postJson(port, event, 'secret-1')
+
+      expect(response.statusCode).toBe(400)
+      expect(JSON.parse(response.body)).toEqual({ accepted: false, reason: 'invalid_event' })
+    })
+
+    test.each([
+      ['non-object evidence', 'bad'],
+      ['missing raw source provider', { rawSource: { channel: 'hook', rawEventName: 'Stop' } }],
+      ['invalid raw source provider', { rawSource: { provider: 'opencode', channel: 'hook', rawEventName: 'Stop' } }],
+      ['invalid raw source channel', { rawSource: { provider: 'codex', channel: 'sidecar', rawEventName: 'Stop' } }],
+      ['missing raw event name', { rawSource: { provider: 'codex', channel: 'hook' } }],
+      ['blank raw event name', { rawSource: { provider: 'codex', channel: 'notify', rawEventName: '   ' } }],
+      ['invalid providerSessionId', { rawSource: { provider: 'codex', channel: 'hook', rawEventName: 'Stop' }, providerSessionId: 42 }],
+      ['blank providerSessionId', { rawSource: { provider: 'codex', channel: 'notify', rawEventName: 'agent-turn-complete' }, providerSessionId: '   ' }],
+      ['invalid turnId', { rawSource: { provider: 'codex', channel: 'hook', rawEventName: 'Stop' }, turnId: false }],
+      ['invalid transcriptPath', { rawSource: { provider: 'codex', channel: 'hook', rawEventName: 'Stop' }, transcriptPath: [] }],
+      ['invalid lastAssistantMessage', { rawSource: { provider: 'codex', channel: 'hook', rawEventName: 'Stop' }, lastAssistantMessage: null }],
+      ['invalid promptText', { rawSource: { provider: 'codex', channel: 'hook', rawEventName: 'Stop' }, promptText: 123 }],
+      ['invalid inputMessages container', { rawSource: { provider: 'codex', channel: 'hook', rawEventName: 'Stop' }, inputMessages: 'nope' }],
+      ['invalid inputMessages member', { rawSource: { provider: 'codex', channel: 'hook', rawEventName: 'Stop' }, inputMessages: ['ok', 2] }],
+      ['invalid toolName', { rawSource: { provider: 'codex', channel: 'hook', rawEventName: 'Stop' }, toolName: {} }],
+      ['invalid toolUseId', { rawSource: { provider: 'codex', channel: 'hook', rawEventName: 'Stop' }, toolUseId: {} }],
+      ['invalid cwd', { rawSource: { provider: 'codex', channel: 'hook', rawEventName: 'Stop' }, cwd: {} }],
+      ['invalid model', { rawSource: { provider: 'codex', channel: 'hook', rawEventName: 'Stop' }, model: {} }],
+      ['invalid hookEventName', { rawSource: { provider: 'codex', channel: 'hook', rawEventName: 'Stop' }, hookEventName: {} }]
+    ])('rejects %s evidence payloads', async (_name, evidence) => {
+      const { server } = createTestServer()
+      const port = await server.start()
+      const event = createValidEvent({ evidence })
 
       const response = await postJson(port, event, 'secret-1')
 
@@ -539,6 +661,87 @@ describe('webhook event validation', () => {
 
       expect(response.statusCode).toBe(401)
       expect(JSON.parse(response.body)).toEqual({ accepted: false, reason: 'invalid_secret' })
+    })
+
+    test('rejects recognized Claude hooks carrying malformed evidence fields', async () => {
+      const { server } = createTestServer('secret-1')
+      const port = await server.start()
+
+      const response = await postClaudeHook(
+        port,
+        {
+          hook_event_name: 'PreToolUse',
+          transcript_path: 123,
+          tool_name: 'Bash'
+        },
+        {
+          'x-stoa-session-id': 'session_test',
+          'x-stoa-project-id': 'project_1',
+          'x-stoa-secret': 'secret-1'
+        }
+      )
+
+      expect(response.statusCode).toBe(400)
+      expect(JSON.parse(response.body)).toEqual({ accepted: false, reason: 'invalid_hook_event' })
+    })
+  })
+
+  describe('Codex hook validation', () => {
+    test('rejects recognized Codex hooks carrying malformed evidence fields', async () => {
+      const { server } = createTestServer('secret-1')
+      const port = await server.start()
+
+      const response = await postCodexHook(
+        port,
+        {
+          hook_event_name: 'PreToolUse',
+          turn_id: 123,
+          tool_name: 'Write'
+        },
+        {
+          'x-stoa-session-id': 'session_test',
+          'x-stoa-project-id': 'project_1',
+          'x-stoa-secret': 'secret-1'
+        }
+      )
+
+      expect(response.statusCode).toBe(400)
+      expect(JSON.parse(response.body)).toEqual({ accepted: false, reason: 'invalid_hook_event' })
+    })
+
+    test('accepts documented nullable Codex hook fields and normalizes them away', async () => {
+      const { server, events } = createTestServer('secret-1')
+      const port = await server.start()
+
+      const response = await postCodexHook(
+        port,
+        {
+          hook_event_name: 'Stop',
+          session_id: 'codex-session-nullable',
+          turn_id: 'turn-nullable',
+          transcript_path: null,
+          last_assistant_message: null
+        },
+        {
+          'x-stoa-session-id': 'session_test',
+          'x-stoa-project-id': 'project_1',
+          'x-stoa-secret': 'secret-1'
+        }
+      )
+
+      expect(response.statusCode).toBe(202)
+      expect(events).toHaveLength(1)
+      expect(events[0]!.evidence).toMatchObject({
+        rawSource: {
+          provider: 'codex',
+          channel: 'hook',
+          rawEventName: 'Stop'
+        },
+        providerSessionId: 'codex-session-nullable',
+        turnId: 'turn-nullable'
+      })
+      expect(events[0]!.evidence).not.toHaveProperty('transcriptPath')
+      expect(events[0]!.evidence).not.toHaveProperty('lastAssistantMessage')
     })
   })
 })

@@ -110,4 +110,48 @@ describe('launchTrackedSessionRuntime', () => {
     expect(launched).toBe(false)
     expect(startRuntime).not.toHaveBeenCalled()
   })
+
+  test('launches Claude sessions without a pre-start injector step', async () => {
+    const globalStatePath = await createTestGlobalStatePath()
+    const manager = await ProjectSessionManager.create({
+      webhookPort: null,
+      globalStatePath
+    })
+    const project = await manager.createProject({
+      path: await createTestWorkspace('launch-claude-failure-'),
+      name: 'claude-project'
+    })
+    const session = await manager.createSession({
+      projectId: project.id,
+      type: 'claude-code',
+      title: 'Claude Session'
+    })
+
+    const startRuntime = vi.fn(async () => {})
+    const launched = await launchTrackedSessionRuntime({
+      sessionId: session.id,
+      manager,
+      webhookPort: 43127,
+      ptyHost: { start: vi.fn(() => ({ runtimeId: session.id })) } as never,
+      runtimeController: {
+        markRuntimeStarting: vi.fn(async () => {}),
+        markRuntimeAlive: vi.fn(async () => {}),
+        markRuntimeExited: vi.fn(async () => {}),
+        markRuntimeFailedToStart: vi.fn(async () => {}),
+        appendTerminalData: vi.fn(async () => {})
+      },
+      sessionEventBridge: {
+        issueSessionSecret: vi.fn(() => 'secret-1')
+      } as never,
+      resolveRuntimePaths: vi.fn(async () => ({
+        shellPath: null,
+        providerPath: 'claude',
+        claudeDangerouslySkipPermissions: false
+      })),
+      startRuntime
+    })
+
+    expect(launched).toBe(true)
+    expect(startRuntime).toHaveBeenCalledTimes(1)
+  })
 })

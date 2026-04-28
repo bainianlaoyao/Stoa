@@ -28,6 +28,7 @@ function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
     sendSessionInput: vi.fn().mockResolvedValue(undefined),
     sendSessionResize: vi.fn().mockResolvedValue(undefined),
     onTerminalData: vi.fn().mockReturnValue(() => {}),
+    onSessionEvent: vi.fn().mockReturnValue(() => {}),
     getSessionPresence: vi.fn().mockResolvedValue(null),
     getProjectObservability: vi.fn().mockResolvedValue(null),
     getAppObservability: vi.fn().mockResolvedValue({
@@ -49,6 +50,7 @@ function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
       terminalFontFamily: 'JetBrains Mono',
       providers: {},
       workspaceIde: { id: 'vscode', executablePath: '' },
+      memoryAiProvider: 'claude-code',
       claudeDangerouslySkipPermissions: false,
       locale: 'en'
     }),
@@ -162,6 +164,13 @@ describe('ProvidersSettings', () => {
     expect(wrapper.find('.settings-card__badge').exists()).toBe(true)
   })
 
+  it('renders the memory AI provider selector', () => {
+    const wrapper = mountProvidersSettings()
+
+    expect(wrapper.find('[data-settings-field="memory-ai-provider"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('Memory AI provider')
+  })
+
   it('renders Browse button for each provider', () => {
     const wrapper = mountProvidersSettings()
     const browseButtons = wrapper.findAll('[data-settings-field^="provider-"] .btn-ghost')
@@ -173,7 +182,7 @@ describe('ProvidersSettings', () => {
     setupVibecodingMock({ detectProvider: vi.fn().mockReturnValue(new Promise(() => {})) })
 
     const wrapper = mountProvidersSettings()
-    const hint = wrapper.find('.settings-item__hint')
+    const hint = wrapper.find('[aria-label="OpenCode provider"] .settings-item__hint')
     expect(hint.exists()).toBe(true)
     expect(hint.text()).toBe('Detecting...')
   })
@@ -207,6 +216,28 @@ describe('ProvidersSettings', () => {
     await toggle.trigger('click')
 
     expect(setSettingMock).toHaveBeenCalledWith('claudeDangerouslySkipPermissions', true)
+  })
+
+  it('updates the memory AI provider setting from the selector', async () => {
+    const setSettingMock = vi.fn().mockResolvedValue(undefined)
+    setupVibecodingMock({ setSetting: setSettingMock })
+
+    const wrapper = mountProvidersSettings()
+
+    await nextTick()
+
+    const trigger = wrapper.find('[data-settings-field="memory-ai-provider"] [data-testid="glass-listbox-button"]')
+    expect(trigger.exists()).toBe(true)
+
+    await trigger.trigger('click')
+    await nextTick()
+
+    const option = wrapper.findAll('.glass-listbox__option').find((candidate) => candidate.text() === 'Codex')
+    expect(option).toBeDefined()
+
+    await option!.trigger('click')
+
+    expect(setSettingMock).toHaveBeenCalledWith('memoryAiProvider', 'codex')
   })
 
   it('does not misuse shadow tokens as badge fills or keep non-baseline switch timings', () => {

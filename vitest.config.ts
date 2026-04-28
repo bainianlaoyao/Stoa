@@ -13,7 +13,7 @@ export default defineConfig({
     }
   },
   test: {
-    setupFiles: ['./tests/i18n-setup.ts'],
+    setupFiles: ['./tests/env-setup.ts', './tests/i18n-setup.ts'],
     environment: 'happy-dom',
     pool: 'forks',
     exclude: [
@@ -21,6 +21,7 @@ export default defineConfig({
       '**/.git/**',
       '**/.worktrees/**',
       '**/dist/**',
+      '**/release/**',
       '**/research/upstreams/**',
       '**/e2e-playwright/**',
       '**/tests/generated/playwright/**'

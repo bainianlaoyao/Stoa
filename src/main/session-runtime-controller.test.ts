@@ -71,7 +71,7 @@ describe('SessionRuntimeController', () => {
     manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
   })
 
-  test('applyProviderStatePatch pushes presence snapshots', async () => {
+  test('applyProviderStatePatch pushes session event and presence snapshots', async () => {
     const { window: win, sent } = createMockWindow()
     const project = await manager.createProject({ path: await createTestWorkspace('ctrl-presence-'), name: 'test' })
     const session = await manager.createSession({ projectId: project.id, type: 'claude-code', title: 'Claude' })
@@ -87,6 +87,13 @@ describe('SessionRuntimeController', () => {
     }))
 
     expect(sent.some(event => event.channel === IPC_CHANNELS.observabilitySessionPresenceChanged)).toBe(true)
+    expect(sent.find(event => event.channel === IPC_CHANNELS.sessionEvent)?.data).toEqual({
+      session: expect.objectContaining({
+        id: session.id,
+        agentState: 'working',
+        summary: 'UserPromptSubmit'
+      })
+    })
   })
 
   test('markRuntimeStarting updates manager and pushes observability snapshots', async () => {
@@ -100,6 +107,18 @@ describe('SessionRuntimeController', () => {
     const updated = manager.snapshot().sessions[0]!
     expect(updated.runtimeState).toBe('starting')
     expect(updated.summary).toBe('starting shell')
+    expect(sent).toEqual([
+      {
+        channel: IPC_CHANNELS.sessionEvent,
+        data: {
+          session: expect.objectContaining({
+            id: session.id,
+            runtimeState: 'starting',
+            summary: 'starting shell'
+          })
+        }
+      }
+    ])
   })
 
   test('markRuntimeAlive pushes presence without setting agent working', async () => {
@@ -118,11 +137,19 @@ describe('SessionRuntimeController', () => {
     expect(updated.agentState).toBe('unknown')
     expect(updated.externalSessionId).toBe('opencode-real-123')
     expect(sent.map((item) => item.channel)).toEqual([
+      IPC_CHANNELS.sessionEvent,
       IPC_CHANNELS.observabilitySessionPresenceChanged,
       IPC_CHANNELS.observabilityProjectChanged,
       IPC_CHANNELS.observabilityAppChanged
     ])
-    expect(sent.find((item) => item.channel === IPC_CHANNELS.observabilitySessionPresenceChanged)?.data).toMatchObject({
+    expect(sent[0]!.data).toEqual({
+      session: expect.objectContaining({
+        id: session.id,
+        runtimeState: 'alive',
+        externalSessionId: 'opencode-real-123'
+      })
+    })
+    expect(sent[1]!.data).toMatchObject({
       sessionId: session.id,
       phase: 'ready',
       runtimeState: 'alive',
@@ -180,11 +207,20 @@ describe('SessionRuntimeController', () => {
     expect(updated.blockingReason).toBe('permission')
     expect(updated.externalSessionId).toBe('opencode-real-456')
     expect(sent.map((item) => item.channel)).toEqual([
+      IPC_CHANNELS.sessionEvent,
       IPC_CHANNELS.observabilitySessionPresenceChanged,
       IPC_CHANNELS.observabilityProjectChanged,
       IPC_CHANNELS.observabilityAppChanged
     ])
-    expect(sent.find((item) => item.channel === IPC_CHANNELS.observabilitySessionPresenceChanged)?.data).toMatchObject({
+    expect(sent[0]!.data).toEqual({
+      session: expect.objectContaining({
+        id: session.id,
+        agentState: 'blocked',
+        blockingReason: 'permission',
+        externalSessionId: 'opencode-real-456'
+      })
+    })
+    expect(sent[1]!.data).toMatchObject({
       sessionId: session.id,
       phase: 'blocked',
       agentState: 'blocked',
@@ -210,6 +246,13 @@ describe('SessionRuntimeController', () => {
     const updated = manager.snapshot().sessions.find((candidate) => candidate.id === complete.id)!
     expect(updated.agentState).toBe('idle')
     expect(updated.hasUnseenCompletion).toBe(false)
+    expect(sent.find((item) => item.channel === IPC_CHANNELS.sessionEvent)?.data).toEqual({
+      session: expect.objectContaining({
+        id: complete.id,
+        agentState: 'idle',
+        hasUnseenCompletion: false
+      })
+    })
     expect(sent.find((item) => item.channel === IPC_CHANNELS.observabilitySessionPresenceChanged)?.data).toMatchObject({
       sessionId: complete.id,
       phase: 'ready',

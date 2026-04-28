@@ -91,7 +91,6 @@ describe('ProjectSessionManager', () => {
         locale: 'en'
       }
     }), 'utf-8')
-
     const manager = await ProjectSessionManager.create({
       webhookPort: null,
       globalStatePath
@@ -101,6 +100,23 @@ describe('ProjectSessionManager', () => {
 
     const persisted = JSON.parse(await readFile(globalStatePath, 'utf-8')) as { settings?: { workspaceIde?: unknown } }
     expect(persisted.settings?.workspaceIde).toEqual(DEFAULT_SETTINGS.workspaceIde)
+  })
+
+  test('persists memory AI provider setting across reloads', async () => {
+    const globalStatePath = await createTempGlobalStatePath()
+    const manager = await ProjectSessionManager.create({
+      webhookPort: null,
+      globalStatePath
+    })
+
+    await manager.setSetting('memoryAiProvider', 'codex')
+
+    const reloaded = await ProjectSessionManager.create({
+      webhookPort: null,
+      globalStatePath
+    })
+
+    expect(reloaded.getSettings().memoryAiProvider).toBe('codex')
   })
 
   test('rejects startup when persisted global state is corrupted', async () => {

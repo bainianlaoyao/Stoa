@@ -42,12 +42,6 @@ vi.mock('@xterm/xterm', () => {
     onData(cb: (data: string) => void) {
       return { dispose: () => {} }
     }
-    onSelectionChange(_cb: () => void) {
-      return { dispose: () => {} }
-    }
-    getSelection() {
-      return ''
-    }
     loadAddon() {}
     dispose() {}
   }
@@ -88,11 +82,21 @@ vi.mock('@xterm/addon-webgl', () => {
   }
 })
 
+vi.mock('@xterm/addon-clipboard', () => {
+  return {
+    ClipboardAddon: class {},
+  }
+})
+
+vi.mock('@xterm/addon-search', () => {
+  return {
+    SearchAddon: class {},
+  }
+})
+
 vi.mock('@xterm/addon-serialize', () => {
   return {
-    SerializeAddon: class {
-      serialize() { return '' }
-    },
+    SerializeAddon: class {},
   }
 })
 
