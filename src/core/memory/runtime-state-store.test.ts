@@ -87,6 +87,17 @@ describe('RuntimeStateStore', () => {
       updatedAt: '2026-04-28T00:05:00.000Z'
     }))
 
+    await expect(store.read()).resolves.toMatchObject({
+      sessionProgress: [
+        {
+          projectId: 'project_1',
+          stoaSessionId: 'session_1',
+          lastProcessedEvidenceKey: 'evidence:2',
+          updatedAt: '2026-04-28T00:05:00.000Z'
+        }
+      ]
+    })
+
     await expect(store.listSessionProgress()).resolves.toEqual([
       {
         projectId: 'project_1',
@@ -109,6 +120,22 @@ describe('RuntimeStateStore', () => {
       reviewStateRef: 'memory/evolution/evolution_solidify_state.json',
       updatedAt: '2026-04-28T01:05:00.000Z'
     }))
+
+    await expect(store.read()).resolves.toMatchObject({
+      runRecords: [
+        {
+          projectId: 'project_1',
+          stoaSessionId: 'session_1',
+          runId: 'run_2',
+          worktreePath: 'C:/repo/.stoa/memory/runs/run_2/worktree',
+          memoryDir: 'C:/repo/.stoa/memory/runs/run_2/memory',
+          evolutionDir: 'C:/repo/.stoa/memory/runs/run_2/memory/evolution',
+          gepAssetsDir: 'C:/repo/.stoa/memory/runs/run_2/gep-assets',
+          reviewStateRef: 'memory/evolution/evolution_solidify_state.json',
+          updatedAt: '2026-04-28T01:05:00.000Z'
+        }
+      ]
+    })
 
     await expect(store.listRunRecords()).resolves.toEqual([
       {
@@ -143,6 +170,29 @@ describe('RuntimeStateStore', () => {
       updatedAt: '2026-04-28T02:06:00.000Z'
     }))
 
+    await expect(store.read()).resolves.toMatchObject({
+      publishedRecords: [
+        {
+          projectId: 'project_1',
+          stoaSessionId: 'session_1',
+          consumer: 'claude-code',
+          deliveryState: 'published',
+          runId: 'run_1',
+          publishedHash: 'sha256:abc',
+          updatedAt: '2026-04-28T02:05:00.000Z'
+        },
+        {
+          projectId: 'project_1',
+          stoaSessionId: 'session_1',
+          consumer: 'generic',
+          deliveryState: 'failed',
+          runId: 'run_2',
+          publishedHash: null,
+          updatedAt: '2026-04-28T02:06:00.000Z'
+        }
+      ]
+    })
+
     await expect(store.listPublishedRecords()).resolves.toEqual([
       {
         projectId: 'project_1',
@@ -163,6 +213,29 @@ describe('RuntimeStateStore', () => {
         updatedAt: '2026-04-28T02:06:00.000Z'
       }
     ])
+  })
+
+  test('serializes concurrent upserts across categories without losing data', async () => {
+    const store = new RuntimeStateStore(repoRoot)
+
+    await Promise.all([
+      store.upsertSessionProgress(sessionProgress()),
+      store.upsertRunRecord(runRecord()),
+      store.upsertPublishedRecord(publishedRecord({
+        deliveryState: 'published',
+        publishedHash: 'sha256:abc'
+      }))
+    ])
+
+    await expect(store.read()).resolves.toEqual({
+      version: 1,
+      sessionProgress: [sessionProgress()],
+      runRecords: [runRecord()],
+      publishedRecords: [publishedRecord({
+        deliveryState: 'published',
+        publishedHash: 'sha256:abc'
+      })]
+    })
   })
 
   test('rejects a malformed persisted store', async () => {

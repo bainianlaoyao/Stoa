@@ -23,6 +23,8 @@ const DEFAULT_RUNTIME_STATE_STORE: PersistedRuntimeStateStore = {
   publishedRecords: []
 }
 
+const pendingStoreTransactions = new Map<string, Promise<void>>()
+
 export function getRuntimeStateFilePath(repoRoot: string): string {
   return join(repoRoot, '.stoa', 'memory', 'runtime-state.json')
 }
@@ -123,6 +125,24 @@ function cloneStore(store: PersistedRuntimeStateStore): PersistedRuntimeStateSto
   return structuredClone(store)
 }
 
+function withStoreTransaction<T>(filePath: string, operation: () => Promise<T>): Promise<T> {
+  const previous = pendingStoreTransactions.get(filePath) ?? Promise.resolve()
+  const current = previous.catch(() => {}).then(operation)
+
+  let tracked: Promise<void>
+  tracked = current.then(
+    () => undefined,
+    () => undefined
+  ).finally(() => {
+    if (pendingStoreTransactions.get(filePath) === tracked) {
+      pendingStoreTransactions.delete(filePath)
+    }
+  })
+
+  pendingStoreTransactions.set(filePath, tracked)
+  return current
+}
+
 export class RuntimeStateStore {
   readonly filePath: string
 
@@ -131,6 +151,75 @@ export class RuntimeStateStore {
   }
 
   async read(): Promise<PersistedRuntimeStateStore> {
+    return await withStoreTransaction(this.filePath, async () => {
+      return await this.readStoreFile()
+    })
+  }
+
+  async listSessionProgress(): Promise<MemoryRuntimeSessionProgress[]> {
+    return (await this.read()).sessionProgress
+  }
+
+  async listRunRecords(): Promise<MemoryRunRecord[]> {
+    return (await this.read()).runRecords
+  }
+
+  async listPublishedRecords(): Promise<PublishedMemoryRecord[]> {
+    return (await this.read()).publishedRecords
+  }
+
+  async upsertSessionProgress(record: MemoryRuntimeSessionProgress): Promise<void> {
+    await this.updateStore(store => {
+      const sessionProgress = store.sessionProgress.filter(candidate => getSessionKey(candidate) !== getSessionKey(record))
+      sessionProgress.push({ ...record })
+      return {
+        ...store,
+        sessionProgress
+      }
+    })
+  }
+
+  async upsertRunRecord(record: MemoryRunRecord): Promise<void> {
+    await this.updateStore(store => {
+      const runRecords = store.runRecords.filter(candidate => getRunKey(candidate) !== getRunKey(record))
+      runRecords.push({ ...record })
+      return {
+        ...store,
+        runRecords
+      }
+    })
+  }
+
+  async upsertPublishedRecord(record: PublishedMemoryRecord): Promise<void> {
+    await this.updateStore(store => {
+      const publishedRecords = store.publishedRecords.filter(candidate => getPublishedKey(candidate) !== getPublishedKey(record))
+      publishedRecords.push({ ...record })
+      return {
+        ...store,
+        publishedRecords
+      }
+    })
+  }
+
+  private async write(store: PersistedRuntimeStateStore): Promise<void> {
+    await writePersistedState({
+      version: 1,
+      sessionProgress: store.sessionProgress,
+      runRecords: store.runRecords,
+      publishedRecords: store.publishedRecords
+    } satisfies PersistedRuntimeStateStore, this.filePath)
+  }
+
+  private async updateStore(
+    mutate: (store: PersistedRuntimeStateStore) => PersistedRuntimeStateStore
+  ): Promise<void> {
+    await withStoreTransaction(this.filePath, async () => {
+      const nextStore = mutate(await this.readStoreFile())
+      await this.write(nextStore)
+    })
+  }
+
+  private async readStoreFile(): Promise<PersistedRuntimeStateStore> {
     try {
       const raw = await readFile(this.filePath, 'utf-8')
       const parsed = JSON.parse(raw) as unknown
@@ -146,56 +235,5 @@ export class RuntimeStateStore {
 
       throw error
     }
-  }
-
-  async listSessionProgress(): Promise<MemoryRuntimeSessionProgress[]> {
-    return cloneStore(await this.read()).sessionProgress
-  }
-
-  async listRunRecords(): Promise<MemoryRunRecord[]> {
-    return cloneStore(await this.read()).runRecords
-  }
-
-  async listPublishedRecords(): Promise<PublishedMemoryRecord[]> {
-    return cloneStore(await this.read()).publishedRecords
-  }
-
-  async upsertSessionProgress(record: MemoryRuntimeSessionProgress): Promise<void> {
-    const store = await this.read()
-    const sessionProgress = store.sessionProgress.filter(candidate => getSessionKey(candidate) !== getSessionKey(record))
-    sessionProgress.push({ ...record })
-    await this.write({
-      ...store,
-      sessionProgress
-    })
-  }
-
-  async upsertRunRecord(record: MemoryRunRecord): Promise<void> {
-    const store = await this.read()
-    const runRecords = store.runRecords.filter(candidate => getRunKey(candidate) !== getRunKey(record))
-    runRecords.push({ ...record })
-    await this.write({
-      ...store,
-      runRecords
-    })
-  }
-
-  async upsertPublishedRecord(record: PublishedMemoryRecord): Promise<void> {
-    const store = await this.read()
-    const publishedRecords = store.publishedRecords.filter(candidate => getPublishedKey(candidate) !== getPublishedKey(record))
-    publishedRecords.push({ ...record })
-    await this.write({
-      ...store,
-      publishedRecords
-    })
-  }
-
-  private async write(store: PersistedRuntimeStateStore): Promise<void> {
-    await writePersistedState({
-      version: 1,
-      sessionProgress: store.sessionProgress,
-      runRecords: store.runRecords,
-      publishedRecords: store.publishedRecords
-    } satisfies PersistedRuntimeStateStore, this.filePath)
   }
 }
