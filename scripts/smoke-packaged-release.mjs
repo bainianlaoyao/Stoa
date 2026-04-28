@@ -6,6 +6,7 @@ import { join } from 'node:path'
 
 const root = process.cwd()
 const releaseDir = join(root, 'release', 'win-unpacked')
+const packagedEvolverDir = join(releaseDir, 'resources', 'evolver')
 const stateDir = join(tmpdir(), `stoa-packaged-smoke-${randomUUID()}`)
 const projectDir = join(stateDir, 'workspace')
 const smokeFile = join(stateDir, 'packaged-smoke.jsonl')
@@ -15,6 +16,14 @@ let smokeProbePath = null
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function requireFile(filePath, description) {
+  try {
+    await access(filePath)
+  } catch {
+    throw new Error(`Missing packaged ${description} at ${filePath}`)
+  }
 }
 
 function parseSmokeRecords(raw) {
@@ -64,7 +73,7 @@ async function waitForPackagedSmoke(child, timeoutMs = 90_000, intervalMs = 250)
 }
 
 async function resolvePackagedExecutable() {
-  await access(releaseDir)
+  await requireFile(releaseDir, 'Windows unpacked release directory')
   const entries = await readdir(releaseDir, { withFileTypes: true })
   const executable = entries.find((entry) => entry.isFile() && entry.name.toLowerCase().endsWith('.exe'))
 
@@ -73,6 +82,11 @@ async function resolvePackagedExecutable() {
   }
 
   return join(releaseDir, executable.name)
+}
+
+async function verifyPackagedEvolver() {
+  await requireFile(join(packagedEvolverDir, 'index.js'), 'Evolver entrypoint')
+  await requireFile(join(packagedEvolverDir, 'package.json'), 'Evolver package manifest')
 }
 
 async function terminateChild(child) {
@@ -101,6 +115,7 @@ let stderr = ''
 
 try {
   const packagedExecutable = await resolvePackagedExecutable()
+  await verifyPackagedEvolver()
   smokeRequestPath = join(releaseDir, 'stoa-packaged-smoke-request.json')
   smokeProbePath = join(releaseDir, 'stoa-packaged-smoke-probe.log')
   await mkdir(projectDir, { recursive: true })
@@ -115,13 +130,19 @@ try {
     'utf8'
   )
 
+  const {
+    STOA_EVOLVER_REPO_ROOT: _ignoredStoaEvolverRepoRoot,
+    ...spawnEnv
+  } = process.env
+
   child = spawn(packagedExecutable, [
     `--stoa-packaged-smoke-file=${smokeFile}`,
     `--stoa-packaged-smoke-project-dir=${projectDir}`,
     `--stoa-packaged-smoke-marker=${smokeMarker}`
   ], {
+    cwd: stateDir,
     env: {
-      ...process.env,
+      ...spawnEnv,
       VIBECODING_STATE_DIR: stateDir,
       STOA_PACKAGED_SMOKE_FILE: smokeFile,
       STOA_PACKAGED_SMOKE_PROJECT_DIR: projectDir,
@@ -147,8 +168,12 @@ try {
 
   const sessionLiveRecord = records.find((record) => record.step === 'session-live')
   const markerRecord = records.find((record) => record.step === 'terminal-marker-observed')
+  const claudeHookRecord = records.find((record) => record.step === 'claude-session-start-verified')
+  if (!claudeHookRecord) {
+    throw new Error(`Packaged smoke never recorded claude-session-start-verified. Records: ${JSON.stringify(records)}`)
+  }
   console.log(
-    `Packaged release smoke verified: ${packagedExecutable} booted, reached ${sessionLiveRecord?.status ?? 'live'} session state, and observed ${markerRecord?.marker ?? smokeMarker}.`
+    `Packaged release smoke verified: ${packagedExecutable} booted, reached ${sessionLiveRecord?.status ?? 'live'} session state, observed ${markerRecord?.marker ?? smokeMarker}, and executed the Claude SessionStart memory hook.`
   )
 } catch (error) {
   const records = await readSmokeRecords().catch(() => [])

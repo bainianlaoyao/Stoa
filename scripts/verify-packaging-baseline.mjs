@@ -4,7 +4,18 @@ import { join } from 'node:path'
 const root = process.cwd()
 const releaseDir = join(root, 'release')
 const unpackedExecutable = join(releaseDir, 'win-unpacked', 'Stoa.exe')
+const packagedEvolverDir = join(releaseDir, 'win-unpacked', 'resources', 'evolver')
+const packagedEvolverIndex = join(packagedEvolverDir, 'index.js')
+const packagedEvolverPackageJson = join(packagedEvolverDir, 'package.json')
 const latestYmlPath = join(releaseDir, 'latest.yml')
+
+async function requireFile(filePath, description) {
+  try {
+    await access(filePath)
+  } catch {
+    throw new Error(`Missing packaged ${description} at ${filePath}`)
+  }
+}
 
 function parseYamlScalar(value) {
   const trimmed = value.trim()
@@ -23,9 +34,11 @@ function normalizeArtifactName(value) {
   return value.toLowerCase().replace(/[\s_-]+/g, '')
 }
 
-await access(releaseDir)
-await access(unpackedExecutable)
-await access(latestYmlPath)
+await requireFile(releaseDir, 'release directory')
+await requireFile(unpackedExecutable, 'Windows unpacked executable')
+await requireFile(latestYmlPath, 'latest.yml')
+await requireFile(packagedEvolverIndex, 'Evolver entrypoint')
+await requireFile(packagedEvolverPackageJson, 'Evolver package manifest')
 
 const latestYml = await readFile(latestYmlPath, 'utf8')
 const installerPathMatch = latestYml.match(/^path:\s*(.+)$/m)
@@ -59,12 +72,12 @@ if (!matchedInstaller) {
 }
 
 const blockmapPath = join(releaseDir, `${matchedInstaller.name}.blockmap`)
-await access(blockmapPath)
+await requireFile(blockmapPath, 'installer blockmap')
 
 if (!latestYml.includes('files:')) {
   throw new Error('release/latest.yml is missing the files manifest required by electron-updater.')
 }
 
 console.log(
-  `Packaging baseline verified: ${matchedInstaller.name}, ${matchedInstaller.name}.blockmap, latest.yml, and win-unpacked/Stoa.exe exist in release/.`
+  `Packaging baseline verified: ${matchedInstaller.name}, ${matchedInstaller.name}.blockmap, latest.yml, win-unpacked/Stoa.exe, and win-unpacked/resources/evolver/{index.js,package.json} exist in release/.`
 )

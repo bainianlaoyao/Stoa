@@ -21,6 +21,7 @@ export default defineConfig({
       '**/.git/**',
       '**/.worktrees/**',
       '**/dist/**',
+      '**/release/**',
       '**/research/upstreams/**',
       '**/e2e-playwright/**',
       '**/tests/generated/playwright/**'

@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from 'vitest'
-import { runJsonCommand, JsonCommandError } from './command-runner'
+import { JsonCommandError, runJsonCommand } from './command-runner'
 
 describe('runJsonCommand', () => {
   test('parses JSON stdout from a successful command', async () => {
@@ -8,8 +8,8 @@ describe('runJsonCommand', () => {
     })
 
     await expect(runJsonCommand<{ ok: boolean; value: number }>({
-      command: 'entire',
-      args: ['stoa', 'checkpoints', '--json'],
+      command: 'evolver',
+      args: ['run', '--json'],
       cwd: 'C:/repo',
       execFile
     })).resolves.toEqual({ ok: true, value: 42 })
@@ -24,17 +24,49 @@ describe('runJsonCommand', () => {
 
     await expect(runJsonCommand({
       command: 'evolver',
-      args: ['run', '--json'],
+      args: ['review', '--json'],
       cwd: 'C:/repo',
       execFile
     })).rejects.toMatchObject({
       name: 'JsonCommandError',
       command: 'evolver',
-      args: ['run', '--json'],
+      args: ['review', '--json'],
       exitCode: 2,
       stdout: 'human output',
       stderr: 'bad command'
     })
+  })
+
+  test('parses machine JSON output even when the process exits non-zero', async () => {
+    const execFile = vi.fn((_command, _args, _options, callback) => {
+      const error = new Error('failed') as Error & { code: number }
+      error.code = 2
+      callback(error, '{"ok":false,"error":"run_failed"}', 'bad command')
+    })
+
+    await expect(runJsonCommand<{ ok: boolean; error: string }>({
+      command: 'evolver',
+      args: ['run', '--json'],
+      cwd: 'C:/repo',
+      execFile
+    })).resolves.toEqual({ ok: false, error: 'run_failed' })
+  })
+
+  test('parses JSON after banner lines emitted before the machine payload', async () => {
+    const execFile = vi.fn((_command, _args, _options, callback) => {
+      callback(
+        null,
+        '[evolver] Using host git repository at: C:/repo\n{"ok":true,"value":42}',
+        ''
+      )
+    })
+
+    await expect(runJsonCommand<{ ok: boolean; value: number }>({
+      command: 'evolver',
+      args: ['publish-context', '--target=claude-code', '--json'],
+      cwd: 'C:/repo',
+      execFile
+    })).resolves.toEqual({ ok: true, value: 42 })
   })
 
   test('throws command error when stdout is not valid JSON', async () => {
@@ -44,7 +76,7 @@ describe('runJsonCommand', () => {
 
     await expect(runJsonCommand({
       command: 'evolver',
-      args: ['review', '--json'],
+      args: ['publish-context', '--target=claude-code', '--json'],
       cwd: 'C:/repo',
       execFile
     })).rejects.toBeInstanceOf(JsonCommandError)

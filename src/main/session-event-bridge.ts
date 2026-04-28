@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import type { MemoryRuntime } from '@core/memory/runtime'
 import { SessionEvidenceStore } from '@core/memory/session-evidence-store'
 import { createTranscriptSnapshot } from '@core/memory/transcript-snapshot'
 import { createLocalWebhookServer } from '@core/webhook-server'
@@ -22,6 +23,7 @@ interface SessionEventBridgeOptions {
   nowIso?: () => string
   evidenceStore?: EvidenceStoreLike
   transcriptSnapshotter?: (event: CanonicalSessionEvent) => Promise<Awaited<ReturnType<typeof createTranscriptSnapshot>>>
+  memoryRuntime?: Pick<MemoryRuntime, 'notifyTurnCompleted'>
 }
 
 export class SessionEventBridge {
@@ -31,6 +33,7 @@ export class SessionEventBridge {
   private readonly nowIso: () => string
   private readonly evidenceStore: EvidenceStoreLike
   private readonly transcriptSnapshotter: (event: CanonicalSessionEvent) => Promise<Awaited<ReturnType<typeof createTranscriptSnapshot>>>
+  private readonly memoryRuntime?: Pick<MemoryRuntime, 'notifyTurnCompleted'>
   private server: ReturnType<typeof createLocalWebhookServer> | null = null
   private port: number | null = null
 
@@ -43,6 +46,7 @@ export class SessionEventBridge {
     this.nowIso = options.nowIso ?? (() => new Date().toISOString())
     this.evidenceStore = options.evidenceStore ?? new SessionEvidenceStore()
     this.transcriptSnapshotter = options.transcriptSnapshotter ?? createTranscriptSnapshot
+    this.memoryRuntime = options.memoryRuntime
   }
 
   async start(): Promise<number> {
@@ -77,6 +81,13 @@ export class SessionEventBridge {
           await this.persistEvidenceIfPresent(expandedEvent)
           this.observability?.ingest(this.toObservationEvent(expandedEvent))
           await this.controller.applyProviderStatePatch(this.toSessionStatePatch(expandedEvent))
+          const projectPath = this.resolveProjectPath(expandedEvent)
+          if (projectPath) {
+            this.memoryRuntime?.notifyTurnCompleted({
+              projectPath,
+              event: expandedEvent
+            })
+          }
         }
       })
 

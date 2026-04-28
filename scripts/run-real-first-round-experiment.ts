@@ -1,43 +1,35 @@
-import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
+import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { spawnSync } from 'node:child_process'
-import type { EntireStoaCheckpointExport, EvolverStoaRunResult } from '../src/shared/direct-memory'
-import { importCheckpointIntoEvolverInputs } from '../src/core/direct-memory/evolver-input-importer'
-import { buildPublishedContext } from '../src/core/direct-memory/published-context-builder'
-import { writePublishedContext } from '../src/core/direct-memory/context-delivery'
+import { createHash } from 'node:crypto'
+import type { CanonicalSessionEvent, ProviderCommandContext } from '../src/shared/project-session'
+import { DEFAULT_SETTINGS } from '../src/shared/project-session'
+import { SessionEvidenceStore } from '../src/core/memory/session-evidence-store'
+import { EvolverMaintainer } from '../src/core/memory/evolver-maintainer'
+import { ClaudeCodeInjector, getClaudeCodePublishedContextPath } from '../src/core/memory/claude-code-injector'
+import { RuntimeStateStore } from '../src/core/memory/runtime-state-store'
 import { createClaudeCodeProvider } from '../src/extensions/providers/claude-code-provider'
-
-interface JsonRecord {
-  [key: string]: unknown
-}
 
 async function main(): Promise<void> {
   const baseDir = await mkdtemp(join(tmpdir(), 'stoa-first-round-'))
   const repoRoot = join(baseDir, 'project')
-  const memoryDir = join(baseDir, 'memory')
-  const evolutionDir = join(memoryDir, 'evolution')
-  const sessionScope = 'provider-session-1'
-  const scopedEvolutionDir = join(evolutionDir, 'scopes', sessionScope)
-  const gepAssetsDir = join(baseDir, 'assets', 'gep')
-  const scopedAssetsDir = join(gepAssetsDir, 'scopes', sessionScope)
-  const importedMemoryDir = join(baseDir, 'imported-memory')
-  const fakeEvolverRoot = join(baseDir, 'fake-evolver-root')
+  const projectId = 'project_first_round'
+  const firstSessionId = 'session_1'
+  const secondSessionId = 'session_2'
+  const providerSessionId = 'provider-session-uv-1'
+  const transcriptSourcePath = join(repoRoot, 'provider-transcript.jsonl')
+  const evidenceStore = new SessionEvidenceStore()
 
   await mkdir(repoRoot, { recursive: true })
-  await mkdir(scopedEvolutionDir, { recursive: true })
-  await mkdir(scopedAssetsDir, { recursive: true })
-  await mkdir(fakeEvolverRoot, { recursive: true })
-
   await writeFile(join(repoRoot, 'pyproject.toml'), [
     '[project]',
     'name = "demo-python-project"',
     'version = "0.1.0"',
     ''
-  ].join('\n'), 'utf-8')
-  await writeFile(join(repoRoot, 'README.md'), '# Demo Python Project\n', 'utf-8')
-  await writeFile(join(fakeEvolverRoot, 'package.json'), JSON.stringify({ name: '@evomap/evolver' }, null, 2) + '\n', 'utf-8')
+  ].join('\n'), 'utf8')
+  await writeFile(join(repoRoot, 'README.md'), '# Demo Python Project\n', 'utf8')
 
   runChecked('git', ['init'], repoRoot)
   runChecked('git', ['config', 'user.name', 'Stoa Test'], repoRoot)
@@ -45,207 +37,256 @@ async function main(): Promise<void> {
   runChecked('git', ['add', '.'], repoRoot)
   runChecked('git', ['commit', '-m', 'init'], repoRoot)
 
-  const sourceWorktreeCommitSha = runChecked('git', ['rev-parse', 'HEAD'], repoRoot).stdout.trim()
+  const firstTranscript = [
+    jsonLine({
+      type: 'user',
+      message: {
+        role: 'user',
+        content: [{ type: 'text', text: 'Install a Python environment for this project.' }]
+      }
+    }),
+    jsonLine({
+      type: 'assistant',
+      message: {
+        role: 'assistant',
+        content: [{ type: 'text', text: 'I will create a virtual environment with pip and then use pip install for dependencies.' }]
+      }
+    }),
+    jsonLine({
+      type: 'user',
+      message: {
+        role: 'user',
+        content: [{ type: 'text', text: 'Do not use pip-managed virtualenvs here. Use uv to manage the environment and packages for this repository.' }]
+      }
+    }),
+    jsonLine({
+      type: 'assistant',
+      message: {
+        role: 'assistant',
+        content: [{ type: 'text', text: 'Understood. I will use uv for Python environments and package installation in this repository.' }]
+      }
+    })
+  ].join('\n') + '\n'
+  await writeFile(transcriptSourcePath, firstTranscript, 'utf8')
 
-  const checkpoint: EntireStoaCheckpointExport = {
-    checkpoint_id: 'chk_uv_pref_1',
-    checkpoint_format_version: 'v1',
-    checkpoint_metadata_commit_sha: 'meta-sha-1',
-    source_worktree_commit_sha: sourceWorktreeCommitSha,
-    root_metadata_ref: '.entire/checkpoints/chk_uv_pref_1/metadata.json',
-    sessions: [{
-      session_id: sessionScope,
-      agent: 'claude-code',
+  const completionEvent: CanonicalSessionEvent = {
+    event_version: 1,
+    event_id: 'evt_uv_preference',
+    event_type: 'claude-code.Stop',
+    timestamp: '2026-04-28T09:00:00.000Z',
+    session_id: firstSessionId,
+    project_id: projectId,
+    source: 'hook-sidecar',
+    payload: {
+      intent: 'agent.turn_completed',
+      agentState: 'idle',
+      hasUnseenCompletion: true,
+      summary: 'The user corrected pip to uv for Python environment management.',
+      externalSessionId: providerSessionId
+    },
+    evidence: {
+      rawSource: {
+        provider: 'claude-code',
+        channel: 'hook',
+        rawEventName: 'Stop'
+      },
+      hookEventName: 'Stop',
+      providerSessionId,
+      turnId: 'turn-uv-1',
+      transcriptPath: transcriptSourcePath,
+      cwd: repoRoot,
       model: 'claude-sonnet',
-      turn_id: 'turn-1',
-      metadata_ref: '.entire/checkpoints/chk_uv_pref_1/sessions/provider-session-1/metadata.json',
-      transcript_ref: '.entire/checkpoints/chk_uv_pref_1/sessions/provider-session-1/transcript.jsonl',
-      transcript_text: [
-        JSON.stringify({
-          type: 'user',
-          message: {
-            role: 'user',
-            content: [{ type: 'text', text: 'Install a Python environment for this project.' }]
-          }
-        }),
-        JSON.stringify({
-          type: 'assistant',
-          message: {
-            role: 'assistant',
-            content: [{ type: 'text', text: 'I will create a virtual environment with pip and then use pip install for dependencies.' }]
-          }
-        }),
-        JSON.stringify({
-          type: 'user',
-          message: {
-            role: 'user',
-            content: [{ type: 'text', text: 'Do not use pip-managed virtualenvs here. Use uv to manage the environment and packages for this repository.' }]
-          }
-        }),
-        JSON.stringify({
-          type: 'assistant',
-          message: {
-            role: 'assistant',
-            content: [{ type: 'text', text: 'Understood. I will switch to uv and use uv venv plus uv pip or uv add style package management for this project.' }]
-          }
-        })
-      ].join('\n'),
-      prompt_ref: '.entire/checkpoints/chk_uv_pref_1/sessions/provider-session-1/prompt.txt',
-      prompt_text: 'Install a Python environment for this project. The user corrected pip to uv.',
-      summary: 'The user corrected the agent: for this repo, Python environments and packages must be managed with uv instead of raw pip.',
-      initial_attribution: null
-    }],
-    token_usage: null,
-    combined_attribution: null
+      inputMessages: [
+        'Install a Python environment for this project.',
+        'Do not use pip-managed virtualenvs here. Use uv to manage the environment and packages for this repository.'
+      ],
+      lastAssistantMessage: 'Understood. I will use uv for Python environments and package installation in this repository.'
+    }
   }
 
-  const imported = await importCheckpointIntoEvolverInputs({
-    checkpoint,
-    worktreeRepoRoot: repoRoot,
-    memoryDir: importedMemoryDir,
-    agentName: 'main',
-    now: () => new Date('2026-04-27T12:00:00.000Z')
+  await evidenceStore.persist({
+    projectPath: repoRoot,
+    event: completionEvent,
+    snapshot: {
+      kind: 'provider-transcript',
+      fileName: 'transcript.jsonl',
+      content: Buffer.from(firstTranscript, 'utf8'),
+      sourceTranscriptPath: transcriptSourcePath
+    }
   })
 
-  const evolverRepoRoot = join(process.cwd(), 'research', 'upstreams', 'evolver')
-  const stdoutPath = join(scopedEvolutionDir, 'stoa-evolver-run.stdout.log')
-  const stderrPath = join(scopedEvolutionDir, 'stoa-evolver-run.stderr.log')
-  const memoryGraphPath = join(evolutionDir, 'memory_graph.jsonl')
-  const runCommand = runChecked(
-    'node',
-    ['index.js'],
-    evolverRepoRoot,
+  const maintainer = new EvolverMaintainer(
     {
-      env: {
-        ...process.env,
-        EVOLVER_REPO_ROOT: repoRoot,
-        EVOLVER_QUIET_PARENT_GIT: '1',
-        MEMORY_DIR: memoryDir,
-        EVOLUTION_DIR: evolutionDir,
-        GEP_ASSETS_DIR: gepAssetsDir,
-        MEMORY_GRAPH_PATH: memoryGraphPath,
-        EVOLVER_SESSION_SCOPE: sessionScope,
-        HOME: imported.runtimeHomeDir,
-        USERPROFILE: imported.runtimeHomeDir,
-        AGENT_NAME: imported.agentName,
-        EVOLVER_VALIDATOR_ENABLED: '0',
-        A2A_HUB_URL: '',
-        EVOMAP_HUB_URL: ''
-      },
-      timeoutMs: 120_000,
-      allowFailure: true
+      getSettings: () => ({
+        ...DEFAULT_SETTINGS,
+        memoryAiProvider: 'claude-code'
+      })
+    },
+    {
+      buildCliAiProvider: () => ({
+        summarizeSession: async () => ({
+          summary: 'For this repository, manage Python environments and package installation with uv instead of pip.',
+          outcome: 'success',
+          lessons: ['Use uv rather than pip for Python environments and packages in this project.']
+        }),
+        review: async () => ({
+          decision: 'approve',
+          summary: 'Approved for publication.',
+          concerns: []
+        }),
+        distill: async () => ({
+          responseText: JSON.stringify({
+            type: 'Gene',
+            id: 'gene_distilled_uv',
+            category: 'repair',
+            signals_match: ['tooling_preference'],
+            strategy: [
+              'Use uv instead of pip for Python environments and package installation in this repository.'
+            ],
+            constraints: {
+              max_files: 5,
+              forbidden_paths: ['.git', 'node_modules']
+            }
+          })
+        })
+      })
     }
   )
 
-  await writeFile(stdoutPath, runCommand.stdout, 'utf-8')
-  await writeFile(stderrPath, runCommand.stderr, 'utf-8')
+  await maintainer.processTurnCompletion({
+    projectPath: repoRoot,
+    event: completionEvent
+  })
 
-  const solidifyStatePath = join(scopedEvolutionDir, 'evolution_solidify_state.json')
-  const solidifyState = await readJsonFile(solidifyStatePath)
-  const lastRun = asRecord(solidifyState?.last_run)
-  const runResult: EvolverStoaRunResult = {
-    ok: runCommand.status === 0,
-    run_id: asString(lastRun?.run_id) ?? 'unknown-run',
-    repo_root: repoRoot,
-    memory_dir: memoryDir,
-    evolution_dir: scopedEvolutionDir,
-    gep_assets_dir: scopedAssetsDir,
-    session_scope: sessionScope,
-    selected_gene_id: asString(lastRun?.selected_gene_id),
-    signals: asStringArray(lastRun?.signals),
-    review_status: existsSync(solidifyStatePath) ? 'pending' : 'none',
-    exit_code: runCommand.status,
-    artifact_refs: {
-      review_state_ref: existsSync(solidifyStatePath) ? solidifyStatePath : null,
-      genes_ref: existingPath(join(scopedAssetsDir, 'genes.json')),
-      genes_jsonl_ref: existingPath(join(scopedAssetsDir, 'genes.jsonl')),
-      capsules_ref: existingPath(join(scopedAssetsDir, 'capsules.json')),
-      capsules_jsonl_ref: existingPath(join(scopedAssetsDir, 'capsules.jsonl')),
-      events_ref: existingPath(join(scopedAssetsDir, 'events.jsonl')),
-      candidates_ref: existingPath(join(scopedAssetsDir, 'candidates.jsonl')),
-      external_candidates_ref: existingPath(join(scopedAssetsDir, 'external_candidates.jsonl')),
-      failed_capsules_ref: existingPath(join(scopedAssetsDir, 'failed_capsules.json')),
-      memory_graph_ref: existingPath(memoryGraphPath),
-      stdout_ref: stdoutPath,
-      stderr_ref: stderrPath
-    },
-    bridge: {
-      project_id: 'project_first_round',
-      stoa_session_id: 'stoa-session-1',
-      provider_session_id: sessionScope,
-      source_checkpoint_id: checkpoint.checkpoint_id,
-      checkpoint_metadata_commit_sha: checkpoint.checkpoint_metadata_commit_sha,
-      source_worktree_commit_sha: checkpoint.source_worktree_commit_sha
-    },
-    error: runCommand.status === 0 ? null : `evolver exited with ${runCommand.status}`
+  const injector = new ClaudeCodeInjector()
+  const publishResult = await injector.injectLatestContext({
+    projectId,
+    stoaSessionId: secondSessionId,
+    projectPath: repoRoot
+  })
+  if (!publishResult) {
+    throw new Error('Injector did not find an approved run to publish for the second session.')
   }
 
-  const published = await buildPublishedContext({
-    checkpoint,
-    run: runResult,
-    repoRoot,
-    target: 'claude-code'
-  })
-  const delivered = await writePublishedContext(repoRoot, published)
-
   const provider = createClaudeCodeProvider()
-  await provider.installSidecar({
-    session_id: 'session_claude_first_round',
-    project_id: 'project_first_round',
-    path: repoRoot,
-    title: 'Claude First Round',
-    type: 'claude-code',
-    external_session_id: 'external-provider-session-2'
-  }, {
+  const providerContext: ProviderCommandContext = {
     webhookPort: 43127,
     sessionSecret: 'secret-env',
     providerPort: 43128
-  })
+  }
+  await provider.installSidecar({
+    session_id: secondSessionId,
+    project_id: projectId,
+    path: repoRoot,
+    title: 'Second Claude Session',
+    type: 'claude-code',
+    external_session_id: 'provider-session-uv-2'
+  }, providerContext)
 
-  const hookRun = runChecked(
-    'node',
-    [join(repoRoot, '.claude', 'hooks', 'stoa-evolver-session-start.cjs')],
+  const hookSettings = JSON.parse(await readFile(join(repoRoot, '.claude', 'settings.local.json'), 'utf8')) as {
+    hooks?: Record<string, Array<{ hooks?: Array<{ command?: string }> }>>
+  }
+  const sessionStartCommand = hookSettings.hooks?.SessionStart?.[0]?.hooks?.[0]?.command
+  if (!sessionStartCommand) {
+    throw new Error('Claude SessionStart hook command is missing from .claude/settings.local.json.')
+  }
+
+  const hookOutput = runShellChecked(
+    sessionStartCommand,
     repoRoot,
     {
       env: {
         ...process.env,
-        EVOLVER_ROOT: fakeEvolverRoot
+        EVOLVER_SESSION_START_DEDUP: '0'
       }
     }
   )
-  const hookPayload = JSON.parse(hookRun.stdout) as {
+  const hookPayload = parseJsonTail(hookOutput.stdout) as {
     agent_message?: string
     additionalContext?: string
   }
-
-  if (!hookPayload.agent_message?.includes('uv')) {
-    throw new Error(`Claude hook output did not surface the uv preference.\nOutput: ${hookRun.stdout}`)
+  const injectedText = `${hookPayload.agent_message ?? ''}\n${hookPayload.additionalContext ?? ''}`
+  if (!injectedText.includes('uv')) {
+    throw new Error(`Claude SessionStart output did not surface the uv preference.\nOutput: ${hookOutput.stdout}`)
   }
 
-  const publishedContent = await readFile(delivered.filePath, 'utf-8')
+  const stateStore = new RuntimeStateStore(repoRoot)
+  const firstRunRecord = await stateStore.getRunRecord(projectId, firstSessionId)
+  const secondPublishedRecord = await stateStore.getPublishedRecord(projectId, secondSessionId, 'claude-code')
+  const publishedContent = await readFile(getClaudeCodePublishedContextPath(repoRoot), 'utf8')
+
   console.log(JSON.stringify({
     ok: true,
     scenario: {
-      session_1: 'agent used pip, user corrected to uv',
-      session_2: 'user only asks to install a Python package; session-start context should surface uv'
+      session_1: 'agent started with pip, user corrected to uv',
+      session_2: 'user only asks to install a Python package; injected memory should surface uv'
     },
+    note: 'This script exercises the Stoa-owned evidence -> Evolver -> Claude consumer path. Entire is intentionally not used.',
     paths: {
       baseDir,
       repoRoot,
-      publishedContextPath: delivered.filePath,
-      memoryGraphPath
+      evidenceDir: join(repoRoot, '.stoa', 'memory', 'evidence', firstSessionId, completionEvent.event_id),
+      runtimeStatePath: join(repoRoot, '.stoa', 'memory', 'runtime-state.json'),
+      publishedContextPath: publishResult.filePath
     },
-    evolver: {
-      exitCode: runResult.exit_code,
-      runId: runResult.run_id,
-      selectedGeneId: runResult.selected_gene_id,
-      signals: runResult.signals
+    runtimeState: {
+      firstRunRecord,
+      secondPublishedRecord
     },
-    publishedContextPreview: publishedContent.trim().split('\n').map((line) => JSON.parse(line)),
-    claudeSessionStart: hookPayload,
-    stdoutLog: stdoutPath,
-    stderrLog: stderrPath
+    publishedContext: {
+      hash: publishResult.hash,
+      lineCount: publishedContent.trim().length === 0 ? 0 : publishedContent.trim().split('\n').length,
+      preview: previewJsonLines(publishedContent, 3)
+    },
+    sessionStartHook: hookPayload
   }, null, 2))
+}
+
+function jsonLine(value: unknown): string {
+  return JSON.stringify(value)
+}
+
+function previewJsonLines(content: string, limit: number): unknown[] {
+  const lines = content
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(line => line.length > 0)
+    .slice(0, limit)
+
+  return lines.map(line => {
+    try {
+      return JSON.parse(line) as unknown
+    } catch {
+      return line
+    }
+  })
+}
+
+function parseJsonTail(stdout: string): unknown {
+  const trimmed = stdout.trim()
+  if (!trimmed) {
+    throw new Error('Expected JSON output but command stdout was empty.')
+  }
+
+  try {
+    return JSON.parse(trimmed) as unknown
+  } catch {
+    const lines = trimmed.split(/\r?\n/)
+    for (let index = 1; index < lines.length; index += 1) {
+      const candidate = lines.slice(index).join('\n').trim()
+      if (!candidate) {
+        continue
+      }
+
+      try {
+        return JSON.parse(candidate) as unknown
+      } catch {
+        // Keep scanning.
+      }
+    }
+  }
+
+  throw new Error(`Expected JSON output but could not parse stdout:\n${stdout}`)
 }
 
 function runChecked(
@@ -255,7 +296,6 @@ function runChecked(
   options?: {
     env?: NodeJS.ProcessEnv
     timeoutMs?: number
-    allowFailure?: boolean
   }
 ): {
   status: number
@@ -267,17 +307,16 @@ function runChecked(
     env: options?.env,
     encoding: 'utf8',
     windowsHide: true,
-    timeout: options?.timeoutMs ?? 30_000,
+    timeout: options?.timeoutMs ?? 120_000,
     maxBuffer: 20 * 1024 * 1024
   })
-
   const normalized = {
     status: result.status ?? 1,
     stdout: result.stdout ?? '',
     stderr: result.stderr ?? ''
   }
 
-  if (normalized.status !== 0 && options?.allowFailure !== true) {
+  if (normalized.status !== 0) {
     throw new Error([
       `Command failed: ${command} ${args.join(' ')}`,
       `cwd=${cwd}`,
@@ -290,40 +329,52 @@ function runChecked(
   return normalized
 }
 
-async function readJsonFile(filePath: string): Promise<JsonRecord | null> {
-  if (!existsSync(filePath)) {
-    return null
+function runShellChecked(
+  command: string,
+  cwd: string,
+  options?: {
+    env?: NodeJS.ProcessEnv
+    timeoutMs?: number
+  }
+): {
+  status: number
+  stdout: string
+  stderr: string
+} {
+  const result = spawnSync(command, {
+    cwd,
+    env: options?.env,
+    encoding: 'utf8',
+    windowsHide: true,
+    timeout: options?.timeoutMs ?? 120_000,
+    maxBuffer: 20 * 1024 * 1024,
+    shell: true
+  })
+  const normalized = {
+    status: result.status ?? 1,
+    stdout: result.stdout ?? '',
+    stderr: result.stderr ?? ''
   }
 
-  try {
-    return JSON.parse(await readFile(filePath, 'utf-8')) as JsonRecord
-  } catch {
-    return null
-  }
-}
-
-function asRecord(value: unknown): JsonRecord | null {
-  return value !== null && typeof value === 'object' ? value as JsonRecord : null
-}
-
-function asString(value: unknown): string | null {
-  return typeof value === 'string' && value.length > 0 ? value : null
-}
-
-function asStringArray(value: unknown): string[] {
-  if (!Array.isArray(value)) {
-    return []
+  if (normalized.status !== 0) {
+    throw new Error([
+      `Command failed: ${command}`,
+      `cwd=${cwd}`,
+      `exitCode=${normalized.status}`,
+      `stdout=${normalized.stdout}`,
+      `stderr=${normalized.stderr}`
+    ].join('\n'))
   }
 
-  return value.filter((item): item is string => typeof item === 'string')
+  return normalized
 }
 
-function existingPath(filePath: string): string | null {
-  return existsSync(filePath) ? filePath : null
-}
-
-main().catch((error) => {
+main().catch(async (error) => {
+  const publishedContextPath = getClaudeCodePublishedContextPath(process.cwd())
+  const diagnostic = existsSync(publishedContextPath)
+    ? `\npublishedContextSha256=${createHash('sha256').update(await readFile(publishedContextPath, 'utf8')).digest('hex')}`
+    : ''
   const message = error instanceof Error ? error.stack ?? error.message : String(error)
-  console.error(message)
+  console.error(`${message}${diagnostic}`)
   process.exitCode = 1
 })

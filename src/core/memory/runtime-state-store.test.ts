@@ -28,12 +28,15 @@ function runRecord(overrides: Partial<MemoryRunRecord> = {}): MemoryRunRecord {
   return {
     projectId: 'project_1',
     stoaSessionId: 'session_1',
+    providerSessionId: 'provider-session-1',
     runId: 'run_1',
     worktreePath: 'C:/repo/.stoa/memory/runs/run_1/worktree',
     memoryDir: 'C:/repo/.stoa/memory/runs/run_1/memory',
     evolutionDir: 'C:/repo/.stoa/memory/runs/run_1/memory/evolution',
     gepAssetsDir: 'C:/repo/.stoa/memory/runs/run_1/gep-assets',
     reviewStateRef: null,
+    reviewStatus: 'pending',
+    lastError: null,
     updatedAt: '2026-04-28T01:00:00.000Z',
     ...overrides
   }
@@ -94,6 +97,12 @@ describe('RuntimeStateStore', () => {
         }
       ]
     })
+    await expect(store.getSessionProgress('project_1', 'session_1')).resolves.toEqual(
+      sessionProgress({
+        lastProcessedEvidenceKey: 'evidence:2',
+        updatedAt: '2026-04-28T00:05:00.000Z'
+      })
+    )
 
   })
 
@@ -102,11 +111,14 @@ describe('RuntimeStateStore', () => {
     await store.upsertRunRecord(runRecord())
     await store.upsertRunRecord(runRecord({
       runId: 'run_2',
+      providerSessionId: 'provider-session-2',
       worktreePath: 'C:/repo/.stoa/memory/runs/run_2/worktree',
       memoryDir: 'C:/repo/.stoa/memory/runs/run_2/memory',
       evolutionDir: 'C:/repo/.stoa/memory/runs/run_2/memory/evolution',
       gepAssetsDir: 'C:/repo/.stoa/memory/runs/run_2/gep-assets',
       reviewStateRef: 'memory/evolution/evolution_solidify_state.json',
+      reviewStatus: 'approved',
+      lastError: null,
       updatedAt: '2026-04-28T01:05:00.000Z'
     }))
 
@@ -115,18 +127,99 @@ describe('RuntimeStateStore', () => {
         {
           projectId: 'project_1',
           stoaSessionId: 'session_1',
+          providerSessionId: 'provider-session-2',
           runId: 'run_2',
           worktreePath: 'C:/repo/.stoa/memory/runs/run_2/worktree',
           memoryDir: 'C:/repo/.stoa/memory/runs/run_2/memory',
           evolutionDir: 'C:/repo/.stoa/memory/runs/run_2/memory/evolution',
           gepAssetsDir: 'C:/repo/.stoa/memory/runs/run_2/gep-assets',
           reviewStateRef: 'memory/evolution/evolution_solidify_state.json',
+          reviewStatus: 'approved',
+          lastError: null,
           updatedAt: '2026-04-28T01:05:00.000Z'
         }
       ]
     })
+    await expect(store.getRunRecord('project_1', 'session_1')).resolves.toEqual(
+      runRecord({
+        runId: 'run_2',
+        providerSessionId: 'provider-session-2',
+        worktreePath: 'C:/repo/.stoa/memory/runs/run_2/worktree',
+        memoryDir: 'C:/repo/.stoa/memory/runs/run_2/memory',
+        evolutionDir: 'C:/repo/.stoa/memory/runs/run_2/memory/evolution',
+        gepAssetsDir: 'C:/repo/.stoa/memory/runs/run_2/gep-assets',
+        reviewStateRef: 'memory/evolution/evolution_solidify_state.json',
+        reviewStatus: 'approved',
+        lastError: null,
+        updatedAt: '2026-04-28T01:05:00.000Z'
+      })
+    )
 
     await expect(readFile(getRuntimeStateFilePath(repoRoot), 'utf-8')).resolves.not.toContain('entireCheckpointId')
+  })
+
+  test('findLatestApprovedRun returns the newest approved run in the project', async () => {
+    const store = new RuntimeStateStore(repoRoot)
+    await store.upsertRunRecord(runRecord({
+      stoaSessionId: 'session_older',
+      runId: 'run_older',
+      reviewStatus: 'approved',
+      updatedAt: '2026-04-28T01:00:00.000Z'
+    }))
+    await store.upsertRunRecord(runRecord({
+      stoaSessionId: 'session_pending',
+      runId: 'run_pending',
+      reviewStatus: 'pending',
+      updatedAt: '2026-04-28T03:00:00.000Z'
+    }))
+    await store.upsertRunRecord(runRecord({
+      stoaSessionId: 'session_newer',
+      runId: 'run_newer',
+      reviewStatus: 'approved',
+      updatedAt: '2026-04-28T02:00:00.000Z'
+    }))
+
+    await expect(store.findLatestApprovedRun('project_1')).resolves.toEqual(
+      runRecord({
+        stoaSessionId: 'session_newer',
+        runId: 'run_newer',
+        reviewStatus: 'approved',
+        updatedAt: '2026-04-28T02:00:00.000Z'
+      })
+    )
+    await expect(store.findLatestApprovedRun('project_missing')).resolves.toBeNull()
+  })
+
+  test('findLatestPublishableRun accepts reviewStatus none as publishable only when the run has no error', async () => {
+    const store = new RuntimeStateStore(repoRoot)
+    await store.upsertRunRecord(runRecord({
+      stoaSessionId: 'session_none',
+      runId: 'run_none',
+      reviewStatus: 'none',
+      updatedAt: '2026-04-28T02:00:00.000Z'
+    }))
+    await store.upsertRunRecord(runRecord({
+      stoaSessionId: 'session_broken',
+      runId: 'run_broken',
+      reviewStatus: 'approved',
+      lastError: 'distillation failed',
+      updatedAt: '2026-04-28T04:00:00.000Z'
+    }))
+    await store.upsertRunRecord(runRecord({
+      stoaSessionId: 'session_failed',
+      runId: 'run_failed',
+      reviewStatus: 'failed',
+      updatedAt: '2026-04-28T03:00:00.000Z'
+    }))
+
+    await expect(store.findLatestPublishableRun('project_1')).resolves.toEqual(
+      runRecord({
+        stoaSessionId: 'session_none',
+        runId: 'run_none',
+        reviewStatus: 'none',
+        updatedAt: '2026-04-28T02:00:00.000Z'
+      })
+    )
   })
 
   test('upsertPublishedRecord replaces by project session and consumer key', async () => {
@@ -167,6 +260,13 @@ describe('RuntimeStateStore', () => {
         }
       ]
     })
+    await expect(store.getPublishedRecord('project_1', 'session_1', 'claude-code')).resolves.toEqual(
+      publishedRecord({
+        deliveryState: 'published',
+        publishedHash: 'sha256:abc',
+        updatedAt: '2026-04-28T02:05:00.000Z'
+      })
+    )
 
   })
 

@@ -110,4 +110,117 @@ describe('launchTrackedSessionRuntime', () => {
     expect(launched).toBe(false)
     expect(startRuntime).not.toHaveBeenCalled()
   })
+
+  test('injects Claude memory before launching Claude sessions', async () => {
+    const globalStatePath = await createTestGlobalStatePath()
+    const manager = await ProjectSessionManager.create({
+      webhookPort: null,
+      globalStatePath
+    })
+    const project = await manager.createProject({
+      path: await createTestWorkspace('launch-claude-'),
+      name: 'claude-project'
+    })
+    const session = await manager.createSession({
+      projectId: project.id,
+      type: 'claude-code',
+      title: 'Claude Session'
+    })
+
+    const startRuntime = vi.fn(async () => {})
+    const claudeCodeInjector = {
+      injectLatestContext: vi.fn(async () => null)
+    }
+
+    const launched = await launchTrackedSessionRuntime({
+      sessionId: session.id,
+      manager,
+      webhookPort: 43127,
+      ptyHost: { start: vi.fn(() => ({ runtimeId: session.id })) } as never,
+      runtimeController: {
+        markRuntimeStarting: vi.fn(async () => {}),
+        markRuntimeAlive: vi.fn(async () => {}),
+        markRuntimeExited: vi.fn(async () => {}),
+        markRuntimeFailedToStart: vi.fn(async () => {}),
+        appendTerminalData: vi.fn(async () => {})
+      },
+      sessionEventBridge: {
+        issueSessionSecret: vi.fn(() => 'secret-1')
+      } as never,
+      claudeCodeInjector,
+      resolveRuntimePaths: vi.fn(async () => ({
+        shellPath: null,
+        providerPath: 'claude',
+        claudeDangerouslySkipPermissions: false
+      })),
+      startRuntime
+    })
+
+    expect(launched).toBe(true)
+    expect(claudeCodeInjector.injectLatestContext).toHaveBeenCalledWith({
+      projectId: project.id,
+      stoaSessionId: session.id,
+      projectPath: project.path
+    })
+    expect(startRuntime).toHaveBeenCalledTimes(1)
+  })
+
+  test('continues launching Claude sessions even when memory injection fails', async () => {
+    const globalStatePath = await createTestGlobalStatePath()
+    const manager = await ProjectSessionManager.create({
+      webhookPort: null,
+      globalStatePath
+    })
+    const project = await manager.createProject({
+      path: await createTestWorkspace('launch-claude-failure-'),
+      name: 'claude-project'
+    })
+    const session = await manager.createSession({
+      projectId: project.id,
+      type: 'claude-code',
+      title: 'Claude Session'
+    })
+
+    const startRuntime = vi.fn(async () => {})
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    try {
+      const launched = await launchTrackedSessionRuntime({
+        sessionId: session.id,
+        manager,
+        webhookPort: 43127,
+        ptyHost: { start: vi.fn(() => ({ runtimeId: session.id })) } as never,
+        runtimeController: {
+          markRuntimeStarting: vi.fn(async () => {}),
+          markRuntimeAlive: vi.fn(async () => {}),
+          markRuntimeExited: vi.fn(async () => {}),
+          markRuntimeFailedToStart: vi.fn(async () => {}),
+          appendTerminalData: vi.fn(async () => {})
+        },
+        sessionEventBridge: {
+          issueSessionSecret: vi.fn(() => 'secret-1')
+        } as never,
+        claudeCodeInjector: {
+          injectLatestContext: vi.fn(async () => {
+            throw new Error('inject failed')
+          })
+        },
+        resolveRuntimePaths: vi.fn(async () => ({
+          shellPath: null,
+          providerPath: 'claude',
+          claudeDangerouslySkipPermissions: false
+        })),
+        startRuntime
+      })
+
+      expect(launched).toBe(true)
+      expect(startRuntime).toHaveBeenCalledTimes(1)
+      expect(consoleError).toHaveBeenCalledWith(
+        `[launch-tracked-session-runtime] Failed to inject Claude Code memory for session ${session.id}:`,
+        expect.any(Error)
+      )
+    } finally {
+      consoleError.mockRestore()
+    }
+  })
 })

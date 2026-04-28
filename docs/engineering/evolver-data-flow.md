@@ -1,273 +1,264 @@
 # Evolver 数据流转设计
 
-本文档描述 Evolver 在项目中的完整数据管线：会话数据如何被采集、转化为内部表示、经演化后注入新会话。
+本文档描述当前仓库里已经落地的 Evolver 记忆链路。正常运行路径不再依赖 Entire；Stoa 直接持有证据、运行 Evolver、并在 Claude Code 启动前发布可消费上下文。
 
 ## 总览
 
-管线分三个阶段：**采集 → 演化 → 注入**。
-
 ```
-Provider (Claude Code / Codex / OpenCode)
-   │  HTTP hooks
-   ▼
-CompletionService ─── 监听 agent.turn_completed
-   │
-   ▼
-EntireClient ─── entire-bridge CLI 导出 checkpoint
-   │
-   ▼
-EntireStoaCheckpointExport ─── 规范中间格式
-   │
-   ▼
-Orchestrator ─── 创建 worktree → 运行 Evolver → 发布 context
-   │
-   ▼
-.stoa/generated/evolver-context/{target}.jsonl
-   │
-   ▼
-SessionStart Hook ─── 读取 JSONL → 注入 agent_message
-   │
-   ▼
-新会话上下文
+Provider hook / notify evidence
+  -> SessionEventBridge
+  -> .stoa/memory/evidence/
+  -> MemoryRuntime
+  -> EvolverMaintainer
+  -> .stoa/memory/runtime-state.json
+  -> ClaudeCodeInjector
+  -> .stoa/generated/evolver-context/claude-code.jsonl
+  -> Claude SessionStart wrapper
+  -> Evolver upstream session-start hook
 ```
 
----
+关键实现文件：
 
-## 1. 采集：会话数据 → Evolver 内部表示
+- `src/main/session-event-bridge.ts`
+- `src/core/memory/session-evidence-store.ts`
+- `src/core/memory/runtime.ts`
+- `src/core/memory/evolver-maintainer.ts`
+- `src/core/memory/runtime-state-store.ts`
+- `src/core/memory/claude-code-injector.ts`
+- `src/extensions/providers/claude-code-provider.ts`
 
-### 触发机制
+## 1. 证据采集
 
-`DirectMemoryCompletionService`（`src/core/direct-memory/completion-service.ts`）监听规范会话事件。当收到 `intent === 'agent.turn_completed'` 的事件时，启动采集流程。
+`SessionEventBridge` 负责接收规范化后的 provider 事件，并在事件带有 `event.evidence` 时持久化证据。
 
-### 数据导出
+- 入口：`src/main/session-event-bridge.ts`
+- 快照生成：`src/core/memory/transcript-snapshot.ts`
+- 落盘：`src/core/memory/session-evidence-store.ts`
 
-`EntireClient`（`src/core/direct-memory/entire-client.ts`）调用外部 `entire-bridge` CLI 工具：
-
-```bash
-entire-bridge checkpoints --repo <repoRoot> --json           # 列出 checkpoint
-entire-bridge checkpoint export <id> --repo <repoRoot> --json # 导出详情
-```
-
-产出 `EntireStoaCheckpointExport`（定义在 `src/shared/direct-memory.ts`）：
-
-```ts
-interface EntireStoaCheckpointExport {
-  checkpoint_id: string
-  checkpoint_format_version: 'v1'
-  checkpoint_metadata_commit_sha: string
-  source_worktree_commit_sha: string | null
-  root_metadata_ref: string
-  sessions: EntireStoaSessionExport[]
-  token_usage: unknown
-  combined_attribution: unknown
-}
-
-interface EntireStoaSessionExport {
-  session_id: string
-  agent: string
-  model: string | null
-  turn_id: string | null
-  metadata_ref: string
-  transcript_ref: string | null
-  transcript_text: string | null
-  prompt_ref: string | null
-  prompt_text: string | null
-  summary: string | null
-  initial_attribution: unknown
-}
-```
-
-### 去重与断点续传
-
-`DirectMemoryBridgeStore`（`src/core/direct-memory/bridge-store.ts`）将已处理的 checkpoint 记录持久化到 `.stoa/direct-memory/bridge-refs.json`。Key 为 `{projectId}\n{stoaSessionId}\n{entireCheckpointId}`，确保同一 checkpoint 不被重复处理。
-
----
-
-## 2. 演化：Checkpoint → Evolver Run → Published Context
-
-`DirectMemoryOrchestrator.evolveAndPublish()`（`src/core/direct-memory/orchestrator.ts`）编排便携式演化流程。
-
-### 步骤
-
-#### 2.1 创建 Git Worktree 隔离环境
-
-`worktree.ts` → `git worktree add --detach <path> <commitSha>`
-
-路径：`.stoa/direct-memory/worktrees/{runId}/`
-
-#### 2.2 运行 Evolver
-
-`EvolverClient`（`src/core/direct-memory/evolver-client.ts`）执行：
-
-```bash
-node index.js run --json
-```
-
-通过环境变量注入桥接信息：
-
-| 环境变量 | 来源 |
-|---|---|
-| `EVOLVER_REPO_ROOT` | worktree 路径 |
-| `MEMORY_DIR` | `.stoa/direct-memory/{runId}/memory` |
-| `EVOLUTION_DIR` | `{memoryDir}/evolution` |
-| `GEP_ASSETS_DIR` | `.stoa/direct-memory/{runId}/assets/gep` |
-| `EVOLVER_SESSION_SCOPE` | provider session ID |
-| `STOA_PROJECT_ID` | bridge.project_id |
-| `STOA_SESSION_ID` | bridge.stoa_session_id |
-| `STOA_PROVIDER_SESSION_ID` | bridge.provider_session_id |
-| `STOA_SOURCE_CHECKPOINT_ID` | bridge.source_checkpoint_id |
-| `STOA_CHECKPOINT_METADATA_COMMIT_SHA` | bridge.checkpoint_metadata_commit_sha |
-| `STOA_SOURCE_WORKTREE_COMMIT_SHA` | bridge.source_worktree_commit_sha |
-
-Evolver 产出 `EvolverStoaRunResult`，包含 signals、selected_gene_id、artifact_refs 等。
-
-#### 2.3 构建发布上下文
-
-`published-context-builder.ts` 根据 target 格式构建 `EvolverPublishedContext`：
-
-- **claude-code / codex target**：将 session 的 summary/prompt 封装为 JSONL hook 条目（含 gene_id、signals、outcome）
-- **generic target**：直接读取 `memory_graph.jsonl` 原文
-
-#### 2.4 写出发布产物
-
-`context-delivery.ts` → 写入 `.stoa/generated/evolver-context/{target}.jsonl`
-
-同时更新 bridge-store 中的 delivery 记录（target + SHA256 hash）。
-
-### 备选路径：直接导入
-
-`evolver-input-importer.ts` 提供绕过 Evolver Run 的直接转换路径，将 checkpoint 数据写成 Evolver 原生文件结构：
-
-| 输出文件 | 内容 |
-|---|---|
-| `MEMORY.md` | 所有 session 的 agent/model/summary/prompt 摘要 |
-| `USER.md` | 用户 prompt 和 correction 记录 |
-| `{date}.md` | 按日期的记忆日志 |
-| `{session_id}.jsonl` | 按 OpenClaw 格式的会话 transcript |
-
-路径：`{memoryDir}/runtime-home/.openclaw/agents/{agentName}/sessions/`
-
----
-
-## 3. 注入：新会话如何拿到演化数据
-
-注入通过 Provider 的 Hook 机制实现。以 Claude Code 为例：
-
-### Hook 注册
-
-`claude-code-provider.ts` 的 `installSidecar` 方法：
-
-1. 在 `.claude/hooks/` 生成三个 wrapper 脚本
-2. 在 `.claude/settings.local.json` 注册 hook 配置
-
-注册的 hook 事件：
-
-| 事件 | 脚本 | 触发时机 |
-|---|---|---|
-| `SessionStart` | `stoa-evolver-session-start.cjs` | 新会话启动 |
-| `PostToolUse` (matcher: `Write`) | `stoa-evolver-signal-detect.cjs` | 文件写入后 |
-| `Stop` | `stoa-evolver-session-end.cjs` | 会话结束时 |
-
-### Wrapper 脚本
-
-每个 wrapper 由 `buildEvolverWrapperSource()` 动态生成，作用是：
-
-```js
-// 1. 环境准备：将已发布的上下文路径设为 MEMORY_GRAPH_PATH
-const publishedContextPath = join(process.cwd(), '.stoa', 'generated', 'evolver-context', 'claude-code.jsonl');
-if (!process.env.MEMORY_GRAPH_PATH && existsSync(publishedContextPath)) {
-  process.env.MEMORY_GRAPH_PATH = publishedContextPath;
-}
-
-// 2. 设置 EVOLVER_ROOT
-process.env.EVOLVER_ROOT = '<evolver repo root>';
-
-// 3. 加载上游脚本
-require('<evolver>/src/adapters/scripts/evolver-session-start.js');
-```
-
-### SessionStart — 注入演化记忆
-
-`evolver-session-start.js`：
-
-1. 查找 `MEMORY_GRAPH_PATH` 环境变量指向的 JSONL（回退到 `{evolverRoot}/memory/evolution/memory_graph.jsonl`）
-2. 读取最后 5 条记录
-3. 格式化为人类可读摘要：
+落盘目录：
 
 ```
-[Evolution Memory] Recent 5 outcomes (4 success, 1 failed):
-[+] 2026-04-27 score=0.8 signals=[log_error, perf_bottleneck] Fixed timeout in API handler
-[-] 2026-04-27 score=0.3 signals=[test_failure] Attempted refactor broke auth tests
-...
-
-Use successful approaches. Avoid repeating failed patterns.
+.stoa/memory/evidence/{stoaSessionId}/{eventId}/
+  metadata.json
+  transcript.jsonl | turn-slice.json
 ```
 
-4. 输出 `{ agent_message: summary, additionalContext: summary }` → Claude Code 将其注入会话上下文
+`metadata.json` 保存这些信息：
 
-**去重机制**：当 `EVOLVER_SESSION_START_DEDUP=1` 时，基于 cwd 做 TTL 内去重（默认 30 分钟），防止同一 workspace 在短时间内重复注入。
+- Stoa `projectId` / `sessionId`
+- provider 类型
+- provider session id
+- turn id
+- 原始 `payload`
+- 规范化 `evidence`
+- 快照文件类型和源 transcript 指针
 
-### PostToolUse (Write) — 实时信号检测
+这一层的目标是让后续记忆处理不依赖 provider 自己的 transcript 文件还能一直存在。
 
-`evolver-signal-detect.js`：
+## 2. 运行时触发
 
-1. 读取 stdin 中的编辑事件 JSON
-2. 检测信号关键词（perf_bottleneck, capability_gap, log_error, test_failure 等）
-3. 输出 `additional_context` 提示
+`SessionEventBridge` 在处理每个展开后的 provider 事件时按这个顺序执行：
 
-### Stop — 记录会话产出
+1. 持久化证据
+2. 写 observability
+3. 应用 session state patch
+4. 解析项目路径并调用 `memoryRuntime.notifyTurnCompleted(...)`
 
-`evolver-session-end.js`：
+`MemoryRuntime` 只处理 `agent.turn_completed`，并按 `session_id` 串行排队，避免同一会话的记忆维护并发踩踏。
 
-1. `git diff --stat HEAD~1` 收集变更统计
-2. `detectSignals()` 从 diff 中提取信号
-3. 构建 outcome：`{ status: 'success'|'failed', score, signals, summary }`
-4. `recordToLocal()` → 追加到 `memory_graph.jsonl`
-5. 或 `recordToHub()` → POST 到 EvoMap Hub（如已配置）
+实现文件：
 
----
+- `src/main/session-event-bridge.ts`
+- `src/core/memory/runtime.ts`
 
-## 数据闭环
+## 3. Maintainer 阶段
+
+`EvolverMaintainer.processTurnCompletion()` 是固定内置 maintainer。
+
+### 3.1 取未处理证据
+
+`RuntimeStateStore` 在 `.stoa/memory/runtime-state.json` 中记录：
+
+- `sessionProgress`
+- `runRecords`
+- `publishedRecords`
+
+其中 `sessionProgress.lastProcessedEvidenceKey` 用来裁掉已经处理过的 evidence snapshot。
+
+### 3.2 生成语义摘要
+
+Maintainer 会把未处理证据拼成 prompt，交给 `CliAiProvider`。这个 provider 使用设置里的 `memoryAiProvider` 选择 `claude-code` 或 `codex` 可执行文件，负责三类非交互任务：
+
+- 会话摘要
+- review 决策
+- distillation 响应
+
+实现文件：
+
+- `src/core/memory/evolver-maintainer.ts`
+- `src/core/memory/cli-ai-provider.ts`
+- `src/core/provider-path-resolver.ts`
+
+### 3.3 物化 Evolver 输入
+
+`materializeEvidenceSnapshotsIntoEvolverInputs()` 会把证据写成 Evolver 当前可消费的文件集：
+
+- `{worktreeRepoRoot}/MEMORY.md`
+- `{worktreeRepoRoot}/USER.md`
+- `{memoryDir}/{yyyy-mm-dd}.md`
+- `{memoryDir}/runtime-home/.openclaw/agents/{agent}/sessions/*.jsonl`
+
+实现文件：
+
+- `src/core/memory/evolver-input-materializer.ts`
+
+### 3.4 创建隔离 worktree
+
+Maintainer 先解析 git repo root 和 `HEAD`，然后在下面创建 detached worktree：
 
 ```
-┌─────────────────────────────────────────────────┐
-│                    新会话                         │
-│                                                   │
-│  SessionStart hook                                │
-│    ↓ 读取 memory_graph.jsonl 最后 N 条            │
-│    ↓ 注入 agent_message 到上下文                   │
-│                                                   │
-│  会话进行中                                        │
-│    ↓ PostToolUse hook 实时信号检测                  │
-│                                                   │
-│  会话结束                                          │
-│    ↓ Stop hook → git diff → 信号提取               │
-│    ↓ outcome 追加到 memory_graph.jsonl             │
-│                                                   │
-│  CompletionService                                │
-│    ↓ entire-bridge 导出 checkpoint                 │
-│    ↓ Orchestrator 运行 Evolver 演化                │
-│    ↓ 发布到 .stoa/generated/evolver-context/       │
-│                                                   │
-│  → 下一个 SessionStart hook 读取更新后的 context    │
-└─────────────────────────────────────────────────┘
+.stoa/memory/worktrees/{runId}/
 ```
 
-## 关键文件索引
+实现文件：
 
-| 文件 | 职责 |
-|---|---|
-| `src/shared/direct-memory.ts` | 所有共享类型定义 |
-| `src/core/direct-memory/completion-service.ts` | 会话事件监听与采集调度 |
-| `src/core/direct-memory/entire-client.ts` | Entire Bridge CLI 封装 |
-| `src/core/direct-memory/evolver-client.ts` | Evolver CLI 封装 |
-| `src/core/direct-memory/orchestrator.ts` | 演化与发布编排器 |
-| `src/core/direct-memory/published-context-builder.ts` | 发布上下文构建 |
-| `src/core/direct-memory/context-delivery.ts` | 发布产物写出 |
-| `src/core/direct-memory/bridge-store.ts` | 桥接记录持久化与去重 |
-| `src/core/direct-memory/evolver-input-importer.ts` | Checkpoint 直接转换为 Evolver 原生格式 |
-| `src/core/direct-memory/worktree.ts` | Git worktree 管理 |
-| `src/extensions/providers/claude-code-provider.ts` | Hook 注册与 wrapper 生成 |
-| `research/upstreams/evolver/src/adapters/scripts/evolver-session-start.js` | 会话启动注入脚本 |
-| `research/upstreams/evolver/src/adapters/scripts/evolver-signal-detect.js` | 信号检测脚本 |
-| `research/upstreams/evolver/src/adapters/scripts/evolver-session-end.js` | 会话结束记录脚本 |
+- `src/core/memory/worktree.ts`
+
+### 3.5 运行 Evolver
+
+Maintainer 通过 `EvolverClient.run()` 调用内置的 Evolver 仓库：
+
+- CLI 解析：`src/core/memory/bundled-evolver.ts`
+- JSON 命令执行：`src/core/memory/command-runner.ts`
+- Evolver 客户端：`src/core/memory/evolver-client.ts`
+
+Stoa 为每次运行分配：
+
+```
+.stoa/memory/runs/{runId}/memory
+.stoa/memory/runs/{runId}/evolution
+.stoa/memory/runs/{runId}/gep-assets
+```
+
+并通过环境变量传给 Evolver：
+
+- `EVOLVER_REPO_ROOT`
+- `MEMORY_DIR`
+- `EVOLUTION_DIR`
+- `GEP_ASSETS_DIR`
+- `EVOLVER_SESSION_SCOPE`
+- `STOA_PROJECT_ID`
+- `STOA_SESSION_ID`
+- `STOA_PROVIDER_SESSION_ID`
+
+### 3.6 Review 与 Distill
+
+如果 Evolver run 返回 `review_status === 'pending'`，Maintainer 会：
+
+1. `exportReview()`
+2. 交给 `CliAiProvider.review(...)`
+3. 根据结果调用 `approveReview()` 或 `rejectReview()`
+
+当 review 最终为 `approved` 时，Maintainer 继续：
+
+1. `prepareDistillation()`
+2. 交给 `CliAiProvider.distill(...)`
+3. 将纯文本响应写入响应文件
+4. `completeDistillation(responseFilePath)`
+
+这里不依赖 Evolver 默认的 `llmReview.js` stub。
+
+## 4. 运行时状态
+
+`RuntimeStateStore` 当前保存三类状态：
+
+### `sessionProgress`
+
+按 `{projectId, stoaSessionId}` 记录上次处理到的 evidence key。
+
+### `runRecords`
+
+按 `{projectId, stoaSessionId}` 记录一次会话最近一次 Evolver run：
+
+- `runId`
+- `providerSessionId`
+- `worktreePath`
+- `memoryDir`
+- `evolutionDir`
+- `gepAssetsDir`
+- `reviewStateRef`
+- `reviewStatus`
+- `lastError`
+
+### `publishedRecords`
+
+按 `{projectId, stoaSessionId, consumer}` 记录某次注入动作的发布状态和 hash。
+
+实现文件：
+
+- `src/core/memory/runtime-state-store.ts`
+
+## 5. Claude 注入阶段
+
+`launchTrackedSessionRuntime()` 在启动 `claude-code` session 之前调用 `ClaudeCodeInjector.injectLatestContext(...)`。
+
+当前选择逻辑：
+
+1. 优先使用当前 `stoaSessionId` 对应的 approved run
+2. 如果当前 session 还没有 approved run，则回退到同一项目里最新的 approved run
+
+第二步就是“上一个会话学到的记忆，在下一个会话启动时可被消费”的桥接点。
+
+注入器做的事情：
+
+1. 选择 run
+2. 调用 `publish-context --target=claude-code`
+3. 写出 `.stoa/generated/evolver-context/claude-code.jsonl`
+4. 计算 sha256 hash
+5. 更新当前 session 的 published record
+
+实现文件：
+
+- `src/main/launch-tracked-session-runtime.ts`
+- `src/core/memory/claude-code-injector.ts`
+
+## 6. Claude Code 消费路径
+
+`claude-code-provider.ts` 现在只负责两类 hook：
+
+1. Stoa HTTP hooks
+   - `UserPromptSubmit`
+   - `PreToolUse`
+   - `Stop`
+   - `StopFailure`
+   - `PermissionRequest`
+2. 一个 Evolver `SessionStart` command wrapper
+
+不会再自动安装：
+
+- `stoa-evolver-signal-detect.cjs`
+- `stoa-evolver-session-end.cjs`
+
+`SessionStart` wrapper 的职责只有两件事：
+
+1. 如果 `.stoa/generated/evolver-context/claude-code.jsonl` 存在，并且当前进程还没设置 `MEMORY_GRAPH_PATH`，就把它指过去
+2. `require()` 上游 `evolver-session-start.js`
+
+因此 Claude Code 真正消费的是 Evolver 原生 `publish-context` 产出的 JSONL。
+
+实现文件：
+
+- `src/extensions/providers/claude-code-provider.ts`
+- `research/upstreams/evolver/src/stoa/publishContext.js`
+
+## 7. Entire 的位置
+
+Entire 仍然可以保留为显式离线工具，但它已经不在正常 build / runtime 链路里：
+
+- `package.json` 的 `build` 不再调用 `build:entire-bridge`
+- 正常记忆环路不再读取 `src/core/direct-memory/`
+- 正常记忆环路的输入来自 `.stoa/memory/evidence/`
+
+这意味着当前主路径是：
+
+**provider-native evidence -> Stoa-owned runtime -> Evolver native publish format -> Claude SessionStart consumption**

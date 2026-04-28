@@ -1,15 +1,20 @@
+import { exec as execChildProcess } from 'node:child_process'
 import { BrowserWindow, Menu, dialog, app, ipcMain } from 'electron'
-import { appendFile, mkdir } from 'node:fs/promises'
+import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { autoUpdater } from 'electron-updater'
 import { IPC_CHANNELS } from '@core/ipc-channels'
+import { ClaudeCodeInjector, getClaudeCodePublishedContextPath } from '@core/memory/claude-code-injector'
+import { EvolverMaintainer } from '@core/memory/evolver-maintainer'
+import { MemoryRuntime } from '@core/memory/runtime'
 import { InMemoryObservationStore } from '@core/observation-store'
 import type { ListObservationEventsOptions } from '@core/observation-store'
 import { ObservabilityService } from '@core/observability-service'
 import { ProjectSessionManager } from '@core/project-session-manager'
 import { resolveRuntimePaths as resolveProviderRuntimePaths } from '@core/provider-path-resolver'
 import { detectShell, detectProvider } from '@core/settings-detector'
+import { getProvider } from '@extensions/providers'
 import { getProviderDescriptorByProviderId } from '@shared/provider-descriptors'
 import { derivePresencePhase } from '@shared/session-state-reducer'
 import { SessionRuntimeController } from './session-runtime-controller'
@@ -29,6 +34,8 @@ let ptyHost: PtyHost | null = null
 let runtimeController: SessionRuntimeController | null = null
 let sessionEventBridge: SessionEventBridge | null = null
 let sessionInputRouter: SessionInputRouter | null = null
+let memoryRuntime: MemoryRuntime | null = null
+let claudeCodeInjector: ClaudeCodeInjector | null = null
 let observationStore: InMemoryObservationStore | null = null
 let observabilityService: ObservabilityService | null = null
 let updateService: UpdateService | null = null
@@ -232,6 +239,58 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+async function execShellCommand(
+  command: string,
+  cwd: string,
+  env: NodeJS.ProcessEnv
+): Promise<string> {
+  return await new Promise<string>((resolve, reject) => {
+    execChildProcess(
+      command,
+      {
+        cwd,
+        env,
+        windowsHide: true
+      },
+      (error, stdout, stderr) => {
+        if (error) {
+          reject(new Error(stderr || error.message))
+          return
+        }
+
+        resolve(stdout)
+      }
+    )
+  })
+}
+
+function parseJsonTail(stdout: string): unknown {
+  const trimmed = stdout.trim()
+  if (!trimmed) {
+    throw new Error('Expected JSON output but command stdout was empty.')
+  }
+
+  try {
+    return JSON.parse(trimmed) as unknown
+  } catch {
+    const lines = trimmed.split(/\r?\n/)
+    for (let index = 1; index < lines.length; index += 1) {
+      const candidate = lines.slice(index).join('\n').trim()
+      if (!candidate) {
+        continue
+      }
+
+      try {
+        return JSON.parse(candidate) as unknown
+      } catch {
+        // Keep scanning.
+      }
+    }
+  }
+
+  throw new Error(`Expected JSON output but could not parse stdout:\n${stdout}`)
+}
+
 async function waitForValue<T>(
   readValue: () => Promise<T | null>,
   description: string,
@@ -428,7 +487,11 @@ app.whenReady().then(async () => {
     },
     observabilityService
   )
-  sessionEventBridge = new SessionEventBridge(projectSessionManager, runtimeController, observabilityService)
+  memoryRuntime = new MemoryRuntime(new EvolverMaintainer(projectSessionManager))
+  claudeCodeInjector = new ClaudeCodeInjector()
+  sessionEventBridge = new SessionEventBridge(projectSessionManager, runtimeController, observabilityService, {
+    memoryRuntime
+  })
   updateService = new UpdateService({
     app,
     updater: autoUpdater,
@@ -495,6 +558,7 @@ app.whenReady().then(async () => {
         ptyHost,
         runtimeController,
         sessionEventBridge,
+        claudeCodeInjector: claudeCodeInjector ?? undefined,
         resolveRuntimePaths
       })
 
@@ -596,6 +660,65 @@ app.whenReady().then(async () => {
         sessionId: session.id,
         marker: packagedSmokeMarker,
         replayLength: terminalReplay.length
+      })
+
+      const publishedContextPath = getClaudeCodePublishedContextPath(packagedSmokeProjectDir)
+      await mkdir(dirname(publishedContextPath), { recursive: true })
+      await writeFile(
+        publishedContextPath,
+        `${JSON.stringify({
+          timestamp: '2026-04-28T00:00:00.000Z',
+          signals: ['packaged_smoke'],
+          outcome: {
+            status: 'unknown',
+            score: null,
+            note: 'Packaged smoke memory context is available to Claude SessionStart.'
+          }
+        })}\n`,
+        'utf8'
+      )
+
+      const claudeProvider = getProvider('claude-code')
+      await claudeProvider.installSidecar({
+        session_id: 'packaged-smoke-claude',
+        project_id: project.id,
+        path: packagedSmokeProjectDir,
+        title: 'packaged-smoke-claude',
+        type: 'claude-code',
+        external_session_id: 'packaged-smoke-claude'
+      }, {
+        webhookPort,
+        sessionSecret: 'packaged-smoke-secret',
+        providerPort: 0
+      })
+
+      const hookSettings = JSON.parse(await readFile(join(packagedSmokeProjectDir, '.claude', 'settings.local.json'), 'utf8')) as {
+        hooks?: Record<string, Array<{ hooks?: Array<{ command?: string }> }>>
+      }
+      const sessionStartCommand = hookSettings.hooks?.SessionStart?.[0]?.hooks?.[0]?.command
+      if (!sessionStartCommand) {
+        throw new Error('Packaged smoke Claude SessionStart hook command is missing.')
+      }
+
+      const sessionStartOutput = await execShellCommand(
+        sessionStartCommand,
+        packagedSmokeProjectDir,
+        {
+          ...process.env,
+          EVOLVER_SESSION_START_DEDUP: '0'
+        }
+      )
+      const sessionStartPayload = parseJsonTail(sessionStartOutput) as {
+        agent_message?: string
+        additionalContext?: string
+      }
+      const injectedMemoryText = `${sessionStartPayload.agent_message ?? ''}\n${sessionStartPayload.additionalContext ?? ''}`
+      if (!injectedMemoryText.includes('Packaged smoke memory context is available')) {
+        throw new Error(`Packaged smoke Claude SessionStart hook did not surface the published memory.\nOutput: ${sessionStartOutput}`)
+      }
+      await recordPackagedSmoke('claude-session-start-verified', {
+        command: sessionStartCommand,
+        publishedContextPath
       })
 
       ptyHost.kill(session.id)

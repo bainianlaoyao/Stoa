@@ -5,13 +5,13 @@ import { tmpdir } from 'node:os'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { DEFAULT_SETTINGS, type AppSettings } from '@shared/project-session'
 import type {
-  DistillationDecision,
+  DistillationResponse,
   ReviewDecision,
   SemanticSessionSummary
 } from '@shared/memory-runtime'
 import { CliAiProvider } from './cli-ai-provider'
 import {
-  DISTILLATION_DECISION_RESPONSE_SCHEMA,
+  DISTILLATION_RESPONSE_SCHEMA,
   REVIEW_DECISION_RESPONSE_SCHEMA,
   SEMANTIC_SESSION_SUMMARY_RESPONSE_SCHEMA
 } from './cli-ai-schemas'
@@ -91,17 +91,13 @@ describe('CliAiProvider', () => {
   })
 
   test('invokes Codex with the verified distill command shape, writes the schema file, and parses the final JSONL agent message', async () => {
-    const decision: DistillationDecision = {
-      shouldDistill: true,
-      title: 'Distill the uv workflow rule',
-      summary: 'The session established a stable uv-based package workflow.',
-      strategy: ['Keep the memory note short.', 'Record the validation commands.'],
-      validationCommands: ['npm run typecheck', 'npx vitest run']
+    const response: DistillationResponse = {
+      responseText: '{"type":"Gene","id":"gene_distilled_uv","category":"repair","signals_match":["tooling_preference"],"strategy":["Use uv for Python package management."],"constraints":{"max_files":5,"forbidden_paths":[".git","node_modules"]}}'
     }
     const execFile = vi.fn(async (_command, args: string[], _options, callback) => {
       const schemaPath = args[5]
       const schemaText = await readFile(schemaPath, 'utf8')
-      expect(JSON.parse(schemaText)).toEqual(DISTILLATION_DECISION_RESPONSE_SCHEMA)
+      expect(JSON.parse(schemaText)).toEqual(DISTILLATION_RESPONSE_SCHEMA)
 
       callback(null, [
         'codex: warming cache',
@@ -110,7 +106,7 @@ describe('CliAiProvider', () => {
           type: 'item.completed',
           item: {
             type: 'agent_message',
-            text: JSON.stringify(decision)
+            text: JSON.stringify(response)
           }
         })
       ].join('\n'), '')
@@ -128,7 +124,7 @@ describe('CliAiProvider', () => {
     await expect(provider.distill({
       cwd: rootDir,
       prompt: 'Decide whether to distill this session.'
-    })).resolves.toEqual(decision)
+    })).resolves.toEqual(response)
 
     expect(execFile).toHaveBeenCalledTimes(1)
     const firstCall = execFile.mock.calls[0]
@@ -256,19 +252,15 @@ describe('CliAiProvider', () => {
   })
 
   test('shell-wraps Windows PowerShell provider scripts instead of execFile launching them directly', async () => {
-    const decision: DistillationDecision = {
-      shouldDistill: true,
-      title: 'Record the Windows launcher rule',
-      summary: 'Windows ps1 launchers need PowerShell wrapping.',
-      strategy: ['Use the detected shell host when it is PowerShell.'],
-      validationCommands: ['npx vitest run src/core/memory/cli-ai-provider.test.ts']
+    const response: DistillationResponse = {
+      responseText: '{"type":"Gene","id":"gene_distilled_windows","category":"optimize","signals_match":["windows_launcher"],"strategy":["Wrap PowerShell launchers."],"constraints":{"max_files":5,"forbidden_paths":[".git","node_modules"]}}'
     }
     const execFile = vi.fn((_command, _args, _options, callback) => {
       callback(null, JSON.stringify({
         type: 'item.completed',
         item: {
           type: 'agent_message',
-          text: JSON.stringify(decision)
+          text: JSON.stringify(response)
         }
       }), '')
     })
@@ -285,7 +277,7 @@ describe('CliAiProvider', () => {
     await expect(provider.distill({
       cwd: rootDir,
       prompt: 'Decide whether to distill this session.'
-    })).resolves.toEqual(decision)
+    })).resolves.toEqual(response)
 
     expect(execFile).toHaveBeenCalledWith(
       'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
@@ -315,25 +307,18 @@ describe('CliAiProvider', () => {
     )
   })
 
-  test('canonicalizes an extensionless Windows Codex shim to the ps1 sibling and launches through PowerShell', async () => {
-    const decision: DistillationDecision = {
-      shouldDistill: true,
-      title: 'Prefer the PowerShell launcher',
-      summary: 'The extensionless npm shim should normalize to the ps1 sibling.',
-      strategy: ['Prefer safer sibling launchers before execution.'],
-      validationCommands: ['npm run typecheck']
+  test('keeps explicit extensionless Windows provider paths unchanged', async () => {
+    const response: DistillationResponse = {
+      responseText: '{"type":"Gene","id":"gene_distilled_explicit_path","category":"repair","signals_match":["explicit_provider_path"],"strategy":["Use the configured path exactly as provided."],"constraints":{"max_files":5,"forbidden_paths":[".git","node_modules"]}}'
     }
     const execFile = vi.fn((_command, _args, _options, callback) => {
       callback(null, JSON.stringify({
         type: 'item.completed',
         item: {
           type: 'agent_message',
-          text: JSON.stringify(decision)
+          text: JSON.stringify(response)
         }
       }), '')
-    })
-    const pathExists = vi.fn(async (candidatePath: string) => {
-      return candidatePath === 'C:\\Users\\30280\\AppData\\Roaming\\npm\\codex.ps1'
     })
     const provider = new CliAiProvider({
       settings: createSettings('codex'),
@@ -342,24 +327,17 @@ describe('CliAiProvider', () => {
         shellPath: 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
         providerPath: 'C:\\Users\\30280\\AppData\\Roaming\\npm\\codex'
       }),
-      pathExists,
       platform: 'win32'
     })
 
     await expect(provider.distill({
       cwd: rootDir,
       prompt: 'Decide whether to distill this session.'
-    })).resolves.toEqual(decision)
+    })).resolves.toEqual(response)
 
-    expect(pathExists).toHaveBeenCalledWith('C:\\Users\\30280\\AppData\\Roaming\\npm\\codex.exe')
-    expect(pathExists).toHaveBeenCalledWith('C:\\Users\\30280\\AppData\\Roaming\\npm\\codex.ps1')
     expect(execFile).toHaveBeenCalledWith(
-      'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+      'C:\\Users\\30280\\AppData\\Roaming\\npm\\codex',
       [
-        '-NoLogo',
-        '-NoProfile',
-        '-File',
-        'C:\\Users\\30280\\AppData\\Roaming\\npm\\codex.ps1',
         'exec',
         '--skip-git-repo-check',
         '--sandbox',
@@ -381,7 +359,7 @@ describe('CliAiProvider', () => {
     )
   })
 
-  test('rejects canonical Windows cmd launchers when no safer sibling exists', async () => {
+  test('rejects direct Windows cmd launchers for CLI AI execution', async () => {
     const execFile = vi.fn()
     const provider = new CliAiProvider({
       settings: createSettings('claude-code'),
@@ -390,7 +368,6 @@ describe('CliAiProvider', () => {
         shellPath: 'C:\\Windows\\System32\\cmd.exe',
         providerPath: 'C:\\Users\\30280\\AppData\\Local\\Programs\\claude\\claude.cmd'
       }),
-      pathExists: vi.fn().mockResolvedValue(false),
       platform: 'win32'
     })
 

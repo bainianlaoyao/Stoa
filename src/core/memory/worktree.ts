@@ -50,6 +50,22 @@ export async function resolveGitRepoRoot(
   }
 }
 
+export async function resolveGitHeadCommitSha(
+  repoRoot: string,
+  runTextCommand: RunTextCommand = defaultRunTextCommand
+): Promise<string> {
+  try {
+    const stdout = await runTextCommand({
+      command: 'git',
+      args: ['rev-parse', 'HEAD'],
+      cwd: repoRoot
+    })
+    return stdout.trim()
+  } catch (error) {
+    throw new Error(`Memory runtime requires a resolvable git HEAD: ${error instanceof Error ? error.message : String(error)}`)
+  }
+}
+
 export async function createMemoryWorktree(options: {
   repoRoot: string
   runId: string

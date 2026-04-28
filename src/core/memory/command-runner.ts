@@ -50,7 +50,11 @@ function getExitCode(error: Error): number | null {
 
 export async function runJsonCommand<TOutput>(options: JsonCommandOptions): Promise<TOutput> {
   const execFile = options.execFile ?? nodeExecFile
-  const stdout = await new Promise<string>((resolve, reject) => {
+  const { stdout, stderr, exitCode } = await new Promise<{
+    stdout: string
+    stderr: string
+    exitCode: number | null
+  }>((resolve, reject) => {
     execFile(
       options.command,
       options.args,
@@ -63,6 +67,16 @@ export async function runJsonCommand<TOutput>(options: JsonCommandOptions): Prom
       },
       (error, commandStdout, commandStderr) => {
         if (error) {
+          const parsedJson = tryParseJsonOutput(commandStdout)
+          if (parsedJson.parsed) {
+            resolve({
+              stdout: commandStdout,
+              stderr: commandStderr,
+              exitCode: getExitCode(error)
+            })
+            return
+          }
+
           reject(new JsonCommandError(`Command failed: ${options.command}`, {
             command: options.command,
             args: options.args,
@@ -73,20 +87,58 @@ export async function runJsonCommand<TOutput>(options: JsonCommandOptions): Prom
           return
         }
 
-        resolve(commandStdout)
+        resolve({
+          stdout: commandStdout,
+          stderr: commandStderr,
+          exitCode: 0
+        })
       }
     )
   })
 
-  try {
-    return JSON.parse(stdout) as TOutput
-  } catch {
+  const parsedJson = tryParseJsonOutput(stdout)
+  if (!parsedJson.parsed) {
     throw new JsonCommandError(`Command did not emit valid JSON: ${options.command}`, {
       command: options.command,
       args: options.args,
-      exitCode: 0,
+      exitCode,
       stdout,
-      stderr: ''
+      stderr
     })
   }
+
+  return parsedJson.value as TOutput
+}
+
+function tryParseJsonOutput(stdout: string): { parsed: true; value: unknown } | { parsed: false } {
+  const trimmed = stdout.trim()
+  if (!trimmed) {
+    return { parsed: false }
+  }
+
+  try {
+    return {
+      parsed: true,
+      value: JSON.parse(trimmed) as unknown
+    }
+  } catch {
+    const lines = trimmed.split(/\r?\n/)
+    for (let startIndex = 1; startIndex < lines.length; startIndex += 1) {
+      const candidate = lines.slice(startIndex).join('\n').trim()
+      if (!candidate) {
+        continue
+      }
+
+      try {
+        return {
+          parsed: true,
+          value: JSON.parse(candidate) as unknown
+        }
+      } catch {
+        // Keep scanning until a valid JSON tail is found.
+      }
+    }
+  }
+
+  return { parsed: false }
 }

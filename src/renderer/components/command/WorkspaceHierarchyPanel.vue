@@ -316,7 +316,10 @@ onBeforeUnmount(() => {
                 :data-attention-reason="sessionAttentionReason(session) ?? undefined"
               />
               <img class="route-provider-icon" :src="providerIcon(session.type)" :alt="session.type" />
-              <span v-if="sessionStatusLabel(session)" class="route-session-label">{{ sessionStatusLabel(session) }}</span>
+              <div class="route-copy route-copy--session">
+                <span class="route-name">{{ session.title }}</span>
+                <span v-if="sessionStatusLabel(session)" class="route-session-label">{{ sessionStatusLabel(session) }}</span>
+              </div>
             </button>
             <span class="route-row-actions">
               <button
@@ -451,7 +454,7 @@ onBeforeUnmount(() => {
 }
 
 .route-item.child {
-  grid-template-columns: 6px 14px minmax(0, 1fr);
+  grid-template-columns: 6px 14px;
   gap: 6px;
   padding: 4px 8px 4px 38px;
 }

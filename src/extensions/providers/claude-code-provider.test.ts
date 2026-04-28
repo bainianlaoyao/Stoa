@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { execFile } from 'node:child_process'
+import { exec } from 'node:child_process'
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -166,16 +166,19 @@ describe('claude-code provider', () => {
       expect(content).toContain('STOA_SESSION_SECRET')
       expect(Object.keys(settings.hooks).sort()).toEqual([
         'PermissionRequest',
-        'PostToolUse',
         'PreToolUse',
         'SessionStart',
         'Stop',
         'StopFailure',
         'UserPromptSubmit'
       ])
-      expect(content).toContain('node .claude/hooks/stoa-evolver-session-start.cjs')
-      expect(content).toContain('node .claude/hooks/stoa-evolver-session-end.cjs')
-      expect(content).toContain('node .claude/hooks/stoa-evolver-signal-detect.cjs')
+      const sessionStartCommand = readSessionStartHookCommand(content)
+      expect(sessionStartCommand).toContain(process.platform === 'win32'
+        ? 'stoa-evolver-session-start.cmd'
+        : 'stoa-evolver-session-start.cjs')
+      expect(sessionStartCommand.startsWith('node ')).toBe(false)
+      expect(content).not.toContain('stoa-evolver-session-end.cjs')
+      expect(content).not.toContain('stoa-evolver-signal-detect.cjs')
       expect(content).not.toContain('session_claude_env')
       expect(content).not.toContain('secret-env')
     } finally {
@@ -205,6 +208,13 @@ describe('claude-code provider', () => {
       expect(startWrapper).toContain('EVOLVER_ROOT')
       expect(startWrapper).toContain('evolver-session-start.js')
       expect(startWrapper).toContain('research/upstreams/evolver')
+      if (process.platform === 'win32') {
+        const launcher = await readFile(join(workspaceDir, '.claude', 'hooks', 'stoa-evolver-session-start.cmd'), 'utf8')
+        expect(launcher).toContain(process.execPath)
+        expect(launcher).toContain('ELECTRON_RUN_AS_NODE')
+      }
+      await expect(readFile(join(workspaceDir, '.claude', 'hooks', 'stoa-evolver-session-end.cjs'), 'utf8')).rejects.toThrow()
+      await expect(readFile(join(workspaceDir, '.claude', 'hooks', 'stoa-evolver-signal-detect.cjs'), 'utf8')).rejects.toThrow()
     } finally {
       await rm(workspaceDir, { recursive: true, force: true })
     }
@@ -241,26 +251,9 @@ describe('claude-code provider', () => {
         })
       ].join('\n') + '\n', 'utf8')
 
-      const stdout = await new Promise<string>((resolve, reject) => {
-        execFile(
-          'node',
-          [join(workspaceDir, '.claude', 'hooks', 'stoa-evolver-session-start.cjs')],
-          {
-            cwd: workspaceDir,
-            env: {
-              ...process.env,
-              MEMORY_GRAPH_PATH: memoryGraphPath
-            },
-            windowsHide: true
-          },
-          (error, output, stderr) => {
-            if (error) {
-              reject(new Error(stderr || error.message))
-              return
-            }
-            resolve(output)
-          }
-        )
+      const stdout = await runSessionStartHookFromSettings(workspaceDir, {
+        ...process.env,
+        MEMORY_GRAPH_PATH: memoryGraphPath
       })
 
       const parsed = JSON.parse(stdout) as { agent_message?: string; additionalContext?: string }
@@ -306,26 +299,9 @@ describe('claude-code provider', () => {
         })
       ].join('\n') + '\n', 'utf8')
 
-      const stdout = await new Promise<string>((resolve, reject) => {
-        execFile(
-          'node',
-          [join(workspaceDir, '.claude', 'hooks', 'stoa-evolver-session-start.cjs')],
-          {
-            cwd: workspaceDir,
-            env: {
-              ...process.env,
-              EVOLVER_ROOT: fakeEvolverRoot
-            },
-            windowsHide: true
-          },
-          (error, output, stderr) => {
-            if (error) {
-              reject(new Error(stderr || error.message))
-              return
-            }
-            resolve(output)
-          }
-        )
+      const stdout = await runSessionStartHookFromSettings(workspaceDir, {
+        ...process.env,
+        EVOLVER_ROOT: fakeEvolverRoot
       })
 
       const parsed = JSON.parse(stdout) as { agent_message?: string; additionalContext?: string }
@@ -336,3 +312,39 @@ describe('claude-code provider', () => {
     }
   })
 })
+
+function readSessionStartHookCommand(settingsJson: string): string {
+  const settings = JSON.parse(settingsJson) as {
+    hooks?: Record<string, Array<{ hooks?: Array<{ command?: string }> }>>
+  }
+  const command = settings.hooks?.SessionStart?.[0]?.hooks?.[0]?.command
+  if (!command) {
+    throw new Error('SessionStart hook command is missing.')
+  }
+  return command
+}
+
+async function runSessionStartHookFromSettings(
+  workspaceDir: string,
+  env: NodeJS.ProcessEnv
+): Promise<string> {
+  const settingsJson = await readFile(join(workspaceDir, '.claude', 'settings.local.json'), 'utf8')
+  const command = readSessionStartHookCommand(settingsJson)
+  return await new Promise<string>((resolve, reject) => {
+    exec(
+      command,
+      {
+        cwd: workspaceDir,
+        env,
+        windowsHide: true
+      },
+      (error, stdout, stderr) => {
+        if (error) {
+          reject(new Error(stderr || error.message))
+          return
+        }
+        resolve(stdout)
+      }
+    )
+  })
+}

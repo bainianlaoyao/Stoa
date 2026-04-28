@@ -1,5 +1,5 @@
 import type {
-  DistillationDecision,
+  DistillationResponse,
   ReviewDecision,
   SemanticSessionSummary
 } from '@shared/memory-runtime'
@@ -14,7 +14,7 @@ export interface SemanticSessionSummaryRequest extends CliAiBaseRequest {}
 
 export interface ReviewDecisionRequest extends CliAiBaseRequest {}
 
-export interface DistillationDecisionRequest extends CliAiBaseRequest {}
+export interface DistillationResponseRequest extends CliAiBaseRequest {}
 
 type JsonSchema =
   | JsonSchemaObject
@@ -76,23 +76,13 @@ export const REVIEW_DECISION_RESPONSE_SCHEMA: JsonSchemaObject = {
   required: ['decision', 'summary', 'concerns']
 }
 
-export const DISTILLATION_DECISION_RESPONSE_SCHEMA: JsonSchemaObject = {
+export const DISTILLATION_RESPONSE_SCHEMA: JsonSchemaObject = {
   type: 'object',
   additionalProperties: false,
   properties: {
-    shouldDistill: { type: 'boolean' },
-    title: { type: 'string' },
-    summary: { type: 'string' },
-    strategy: {
-      type: 'array',
-      items: { type: 'string' }
-    },
-    validationCommands: {
-      type: 'array',
-      items: { type: 'string' }
-    }
+    responseText: { type: 'string' }
   },
-  required: ['shouldDistill', 'title', 'summary', 'strategy', 'validationCommands']
+  required: ['responseText']
 }
 
 export const semanticSessionSummaryResponseContract: StructuredResponseContract<SemanticSessionSummary> = {
@@ -127,20 +117,16 @@ export const reviewDecisionResponseContract: StructuredResponseContract<ReviewDe
   }
 }
 
-export const distillationDecisionResponseContract: StructuredResponseContract<DistillationDecision> = {
-  schema: DISTILLATION_DECISION_RESPONSE_SCHEMA,
+export const distillationResponseContract: StructuredResponseContract<DistillationResponse> = {
+  schema: DISTILLATION_RESPONSE_SCHEMA,
   parse(value) {
     const record = asRecord(
       value,
-      'DistillationDecision',
-      Object.keys(DISTILLATION_DECISION_RESPONSE_SCHEMA.properties)
+      'DistillationResponse',
+      Object.keys(DISTILLATION_RESPONSE_SCHEMA.properties)
     )
     return {
-      shouldDistill: readBoolean(record, 'shouldDistill', 'DistillationDecision'),
-      title: readString(record, 'title', 'DistillationDecision'),
-      summary: readString(record, 'summary', 'DistillationDecision'),
-      strategy: readStringArray(record, 'strategy', 'DistillationDecision'),
-      validationCommands: readStringArray(record, 'validationCommands', 'DistillationDecision')
+      responseText: readString(record, 'responseText', 'DistillationResponse')
     }
   }
 }

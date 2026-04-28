@@ -1,30 +1,12 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { MemoryRuntimeEvidence, MemoryRuntimeEvidenceProvider } from '@shared/memory-runtime'
-import type { SessionStatePatchPayload } from '@shared/project-session'
+import type { SessionEvidenceSnapshot } from './session-evidence-store'
+
+export type { SessionEvidenceSnapshot } from './session-evidence-store'
 
 const DEFAULT_AGENT_NAME = 'main'
 const SESSION_LOG_SOURCE = 'stoa-memory-runtime'
-
-export interface SessionEvidenceSnapshot {
-  eventId: string
-  eventType: string
-  sessionId: string
-  projectId: string
-  timestamp: string
-  provider: MemoryRuntimeEvidenceProvider
-  providerSessionId: string | null
-  turnId: string | null
-  evidenceKey: string
-  payload: SessionStatePatchPayload
-  evidence: MemoryRuntimeEvidence
-  snapshot: {
-    kind: 'provider-transcript' | 'turn-slice'
-    fileName: string
-    content: string
-    sourceTranscriptPath?: string | null
-  }
-}
 
 export interface MaterializeEvolverInputsOptions {
   snapshots: SessionEvidenceSnapshot[]

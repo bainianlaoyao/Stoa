@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { writePersistedState } from '@core/state-store'
 import type {
+  EvolverReviewStatus,
   MemoryRunRecord,
   MemoryRuntimeConsumer,
   MemoryRuntimeDeliveryState,
@@ -37,6 +38,22 @@ function isNullableString(value: unknown): value is string | null {
   return value === null || typeof value === 'string'
 }
 
+function isReviewStatus(value: unknown): value is EvolverReviewStatus {
+  return value === 'none'
+    || value === 'pending'
+    || value === 'approved'
+    || value === 'rejected'
+    || value === 'failed'
+}
+
+function isPublishableReviewStatus(value: EvolverReviewStatus): boolean {
+  return value === 'approved' || value === 'none'
+}
+
+function isSuccessfulRun(record: MemoryRunRecord): boolean {
+  return record.lastError === null
+}
+
 function isConsumer(value: unknown): value is MemoryRuntimeConsumer {
   return value === 'claude-code'
     || value === 'codex'
@@ -70,12 +87,15 @@ function isRunRecord(value: unknown): value is MemoryRunRecord {
   const record = value as Record<string, unknown>
   return isString(record.projectId)
     && isString(record.stoaSessionId)
+    && isNullableString(record.providerSessionId)
     && isString(record.runId)
     && isString(record.worktreePath)
     && isString(record.memoryDir)
     && isString(record.evolutionDir)
     && isString(record.gepAssetsDir)
     && isNullableString(record.reviewStateRef)
+    && isReviewStatus(record.reviewStatus)
+    && isNullableString(record.lastError)
     && isString(record.updatedAt)
 }
 
@@ -167,6 +187,16 @@ export class RuntimeStateStore {
     })
   }
 
+  async getSessionProgress(
+    projectId: string,
+    stoaSessionId: string
+  ): Promise<MemoryRuntimeSessionProgress | null> {
+    const store = await this.read()
+    return store.sessionProgress.find(candidate =>
+      candidate.projectId === projectId && candidate.stoaSessionId === stoaSessionId
+    ) ?? null
+  }
+
   async upsertRunRecord(record: MemoryRunRecord): Promise<void> {
     await this.updateStore(store => {
       const runRecords = store.runRecords.filter(candidate => getRunKey(candidate) !== getRunKey(record))
@@ -178,6 +208,52 @@ export class RuntimeStateStore {
     })
   }
 
+  async getRunRecord(
+    projectId: string,
+    stoaSessionId: string
+  ): Promise<MemoryRunRecord | null> {
+    const store = await this.read()
+    return store.runRecords.find(candidate =>
+      candidate.projectId === projectId && candidate.stoaSessionId === stoaSessionId
+    ) ?? null
+  }
+
+  async findLatestApprovedRun(projectId: string): Promise<MemoryRunRecord | null> {
+    const store = await this.read()
+    const approvedRuns = store.runRecords
+      .filter(candidate =>
+        candidate.projectId === projectId
+        && candidate.reviewStatus === 'approved'
+        && isSuccessfulRun(candidate)
+      )
+      .sort((left, right) => {
+        if (left.updatedAt !== right.updatedAt) {
+          return right.updatedAt.localeCompare(left.updatedAt)
+        }
+        return right.runId.localeCompare(left.runId)
+      })
+
+    return approvedRuns[0] ?? null
+  }
+
+  async findLatestPublishableRun(projectId: string): Promise<MemoryRunRecord | null> {
+    const store = await this.read()
+    const publishableRuns = store.runRecords
+      .filter(candidate =>
+        candidate.projectId === projectId
+        && isPublishableReviewStatus(candidate.reviewStatus)
+        && isSuccessfulRun(candidate)
+      )
+      .sort((left, right) => {
+        if (left.updatedAt !== right.updatedAt) {
+          return right.updatedAt.localeCompare(left.updatedAt)
+        }
+        return right.runId.localeCompare(left.runId)
+      })
+
+    return publishableRuns[0] ?? null
+  }
+
   async upsertPublishedRecord(record: PublishedMemoryRecord): Promise<void> {
     await this.updateStore(store => {
       const publishedRecords = store.publishedRecords.filter(candidate => getPublishedKey(candidate) !== getPublishedKey(record))
@@ -187,6 +263,19 @@ export class RuntimeStateStore {
         publishedRecords
       }
     })
+  }
+
+  async getPublishedRecord(
+    projectId: string,
+    stoaSessionId: string,
+    consumer: MemoryRuntimeConsumer
+  ): Promise<PublishedMemoryRecord | null> {
+    const store = await this.read()
+    return store.publishedRecords.find(candidate =>
+      candidate.projectId === projectId
+      && candidate.stoaSessionId === stoaSessionId
+      && candidate.consumer === consumer
+    ) ?? null
   }
 
   private async write(store: PersistedRuntimeStateStore): Promise<void> {

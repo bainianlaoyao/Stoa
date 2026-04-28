@@ -38,92 +38,13 @@ function createCommand(target: ProviderRuntimeTarget, context: ProviderCommandCo
   }
 }
 
-async function writeSharedNotifySidecar(target: ProviderRuntimeTarget): Promise<void> {
+async function writeSharedHookSidecar(target: ProviderRuntimeTarget): Promise<void> {
   const codexDir = join(target.path, '.codex')
   await mkdir(codexDir, { recursive: true })
 
   await writeFile(
     join(codexDir, 'config.toml'),
-    'notify = ["node", ".codex/notify-stoa.mjs"]\n\n[features]\ncodex_hooks = true\n',
-    'utf-8'
-  )
-
-  await writeFile(
-    join(codexDir, 'notify-stoa.mjs'),
-    `const sessionId = process.env.STOA_SESSION_ID
-const projectId = process.env.STOA_PROJECT_ID
-const sessionSecret = process.env.STOA_SESSION_SECRET
-const webhookPort = process.env.STOA_WEBHOOK_PORT
-
-const payload = process.argv[2]
-if (!sessionId || !projectId || !sessionSecret || !webhookPort || !payload) {
-  process.exit(0)
-}
-
-let parsed
-try {
-  parsed = JSON.parse(payload)
-} catch {
-  process.exit(0)
-}
-if (!parsed || typeof parsed !== 'object') {
-  process.exit(0)
-}
-
-let patch
-if (parsed.type === 'agent-turn-complete') {
-  patch = {
-    intent: 'agent.turn_completed',
-    agentState: 'idle',
-    hasUnseenCompletion: true,
-    summary: String(parsed.type)
-  }
-} else if (parsed.type === 'agent-error') {
-  patch = {
-    intent: 'agent.turn_failed',
-    agentState: 'error',
-    summary: String(parsed.type),
-    ...(parsed.message ? { error: String(parsed.message) } : {})
-  }
-} else {
-  process.exit(0)
-}
-
-const evidence = {
-  rawSource: {
-    provider: 'codex',
-    channel: 'notify',
-    rawEventName: String(parsed.type)
-  },
-  providerSessionId: parsed['thread-id'] ?? parsed['thread_id'] ?? undefined,
-  turnId: parsed['turn-id'] ?? parsed['turn_id'] ?? undefined,
-  cwd: parsed.cwd ?? undefined,
-  inputMessages: parsed['input-messages'] ?? parsed['input_messages'] ?? undefined,
-  lastAssistantMessage: parsed['last-assistant-message'] ?? parsed['last_assistant_message'] ?? undefined
-}
-
-await fetch(\`http://127.0.0.1:\${webhookPort}/events\`, {
-  method: 'POST',
-  headers: {
-    'content-type': 'application/json',
-    'x-stoa-secret': sessionSecret
-  },
-  body: JSON.stringify({
-    event_version: 1,
-    event_id: String(parsed['turn-id'] ?? parsed['turn_id'] ?? crypto.randomUUID()),
-    event_type: String(parsed.type),
-    timestamp: new Date().toISOString(),
-    session_id: sessionId,
-    project_id: projectId,
-    source: 'provider-adapter',
-    payload: {
-      ...patch,
-      externalSessionId: parsed['thread-id'] ?? parsed['thread_id'] ?? undefined
-    },
-    evidence
-  })
-})
-`,
+    '[features]\ncodex_hooks = true\n',
     'utf-8'
   )
 
@@ -323,7 +244,7 @@ export function createCodexProvider(): ProviderDefinition {
       return null
     },
     async installSidecar(target) {
-      await writeSharedNotifySidecar(target)
+      await writeSharedHookSidecar(target)
     },
     async discoverExternalSessionIdAfterStart(target, context) {
       const sessionRoot = join(codexHome(), 'sessions')

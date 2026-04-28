@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from 'vitest'
-import { createMemoryWorktree, resolveGitRepoRoot } from './worktree'
+import { createMemoryWorktree, resolveGitHeadCommitSha, resolveGitRepoRoot } from './worktree'
 
 describe('memory worktree helpers', () => {
   test('resolves git repo root from rev-parse output', async () => {
@@ -17,6 +17,17 @@ describe('memory worktree helpers', () => {
     const runTextCommand = vi.fn().mockRejectedValue(new Error('not a git repo'))
 
     await expect(resolveGitRepoRoot('C:/not-git', runTextCommand)).rejects.toThrow('Memory runtime requires a git worktree')
+  })
+
+  test('resolves the git head commit sha from rev-parse output', async () => {
+    const runTextCommand = vi.fn().mockResolvedValue('abc123\n')
+
+    await expect(resolveGitHeadCommitSha('C:/repo', runTextCommand)).resolves.toBe('abc123')
+    expect(runTextCommand).toHaveBeenCalledWith({
+      command: 'git',
+      args: ['rev-parse', 'HEAD'],
+      cwd: 'C:/repo'
+    })
   })
 
   test('creates detached worktree from source commit under .stoa/memory/worktrees', async () => {

@@ -1,11 +1,10 @@
 import { execFile as nodeExecFile } from 'node:child_process'
-import { access, mkdtemp, rm, writeFile } from 'node:fs/promises'
-import { constants } from 'node:fs'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { extname, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import type { AppSettings, MemoryAiProvider } from '@shared/project-session'
 import type {
-  DistillationDecision,
+  DistillationResponse,
   ReviewDecision,
   SemanticSessionSummary
 } from '@shared/memory-runtime'
@@ -13,13 +12,13 @@ import { resolveProviderExecutablePath as defaultResolveProviderExecutablePath }
 import { detectProvider, detectShell } from '../settings-detector'
 import type {
   CliAiBaseRequest,
-  DistillationDecisionRequest,
+  DistillationResponseRequest,
   ReviewDecisionRequest,
   SemanticSessionSummaryRequest,
   StructuredResponseContract
 } from './cli-ai-schemas'
 import {
-  distillationDecisionResponseContract,
+  distillationResponseContract,
   reviewDecisionResponseContract,
   semanticSessionSummaryResponseContract
 } from './cli-ai-schemas'
@@ -47,7 +46,6 @@ export interface CliAiProviderOptions {
   execFile?: ExecFileLike
   resolveProviderExecutablePath?: ResolveProviderExecutablePath
   platform?: NodeJS.Platform
-  pathExists?: (candidatePath: string) => Promise<boolean>
 }
 
 export class CliAiProvider {
@@ -55,7 +53,6 @@ export class CliAiProvider {
   private readonly execFile: ExecFileLike
   private readonly resolveProviderExecutablePath: ResolveProviderExecutablePath
   private readonly platform: NodeJS.Platform
-  private readonly pathExists: (candidatePath: string) => Promise<boolean>
 
   constructor(options: CliAiProviderOptions) {
     this.settings = options.settings
@@ -63,7 +60,6 @@ export class CliAiProvider {
     this.resolveProviderExecutablePath =
       options.resolveProviderExecutablePath ?? defaultResolveProviderExecutablePath
     this.platform = options.platform ?? process.platform
-    this.pathExists = options.pathExists ?? defaultPathExists
   }
 
   async summarizeSession(request: SemanticSessionSummaryRequest): Promise<SemanticSessionSummary> {
@@ -80,10 +76,10 @@ export class CliAiProvider {
     )
   }
 
-  async distill(request: DistillationDecisionRequest): Promise<DistillationDecision> {
+  async distill(request: DistillationResponseRequest): Promise<DistillationResponse> {
     return await this.runStructuredRequest(
       request,
-      distillationDecisionResponseContract
+      distillationResponseContract
     )
   }
 
@@ -221,59 +217,31 @@ export class CliAiProvider {
       }
     }
 
-    const canonicalProviderPath = await this.normalizeWindowsProviderPath(providerPath)
-
-    if (!isWindowsScriptPath(canonicalProviderPath)) {
+    if (!isWindowsScriptPath(providerPath)) {
       return {
-        command: canonicalProviderPath,
+        command: providerPath,
         args: providerArgs
       }
     }
 
-    if (hasPowerShellExtension(canonicalProviderPath)) {
+    if (hasPowerShellExtension(providerPath)) {
       const powerShellPath = isPowerShellShell(shellPath) ? shellPath : 'powershell.exe'
       return {
         command: powerShellPath,
-        args: ['-NoLogo', '-NoProfile', '-File', canonicalProviderPath, ...providerArgs]
+        args: ['-NoLogo', '-NoProfile', '-File', providerPath, ...providerArgs]
       }
     }
 
-    if (hasBatchExtension(canonicalProviderPath)) {
+    if (hasBatchExtension(providerPath)) {
       throw new Error(
-        `Windows batch launchers are not supported for CLI AI provider execution: ${canonicalProviderPath}`
+        `Windows batch launchers are not supported for CLI AI provider execution: ${providerPath}`
       )
     }
 
     return {
-      command: canonicalProviderPath,
+      command: providerPath,
       args: providerArgs
     }
-  }
-
-  private async normalizeWindowsProviderPath(providerPath: string): Promise<string> {
-    const extension = extname(providerPath).toLowerCase()
-    const basePath = extension.length > 0
-      ? providerPath.slice(0, -extension.length)
-      : providerPath
-
-    const preferredCandidates = [
-      `${basePath}.exe`,
-      `${basePath}.ps1`,
-      `${basePath}.cmd`,
-      `${basePath}.bat`
-    ]
-
-    for (const candidatePath of preferredCandidates) {
-      if (candidatePath === providerPath) {
-        return providerPath
-      }
-
-      if (await this.pathExists(candidatePath)) {
-        return candidatePath
-      }
-    }
-
-    return providerPath
   }
 }
 
@@ -364,17 +332,4 @@ function isPowerShellShell(shellPath: string | null): shellPath is string {
 
   const normalized = shellPath.replaceAll('\\', '/').toLowerCase()
   return normalized.includes('powershell') || normalized.endsWith('/pwsh') || normalized.endsWith('/pwsh.exe')
-}
-
-function quotePowerShellValue(value: string): string {
-  return `'${value.replaceAll("'", "''")}'`
-}
-
-async function defaultPathExists(candidatePath: string): Promise<boolean> {
-  try {
-    await access(candidatePath, constants.F_OK)
-    return true
-  } catch {
-    return false
-  }
 }

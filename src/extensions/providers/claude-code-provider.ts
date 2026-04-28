@@ -1,5 +1,6 @@
-import { access, mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { resolveBundledEvolverRepoRoot } from '@core/memory/bundled-evolver'
 import type { CanonicalSessionEvent, ProviderCommand, ProviderCommandContext } from '@shared/project-session'
 import type { ProviderDefinition, ProviderRuntimeTarget } from './index'
 
@@ -11,8 +12,7 @@ const STOA_HOOK_ALLOWED_ENV_VARS = [
 ] as const
 const EVOLVER_HOOK_SCRIPT_NAMES = {
   sessionStart: 'stoa-evolver-session-start.cjs',
-  signalDetect: 'stoa-evolver-signal-detect.cjs',
-  sessionEnd: 'stoa-evolver-session-end.cjs'
+  sessionStartLauncher: 'stoa-evolver-session-start.cmd'
 } as const
 
 interface ClaudeCommandHook {
@@ -100,63 +100,33 @@ function createEvolverCommandHook(
 
 function buildClaudeHooks(
   context: ProviderCommandContext,
-  includeEvolverHooks: boolean
+  includeSessionStartHook: boolean
 ): ClaudeHookSettings {
   const stoaHttpHook = createStoaHttpHook(context)
   const hooks: ClaudeHookSettings['hooks'] = Object.fromEntries(
     CLAUDE_HOOK_EVENTS.map((eventName) => [eventName, [stoaHttpHook]])
   )
 
-  if (!includeEvolverHooks) {
+  if (!includeSessionStartHook) {
     return { hooks }
   }
 
   hooks.SessionStart = [
     createEvolverCommandHook(
-      `node .claude/hooks/${EVOLVER_HOOK_SCRIPT_NAMES.sessionStart}`,
+      buildSessionStartHookCommand(),
       3
-    )
-  ]
-  hooks.PostToolUse = [
-    createEvolverCommandHook(
-      `node .claude/hooks/${EVOLVER_HOOK_SCRIPT_NAMES.signalDetect}`,
-      2,
-      'Write'
-    )
-  ]
-  hooks.Stop = [
-    ...hooks.Stop ?? [],
-    createEvolverCommandHook(
-      `node .claude/hooks/${EVOLVER_HOOK_SCRIPT_NAMES.sessionEnd}`,
-      8
     )
   ]
 
   return { hooks }
 }
 
-async function pathExists(path: string): Promise<boolean> {
-  try {
-    await access(path)
-    return true
-  } catch {
-    return false
-  }
-}
-
-async function resolveBundledEvolverRepoRoot(): Promise<string | null> {
-  const candidates = [
-    process.env.STOA_EVOLVER_REPO_ROOT?.trim(),
-    join(process.cwd(), 'research', 'upstreams', 'evolver')
-  ].filter((candidate): candidate is string => !!candidate && candidate.length > 0)
-
-  for (const candidate of candidates) {
-    if (await pathExists(join(candidate, 'package.json'))) {
-      return candidate
-    }
+function buildSessionStartHookCommand(): string {
+  if (process.platform === 'win32') {
+    return `.\\.claude\\hooks\\${EVOLVER_HOOK_SCRIPT_NAMES.sessionStartLauncher}`
   }
 
-  return null
+  return `"${process.execPath}" "./.claude/hooks/${EVOLVER_HOOK_SCRIPT_NAMES.sessionStart}"`
 }
 
 function buildEvolverWrapperSource(
@@ -201,24 +171,38 @@ async function writeEvolverHookWrappers(
     }),
     'utf-8'
   )
-  await writeFile(
-    join(hooksDir, EVOLVER_HOOK_SCRIPT_NAMES.signalDetect),
-    buildEvolverWrapperSource(evolverRepoRoot, 'evolver-signal-detect.js'),
-    'utf-8'
-  )
-  await writeFile(
-    join(hooksDir, EVOLVER_HOOK_SCRIPT_NAMES.sessionEnd),
-    buildEvolverWrapperSource(evolverRepoRoot, 'evolver-session-end.js'),
-    'utf-8'
-  )
+
+  if (process.platform === 'win32') {
+    await writeFile(
+      join(hooksDir, EVOLVER_HOOK_SCRIPT_NAMES.sessionStartLauncher),
+      buildWindowsNodeLauncherSource({
+        runtimePath: process.execPath,
+        scriptFileName: EVOLVER_HOOK_SCRIPT_NAMES.sessionStart
+      }),
+      'utf-8'
+    )
+  }
+}
+
+function buildWindowsNodeLauncherSource(input: {
+  runtimePath: string
+  scriptFileName: string
+}): string {
+  return [
+    '@echo off',
+    'setlocal',
+    'set "ELECTRON_RUN_AS_NODE=1"',
+    `"${input.runtimePath}" "%~dp0${input.scriptFileName}"`,
+    ''
+  ].join('\r\n')
 }
 
 async function writeSharedClaudeHooks(target: ProviderRuntimeTarget, context: ProviderCommandContext): Promise<void> {
   const claudeDir = join(target.path, '.claude')
   await mkdir(claudeDir, { recursive: true })
 
-  const evolverRepoRoot = await resolveBundledEvolverRepoRoot()
-  if (evolverRepoRoot) {
+  const evolverRepoRoot = await resolveBundledEvolverRepoRoot().catch(() => null)
+  if (evolverRepoRoot !== null) {
     await writeEvolverHookWrappers(claudeDir, evolverRepoRoot)
   }
 
