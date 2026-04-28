@@ -1,234 +1,223 @@
-import { describe, expect, test, vi } from 'vitest'
-import type {
-  EvolverDistillationPrepareResult,
-  EvolverPublishedContext,
-  EvolverReviewExport,
-  EvolverReviewState,
-  EvolverRunResult
-} from '@shared/memory-runtime'
+import { readFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { afterEach, describe, expect, test, vi } from 'vitest'
+import type { DeliveryEnvelope, EvidenceRef, ProcessTurnResult } from '@shared/memory-runtime'
 import { EvolverClient } from './evolver-client'
 
+const tempDirs: string[] = []
+
+function evidenceRef(overrides: Partial<EvidenceRef> = {}): EvidenceRef {
+  return {
+    evidenceId: 'event_1',
+    projectId: 'project_1',
+    stoaSessionId: 'session_1',
+    providerSessionId: 'provider-session-1',
+    turnId: 'turn_1',
+    eventId: 'event_1',
+    eventType: 'codex.Stop',
+    evidenceKey: 'codex:provider-session-1:turn_1',
+    kind: 'turn-slice',
+    metadataPath: 'C:/repo/.stoa/memory/evidence/session_1/event_1/metadata.json',
+    path: 'C:/repo/.stoa/memory/evidence/session_1/event_1/turn-slice.json',
+    createdAt: '2026-04-28T00:00:00.000Z',
+    toolName: null,
+    ...overrides
+  }
+}
+
+afterEach(async () => {
+  await Promise.allSettled(tempDirs.splice(0).map(dir => rm(dir, { recursive: true, force: true })))
+})
+
 describe('EvolverClient', () => {
-  test('runs Evolver with path controls and runtime bridge refs', async () => {
-    const result: EvolverRunResult = {
-      ok: true,
-      run_id: 'run_1',
-      repo_root: 'C:/repo/.stoa/memory/worktrees/run_1',
-      memory_dir: 'C:/repo/.stoa/memory/runs/run_1/memory',
-      evolution_dir: 'C:/repo/.stoa/memory/runs/run_1/memory/evolution',
-      gep_assets_dir: 'C:/repo/.stoa/memory/runs/run_1/assets/gep',
-      session_scope: 'provider-session-1',
-      selected_gene_id: null,
-      signals: [],
-      review_status: 'none',
-      exit_code: 0,
-      artifact_refs: {
-        review_state_ref: null,
-        genes_ref: 'genes.json',
-        genes_jsonl_ref: 'genes.jsonl',
-        capsules_ref: 'capsules.json',
-        capsules_jsonl_ref: 'capsules.jsonl',
-        events_ref: 'events.jsonl',
-        candidates_ref: 'candidates.jsonl',
-        external_candidates_ref: 'external_candidates.jsonl',
-        failed_capsules_ref: 'failed_capsules.json',
-        memory_graph_ref: 'memory_graph.jsonl',
-        stdout_ref: 'stdout.log',
-        stderr_ref: 'stderr.log'
-      },
-      bridge: {
-        project_id: 'project_1',
-        stoa_session_id: 'session_1',
-        provider_session_id: 'provider-session-1'
-      },
-      error: null
+  test('dispatches warmStart through the host-bridge command with a JSON request file', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'stoa-evolver-client-'))
+    tempDirs.push(cwd)
+    const delivery: DeliveryEnvelope = {
+      content: 'Warm memory',
+      sourceRefs: [{ ref: 'memory-graph.jsonl', reason: 'recent outcomes', score: 0.9 }],
+      selectionPolicy: 'warm-start-v1'
     }
-    const runner = vi.fn().mockResolvedValue(result)
+    const runner = vi.fn(async (options: { args: string[] }) => {
+      const requestFileArg = options.args.find(arg => arg.startsWith('--request-file='))
+      const requestPath = requestFileArg!.slice('--request-file='.length)
+      const request = JSON.parse(await readFile(requestPath, 'utf8'))
+      expect(request).toEqual({
+        projectRoot: 'C:/repo',
+        consumer: 'claude-code',
+        stoaSessionId: 'session_1',
+        providerSessionId: 'provider-session-1'
+      })
+      return delivery
+    })
     const client = new EvolverClient({
       command: 'node',
-      cwd: 'C:/repo',
+      cwd,
       argsPrefix: ['index.js'],
       runJsonCommand: runner
     })
 
-    await expect(client.run({
-      projectId: 'project_1',
+    await expect(client.warmStart({
+      projectRoot: 'C:/repo',
+      consumer: 'claude-code',
+      stoaSessionId: 'session_1',
+      providerSessionId: 'provider-session-1'
+    })).resolves.toEqual(delivery)
+
+    expect(runner).toHaveBeenCalledOnce()
+    expect(normalizeRunnerCall(runner.mock.calls[0]![0])).toMatchObject({
+      command: 'node',
+      args: ['index.js', 'host-bridge', 'warm-start', expect.stringMatching(/^--request-file=/), '--json'],
+      cwd,
+      env: {
+        EVOLVER_QUIET_PARENT_GIT: 'true',
+        STOA_EVOLVER_PROJECT_ROOT: 'C:/repo',
+        EVOLVER_REPO_ROOT: 'C:/repo',
+        MEMORY_DIR: 'C:/repo/.stoa/evolver/memory',
+        EVOLUTION_DIR: 'C:/repo/.stoa/evolver/memory/evolution',
+        GEP_ASSETS_DIR: 'C:/repo/.stoa/evolver/assets/gep'
+      }
+    })
+  })
+
+  test('dispatches recall through the host-bridge command', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'stoa-evolver-client-'))
+    tempDirs.push(cwd)
+    const runner = vi.fn().mockResolvedValue({
+      content: 'Recall memory',
+      sourceRefs: [],
+      selectionPolicy: 'task-recall-v1'
+    } satisfies DeliveryEnvelope)
+    const client = new EvolverClient({
+      command: 'node',
+      cwd,
+      argsPrefix: ['index.js'],
+      runJsonCommand: runner
+    })
+
+    await expect(client.recall({
+      projectRoot: 'C:/repo',
+      consumer: 'codex',
       stoaSessionId: 'session_1',
       providerSessionId: 'provider-session-1',
-      repoRoot: 'C:/repo/.stoa/memory/worktrees/run_1',
-      memoryDir: 'C:/repo/.stoa/memory/runs/run_1/memory',
-      evolutionDir: 'C:/repo/.stoa/memory/runs/run_1/memory/evolution',
-      gepAssetsDir: 'C:/repo/.stoa/memory/runs/run_1/assets/gep',
-      sessionScope: 'provider-session-1'
-    })).resolves.toEqual(result)
+      taskText: 'Fix the failing tests in the provider hook bridge.'
+    })).resolves.toMatchObject({
+      content: 'Recall memory',
+      selectionPolicy: 'task-recall-v1'
+    })
 
-    expect(runner).toHaveBeenCalledWith({
+    expect(runner).toHaveBeenCalledOnce()
+    expect(normalizeRunnerCall(runner.mock.calls[0]![0])).toMatchObject({
       command: 'node',
-      args: ['index.js', 'run', '--json'],
-      cwd: 'C:/repo',
+      args: ['index.js', 'host-bridge', 'recall', expect.stringMatching(/^--request-file=/), '--json'],
+      cwd,
       env: expect.objectContaining({
-        EVOLVER_QUIET_PARENT_GIT: 'true',
-        EVOLVER_REPO_ROOT: 'C:/repo/.stoa/memory/worktrees/run_1',
-        MEMORY_DIR: 'C:/repo/.stoa/memory/runs/run_1/memory',
-        EVOLUTION_DIR: 'C:/repo/.stoa/memory/runs/run_1/memory/evolution',
-        GEP_ASSETS_DIR: 'C:/repo/.stoa/memory/runs/run_1/assets/gep',
-        EVOLVER_SESSION_SCOPE: 'provider-session-1',
-        STOA_PROJECT_ID: 'project_1',
-        STOA_SESSION_ID: 'session_1',
-        STOA_PROVIDER_SESSION_ID: 'provider-session-1'
+        STOA_EVOLVER_PROJECT_ROOT: 'C:/repo',
+        EVOLVER_REPO_ROOT: 'C:/repo'
       })
     })
-
-    const env = runner.mock.calls[0]?.[0]?.env as Record<string, unknown>
-    expect(env.STOA_SOURCE_CHECKPOINT_ID).toBeUndefined()
-    expect(env.STOA_CHECKPOINT_METADATA_COMMIT_SHA).toBeUndefined()
-    expect(env.STOA_SOURCE_WORKTREE_COMMIT_SHA).toBeUndefined()
   })
 
-  test('delegates review and review export commands', async () => {
-    const review: EvolverReviewState = {
-      ok: true,
-      status: 'pending',
-      run_id: 'run_1',
-      selected_gene_id: 'gene_1',
-      signals: ['test_failure'],
-      mutation_id: 'mut_1',
-      review_state_ref: 'state.json',
-      diff_ref: 'review.diff',
-      validation_report_ref: 'validation.json',
-      bridge: {
-        project_id: 'project_1',
-        stoa_session_id: 'session_1',
-        provider_session_id: 'provider-session-1'
-      },
-      error: null
-    }
-    const exportPayload: EvolverReviewExport = {
-      ok: true,
-      review,
-      gene: {
-        id: 'gene_1',
-        category: 'repair',
-        summary: 'Tighten validation',
-        strategy: ['Run focused validation']
-      },
-      mutation: {
-        id: 'mut_1',
-        category: 'repair',
-        risk_level: 'low'
-      },
-      diff: 'diff --git a/a b/a',
-      error: null
-    }
-    const runner = vi.fn()
-      .mockResolvedValueOnce(review)
-      .mockResolvedValueOnce(exportPayload)
-      .mockResolvedValueOnce({ ...review, status: 'approved' })
-      .mockResolvedValueOnce({ ...review, status: 'rejected' })
-    const client = new EvolverClient({ command: 'evolver', cwd: 'C:/repo', runJsonCommand: runner })
-
-    await expect(client.review()).resolves.toEqual(review)
-    await expect(client.exportReview()).resolves.toEqual(exportPayload)
-    await expect(client.approveReview()).resolves.toMatchObject({ status: 'approved' })
-    await expect(client.rejectReview()).resolves.toMatchObject({ status: 'rejected' })
-
-    expect(runner).toHaveBeenNthCalledWith(1, {
-      command: 'evolver',
-      args: ['review', '--json'],
-      cwd: 'C:/repo',
-      env: expect.objectContaining({ EVOLVER_QUIET_PARENT_GIT: 'true' })
-    })
-    expect(runner).toHaveBeenNthCalledWith(2, {
-      command: 'evolver',
-      args: ['review', '--export', '--json'],
-      cwd: 'C:/repo',
-      env: expect.objectContaining({ EVOLVER_QUIET_PARENT_GIT: 'true' })
-    })
-    expect(runner).toHaveBeenNthCalledWith(3, {
-      command: 'evolver',
-      args: ['review', '--approve', '--json'],
-      cwd: 'C:/repo',
-      env: expect.objectContaining({ EVOLVER_QUIET_PARENT_GIT: 'true' })
-    })
-    expect(runner).toHaveBeenNthCalledWith(4, {
-      command: 'evolver',
-      args: ['review', '--reject', '--json'],
-      cwd: 'C:/repo',
-      env: expect.objectContaining({ EVOLVER_QUIET_PARENT_GIT: 'true' })
-    })
-  })
-
-  test('delegates distillation prepare and complete commands', async () => {
-    const prepare: EvolverDistillationPrepareResult = {
-      ok: true,
-      reason: null,
-      prompt_path: 'C:/repo/memory/evolution/distill_prompt.md',
-      request_path: 'C:/repo/memory/evolution/distill_request.json',
-      input_capsule_count: 12,
-      error: null
-    }
-    const runner = vi.fn()
-      .mockResolvedValueOnce(prepare)
-      .mockResolvedValueOnce({
-        ok: true,
-        reason: null,
-        gene_id: 'gene_distilled_1',
-        gene: { id: 'gene_distilled_1', category: 'repair' },
-        error: null
+  test('dispatches observeWrite through the host-bridge command with evidence refs', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'stoa-evolver-client-'))
+    tempDirs.push(cwd)
+    const runner = vi.fn(async (options: { args: string[] }) => {
+      const requestFileArg = options.args.find(arg => arg.startsWith('--request-file='))
+      const requestPath = requestFileArg!.slice('--request-file='.length)
+      const request = JSON.parse(await readFile(requestPath, 'utf8'))
+      expect(request).toEqual({
+        projectRoot: 'C:/repo',
+        stoaSessionId: 'session_1',
+        providerSessionId: 'provider-session-1',
+        turnId: 'turn_1',
+        evidenceRefs: [
+          evidenceRef({
+            toolName: 'Write'
+          })
+        ]
       })
-    const client = new EvolverClient({ command: 'evolver', cwd: 'C:/repo', runJsonCommand: runner })
-
-    await expect(client.prepareDistillation()).resolves.toEqual(prepare)
-    await expect(client.completeDistillation('C:/repo/tmp/response.json')).resolves.toMatchObject({
-      ok: true,
-      gene_id: 'gene_distilled_1',
-      gene: { id: 'gene_distilled_1' }
+      return { ok: true }
+    })
+    const client = new EvolverClient({
+      command: 'node',
+      cwd,
+      argsPrefix: ['index.js'],
+      runJsonCommand: runner
     })
 
-    expect(runner).toHaveBeenNthCalledWith(1, {
-      command: 'evolver',
-      args: ['distill', '--prepare', '--json'],
-      cwd: 'C:/repo',
-      env: expect.objectContaining({ EVOLVER_QUIET_PARENT_GIT: 'true' })
-    })
-    expect(runner).toHaveBeenNthCalledWith(2, {
-      command: 'evolver',
-      args: ['distill', '--complete', '--response-file=C:/repo/tmp/response.json', '--json'],
-      cwd: 'C:/repo',
-      env: expect.objectContaining({ EVOLVER_QUIET_PARENT_GIT: 'true' })
+    await expect(client.observeWrite({
+      projectRoot: 'C:/repo',
+      stoaSessionId: 'session_1',
+      providerSessionId: 'provider-session-1',
+      turnId: 'turn_1',
+      evidenceRefs: [evidenceRef({ toolName: 'Write' })]
+    })).resolves.toBeUndefined()
+
+    expect(runner).toHaveBeenCalledOnce()
+    expect(normalizeRunnerCall(runner.mock.calls[0]![0])).toMatchObject({
+      command: 'node',
+      args: ['index.js', 'host-bridge', 'observe-write', expect.stringMatching(/^--request-file=/), '--json'],
+      cwd,
+      env: expect.objectContaining({
+        STOA_EVOLVER_PROJECT_ROOT: 'C:/repo'
+      })
     })
   })
 
-  test('delegates publish-context command', async () => {
-    const published: EvolverPublishedContext = {
-      ok: true,
-      target: 'claude-code',
-      format: 'jsonl',
-      run_id: 'run_1',
-      source_refs: [],
-      content: '{"type":"MemoryGraphEvent"}\n',
-      metadata: {
-        generated_at: '2026-04-28T00:00:00.000Z',
-        token_budget: null,
-        selection_policy: 'claude-code-memory-graph-v1'
-      },
-      bridge: {
-        project_id: 'project_1',
-        stoa_session_id: 'session_1',
-        provider_session_id: 'provider-session-1'
-      },
-      error: null
-    }
-    const runner = vi.fn().mockResolvedValue(published)
-    const client = new EvolverClient({ command: 'evolver', cwd: 'C:/repo', runJsonCommand: runner })
+  test('dispatches processTurn through the host-bridge command and returns the job id', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'stoa-evolver-client-'))
+    tempDirs.push(cwd)
+    const runner = vi.fn().mockResolvedValue({
+      jobId: 'job_turn_1'
+    } satisfies ProcessTurnResult)
+    const client = new EvolverClient({
+      command: 'node',
+      cwd,
+      argsPrefix: ['index.js'],
+      runJsonCommand: runner
+    })
 
-    await expect(client.publishContext('claude-code')).resolves.toEqual(published)
+    await expect(client.processTurn({
+      projectRoot: 'C:/repo',
+      stoaSessionId: 'session_1',
+      providerSessionId: 'provider-session-1',
+      turnId: 'turn_1',
+      evidenceRefs: [evidenceRef()]
+    })).resolves.toEqual({
+      jobId: 'job_turn_1'
+    })
 
-    expect(runner).toHaveBeenCalledWith({
-      command: 'evolver',
-      args: ['publish-context', '--target=claude-code', '--json'],
-      cwd: 'C:/repo',
-      env: expect.objectContaining({ EVOLVER_QUIET_PARENT_GIT: 'true' })
+    expect(runner).toHaveBeenCalledOnce()
+    expect(normalizeRunnerCall(runner.mock.calls[0]![0])).toMatchObject({
+      command: 'node',
+      args: ['index.js', 'host-bridge', 'process-turn', expect.stringMatching(/^--request-file=/), '--json'],
+      cwd,
+      env: expect.objectContaining({
+        STOA_EVOLVER_PROJECT_ROOT: 'C:/repo'
+      })
     })
   })
 })
+
+function normalizeRunnerCall(value: {
+  command: string
+  args: string[]
+  cwd: string
+  env?: NodeJS.ProcessEnv
+}) {
+  return {
+    ...value,
+    env: normalizePathRecord(value.env ?? {})
+  }
+}
+
+function normalizePathRecord(record: NodeJS.ProcessEnv): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(record).map(([key, value]) => [
+      key,
+      typeof value === 'string' ? value.replaceAll('\\', '/') : value
+    ])
+  ) as Record<string, string>
+}

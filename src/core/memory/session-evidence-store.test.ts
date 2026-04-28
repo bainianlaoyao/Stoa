@@ -38,7 +38,7 @@ function createEvent(overrides: Partial<CanonicalSessionEvent> = {}): CanonicalS
 }
 
 describe('SessionEvidenceStore', () => {
-  test('writes metadata and the stoa-owned snapshot under the session and event directory', async () => {
+  test('writes metadata, snapshot, and returns an evidence ref for the persisted event', async () => {
     const projectPath = await createTestTempDir('session-evidence-store-')
     const store = new SessionEvidenceStore()
     const event = createEvent()
@@ -57,6 +57,21 @@ describe('SessionEvidenceStore', () => {
     expect(result.eventDirectoryPath).toBe(eventDir)
     expect(result.metadataPath).toBe(join(eventDir, 'metadata.json'))
     expect(result.snapshotPath).toBe(join(eventDir, 'turn-slice.json'))
+    expect(result.evidenceRef).toEqual({
+      evidenceId: 'event-77',
+      projectId: 'project-77',
+      stoaSessionId: 'session-77',
+      providerSessionId: 'provider-session-77',
+      turnId: 'turn-77',
+      eventId: 'event-77',
+      eventType: 'codex.Stop',
+      evidenceKey: 'codex:provider-session-77:turn-77',
+      kind: 'turn-slice',
+      metadataPath: join(eventDir, 'metadata.json'),
+      path: join(eventDir, 'turn-slice.json'),
+      createdAt: '2026-04-28T13:00:00.000Z',
+      toolName: null
+    })
 
     const metadata = JSON.parse(await readFile(result.metadataPath, 'utf8'))
     expect(metadata).toEqual({
@@ -137,5 +152,63 @@ describe('SessionEvidenceStore', () => {
       turnId: null,
       evidenceKey: `codex::${expectedFallback}`
     })
+  })
+
+  test('seals a turn and resolves evidence refs in seal order', async () => {
+    const projectPath = await createTestTempDir('session-evidence-store-turns-')
+    const store = new SessionEvidenceStore()
+
+    await store.persist({
+      projectPath,
+      event: createEvent({
+        event_id: 'event-1',
+        timestamp: '2026-04-28T13:00:00.000Z',
+        evidence: {
+          ...createEvent().evidence!,
+          turnId: 'turn-77'
+        }
+      }),
+      snapshot: {
+        kind: 'turn-slice',
+        fileName: 'turn-slice.json',
+        content: Buffer.from('{"summary":"one"}', 'utf8')
+      }
+    })
+
+    await store.persist({
+      projectPath,
+      event: createEvent({
+        event_id: 'event-2',
+        timestamp: '2026-04-28T13:00:01.000Z',
+        event_type: 'codex.PostToolUse',
+        evidence: {
+          ...createEvent().evidence!,
+          turnId: 'turn-77',
+          toolName: 'Write'
+        }
+      }),
+      snapshot: {
+        kind: 'turn-slice',
+        fileName: 'turn-slice.json',
+        content: Buffer.from('{"summary":"two"}', 'utf8')
+      }
+    })
+
+    await store.sealTurn(projectPath, 'session-77', 'turn-77', ['event-2', 'event-1'])
+
+    await expect(store.listEvidenceRefsForTurn(projectPath, 'session-77', 'turn-77')).resolves.toEqual([
+      expect.objectContaining({
+        evidenceId: 'event-2',
+        turnId: 'turn-77',
+        eventType: 'codex.PostToolUse',
+        toolName: 'Write'
+      }),
+      expect.objectContaining({
+        evidenceId: 'event-1',
+        turnId: 'turn-77',
+        eventType: 'codex.Stop',
+        toolName: null
+      })
+    ])
   })
 })

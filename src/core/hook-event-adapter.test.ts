@@ -44,7 +44,7 @@ describe('hook event adapter', () => {
     })
   })
 
-  test('ignores Claude SessionStart hook because turn start is emitted by user prompts', () => {
+  test('adapts Claude SessionStart hook into runtime alive canonical event', () => {
     const event = adaptClaudeCodeHook(
       {
         hook_event_name: 'SessionStart',
@@ -56,7 +56,27 @@ describe('hook event adapter', () => {
       }
     )
 
-    expect(event).toBeNull()
+    expect(event).toMatchObject({
+      event_type: 'claude-code.SessionStart',
+      session_id: 'session_internal_1',
+      project_id: 'project_internal_1',
+      source: 'provider-adapter',
+      payload: {
+        intent: 'runtime.alive',
+        agentState: 'idle',
+        summary: 'SessionStart',
+        externalSessionId: 'claude-external-1'
+      },
+      evidence: {
+        rawSource: {
+          provider: 'claude-code',
+          channel: 'hook',
+          rawEventName: 'SessionStart'
+        },
+        hookEventName: 'SessionStart',
+        providerSessionId: 'claude-external-1'
+      }
+    })
   })
 
   test('adapts Claude UserPromptSubmit hook into turn started state patch event', () => {
@@ -194,16 +214,35 @@ describe('hook event adapter', () => {
     })
   })
 
-  test('returns null for unsupported Claude hook events', () => {
+  test('adapts Claude PostToolUse hook into tool started canonical event', () => {
     const event = adaptClaudeCodeHook(
-      { hook_event_name: 'PostToolUse' },
+      {
+        hook_event_name: 'PostToolUse',
+        tool_name: 'Write',
+        tool_use_id: 'tool-1'
+      },
       {
         sessionId: 'session_internal_3',
         projectId: 'project_internal_3'
       }
     )
 
-    expect(event).toBeNull()
+    expect(event).toMatchObject({
+      event_type: 'claude-code.PostToolUse',
+      session_id: 'session_internal_3',
+      project_id: 'project_internal_3',
+      source: 'provider-adapter',
+      payload: {
+        intent: 'agent.tool_started',
+        agentState: 'working',
+        summary: 'PostToolUse'
+      },
+      evidence: {
+        hookEventName: 'PostToolUse',
+        toolName: 'Write',
+        toolUseId: 'tool-1'
+      }
+    })
   })
 })
 

@@ -53,29 +53,23 @@ async function writeSharedHookSidecar(target: ProviderRuntimeTarget): Promise<vo
       SessionStart: [
         {
           matcher: '*',
-          hooks: [{ type: 'command', command: 'node .codex/hook-stoa.mjs', timeout_sec: 5 }]
+          hooks: [{ type: 'command', command: 'node .codex/hook-stoa.mjs SessionStart', timeout_sec: 5 }]
         }
       ],
       UserPromptSubmit: [
         {
-          hooks: [{ type: 'command', command: 'node .codex/hook-stoa.mjs', timeout_sec: 5 }]
-        }
-      ],
-      PreToolUse: [
-        {
-          matcher: '*',
-          hooks: [{ type: 'command', command: 'node .codex/hook-stoa.mjs', timeout_sec: 5 }]
+          hooks: [{ type: 'command', command: 'node .codex/hook-stoa.mjs UserPromptSubmit', timeout_sec: 5 }]
         }
       ],
       PostToolUse: [
         {
-          matcher: '*',
-          hooks: [{ type: 'command', command: 'node .codex/hook-stoa.mjs', timeout_sec: 5 }]
+          matcher: 'Write',
+          hooks: [{ type: 'command', command: 'node .codex/hook-stoa.mjs PostToolUse', timeout_sec: 5 }]
         }
       ],
       Stop: [
         {
-          hooks: [{ type: 'command', command: 'node .codex/hook-stoa.mjs', timeout_sec: 5 }]
+          hooks: [{ type: 'command', command: 'node .codex/hook-stoa.mjs Stop', timeout_sec: 5 }]
         }
       ]
     }
@@ -94,8 +88,9 @@ const sessionId = process.env.STOA_SESSION_ID
 const projectId = process.env.STOA_PROJECT_ID
 const sessionSecret = process.env.STOA_SESSION_SECRET
 const webhookPort = process.env.STOA_WEBHOOK_PORT
+const hookEventName = process.argv[2]
 
-if (!sessionId || !projectId || !sessionSecret || !webhookPort) {
+if (!sessionId || !projectId || !sessionSecret || !webhookPort || !hookEventName) {
   process.exit(0)
 }
 
@@ -104,9 +99,19 @@ for await (const line of createInterface({ input: process.stdin })) {
   input += line
 }
 
-if (!input.trim()) process.exit(0)
+let body = {}
+if (input.trim()) {
+  try {
+    body = JSON.parse(input)
+  } catch {
+    body = {}
+  }
+}
+if (!('hook_event_name' in body)) {
+  body = { hook_event_name: hookEventName, ...body }
+}
 
-await fetch(\`http://127.0.0.1:\${webhookPort}/hooks/codex\`, {
+const response = await fetch(\`http://127.0.0.1:\${webhookPort}/hooks/codex\`, {
   method: 'POST',
   headers: {
     'content-type': 'application/json',
@@ -114,8 +119,13 @@ await fetch(\`http://127.0.0.1:\${webhookPort}/hooks/codex\`, {
     'x-stoa-project-id': projectId,
     'x-stoa-secret': sessionSecret
   },
-  body: input
+  body: JSON.stringify(body)
 })
+
+const text = await response.text()
+if (response.ok && text.trim()) {
+  process.stdout.write(text.trim())
+}
 `,
     'utf-8'
   )

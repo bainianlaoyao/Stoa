@@ -1,5 +1,4 @@
 import { getProviderDescriptorBySessionType } from '@shared/provider-descriptors'
-import type { ClaudeCodeInjector } from '@core/memory/claude-code-injector'
 import { getProvider } from '@extensions/providers'
 import type { ProjectSessionManager } from '@core/project-session-manager'
 import type { SessionRuntimeManager, StartSessionRuntimeOptions } from '@core/session-runtime'
@@ -20,7 +19,6 @@ interface LaunchTrackedSessionRuntimeOptions {
   ptyHost: PtyHost
   runtimeController: SessionRuntimeManager
   sessionEventBridge: SessionEventBridge
-  claudeCodeInjector?: Pick<ClaudeCodeInjector, 'injectLatestContext'>
   resolveRuntimePaths: (
     sessionType: StartSessionRuntimeOptions['session']['type']
   ) => Promise<RuntimePaths>
@@ -44,21 +42,6 @@ export async function launchTrackedSessionRuntime(options: LaunchTrackedSessionR
   const provider = (options.getProvider ?? getProvider)(descriptor.providerId)
   const sessionSecret = options.sessionEventBridge.issueSessionSecret(session.id)
   const { shellPath, providerPath, claudeDangerouslySkipPermissions } = await options.resolveRuntimePaths(session.type)
-
-  if (session.type === 'claude-code' && options.claudeCodeInjector) {
-    try {
-      await options.claudeCodeInjector.injectLatestContext({
-        projectId: project.id,
-        stoaSessionId: session.id,
-        projectPath: project.path
-      })
-    } catch (error) {
-      console.error(
-        `[launch-tracked-session-runtime] Failed to inject Claude Code memory for session ${session.id}:`,
-        error
-      )
-    }
-  }
 
   await (options.startRuntime ?? startSessionRuntime)({
     session: {

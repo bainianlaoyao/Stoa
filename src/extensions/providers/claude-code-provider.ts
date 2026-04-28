@@ -1,18 +1,19 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { resolveBundledEvolverRepoRoot } from '@core/memory/bundled-evolver'
 import type { CanonicalSessionEvent, ProviderCommand, ProviderCommandContext } from '@shared/project-session'
 import type { ProviderDefinition, ProviderRuntimeTarget } from './index'
 
-const CLAUDE_HOOK_EVENTS = ['UserPromptSubmit', 'PreToolUse', 'Stop', 'StopFailure', 'PermissionRequest'] as const
 const STOA_HOOK_ALLOWED_ENV_VARS = [
   'STOA_SESSION_ID',
   'STOA_PROJECT_ID',
   'STOA_SESSION_SECRET'
 ] as const
-const EVOLVER_HOOK_SCRIPT_NAMES = {
-  sessionStart: 'stoa-evolver-session-start.cjs',
-  sessionStartLauncher: 'stoa-evolver-session-start.cmd'
+
+const STOA_CLAUDE_HOOK_SCRIPT_NAMES = {
+  sessionStart: 'stoa-hook-session-start.cjs',
+  sessionStartLauncher: 'stoa-hook-session-start.cmd',
+  userPromptSubmit: 'stoa-hook-user-prompt-submit.cjs',
+  userPromptSubmitLauncher: 'stoa-hook-user-prompt-submit.cmd'
 } as const
 
 interface ClaudeCommandHook {
@@ -65,9 +66,9 @@ function createCommand(target: ProviderRuntimeTarget, context: ProviderCommandCo
   }
 }
 
-function createStoaHttpHook(context: ProviderCommandContext): ClaudeHookMatcher {
+function createStoaHttpHook(context: ProviderCommandContext, matcher?: string): ClaudeHookMatcher {
   return {
-    matcher: '*',
+    ...(matcher ? { matcher } : {}),
     hooks: [{
       type: 'http',
       url: `http://127.0.0.1:${context.webhookPort}/hooks/claude-code`,
@@ -76,20 +77,14 @@ function createStoaHttpHook(context: ProviderCommandContext): ClaudeHookMatcher 
         'x-stoa-project-id': '${STOA_PROJECT_ID}',
         'x-stoa-secret': '${STOA_SESSION_SECRET}'
       },
-      // Claude already posts the raw hook payload; Stoa normalizes evidence on receipt.
       allowedEnvVars: [...STOA_HOOK_ALLOWED_ENV_VARS],
       timeout: 5
     }]
   }
 }
 
-function createEvolverCommandHook(
-  command: string,
-  timeout: number,
-  matcher?: string
-): ClaudeHookMatcher {
+function createClaudeCommandHook(command: string, timeout: number): ClaudeHookMatcher {
   return {
-    ...(matcher ? { matcher } : {}),
     hooks: [{
       type: 'command',
       command,
@@ -98,86 +93,144 @@ function createEvolverCommandHook(
   }
 }
 
-function buildClaudeHooks(
-  context: ProviderCommandContext,
-  includeSessionStartHook: boolean
-): ClaudeHookSettings {
-  const stoaHttpHook = createStoaHttpHook(context)
-  const hooks: ClaudeHookSettings['hooks'] = Object.fromEntries(
-    CLAUDE_HOOK_EVENTS.map((eventName) => [eventName, [stoaHttpHook]])
-  )
-
-  if (!includeSessionStartHook) {
-    return { hooks }
+function buildClaudeHooks(): ClaudeHookSettings {
+  return {
+    hooks: {
+      SessionStart: [
+        createClaudeCommandHook(buildHookCommand('SessionStart'), 4)
+      ],
+      UserPromptSubmit: [
+        createClaudeCommandHook(buildHookCommand('UserPromptSubmit'), 5)
+      ],
+      PostToolUse: [
+        createStoaHttpHook({ webhookPort: 0, sessionSecret: '', providerPort: 0 } as ProviderCommandContext, 'Write')
+      ],
+      Stop: [
+        createStoaHttpHook({ webhookPort: 0, sessionSecret: '', providerPort: 0 } as ProviderCommandContext)
+      ],
+      StopFailure: [
+        createStoaHttpHook({ webhookPort: 0, sessionSecret: '', providerPort: 0 } as ProviderCommandContext)
+      ],
+      PermissionRequest: [
+        createStoaHttpHook({ webhookPort: 0, sessionSecret: '', providerPort: 0 } as ProviderCommandContext)
+      ]
+    }
   }
-
-  hooks.SessionStart = [
-    createEvolverCommandHook(
-      buildSessionStartHookCommand(),
-      3
-    )
-  ]
-
-  return { hooks }
 }
 
-function buildSessionStartHookCommand(): string {
+function buildClaudeHooksForContext(context: ProviderCommandContext): ClaudeHookSettings {
+  return {
+    hooks: {
+      SessionStart: [
+        createClaudeCommandHook(buildHookCommand('SessionStart'), 4)
+      ],
+      UserPromptSubmit: [
+        createClaudeCommandHook(buildHookCommand('UserPromptSubmit'), 5)
+      ],
+      PostToolUse: [
+        createStoaHttpHook(context, 'Write')
+      ],
+      Stop: [
+        createStoaHttpHook(context)
+      ],
+      StopFailure: [
+        createStoaHttpHook(context)
+      ],
+      PermissionRequest: [
+        createStoaHttpHook(context)
+      ]
+    }
+  }
+}
+
+function buildHookCommand(eventName: 'SessionStart' | 'UserPromptSubmit'): string {
+  const scriptFileName = eventName === 'SessionStart'
+    ? STOA_CLAUDE_HOOK_SCRIPT_NAMES.sessionStart
+    : STOA_CLAUDE_HOOK_SCRIPT_NAMES.userPromptSubmit
+  const launcherFileName = eventName === 'SessionStart'
+    ? STOA_CLAUDE_HOOK_SCRIPT_NAMES.sessionStartLauncher
+    : STOA_CLAUDE_HOOK_SCRIPT_NAMES.userPromptSubmitLauncher
+
   if (process.platform === 'win32') {
-    return `.\\.claude\\hooks\\${EVOLVER_HOOK_SCRIPT_NAMES.sessionStartLauncher}`
+    return `.\\.claude\\hooks\\${launcherFileName}`
   }
 
-  return `"${process.execPath}" "./.claude/hooks/${EVOLVER_HOOK_SCRIPT_NAMES.sessionStart}"`
+  return `"${process.execPath}" "./.claude/hooks/${scriptFileName}"`
 }
 
-function buildEvolverWrapperSource(
-  evolverRepoRoot: string,
-  scriptFileName: string,
-  options?: {
-    publishedContextTarget?: 'claude-code'
-  }
-): string {
-  const normalizedRepoRoot = evolverRepoRoot.replace(/\\/g, '/')
-  const scriptPath = join(normalizedRepoRoot, 'src', 'adapters', 'scripts', scriptFileName).replace(/\\/g, '/')
-  const publishedContextPrelude = options?.publishedContextTarget
-    ? [
-      "const { existsSync } = require('node:fs');",
-      "const { join } = require('node:path');",
-      `const publishedContextPath = join(process.cwd(), '.stoa', 'generated', 'evolver-context', ${JSON.stringify(`${options.publishedContextTarget}.jsonl`)});`,
-      'if (!process.env.MEMORY_GRAPH_PATH && existsSync(publishedContextPath)) {',
-      '  process.env.MEMORY_GRAPH_PATH = publishedContextPath;',
-      '}'
-    ].join('\n')
-    : null
-
+function buildHookBridgeSource(eventName: 'SessionStart' | 'UserPromptSubmit'): string {
   return [
-    publishedContextPrelude,
-    `process.env.EVOLVER_ROOT = process.env.EVOLVER_ROOT || ${JSON.stringify(normalizedRepoRoot)};`,
-    `require(${JSON.stringify(scriptPath)});`,
+    'async function main() {',
+    "  const sessionId = process.env.STOA_SESSION_ID;",
+    "  const projectId = process.env.STOA_PROJECT_ID;",
+    "  const sessionSecret = process.env.STOA_SESSION_SECRET;",
+    "  const webhookPort = process.env.STOA_WEBHOOK_PORT;",
+    '  if (!sessionId || !projectId || !sessionSecret || !webhookPort) {',
+    '    return;',
+    '  }',
+    "  let input = '';",
+    "  process.stdin.setEncoding('utf8');",
+    '  for await (const chunk of process.stdin) {',
+    '    input += chunk;',
+    '  }',
+    '  let body = {};',
+    '  if (input.trim()) {',
+    '    try {',
+    '      body = JSON.parse(input);',
+    '    } catch {',
+    '      body = {};',
+    '    }',
+    '  }',
+    `  body = { hook_event_name: ${JSON.stringify(eventName)}, ...body };`,
+    "  const response = await fetch(`http://127.0.0.1:${webhookPort}/hooks/claude-code`, {",
+    "    method: 'POST',",
+    '    headers: {',
+    "      'content-type': 'application/json',",
+    "      'x-stoa-session-id': sessionId,",
+    "      'x-stoa-project-id': projectId,",
+    "      'x-stoa-secret': sessionSecret",
+    '    },',
+    '    body: JSON.stringify(body)',
+    '  });',
+    "  const text = await response.text();",
+    "  if (response.ok && text.trim()) {",
+    '    process.stdout.write(text.trim());',
+    '  }',
+    '}',
+    "main().catch(() => { process.exit(0); });",
     ''
-  ].filter((line): line is string => !!line).join('\n')
+  ].join('\n')
 }
 
-async function writeEvolverHookWrappers(
-  claudeDir: string,
-  evolverRepoRoot: string
-): Promise<void> {
+async function writeHookBridgeScripts(claudeDir: string): Promise<void> {
   const hooksDir = join(claudeDir, 'hooks')
   await mkdir(hooksDir, { recursive: true })
 
   await writeFile(
-    join(hooksDir, EVOLVER_HOOK_SCRIPT_NAMES.sessionStart),
-    buildEvolverWrapperSource(evolverRepoRoot, 'evolver-session-start.js', {
-      publishedContextTarget: 'claude-code'
-    }),
+    join(hooksDir, STOA_CLAUDE_HOOK_SCRIPT_NAMES.sessionStart),
+    buildHookBridgeSource('SessionStart'),
+    'utf-8'
+  )
+  await writeFile(
+    join(hooksDir, STOA_CLAUDE_HOOK_SCRIPT_NAMES.userPromptSubmit),
+    buildHookBridgeSource('UserPromptSubmit'),
     'utf-8'
   )
 
   if (process.platform === 'win32') {
     await writeFile(
-      join(hooksDir, EVOLVER_HOOK_SCRIPT_NAMES.sessionStartLauncher),
+      join(hooksDir, STOA_CLAUDE_HOOK_SCRIPT_NAMES.sessionStartLauncher),
       buildWindowsNodeLauncherSource({
         runtimePath: process.execPath,
-        scriptFileName: EVOLVER_HOOK_SCRIPT_NAMES.sessionStart
+        scriptFileName: STOA_CLAUDE_HOOK_SCRIPT_NAMES.sessionStart
+      }),
+      'utf-8'
+    )
+    await writeFile(
+      join(hooksDir, STOA_CLAUDE_HOOK_SCRIPT_NAMES.userPromptSubmitLauncher),
+      buildWindowsNodeLauncherSource({
+        runtimePath: process.execPath,
+        scriptFileName: STOA_CLAUDE_HOOK_SCRIPT_NAMES.userPromptSubmit
       }),
       'utf-8'
     )
@@ -200,13 +253,9 @@ function buildWindowsNodeLauncherSource(input: {
 async function writeSharedClaudeHooks(target: ProviderRuntimeTarget, context: ProviderCommandContext): Promise<void> {
   const claudeDir = join(target.path, '.claude')
   await mkdir(claudeDir, { recursive: true })
+  await writeHookBridgeScripts(claudeDir)
 
-  const evolverRepoRoot = await resolveBundledEvolverRepoRoot().catch(() => null)
-  if (evolverRepoRoot !== null) {
-    await writeEvolverHookWrappers(claudeDir, evolverRepoRoot)
-  }
-
-  const settings = buildClaudeHooks(context, evolverRepoRoot !== null)
+  const settings = buildClaudeHooksForContext(context)
   await writeFile(
     join(claudeDir, 'settings.local.json'),
     `${JSON.stringify(settings, null, 2)}\n`,

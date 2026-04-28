@@ -3,7 +3,11 @@ import { mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promise
 import { dirname, join } from 'node:path'
 import type { TranscriptSnapshotArtifact } from '@core/memory/transcript-snapshot'
 import type { CanonicalSessionEvent } from '@shared/project-session'
-import type { MemoryRuntimeEvidence, MemoryRuntimeEvidenceProvider } from '@shared/memory-runtime'
+import type {
+  EvidenceRef,
+  MemoryRuntimeEvidence,
+  MemoryRuntimeEvidenceProvider
+} from '@shared/memory-runtime'
 
 export interface PersistSessionEvidenceInput {
   projectPath: string
@@ -16,6 +20,7 @@ export interface PersistSessionEvidenceResult {
   metadataPath: string
   snapshotPath: string
   evidenceKey: string
+  evidenceRef: EvidenceRef
 }
 
 export interface SessionEvidenceSnapshot {
@@ -111,7 +116,22 @@ export class SessionEvidenceStore {
       eventDirectoryPath,
       metadataPath,
       snapshotPath,
-      evidenceKey
+      evidenceKey,
+      evidenceRef: {
+        evidenceId: input.event.event_id,
+        projectId: input.event.project_id,
+        stoaSessionId: input.event.session_id,
+        providerSessionId: evidence.providerSessionId ?? null,
+        turnId: evidence.turnId ?? null,
+        eventId: input.event.event_id,
+        eventType: input.event.event_type,
+        evidenceKey,
+        kind: input.snapshot.kind === 'provider-transcript' ? 'transcript' : 'turn-slice',
+        metadataPath,
+        path: snapshotPath,
+        createdAt: input.event.timestamp,
+        toolName: evidence.toolName ?? null
+      }
     }
   }
 
@@ -164,6 +184,86 @@ export class SessionEvidenceStore {
       }
       return left.eventId.localeCompare(right.eventId)
     })
+  }
+
+  async sealTurn(
+    projectPath: string,
+    stoaSessionId: string,
+    turnId: string,
+    evidenceIds: string[]
+  ): Promise<void> {
+    const filePath = join(
+      projectPath,
+      '.stoa',
+      'memory',
+      'evidence',
+      stoaSessionId,
+      'turns',
+      `${turnId}.json`
+    )
+    await writeJsonAtomically(filePath, {
+      version: 1,
+      turnId,
+      evidenceIds
+    })
+  }
+
+  async listEvidenceRefsForTurn(
+    projectPath: string,
+    stoaSessionId: string,
+    turnId: string
+  ): Promise<EvidenceRef[]> {
+    const filePath = join(
+      projectPath,
+      '.stoa',
+      'memory',
+      'evidence',
+      stoaSessionId,
+      'turns',
+      `${turnId}.json`
+    )
+
+    const parsed = await readFile(filePath, 'utf8')
+      .then(raw => JSON.parse(raw) as unknown)
+      .catch(() => null)
+    if (!isPersistedTurnSeal(parsed)) {
+      return []
+    }
+
+    const refs: EvidenceRef[] = []
+    for (const evidenceId of parsed.evidenceIds) {
+      const metadataPath = join(
+        projectPath,
+        '.stoa',
+        'memory',
+        'evidence',
+        stoaSessionId,
+        evidenceId,
+        'metadata.json'
+      )
+      const metadata = await this.readMetadata(metadataPath)
+      if (!metadata) {
+        continue
+      }
+
+      refs.push({
+        evidenceId,
+        projectId: metadata.projectId,
+        stoaSessionId: metadata.sessionId,
+        providerSessionId: metadata.providerSessionId,
+        turnId: metadata.turnId,
+        eventId: metadata.eventId,
+        eventType: metadata.eventType,
+        evidenceKey: metadata.evidenceKey,
+        kind: metadata.snapshot.kind === 'provider-transcript' ? 'transcript' : 'turn-slice',
+        metadataPath,
+        path: join(dirname(metadataPath), metadata.snapshot.fileName),
+        createdAt: metadata.timestamp,
+        toolName: metadata.evidence.toolName ?? null
+      })
+    }
+
+    return refs
   }
 
   private async readMetadata(filePath: string): Promise<PersistedSessionEvidenceMetadata | null> {
@@ -263,4 +363,20 @@ function isPersistedSessionEvidenceMetadata(value: unknown): value is PersistedS
     )
     && isString((snapshot as Record<string, unknown>).fileName)
     && isNullableString((snapshot as Record<string, unknown>).sourceTranscriptPath)
+}
+
+function isPersistedTurnSeal(value: unknown): value is {
+  version: 1
+  turnId: string
+  evidenceIds: string[]
+} {
+  if (typeof value !== 'object' || value === null) {
+    return false
+  }
+
+  const record = value as Record<string, unknown>
+  return record.version === 1
+    && isString(record.turnId)
+    && Array.isArray(record.evidenceIds)
+    && record.evidenceIds.every(isString)
 }

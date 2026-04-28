@@ -40,6 +40,7 @@ interface JsonSchemaObject {
 export interface StructuredResponseContract<TResponse> {
   schema: JsonSchemaObject
   parse: (value: unknown) => TResponse
+  stripUnknownKeys: (value: unknown) => Record<string, unknown>
 }
 
 export const SEMANTIC_SESSION_SUMMARY_RESPONSE_SCHEMA: JsonSchemaObject = {
@@ -98,7 +99,8 @@ export const semanticSessionSummaryResponseContract: StructuredResponseContract<
       outcome: readEnum(record, 'outcome', ['success', 'failure', 'mixed', 'unknown'], 'SemanticSessionSummary'),
       lessons: readStringArray(record, 'lessons', 'SemanticSessionSummary')
     }
-  }
+  },
+  stripUnknownKeys: (value) => stripToRecord(value, Object.keys(SEMANTIC_SESSION_SUMMARY_RESPONSE_SCHEMA.properties))
 }
 
 export const reviewDecisionResponseContract: StructuredResponseContract<ReviewDecision> = {
@@ -114,7 +116,8 @@ export const reviewDecisionResponseContract: StructuredResponseContract<ReviewDe
       summary: readString(record, 'summary', 'ReviewDecision'),
       concerns: readStringArray(record, 'concerns', 'ReviewDecision')
     }
-  }
+  },
+  stripUnknownKeys: (value) => stripToRecord(value, Object.keys(REVIEW_DECISION_RESPONSE_SCHEMA.properties))
 }
 
 export const distillationResponseContract: StructuredResponseContract<DistillationResponse> = {
@@ -128,7 +131,8 @@ export const distillationResponseContract: StructuredResponseContract<Distillati
     return {
       responseText: readString(record, 'responseText', 'DistillationResponse')
     }
-  }
+  },
+  stripUnknownKeys: (value) => stripToRecord(value, Object.keys(DISTILLATION_RESPONSE_SCHEMA.properties))
 }
 
 function asRecord(
@@ -149,12 +153,29 @@ function asRecord(
   return record
 }
 
+function stripToRecord(value: unknown, allowedKeys: string[]): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {}
+  }
+  const source = value as Record<string, unknown>
+  const result: Record<string, unknown> = {}
+  for (const key of allowedKeys) {
+    if (key in source) {
+      result[key] = source[key]
+    }
+  }
+  return result
+}
+
 function readString(record: Record<string, unknown>, key: string, contractName: string): string {
   const value = record[key]
-  if (typeof value !== 'string') {
-    throw new Error(`${contractName}.${key} must be a string`)
+  if (typeof value === 'string') {
+    return value
   }
-  return value
+  if (value !== null && value !== undefined) {
+    return JSON.stringify(value)
+  }
+  throw new Error(`${contractName}.${key} must be a string`)
 }
 
 function readBoolean(record: Record<string, unknown>, key: string, contractName: string): boolean {

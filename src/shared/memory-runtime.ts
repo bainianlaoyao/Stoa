@@ -1,6 +1,90 @@
-export type MemoryRuntimeEvidenceProvider = 'claude-code' | 'codex'
-export type MemoryRuntimeEvidenceChannel = 'hook' | 'notify'
-export type MemoryRuntimeConsumer = MemoryRuntimeEvidenceProvider | 'opencode' | 'generic'
+export type ObservedEventProvider = 'claude-code' | 'codex'
+export type ObservedEventChannel = 'hook' | 'notify'
+export type Consumer = ObservedEventProvider | 'opencode' | 'generic'
+
+export interface ObservedEventRawSource {
+  provider: ObservedEventProvider
+  channel: ObservedEventChannel
+  rawEventName: string
+}
+
+export interface ObservedEvent {
+  rawSource: ObservedEventRawSource
+  hookEventName?: string
+  providerSessionId?: string
+  turnId?: string
+  transcriptPath?: string
+  lastAssistantMessage?: string
+  promptText?: string
+  inputMessages?: string[]
+  toolName?: string
+  toolUseId?: string
+  cwd?: string
+  model?: string
+}
+
+export interface EvidenceRef {
+  evidenceId: string
+  projectId: string
+  stoaSessionId: string
+  providerSessionId: string | null
+  turnId: string | null
+  eventId: string
+  eventType: string
+  evidenceKey: string
+  kind: 'hook-payload' | 'transcript' | 'turn-slice'
+  metadataPath: string
+  path: string
+  createdAt: string
+  toolName: string | null
+}
+
+export interface SealedTurnRecord {
+  sessionKey: string
+  projectId: string
+  stoaSessionId: string
+  turnId: string
+  evidenceIds: string[]
+  sealedAt: string
+}
+
+export type RuntimeJobState = 'queued' | 'running' | 'done' | 'failed'
+
+export interface RuntimeJobRecord {
+  jobId: string
+  sessionKey: string
+  turnId: string
+  state: RuntimeJobState
+  error?: string
+  updatedAt: string
+}
+
+export interface RuntimeState {
+  sealedTurns: SealedTurnRecord[]
+  jobs: RuntimeJobRecord[]
+}
+
+export interface DeliverySourceRef {
+  ref: string
+  reason: string
+  score?: number | null
+}
+
+export interface DeliveryEnvelope {
+  content: string
+  sourceRefs: DeliverySourceRef[]
+  selectionPolicy: string
+}
+
+export interface ProcessTurnResult {
+  jobId: string
+}
+
+export type MemoryRuntimeEvidenceProvider = ObservedEventProvider
+export type MemoryRuntimeEvidenceChannel = ObservedEventChannel
+export type MemoryRuntimeConsumer = Consumer
+export type MemoryRuntimeEvidence = ObservedEvent
+
 export type MemoryRuntimeDeliveryState = 'pending' | 'published' | 'failed'
 export type SemanticSessionOutcome = 'success' | 'failure' | 'mixed' | 'unknown'
 export type EvolverReviewStatus = 'none' | 'pending' | 'approved' | 'rejected' | 'failed'
@@ -131,27 +215,6 @@ export interface ReviewDecision {
 
 export interface DistillationResponse {
   responseText: string
-}
-
-export interface MemoryRuntimeEvidenceRawSource {
-  provider: MemoryRuntimeEvidenceProvider
-  channel: MemoryRuntimeEvidenceChannel
-  rawEventName: string
-}
-
-export interface MemoryRuntimeEvidence {
-  rawSource: MemoryRuntimeEvidenceRawSource
-  hookEventName?: string
-  providerSessionId?: string
-  turnId?: string
-  transcriptPath?: string
-  lastAssistantMessage?: string
-  promptText?: string
-  inputMessages?: string[]
-  toolName?: string
-  toolUseId?: string
-  cwd?: string
-  model?: string
 }
 
 export interface MemoryRuntimeSessionProgress {

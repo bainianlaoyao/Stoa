@@ -1,10 +1,12 @@
 import { randomUUID } from 'node:crypto'
-import type { MemoryRuntime } from '@core/memory/runtime'
+import { RuntimeStateStore } from '@core/memory/runtime-state-store'
 import { SessionEvidenceStore } from '@core/memory/session-evidence-store'
 import { createTranscriptSnapshot } from '@core/memory/transcript-snapshot'
 import { createLocalWebhookServer } from '@core/webhook-server'
+import type { EvolverClient, ProcessTurnOptions, RecallOptions, WarmStartOptions } from '@core/memory/evolver-client'
 import type { ProjectSessionManager } from '@core/project-session-manager'
-import type { CanonicalSessionEvent, SessionStatePatchEvent } from '@shared/project-session'
+import type { CanonicalSessionEvent, SessionStatePatchEvent, SessionType } from '@shared/project-session'
+import type { DeliveryEnvelope, EvidenceRef, RuntimeJobRecord } from '@shared/memory-runtime'
 import type { ObservationCategory, ObservationEvent, ObservationRetention, ObservationSeverity } from '@shared/observability'
 
 interface SessionEventApplier {
@@ -17,23 +19,52 @@ interface ObservabilityIngester {
 
 interface EvidenceStoreLike {
   persist: SessionEvidenceStore['persist']
+  sealTurn?: SessionEvidenceStore['sealTurn']
+  listEvidenceRefsForTurn?: SessionEvidenceStore['listEvidenceRefsForTurn']
+}
+
+interface EvolverBridgeLike {
+  warmStart: (options: WarmStartOptions) => Promise<DeliveryEnvelope | null>
+  recall: (options: RecallOptions) => Promise<DeliveryEnvelope | null>
+  observeWrite: EvolverClient['observeWrite']
+  processTurn: (options: ProcessTurnOptions) => Promise<{ jobId: string }>
+}
+
+interface RuntimeStateStoreLike {
+  recordSealedTurn: RuntimeStateStore['recordSealedTurn']
+  upsertJob: RuntimeStateStore['upsertJob']
+}
+
+interface SessionEventBridgeHookResponse {
+  agent_message?: string
+  additionalContext?: string
+  additional_context?: string
+  systemMessage?: string
+  hookSpecificOutput?: {
+    additionalContext?: string
+    systemMessage?: string
+  }
 }
 
 interface SessionEventBridgeOptions {
   nowIso?: () => string
   evidenceStore?: EvidenceStoreLike
   transcriptSnapshotter?: (event: CanonicalSessionEvent) => Promise<Awaited<ReturnType<typeof createTranscriptSnapshot>>>
-  memoryRuntime?: Pick<MemoryRuntime, 'notifyTurnCompleted'>
+  evolverBridge?: EvolverBridgeLike
+  createRuntimeStateStore?: (projectPath: string) => RuntimeStateStoreLike
 }
 
 export class SessionEventBridge {
   private readonly sessionSecrets = new Map<string, string>()
   private readonly providerPatchSequences = new Map<string, number>()
-  private readonly sessionEventQueues = new Map<string, Promise<void>>()
+  private readonly sessionEventQueues = new Map<string, Promise<SessionEventBridgeHookResponse | null>>()
+  private readonly turnEvidenceIds = new Map<string, Set<string>>()
+  private readonly activeTurnIds = new Map<string, string>()
   private readonly nowIso: () => string
   private readonly evidenceStore: EvidenceStoreLike
   private readonly transcriptSnapshotter: (event: CanonicalSessionEvent) => Promise<Awaited<ReturnType<typeof createTranscriptSnapshot>>>
-  private readonly memoryRuntime?: Pick<MemoryRuntime, 'notifyTurnCompleted'>
+  private readonly evolverBridge?: EvolverBridgeLike
+  private readonly createRuntimeStateStore: (projectPath: string) => RuntimeStateStoreLike
   private server: ReturnType<typeof createLocalWebhookServer> | null = null
   private port: number | null = null
 
@@ -44,9 +75,17 @@ export class SessionEventBridge {
     options: SessionEventBridgeOptions = {}
   ) {
     this.nowIso = options.nowIso ?? (() => new Date().toISOString())
-    this.evidenceStore = options.evidenceStore ?? new SessionEvidenceStore()
+    const defaultEvidenceStore = new SessionEvidenceStore()
+    this.evidenceStore = {
+      persist: options.evidenceStore?.persist ?? defaultEvidenceStore.persist.bind(defaultEvidenceStore),
+      sealTurn: options.evidenceStore?.sealTurn ?? defaultEvidenceStore.sealTurn.bind(defaultEvidenceStore),
+      listEvidenceRefsForTurn:
+        options.evidenceStore?.listEvidenceRefsForTurn
+        ?? defaultEvidenceStore.listEvidenceRefsForTurn.bind(defaultEvidenceStore)
+    }
     this.transcriptSnapshotter = options.transcriptSnapshotter ?? createTranscriptSnapshot
-    this.memoryRuntime = options.memoryRuntime
+    this.evolverBridge = options.evolverBridge
+    this.createRuntimeStateStore = options.createRuntimeStateStore ?? ((projectPath) => new RuntimeStateStore(projectPath))
   }
 
   async start(): Promise<number> {
@@ -60,7 +99,7 @@ export class SessionEventBridge {
           return this.sessionSecrets.get(sessionId) ?? null
         },
         onEvent: async (event) => {
-          await this.enqueueSessionEvent(event)
+          return await this.enqueueSessionEvent(event)
         }
       })
     }
@@ -70,25 +109,26 @@ export class SessionEventBridge {
     return this.port
   }
 
-  private async enqueueSessionEvent(event: CanonicalSessionEvent): Promise<void> {
-    const previous = this.sessionEventQueues.get(event.session_id) ?? Promise.resolve()
+  private async enqueueSessionEvent(event: CanonicalSessionEvent): Promise<SessionEventBridgeHookResponse | null> {
+    const previous = this.sessionEventQueues.get(event.session_id) ?? Promise.resolve(null)
     const next = previous
-      .catch(() => {
-        // Preserve per-session ordering even if a previous event failed.
-      })
+      .catch(() => null)
       .then(async () => {
-        for (const expandedEvent of this.expandSessionEvents(event)) {
-          await this.persistEvidenceIfPresent(expandedEvent)
+        let delivery: SessionEventBridgeHookResponse | null = null
+
+        const normalized = this.attachResolvedTurnId(event)
+        for (const expandedEvent of this.expandSessionEvents(normalized)) {
+          const evidenceRef = await this.persistEvidenceIfPresent(expandedEvent)
+          this.trackTurnEvidence(expandedEvent, evidenceRef)
           this.observability?.ingest(this.toObservationEvent(expandedEvent))
           await this.controller.applyProviderStatePatch(this.toSessionStatePatch(expandedEvent))
-          const projectPath = this.resolveProjectPath(expandedEvent)
-          if (projectPath) {
-            this.memoryRuntime?.notifyTurnCompleted({
-              projectPath,
-              event: expandedEvent
-            })
+          const lifecycleDelivery = await this.handleLifecycle(expandedEvent, evidenceRef)
+          if (lifecycleDelivery) {
+            delivery = lifecycleDelivery
           }
         }
+
+        return delivery
       })
 
     this.sessionEventQueues.set(event.session_id, next)
@@ -100,6 +140,36 @@ export class SessionEventBridge {
     next.then(cleanup, cleanup)
 
     return await next
+  }
+
+  private attachResolvedTurnId(event: CanonicalSessionEvent): CanonicalSessionEvent {
+    if (!event.evidence || event.evidence.turnId || event.evidence.rawSource.provider !== 'claude-code') {
+      return event
+    }
+
+    const hookEventName = event.evidence.hookEventName
+    if (!hookEventName || hookEventName === 'SessionStart') {
+      return event
+    }
+
+    const sessionTurnId = this.activeTurnIds.get(event.session_id)
+    let turnId = sessionTurnId ?? null
+
+    if (hookEventName === 'UserPromptSubmit') {
+      turnId = randomUUID()
+      this.activeTurnIds.set(event.session_id, turnId)
+    } else if (!turnId) {
+      turnId = randomUUID()
+      this.activeTurnIds.set(event.session_id, turnId)
+    }
+
+    return {
+      ...event,
+      evidence: {
+        ...event.evidence,
+        turnId
+      }
+    }
   }
 
   private expandSessionEvents(event: CanonicalSessionEvent): CanonicalSessionEvent[] {
@@ -221,26 +291,237 @@ export class SessionEventBridge {
     return nextSequence
   }
 
-  private async persistEvidenceIfPresent(event: CanonicalSessionEvent): Promise<void> {
+  private async persistEvidenceIfPresent(event: CanonicalSessionEvent): Promise<EvidenceRef | null> {
     if (!event.evidence) {
-      return
+      return null
     }
 
     const projectPath = this.resolveProjectPath(event)
     if (!projectPath) {
-      return
+      return null
     }
 
     const snapshot = await this.transcriptSnapshotter(event)
     try {
-      await this.evidenceStore.persist({
+      const persisted = await this.evidenceStore.persist({
         projectPath,
         event,
         snapshot
       })
+      return persisted.evidenceRef
     } catch (error) {
       console.error(
         `[session-event-bridge] Failed to persist evidence for session ${event.session_id} event ${event.event_id}:`,
+        error
+      )
+      return null
+    }
+  }
+
+  private trackTurnEvidence(event: CanonicalSessionEvent, evidenceRef: EvidenceRef | null): void {
+    if (!evidenceRef?.turnId) {
+      return
+    }
+
+    const turnKey = this.formatTurnKey(event.project_id, event.session_id, evidenceRef.turnId)
+    const existing = this.turnEvidenceIds.get(turnKey) ?? new Set<string>()
+    existing.add(evidenceRef.evidenceId)
+    this.turnEvidenceIds.set(turnKey, existing)
+  }
+
+  private async handleLifecycle(
+    event: CanonicalSessionEvent,
+    evidenceRef: EvidenceRef | null
+  ): Promise<SessionEventBridgeHookResponse | null> {
+    if (!event.evidence || !this.evolverBridge) {
+      return null
+    }
+
+    const projectPath = this.resolveProjectPath(event)
+    const session = this.manager.snapshot().sessions.find(candidate => candidate.id === event.session_id)
+    if (!projectPath || !session) {
+      return null
+    }
+
+    const consumer = toMemoryConsumer(session.type)
+    if (!consumer) {
+      return null
+    }
+
+    const hookEventName = event.evidence.hookEventName
+    if (!hookEventName) {
+      return null
+    }
+
+    switch (hookEventName) {
+      case 'SessionStart': {
+        const delivery = await this.evolverBridge.warmStart({
+          projectRoot: projectPath,
+          consumer,
+          stoaSessionId: event.session_id,
+          providerSessionId: event.evidence.providerSessionId
+        })
+        return toHookResponse(delivery)
+      }
+      case 'UserPromptSubmit': {
+        const taskText = event.evidence.promptText?.trim()
+        if (!taskText) {
+          return null
+        }
+
+        const delivery = await this.evolverBridge.recall({
+          projectRoot: projectPath,
+          consumer,
+          stoaSessionId: event.session_id,
+          providerSessionId: event.evidence.providerSessionId,
+          taskText
+        })
+        return toHookResponse(delivery)
+      }
+      case 'PostToolUse': {
+        if (event.evidence.toolName !== 'Write' || !evidenceRef) {
+          return null
+        }
+
+        await this.evolverBridge.observeWrite({
+          projectRoot: projectPath,
+          stoaSessionId: event.session_id,
+          providerSessionId: event.evidence.providerSessionId,
+          turnId: evidenceRef.turnId ?? undefined,
+          evidenceRefs: [evidenceRef]
+        })
+        return null
+      }
+      case 'Stop':
+      case 'StopFailure': {
+        await this.finalizeTurn(projectPath, event, evidenceRef)
+        this.activeTurnIds.delete(event.session_id)
+        return null
+      }
+      default:
+        return null
+    }
+  }
+
+  private async finalizeTurn(
+    projectPath: string,
+    event: CanonicalSessionEvent,
+    evidenceRef: EvidenceRef | null
+  ): Promise<void> {
+    const turnId = evidenceRef?.turnId ?? event.evidence?.turnId ?? null
+    if (!turnId) {
+      return
+    }
+
+    const turnKey = this.formatTurnKey(event.project_id, event.session_id, turnId)
+    const evidenceIds = Array.from(this.turnEvidenceIds.get(turnKey) ?? new Set<string>())
+    if (evidenceRef) {
+      evidenceIds.push(evidenceRef.evidenceId)
+    }
+    const uniqueEvidenceIds = Array.from(new Set(evidenceIds))
+    if (uniqueEvidenceIds.length === 0) {
+      return
+    }
+
+    await this.evidenceStore.sealTurn?.(
+      projectPath,
+      event.session_id,
+      turnId,
+      uniqueEvidenceIds
+    )
+
+    const sessionKey = this.formatSessionKey(event.project_id, event.session_id)
+    const runtimeStateStore = this.createRuntimeStateStore(projectPath)
+    await runtimeStateStore.recordSealedTurn({
+      sessionKey,
+      projectId: event.project_id,
+      stoaSessionId: event.session_id,
+      turnId,
+      evidenceIds: uniqueEvidenceIds,
+      sealedAt: event.timestamp
+    })
+
+    const queuedJobId = `job_${turnId}`
+    await runtimeStateStore.upsertJob({
+      jobId: queuedJobId,
+      sessionKey,
+      turnId,
+      state: 'queued',
+      updatedAt: this.nowIso()
+    })
+
+    this.turnEvidenceIds.delete(turnKey)
+
+    void this.runProcessTurnJob({
+      projectPath,
+      projectId: event.project_id,
+      stoaSessionId: event.session_id,
+      providerSessionId: event.evidence?.providerSessionId ?? undefined,
+      turnId,
+      sessionKey,
+      queuedJobId
+    })
+  }
+
+  private async runProcessTurnJob(input: {
+    projectPath: string
+    projectId: string
+    stoaSessionId: string
+    providerSessionId?: string
+    turnId: string
+    sessionKey: string
+    queuedJobId: string
+  }): Promise<void> {
+    if (!this.evolverBridge) {
+      return
+    }
+
+    const runtimeStateStore = this.createRuntimeStateStore(input.projectPath)
+    const updateJob = async (record: RuntimeJobRecord) => {
+      await runtimeStateStore.upsertJob(record)
+    }
+
+    await updateJob({
+      jobId: input.queuedJobId,
+      sessionKey: input.sessionKey,
+      turnId: input.turnId,
+      state: 'running',
+      updatedAt: this.nowIso()
+    })
+
+    try {
+      const evidenceRefs = await this.evidenceStore.listEvidenceRefsForTurn?.(
+        input.projectPath,
+        input.stoaSessionId,
+        input.turnId
+      ) ?? []
+      const result = await this.evolverBridge.processTurn({
+        projectRoot: input.projectPath,
+        stoaSessionId: input.stoaSessionId,
+        providerSessionId: input.providerSessionId,
+        turnId: input.turnId,
+        evidenceRefs,
+        jobId: input.queuedJobId
+      })
+
+      await updateJob({
+        jobId: result.jobId || input.queuedJobId,
+        sessionKey: input.sessionKey,
+        turnId: input.turnId,
+        state: 'done',
+        updatedAt: this.nowIso()
+      })
+    } catch (error) {
+      await updateJob({
+        jobId: input.queuedJobId,
+        sessionKey: input.sessionKey,
+        turnId: input.turnId,
+        state: 'failed',
+        error: error instanceof Error ? error.message : String(error),
+        updatedAt: this.nowIso()
+      })
+      console.error(
+        `[session-event-bridge] processTurn failed for session ${input.stoaSessionId} turn ${input.turnId}:`,
         error
       )
     }
@@ -253,6 +534,14 @@ export class SessionEventBridge {
     const project = snapshot.projects.find(candidate => candidate.id === resolvedProjectId)
 
     return project?.path ?? null
+  }
+
+  private formatSessionKey(projectId: string, sessionId: string): string {
+    return `${projectId}\n${sessionId}`
+  }
+
+  private formatTurnKey(projectId: string, sessionId: string, turnId: string): string {
+    return `${projectId}\n${sessionId}\n${turnId}`
   }
 
   issueSessionSecret(sessionId: string): string {
@@ -271,8 +560,38 @@ export class SessionEventBridge {
     this.sessionSecrets.clear()
     this.providerPatchSequences.clear()
     this.sessionEventQueues.clear()
+    this.turnEvidenceIds.clear()
+    this.activeTurnIds.clear()
     this.port = null
     await this.manager.setTerminalWebhookPort(null)
+  }
+}
+
+function toMemoryConsumer(sessionType: SessionType): WarmStartOptions['consumer'] | null {
+  switch (sessionType) {
+    case 'claude-code':
+    case 'codex':
+    case 'opencode':
+      return sessionType
+    default:
+      return null
+  }
+}
+
+function toHookResponse(delivery: DeliveryEnvelope | null): SessionEventBridgeHookResponse | null {
+  if (!delivery?.content) {
+    return null
+  }
+
+  return {
+    agent_message: delivery.content,
+    additionalContext: delivery.content,
+    additional_context: delivery.content,
+    systemMessage: delivery.content,
+    hookSpecificOutput: {
+      additionalContext: delivery.content,
+      systemMessage: delivery.content
+    }
   }
 }
 

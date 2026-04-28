@@ -102,6 +102,9 @@ function buildClaudeHookEvidence(
     },
     hookEventName,
     providerSessionId: requiredOptionalStringField(body, 'session_id', 'claude-code'),
+    turnId:
+      requiredOptionalStringField(body, 'turn_id', 'claude-code')
+      ?? requiredOptionalStringField(body, 'conversation_turn_id', 'claude-code'),
     transcriptPath: requiredOptionalStringField(body, 'transcript_path', 'claude-code'),
     lastAssistantMessage:
       requiredOptionalStringField(body, 'last_assistant_message', 'claude-code')
@@ -144,9 +147,12 @@ function mapClaudeHookToPatch(hookEventName: string): {
   blockingReason?: NonNullable<CanonicalSessionEvent['payload']['blockingReason']>
 } | null {
   switch (hookEventName) {
+    case 'SessionStart':
+      return { intent: 'runtime.alive', agentState: 'idle' }
     case 'UserPromptSubmit':
       return { intent: 'agent.turn_started', agentState: 'working' }
     case 'PreToolUse':
+    case 'PostToolUse':
       return { intent: 'agent.tool_started', agentState: 'working' }
     case 'PermissionRequest':
       return { intent: 'agent.permission_requested', agentState: 'blocked', blockingReason: 'permission' }

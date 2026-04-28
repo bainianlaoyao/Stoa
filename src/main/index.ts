@@ -5,9 +5,9 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { autoUpdater } from 'electron-updater'
 import { IPC_CHANNELS } from '@core/ipc-channels'
-import { ClaudeCodeInjector, getClaudeCodePublishedContextPath } from '@core/memory/claude-code-injector'
-import { EvolverMaintainer } from '@core/memory/evolver-maintainer'
-import { MemoryRuntime } from '@core/memory/runtime'
+import { getClaudeCodePublishedContextPath } from '@core/memory/claude-code-injector'
+import { resolveBundledEvolverCli } from '@core/memory/bundled-evolver'
+import { EvolverClient } from '@core/memory/evolver-client'
 import { InMemoryObservationStore } from '@core/observation-store'
 import type { ListObservationEventsOptions } from '@core/observation-store'
 import { ObservabilityService } from '@core/observability-service'
@@ -34,8 +34,6 @@ let ptyHost: PtyHost | null = null
 let runtimeController: SessionRuntimeController | null = null
 let sessionEventBridge: SessionEventBridge | null = null
 let sessionInputRouter: SessionInputRouter | null = null
-let memoryRuntime: MemoryRuntime | null = null
-let claudeCodeInjector: ClaudeCodeInjector | null = null
 let observationStore: InMemoryObservationStore | null = null
 let observabilityService: ObservabilityService | null = null
 let updateService: UpdateService | null = null
@@ -487,10 +485,21 @@ app.whenReady().then(async () => {
     },
     observabilityService
   )
-  memoryRuntime = new MemoryRuntime(new EvolverMaintainer(projectSessionManager))
-  claudeCodeInjector = new ClaudeCodeInjector()
+  let evolverBridge: EvolverClient | undefined
+  try {
+    const bundledEvolverCli = await resolveBundledEvolverCli(process.cwd())
+    evolverBridge = new EvolverClient({
+      command: bundledEvolverCli.command,
+      cwd: bundledEvolverCli.repoRoot,
+      argsPrefix: bundledEvolverCli.argsPrefix,
+      env: bundledEvolverCli.env
+    })
+  } catch (error) {
+    console.warn('[main] Bundled Evolver bridge is unavailable. Memory orchestration will stay disabled.', error)
+  }
+
   sessionEventBridge = new SessionEventBridge(projectSessionManager, runtimeController, observabilityService, {
-    memoryRuntime
+    evolverBridge
   })
   updateService = new UpdateService({
     app,
@@ -558,7 +567,6 @@ app.whenReady().then(async () => {
         ptyHost,
         runtimeController,
         sessionEventBridge,
-        claudeCodeInjector: claudeCodeInjector ?? undefined,
         resolveRuntimePaths
       })
 

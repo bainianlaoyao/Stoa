@@ -2,26 +2,20 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { writePersistedState } from '@core/state-store'
 import type {
-  EvolverReviewStatus,
-  MemoryRunRecord,
-  MemoryRuntimeConsumer,
-  MemoryRuntimeDeliveryState,
-  MemoryRuntimeSessionProgress,
-  PublishedMemoryRecord
+  RuntimeJobRecord,
+  RuntimeJobState,
+  RuntimeState,
+  SealedTurnRecord
 } from '@shared/memory-runtime'
 
-export interface PersistedRuntimeStateStore {
+export interface PersistedRuntimeStateStore extends RuntimeState {
   version: 1
-  sessionProgress: MemoryRuntimeSessionProgress[]
-  runRecords: MemoryRunRecord[]
-  publishedRecords: PublishedMemoryRecord[]
 }
 
 const DEFAULT_RUNTIME_STATE_STORE: PersistedRuntimeStateStore = {
   version: 1,
-  sessionProgress: [],
-  runRecords: [],
-  publishedRecords: []
+  sealedTurns: [],
+  jobs: []
 }
 
 const pendingStoreTransactions = new Map<string, Promise<void>>()
@@ -34,83 +28,39 @@ function isString(value: unknown): value is string {
   return typeof value === 'string'
 }
 
-function isNullableString(value: unknown): value is string | null {
-  return value === null || typeof value === 'string'
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every(isString)
 }
 
-function isReviewStatus(value: unknown): value is EvolverReviewStatus {
-  return value === 'none'
-    || value === 'pending'
-    || value === 'approved'
-    || value === 'rejected'
-    || value === 'failed'
+function isJobState(value: unknown): value is RuntimeJobState {
+  return value === 'queued' || value === 'running' || value === 'done' || value === 'failed'
 }
 
-function isPublishableReviewStatus(value: EvolverReviewStatus): boolean {
-  return value === 'approved' || value === 'none'
-}
-
-function isSuccessfulRun(record: MemoryRunRecord): boolean {
-  return record.lastError === null
-}
-
-function isConsumer(value: unknown): value is MemoryRuntimeConsumer {
-  return value === 'claude-code'
-    || value === 'codex'
-    || value === 'opencode'
-    || value === 'generic'
-}
-
-function isDeliveryState(value: unknown): value is MemoryRuntimeDeliveryState {
-  return value === 'pending'
-    || value === 'published'
-    || value === 'failed'
-}
-
-function isSessionProgress(value: unknown): value is MemoryRuntimeSessionProgress {
+function isSealedTurnRecord(value: unknown): value is SealedTurnRecord {
   if (typeof value !== 'object' || value === null) {
     return false
   }
 
   const record = value as Record<string, unknown>
-  return isString(record.projectId)
+  return isString(record.sessionKey)
+    && isString(record.projectId)
     && isString(record.stoaSessionId)
-    && isString(record.lastProcessedEvidenceKey)
-    && isString(record.updatedAt)
+    && isString(record.turnId)
+    && isStringArray(record.evidenceIds)
+    && isString(record.sealedAt)
 }
 
-function isRunRecord(value: unknown): value is MemoryRunRecord {
+function isRuntimeJobRecord(value: unknown): value is RuntimeJobRecord {
   if (typeof value !== 'object' || value === null) {
     return false
   }
 
   const record = value as Record<string, unknown>
-  return isString(record.projectId)
-    && isString(record.stoaSessionId)
-    && isNullableString(record.providerSessionId)
-    && isString(record.runId)
-    && isString(record.worktreePath)
-    && isString(record.memoryDir)
-    && isString(record.evolutionDir)
-    && isString(record.gepAssetsDir)
-    && isNullableString(record.reviewStateRef)
-    && isReviewStatus(record.reviewStatus)
-    && isNullableString(record.lastError)
-    && isString(record.updatedAt)
-}
-
-function isPublishedRecord(value: unknown): value is PublishedMemoryRecord {
-  if (typeof value !== 'object' || value === null) {
-    return false
-  }
-
-  const record = value as Record<string, unknown>
-  return isString(record.projectId)
-    && isString(record.stoaSessionId)
-    && isConsumer(record.consumer)
-    && isDeliveryState(record.deliveryState)
-    && isNullableString(record.runId)
-    && isNullableString(record.publishedHash)
+  return isString(record.jobId)
+    && isString(record.sessionKey)
+    && isString(record.turnId)
+    && isJobState(record.state)
+    && (record.error === undefined || isString(record.error))
     && isString(record.updatedAt)
 }
 
@@ -119,26 +69,12 @@ function isPersistedRuntimeStateStore(value: unknown): value is PersistedRuntime
     return false
   }
 
-  const store = value as Record<string, unknown>
-  return store.version === 1
-    && Array.isArray(store.sessionProgress)
-    && store.sessionProgress.every(isSessionProgress)
-    && Array.isArray(store.runRecords)
-    && store.runRecords.every(isRunRecord)
-    && Array.isArray(store.publishedRecords)
-    && store.publishedRecords.every(isPublishedRecord)
-}
-
-function getSessionKey(record: Pick<MemoryRuntimeSessionProgress, 'projectId' | 'stoaSessionId'>): string {
-  return `${record.projectId}\n${record.stoaSessionId}`
-}
-
-function getRunKey(record: Pick<MemoryRunRecord, 'projectId' | 'stoaSessionId'>): string {
-  return `${record.projectId}\n${record.stoaSessionId}`
-}
-
-function getPublishedKey(record: Pick<PublishedMemoryRecord, 'projectId' | 'stoaSessionId' | 'consumer'>): string {
-  return `${record.projectId}\n${record.stoaSessionId}\n${record.consumer}`
+  const record = value as Record<string, unknown>
+  return record.version === 1
+    && Array.isArray(record.sealedTurns)
+    && record.sealedTurns.every(isSealedTurnRecord)
+    && Array.isArray(record.jobs)
+    && record.jobs.every(isRuntimeJobRecord)
 }
 
 function cloneStore(store: PersistedRuntimeStateStore): PersistedRuntimeStateStore {
@@ -163,6 +99,10 @@ function withStoreTransaction<T>(filePath: string, operation: () => Promise<T>):
   return current
 }
 
+function compareDescending(left: string, right: string): number {
+  return right.localeCompare(left)
+}
+
 export class RuntimeStateStore {
   readonly filePath: string
 
@@ -176,114 +116,59 @@ export class RuntimeStateStore {
     })
   }
 
-  async upsertSessionProgress(record: MemoryRuntimeSessionProgress): Promise<void> {
+  async recordSealedTurn(record: SealedTurnRecord): Promise<void> {
     await this.updateStore(store => {
-      const sessionProgress = store.sessionProgress.filter(candidate => getSessionKey(candidate) !== getSessionKey(record))
-      sessionProgress.push({ ...record })
-      return {
-        ...store,
-        sessionProgress
-      }
-    })
-  }
-
-  async getSessionProgress(
-    projectId: string,
-    stoaSessionId: string
-  ): Promise<MemoryRuntimeSessionProgress | null> {
-    const store = await this.read()
-    return store.sessionProgress.find(candidate =>
-      candidate.projectId === projectId && candidate.stoaSessionId === stoaSessionId
-    ) ?? null
-  }
-
-  async upsertRunRecord(record: MemoryRunRecord): Promise<void> {
-    await this.updateStore(store => {
-      const runRecords = store.runRecords.filter(candidate => getRunKey(candidate) !== getRunKey(record))
-      runRecords.push({ ...record })
-      return {
-        ...store,
-        runRecords
-      }
-    })
-  }
-
-  async getRunRecord(
-    projectId: string,
-    stoaSessionId: string
-  ): Promise<MemoryRunRecord | null> {
-    const store = await this.read()
-    return store.runRecords.find(candidate =>
-      candidate.projectId === projectId && candidate.stoaSessionId === stoaSessionId
-    ) ?? null
-  }
-
-  async findLatestApprovedRun(projectId: string): Promise<MemoryRunRecord | null> {
-    const store = await this.read()
-    const approvedRuns = store.runRecords
-      .filter(candidate =>
-        candidate.projectId === projectId
-        && candidate.reviewStatus === 'approved'
-        && isSuccessfulRun(candidate)
+      const sealedTurns = store.sealedTurns.filter(candidate =>
+        candidate.sessionKey !== record.sessionKey || candidate.turnId !== record.turnId
       )
+      sealedTurns.push({ ...record })
+      return {
+        ...store,
+        sealedTurns
+      }
+    })
+  }
+
+  async getSealedTurn(sessionKey: string, turnId: string): Promise<SealedTurnRecord | null> {
+    const store = await this.read()
+    return store.sealedTurns.find(candidate =>
+      candidate.sessionKey === sessionKey && candidate.turnId === turnId
+    ) ?? null
+  }
+
+  async upsertJob(record: RuntimeJobRecord): Promise<void> {
+    await this.updateStore(store => {
+      const jobs = store.jobs.filter(candidate => candidate.jobId !== record.jobId)
+      jobs.push({ ...record })
+      return {
+        ...store,
+        jobs
+      }
+    })
+  }
+
+  async getJob(jobId: string): Promise<RuntimeJobRecord | null> {
+    const store = await this.read()
+    return store.jobs.find(candidate => candidate.jobId === jobId) ?? null
+  }
+
+  async listJobsForSession(sessionKey: string): Promise<RuntimeJobRecord[]> {
+    const store = await this.read()
+    return store.jobs
+      .filter(candidate => candidate.sessionKey === sessionKey)
       .sort((left, right) => {
         if (left.updatedAt !== right.updatedAt) {
-          return right.updatedAt.localeCompare(left.updatedAt)
+          return compareDescending(left.updatedAt, right.updatedAt)
         }
-        return right.runId.localeCompare(left.runId)
+        return compareDescending(left.jobId, right.jobId)
       })
-
-    return approvedRuns[0] ?? null
-  }
-
-  async findLatestPublishableRun(projectId: string): Promise<MemoryRunRecord | null> {
-    const store = await this.read()
-    const publishableRuns = store.runRecords
-      .filter(candidate =>
-        candidate.projectId === projectId
-        && isPublishableReviewStatus(candidate.reviewStatus)
-        && isSuccessfulRun(candidate)
-      )
-      .sort((left, right) => {
-        if (left.updatedAt !== right.updatedAt) {
-          return right.updatedAt.localeCompare(left.updatedAt)
-        }
-        return right.runId.localeCompare(left.runId)
-      })
-
-    return publishableRuns[0] ?? null
-  }
-
-  async upsertPublishedRecord(record: PublishedMemoryRecord): Promise<void> {
-    await this.updateStore(store => {
-      const publishedRecords = store.publishedRecords.filter(candidate => getPublishedKey(candidate) !== getPublishedKey(record))
-      publishedRecords.push({ ...record })
-      return {
-        ...store,
-        publishedRecords
-      }
-    })
-  }
-
-  async getPublishedRecord(
-    projectId: string,
-    stoaSessionId: string,
-    consumer: MemoryRuntimeConsumer
-  ): Promise<PublishedMemoryRecord | null> {
-    const store = await this.read()
-    return store.publishedRecords.find(candidate =>
-      candidate.projectId === projectId
-      && candidate.stoaSessionId === stoaSessionId
-      && candidate.consumer === consumer
-    ) ?? null
   }
 
   private async write(store: PersistedRuntimeStateStore): Promise<void> {
     await writePersistedState({
       version: 1,
-      sessionProgress: store.sessionProgress,
-      runRecords: store.runRecords,
-      publishedRecords: store.publishedRecords
+      sealedTurns: store.sealedTurns,
+      jobs: store.jobs
     } satisfies PersistedRuntimeStateStore, this.filePath)
   }
 

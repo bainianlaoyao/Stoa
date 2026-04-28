@@ -1,32 +1,46 @@
 import { spawnSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createHash } from 'node:crypto'
-import type { CanonicalSessionEvent, ProviderCommandContext } from '../src/shared/project-session'
-import { DEFAULT_SETTINGS } from '../src/shared/project-session'
-import { SessionEvidenceStore } from '../src/core/memory/session-evidence-store'
-import { EvolverMaintainer } from '../src/core/memory/evolver-maintainer'
-import { ClaudeCodeInjector, getClaudeCodePublishedContextPath } from '../src/core/memory/claude-code-injector'
+import { ProjectSessionManager } from '../src/core/project-session-manager'
+import { resolveBundledEvolverCli } from '../src/core/memory/bundled-evolver'
+import { EvolverClient } from '../src/core/memory/evolver-client'
 import { RuntimeStateStore } from '../src/core/memory/runtime-state-store'
+import { SessionEventBridge } from '../src/main/session-event-bridge'
 import { createClaudeCodeProvider } from '../src/extensions/providers/claude-code-provider'
+import type { ProviderCommand, ProviderCommandContext } from '../src/shared/project-session'
+
+const COMMAND_FILE_NAME = '.python-install-command.txt'
+const FIRST_PROMPT = [
+  'Install the Python package "requests" for this repository using your normal default approach for a simple repo.',
+  `After you finish, overwrite ${COMMAND_FILE_NAME} with only the exact shell command you chose.`,
+  'Do not put any explanation in that file.'
+].join(' ')
+const SECOND_PROMPT = [
+  `Update ${COMMAND_FILE_NAME} for this same repository.`,
+  'Do not use pip-managed virtualenvs here.',
+  'Use uv to manage the Python environment and package installation for this repository.',
+  'Overwrite the file so it contains only the exact uv-based shell command you will use here.'
+].join(' ')
+const HEADLESS_TIMEOUT_MS = 15 * 60 * 1000
+const JOB_TIMEOUT_MS = 5 * 60 * 1000
+let lastRepoRoot: string | null = null
 
 async function main(): Promise<void> {
-  const baseDir = await mkdtemp(join(tmpdir(), 'stoa-first-round-'))
+  const baseDir = await mkdtemp(join(tmpdir(), 'stoa-first-round-real-'))
   const repoRoot = join(baseDir, 'project')
-  const projectId = 'project_first_round'
-  const firstSessionId = 'session_1'
-  const secondSessionId = 'session_2'
-  const providerSessionId = 'provider-session-uv-1'
-  const transcriptSourcePath = join(repoRoot, 'provider-transcript.jsonl')
-  const evidenceStore = new SessionEvidenceStore()
+  lastRepoRoot = repoRoot
+  const globalStatePath = join(baseDir, 'global.json')
+  const providerPath = process.env.CLAUDE_CLI_PATH?.trim() || undefined
 
   await mkdir(repoRoot, { recursive: true })
   await writeFile(join(repoRoot, 'pyproject.toml'), [
     '[project]',
     'name = "demo-python-project"',
     'version = "0.1.0"',
+    'description = "Real Claude memory e2e probe"',
     ''
   ].join('\n'), 'utf8')
   await writeFile(join(repoRoot, 'README.md'), '# Demo Python Project\n', 'utf8')
@@ -37,235 +51,297 @@ async function main(): Promise<void> {
   runChecked('git', ['add', '.'], repoRoot)
   runChecked('git', ['commit', '-m', 'init'], repoRoot)
 
-  const firstTranscript = [
-    jsonLine({
-      type: 'user',
-      message: {
-        role: 'user',
-        content: [{ type: 'text', text: 'Install a Python environment for this project.' }]
-      }
-    }),
-    jsonLine({
-      type: 'assistant',
-      message: {
-        role: 'assistant',
-        content: [{ type: 'text', text: 'I will create a virtual environment with pip and then use pip install for dependencies.' }]
-      }
-    }),
-    jsonLine({
-      type: 'user',
-      message: {
-        role: 'user',
-        content: [{ type: 'text', text: 'Do not use pip-managed virtualenvs here. Use uv to manage the environment and packages for this repository.' }]
-      }
-    }),
-    jsonLine({
-      type: 'assistant',
-      message: {
-        role: 'assistant',
-        content: [{ type: 'text', text: 'Understood. I will use uv for Python environments and package installation in this repository.' }]
-      }
-    })
-  ].join('\n') + '\n'
-  await writeFile(transcriptSourcePath, firstTranscript, 'utf8')
-
-  const completionEvent: CanonicalSessionEvent = {
-    event_version: 1,
-    event_id: 'evt_uv_preference',
-    event_type: 'claude-code.Stop',
-    timestamp: '2026-04-28T09:00:00.000Z',
-    session_id: firstSessionId,
-    project_id: projectId,
-    source: 'hook-sidecar',
-    payload: {
-      intent: 'agent.turn_completed',
-      agentState: 'idle',
-      hasUnseenCompletion: true,
-      summary: 'The user corrected pip to uv for Python environment management.',
-      externalSessionId: providerSessionId
-    },
-    evidence: {
-      rawSource: {
-        provider: 'claude-code',
-        channel: 'hook',
-        rawEventName: 'Stop'
-      },
-      hookEventName: 'Stop',
-      providerSessionId,
-      turnId: 'turn-uv-1',
-      transcriptPath: transcriptSourcePath,
-      cwd: repoRoot,
-      model: 'claude-sonnet',
-      inputMessages: [
-        'Install a Python environment for this project.',
-        'Do not use pip-managed virtualenvs here. Use uv to manage the environment and packages for this repository.'
-      ],
-      lastAssistantMessage: 'Understood. I will use uv for Python environments and package installation in this repository.'
-    }
-  }
-
-  await evidenceStore.persist({
-    projectPath: repoRoot,
-    event: completionEvent,
-    snapshot: {
-      kind: 'provider-transcript',
-      fileName: 'transcript.jsonl',
-      content: Buffer.from(firstTranscript, 'utf8'),
-      sourceTranscriptPath: transcriptSourcePath
-    }
+  const manager = await ProjectSessionManager.create({
+    webhookPort: null,
+    globalStatePath
+  })
+  const project = await manager.createProject({
+    path: repoRoot,
+    name: 'real-claude-memory-e2e',
+    defaultSessionType: 'claude-code'
   })
 
-  const maintainer = new EvolverMaintainer(
+  const bundledEvolverCli = await resolveBundledEvolverCli(process.cwd())
+  const evolverBridge = new EvolverClient({
+    command: bundledEvolverCli.command,
+    cwd: bundledEvolverCli.repoRoot,
+    argsPrefix: bundledEvolverCli.argsPrefix,
+    env: bundledEvolverCli.env
+  })
+
+  const bridge = new SessionEventBridge(
+    manager,
     {
-      getSettings: () => ({
-        ...DEFAULT_SETTINGS,
-        memoryAiProvider: 'claude-code'
-      })
+      applyProviderStatePatch: async (patch) => {
+        await manager.applySessionStatePatch(patch)
+      }
     },
-    {
-      buildCliAiProvider: () => ({
-        summarizeSession: async () => ({
-          summary: 'For this repository, manage Python environments and package installation with uv instead of pip.',
-          outcome: 'success',
-          lessons: ['Use uv rather than pip for Python environments and packages in this project.']
-        }),
-        review: async () => ({
-          decision: 'approve',
-          summary: 'Approved for publication.',
-          concerns: []
-        }),
-        distill: async () => ({
-          responseText: JSON.stringify({
-            type: 'Gene',
-            id: 'gene_distilled_uv',
-            category: 'repair',
-            signals_match: ['tooling_preference'],
-            strategy: [
-              'Use uv instead of pip for Python environments and package installation in this repository.'
-            ],
-            constraints: {
-              max_files: 5,
-              forbidden_paths: ['.git', 'node_modules']
-            }
-          })
-        })
-      })
-    }
+    undefined,
+    { evolverBridge }
   )
-
-  await maintainer.processTurnCompletion({
-    projectPath: repoRoot,
-    event: completionEvent
-  })
-
-  const injector = new ClaudeCodeInjector()
-  const publishResult = await injector.injectLatestContext({
-    projectId,
-    stoaSessionId: secondSessionId,
-    projectPath: repoRoot
-  })
-  if (!publishResult) {
-    throw new Error('Injector did not find an approved run to publish for the second session.')
-  }
 
   const provider = createClaudeCodeProvider()
-  const providerContext: ProviderCommandContext = {
-    webhookPort: 43127,
-    sessionSecret: 'secret-env',
-    providerPort: 43128
+  const invocations: Array<{
+    index: number
+    label: string
+    sessionId: string
+    providerSessionId: string
+    command: string
+    args: string[]
+    resultSessionId: string | null
+    stdoutPreview: string
+    commandFile: string
+  }> = []
+
+  try {
+    const webhookPort = await bridge.start()
+
+    const session1 = await manager.createSession({
+      projectId: project.id,
+      type: 'claude-code',
+      title: 'Session 1'
+    })
+    const session1Secret = bridge.issueSessionSecret(session1.id)
+    const session1Context = createProviderContext(webhookPort, session1Secret, providerPath)
+    const session1Target = toProviderTarget(project.id, repoRoot, session1)
+
+    await provider.installSidecar(session1Target, session1Context)
+
+    const firstResult = await invokeClaudeHeadless(
+      await provider.buildStartCommand(session1Target, session1Context),
+      FIRST_PROMPT
+    )
+    const firstCommandFile = await readCommandFile(repoRoot)
+    if (!/\bpip\b/i.test(firstCommandFile) || /\buv\b/i.test(firstCommandFile)) {
+      throw new Error(
+        `First Claude invocation did not use the expected pip-style default.\nCommand file: ${firstCommandFile}\nStdout: ${firstResult.stdout}`
+      )
+    }
+    invocations.push(buildInvocationRecord(1, 'session1:first', session1, firstResult.command, firstResult, firstCommandFile))
+
+    const secondResult = await invokeClaudeHeadless(
+      await provider.buildResumeCommand(session1Target, session1.externalSessionId!, session1Context),
+      SECOND_PROMPT
+    )
+    const secondCommandFile = await readCommandFile(repoRoot)
+    if (!/\buv\b/i.test(secondCommandFile)) {
+      throw new Error(
+        `Second Claude invocation did not update the repository rule to uv.\nCommand file: ${secondCommandFile}\nStdout: ${secondResult.stdout}`
+      )
+    }
+    invocations.push(buildInvocationRecord(2, 'session1:resume', session1, secondResult.command, secondResult, secondCommandFile))
+
+    const runtimeStateStore = new RuntimeStateStore(repoRoot)
+    const session1Jobs = await waitForCompletedJobs(runtimeStateStore, sessionKey(project.id, session1.id), 2)
+
+    const session2 = await manager.createSession({
+      projectId: project.id,
+      type: 'claude-code',
+      title: 'Session 2'
+    })
+    const session2Secret = bridge.issueSessionSecret(session2.id)
+    const session2Context = createProviderContext(webhookPort, session2Secret, providerPath)
+    const session2Target = toProviderTarget(project.id, repoRoot, session2)
+
+    await provider.installSidecar(session2Target, session2Context)
+
+    const thirdResult = await invokeClaudeHeadless(
+      await provider.buildStartCommand(session2Target, session2Context),
+      FIRST_PROMPT
+    )
+    const thirdCommandFile = await readCommandFile(repoRoot)
+    if (!/\buv\b/i.test(thirdCommandFile)) {
+      throw new Error(
+        `Third Claude invocation did not automatically carry the uv preference into the new session.\nCommand file: ${thirdCommandFile}\nStdout: ${thirdResult.stdout}`
+      )
+    }
+    invocations.push(buildInvocationRecord(3, 'session2:first', session2, thirdResult.command, thirdResult, thirdCommandFile))
+
+    console.log(JSON.stringify({
+      ok: true,
+      repoRoot,
+      webhookPort,
+      invocations,
+      runtimeState: {
+        session1Jobs
+      },
+      notes: {
+        scenario: [
+          'Session 1, invocation 1: headless Claude uses its default approach and should choose pip.',
+          'Session 1, invocation 2: same Claude session resumes and is corrected to use uv.',
+          'Session 2, invocation 3: fresh Claude session should automatically carry the uv preference.'
+        ],
+        commandFile: COMMAND_FILE_NAME,
+        providerPath: providerPath ?? 'claude'
+      }
+    }, null, 2))
+  } finally {
+    await bridge.stop()
   }
-  await provider.installSidecar({
-    session_id: secondSessionId,
+}
+
+function createProviderContext(
+  webhookPort: number,
+  sessionSecret: string,
+  providerPath?: string
+): ProviderCommandContext {
+  return {
+    webhookPort,
+    sessionSecret,
+    providerPort: 0,
+    ...(providerPath ? { providerPath } : {})
+  }
+}
+
+function toProviderTarget(
+  projectId: string,
+  repoRoot: string,
+  session: Awaited<ReturnType<ProjectSessionManager['createSession']>>
+): {
+  session_id: string
+  project_id: string
+  path: string
+  title: string
+  type: 'claude-code'
+  external_session_id: string
+} {
+  if (!session.externalSessionId) {
+    throw new Error(`Session ${session.id} is missing an external Claude session id.`)
+  }
+
+  return {
+    session_id: session.id,
     project_id: projectId,
     path: repoRoot,
-    title: 'Second Claude Session',
+    title: session.title,
     type: 'claude-code',
-    external_session_id: 'provider-session-uv-2'
-  }, providerContext)
-
-  const hookSettings = JSON.parse(await readFile(join(repoRoot, '.claude', 'settings.local.json'), 'utf8')) as {
-    hooks?: Record<string, Array<{ hooks?: Array<{ command?: string }> }>>
+    external_session_id: session.externalSessionId
   }
-  const sessionStartCommand = hookSettings.hooks?.SessionStart?.[0]?.hooks?.[0]?.command
-  if (!sessionStartCommand) {
-    throw new Error('Claude SessionStart hook command is missing from .claude/settings.local.json.')
-  }
-
-  const hookOutput = runShellChecked(
-    sessionStartCommand,
-    repoRoot,
-    {
-      env: {
-        ...process.env,
-        EVOLVER_SESSION_START_DEDUP: '0'
-      }
-    }
-  )
-  const hookPayload = parseJsonTail(hookOutput.stdout) as {
-    agent_message?: string
-    additionalContext?: string
-  }
-  const injectedText = `${hookPayload.agent_message ?? ''}\n${hookPayload.additionalContext ?? ''}`
-  if (!injectedText.includes('uv')) {
-    throw new Error(`Claude SessionStart output did not surface the uv preference.\nOutput: ${hookOutput.stdout}`)
-  }
-
-  const stateStore = new RuntimeStateStore(repoRoot)
-  const firstRunRecord = await stateStore.getRunRecord(projectId, firstSessionId)
-  const secondPublishedRecord = await stateStore.getPublishedRecord(projectId, secondSessionId, 'claude-code')
-  const publishedContent = await readFile(getClaudeCodePublishedContextPath(repoRoot), 'utf8')
-
-  console.log(JSON.stringify({
-    ok: true,
-    scenario: {
-      session_1: 'agent started with pip, user corrected to uv',
-      session_2: 'user only asks to install a Python package; injected memory should surface uv'
-    },
-    note: 'This script exercises the Stoa-owned evidence -> Evolver -> Claude consumer path. Entire is intentionally not used.',
-    paths: {
-      baseDir,
-      repoRoot,
-      evidenceDir: join(repoRoot, '.stoa', 'memory', 'evidence', firstSessionId, completionEvent.event_id),
-      runtimeStatePath: join(repoRoot, '.stoa', 'memory', 'runtime-state.json'),
-      publishedContextPath: publishResult.filePath
-    },
-    runtimeState: {
-      firstRunRecord,
-      secondPublishedRecord
-    },
-    publishedContext: {
-      hash: publishResult.hash,
-      lineCount: publishedContent.trim().length === 0 ? 0 : publishedContent.trim().split('\n').length,
-      preview: previewJsonLines(publishedContent, 3)
-    },
-    sessionStartHook: hookPayload
-  }, null, 2))
 }
 
-function jsonLine(value: unknown): string {
-  return JSON.stringify(value)
-}
-
-function previewJsonLines(content: string, limit: number): unknown[] {
-  const lines = content
-    .split(/\r?\n/)
-    .map(line => line.trim())
-    .filter(line => line.length > 0)
-    .slice(0, limit)
-
-  return lines.map(line => {
-    try {
-      return JSON.parse(line) as unknown
-    } catch {
-      return line
-    }
+async function invokeClaudeHeadless(command: ProviderCommand, prompt: string): Promise<{
+  command: ProviderCommand
+  stdout: string
+  parsed: Record<string, unknown> | null
+}> {
+  const headlessArgs = [
+    ...command.args,
+    '-p',
+    prompt,
+    '--output-format',
+    'json',
+    '--permission-mode',
+    'acceptEdits'
+  ]
+  const output = runChecked(command.command, headlessArgs, command.cwd, {
+    env: command.env,
+    timeoutMs: HEADLESS_TIMEOUT_MS,
+    shell: process.platform === 'win32'
   })
+
+  const parsed = parseJsonTail(output.stdout)
+  return {
+    command: {
+      ...command,
+      args: headlessArgs
+    },
+    stdout: output.stdout,
+    parsed: isRecord(parsed) ? parsed : null
+  }
+}
+
+function buildInvocationRecord(
+  index: number,
+  label: string,
+  session: Awaited<ReturnType<ProjectSessionManager['createSession']>>,
+  command: ProviderCommand,
+  result: {
+    command: ProviderCommand
+    stdout: string
+    parsed: Record<string, unknown> | null
+  },
+  commandFile: string
+): {
+  index: number
+  label: string
+  sessionId: string
+  providerSessionId: string
+  command: string
+  args: string[]
+  resultSessionId: string | null
+  stdoutPreview: string
+  commandFile: string
+} {
+  return {
+    index,
+    label,
+    sessionId: session.id,
+    providerSessionId: session.externalSessionId ?? 'unknown',
+    command: command.command,
+    args: command.args,
+    resultSessionId: typeof result.parsed?.session_id === 'string' ? result.parsed.session_id : null,
+    stdoutPreview: trim(result.stdout, 600),
+    commandFile
+  }
+}
+
+async function waitForCompletedJobs(
+  store: RuntimeStateStore,
+  key: string,
+  expectedDoneCount: number
+): Promise<Awaited<ReturnType<RuntimeStateStore['listJobsForSession']>>> {
+  const startedAt = Date.now()
+
+  while (true) {
+    const jobs = await store.listJobsForSession(key)
+    const doneJobs = jobs.filter(job => job.state === 'done')
+    const failedJobs = jobs.filter(job => job.state === 'failed')
+
+    if (failedJobs.length > 0) {
+      throw new Error(`Evolver processTurn job failed: ${JSON.stringify(failedJobs, null, 2)}`)
+    }
+    if (doneJobs.length >= expectedDoneCount) {
+      return jobs
+    }
+    if (Date.now() - startedAt > JOB_TIMEOUT_MS) {
+      throw new Error(`Timed out waiting for ${expectedDoneCount} completed Evolver jobs. Jobs: ${JSON.stringify(jobs, null, 2)}`)
+    }
+
+    await sleep(500)
+  }
+}
+
+async function readCommandFile(repoRoot: string): Promise<string> {
+  const filePath = join(repoRoot, COMMAND_FILE_NAME)
+  const content = await readFile(filePath, 'utf8').catch(() => null)
+  if (content === null) {
+    throw new Error(`Claude did not create ${COMMAND_FILE_NAME} in ${repoRoot}.`)
+  }
+
+  return content.trim()
+}
+
+function sessionKey(projectId: string, sessionId: string): string {
+  return `${projectId}\n${sessionId}`
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+function trim(value: string, maxLength: number): string {
+  const normalized = value.trim()
+  if (normalized.length <= maxLength) {
+    return normalized
+  }
+
+  return `${normalized.slice(0, maxLength - 3)}...`
 }
 
 function parseJsonTail(stdout: string): unknown {
   const trimmed = stdout.trim()
   if (!trimmed) {
-    throw new Error('Expected JSON output but command stdout was empty.')
+    return null
   }
 
   try {
@@ -286,7 +362,11 @@ function parseJsonTail(stdout: string): unknown {
     }
   }
 
-  throw new Error(`Expected JSON output but could not parse stdout:\n${stdout}`)
+  return null
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 function runChecked(
@@ -296,6 +376,7 @@ function runChecked(
   options?: {
     env?: NodeJS.ProcessEnv
     timeoutMs?: number
+    shell?: boolean
   }
 ): {
   status: number
@@ -308,8 +389,14 @@ function runChecked(
     encoding: 'utf8',
     windowsHide: true,
     timeout: options?.timeoutMs ?? 120_000,
-    maxBuffer: 20 * 1024 * 1024
+    maxBuffer: 50 * 1024 * 1024,
+    shell: options?.shell ?? false
   })
+
+  if (result.error) {
+    throw result.error
+  }
+
   const normalized = {
     status: result.status ?? 1,
     stdout: result.stdout ?? '',
@@ -329,52 +416,12 @@ function runChecked(
   return normalized
 }
 
-function runShellChecked(
-  command: string,
-  cwd: string,
-  options?: {
-    env?: NodeJS.ProcessEnv
-    timeoutMs?: number
-  }
-): {
-  status: number
-  stdout: string
-  stderr: string
-} {
-  const result = spawnSync(command, {
-    cwd,
-    env: options?.env,
-    encoding: 'utf8',
-    windowsHide: true,
-    timeout: options?.timeoutMs ?? 120_000,
-    maxBuffer: 20 * 1024 * 1024,
-    shell: true
-  })
-  const normalized = {
-    status: result.status ?? 1,
-    stdout: result.stdout ?? '',
-    stderr: result.stderr ?? ''
-  }
-
-  if (normalized.status !== 0) {
-    throw new Error([
-      `Command failed: ${command}`,
-      `cwd=${cwd}`,
-      `exitCode=${normalized.status}`,
-      `stdout=${normalized.stdout}`,
-      `stderr=${normalized.stderr}`
-    ].join('\n'))
-  }
-
-  return normalized
-}
-
 main().catch(async (error) => {
-  const publishedContextPath = getClaudeCodePublishedContextPath(process.cwd())
-  const diagnostic = existsSync(publishedContextPath)
-    ? `\npublishedContextSha256=${createHash('sha256').update(await readFile(publishedContextPath, 'utf8')).digest('hex')}`
-    : ''
   const message = error instanceof Error ? error.stack ?? error.message : String(error)
+  const diagnosticPath = lastRepoRoot ? join(lastRepoRoot, COMMAND_FILE_NAME) : null
+  const diagnostic = diagnosticPath && existsSync(diagnosticPath)
+    ? `\ncommandFileSha256=${createHash('sha256').update(await readFile(diagnosticPath, 'utf8')).digest('hex')}`
+    : ''
   console.error(`${message}${diagnostic}`)
   process.exitCode = 1
 })

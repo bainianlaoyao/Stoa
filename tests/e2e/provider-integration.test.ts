@@ -466,15 +466,16 @@ describe('E2E: Provider Integration', () => {
       expect(content).toContain('STOA_SESSION_SECRET')
       expect(Object.keys(settings.hooks).sort()).toEqual([
         'PermissionRequest',
-        'PreToolUse',
+        'PostToolUse',
         'SessionStart',
         'Stop',
         'StopFailure',
         'UserPromptSubmit'
       ])
-      expect(content).toContain('stoa-evolver-session-start.cmd')
-      await expect(stat(join(workspaceDir, '.claude', 'hooks', 'stoa-evolver-session-start.cjs'))).resolves.toMatchObject({ isFile: expect.any(Function) })
-      await expect(stat(join(workspaceDir, '.claude', 'hooks', 'stoa-evolver-session-start.cmd'))).resolves.toMatchObject({ isFile: expect.any(Function) })
+      expect(content).toContain('stoa-hook-session-start.cmd')
+      await expect(stat(join(workspaceDir, '.claude', 'hooks', 'stoa-hook-session-start.cjs'))).resolves.toMatchObject({ isFile: expect.any(Function) })
+      await expect(stat(join(workspaceDir, '.claude', 'hooks', 'stoa-hook-session-start.cmd'))).resolves.toMatchObject({ isFile: expect.any(Function) })
+      await expect(stat(join(workspaceDir, '.claude', 'hooks', 'stoa-hook-user-prompt-submit.cjs'))).resolves.toMatchObject({ isFile: expect.any(Function) })
       expect(content).not.toContain('stoa-evolver-signal-detect.cjs')
       expect(content).not.toContain('stoa-evolver-session-end.cjs')
       await expect(stat(join(workspaceDir, '.claude', 'hooks', 'stoa-evolver-signal-detect.cjs'))).rejects.toThrow()
@@ -751,9 +752,9 @@ describe('E2E: Provider Integration', () => {
       const parsed = JSON.parse(hooksContent)
 
       expect(Object.keys(parsed.hooks)).toEqual(
-        expect.arrayContaining(['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'Stop'])
+        expect.arrayContaining(['SessionStart', 'UserPromptSubmit', 'PostToolUse', 'Stop'])
       )
-      expect(parsed.hooks.SessionStart[0].hooks[0].command).toBe('node .codex/hook-stoa.mjs')
+      expect(parsed.hooks.SessionStart[0].hooks[0].command).toBe('node .codex/hook-stoa.mjs SessionStart')
       expect(parsed.hooks.Stop[0].hooks[0].type).toBe('command')
       expect(parsed.hooks.UserPromptSubmit[0].hooks).toBeDefined()
       expect(parsed.hooks.UserPromptSubmit[0].matcher).toBeUndefined()
@@ -916,6 +917,7 @@ describe('E2E: Provider Integration', () => {
       sessionId: string,
       projectId: string,
       secret: string,
+      hookEventName: string,
       stdinPayload: Record<string, unknown>
     ): Promise<{ exitCode: number | null; stderr: string }> {
       const workspaceDir = await createTempDir('stoa-trigger-hook-')
@@ -925,7 +927,7 @@ describe('E2E: Provider Integration', () => {
       await provider.installSidecar(target, context)
 
       return new Promise((resolve) => {
-        const child = spawn('node', [join(workspaceDir, '.codex', 'hook-stoa.mjs')], {
+        const child = spawn('node', [join(workspaceDir, '.codex', 'hook-stoa.mjs'), hookEventName], {
           env: {
             ...process.env as Record<string, string>,
             STOA_SESSION_ID: sessionId,
@@ -956,7 +958,7 @@ describe('E2E: Provider Integration', () => {
       const port = await server.start()
 
       const { exitCode, stderr } = await spawnHookSidecar(
-        port, 'trigger-sess-1', 'trigger-proj-1', 'trigger-secret-1',
+        port, 'trigger-sess-1', 'trigger-proj-1', 'trigger-secret-1', 'SessionStart',
         {
           hook_event_name: 'SessionStart',
           session_id: 'codex-uuid-start',
@@ -1006,7 +1008,7 @@ describe('E2E: Provider Integration', () => {
       const port = await server.start()
 
       const { exitCode } = await spawnHookSidecar(
-        port, 'trigger-sess-2', 'trigger-proj-2', 'trigger-secret-2',
+        port, 'trigger-sess-2', 'trigger-proj-2', 'trigger-secret-2', 'PreToolUse',
         {
           hook_event_name: 'PreToolUse',
           session_id: 'codex-uuid-tool',
@@ -1052,7 +1054,7 @@ describe('E2E: Provider Integration', () => {
       const port = await server.start()
 
       const { exitCode } = await spawnHookSidecar(
-        port, 'trigger-sess-3', 'trigger-proj-3', 'trigger-secret-3',
+        port, 'trigger-sess-3', 'trigger-proj-3', 'trigger-secret-3', 'Stop',
         {
           hook_event_name: 'Stop',
           session_id: 'codex-uuid-stop',
@@ -1106,7 +1108,7 @@ describe('E2E: Provider Integration', () => {
       const port = await server.start()
 
       const { exitCode } = await spawnHookSidecar(
-        port, 'trigger-sess-4', 'trigger-proj-4', 'wrong-secret',
+        port, 'trigger-sess-4', 'trigger-proj-4', 'wrong-secret', 'SessionStart',
         { hook_event_name: 'SessionStart', turn_id: 'turn-1' }
       )
 

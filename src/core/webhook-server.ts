@@ -47,7 +47,7 @@ function isNonEmptyString(value: unknown): value is string {
 }
 
 export interface LocalWebhookServerOptions {
-  onEvent?: (event: CanonicalSessionEvent) => Promise<void> | void
+  onEvent?: (event: CanonicalSessionEvent) => Promise<unknown> | unknown
   getSessionSecret?: (sessionId: string) => string | null
   port?: number
 }
@@ -209,8 +209,13 @@ export function createLocalWebhookServer(options: LocalWebhookServerOptions = {}
       return
     }
 
-    await options.onEvent?.(request.body)
-    response.status(202).json({ accepted: true })
+    const result = await options.onEvent?.(request.body)
+    if (result === undefined || result === null) {
+      response.status(202).json({ accepted: true })
+      return
+    }
+
+    response.status(200).json(result)
   })
 
   app.post('/hooks/claude-code', async (request, response) => {
@@ -258,8 +263,13 @@ export function createLocalWebhookServer(options: LocalWebhookServerOptions = {}
       return
     }
 
-    await options.onEvent?.(event)
-    response.status(202).json({ accepted: true })
+    const result = await options.onEvent?.(event)
+    if (result === undefined || result === null) {
+      response.status(202).json({ accepted: true })
+      return
+    }
+
+    response.status(200).json(result)
   })
 
   app.post('/hooks/codex', async (request, response) => {
@@ -339,8 +349,13 @@ export function createLocalWebhookServer(options: LocalWebhookServerOptions = {}
         intent: event.payload.intent
       })
     }
-    await options.onEvent?.(event)
-    response.status(202).json({ accepted: true })
+    const result = await options.onEvent?.(event)
+    if (result === undefined || result === null) {
+      response.status(202).json({ accepted: true })
+      return
+    }
+
+    response.status(200).json(result)
   })
 
   return {
