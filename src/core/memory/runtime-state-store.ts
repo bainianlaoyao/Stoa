@@ -156,18 +156,6 @@ export class RuntimeStateStore {
     })
   }
 
-  async listSessionProgress(): Promise<MemoryRuntimeSessionProgress[]> {
-    return (await this.read()).sessionProgress
-  }
-
-  async listRunRecords(): Promise<MemoryRunRecord[]> {
-    return (await this.read()).runRecords
-  }
-
-  async listPublishedRecords(): Promise<PublishedMemoryRecord[]> {
-    return (await this.read()).publishedRecords
-  }
-
   async upsertSessionProgress(record: MemoryRuntimeSessionProgress): Promise<void> {
     await this.updateStore(store => {
       const sessionProgress = store.sessionProgress.filter(candidate => getSessionKey(candidate) !== getSessionKey(record))

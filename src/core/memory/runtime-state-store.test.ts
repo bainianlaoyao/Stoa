@@ -74,9 +74,6 @@ describe('RuntimeStateStore', () => {
       runRecords: [],
       publishedRecords: []
     })
-    await expect(store.listSessionProgress()).resolves.toEqual([])
-    await expect(store.listRunRecords()).resolves.toEqual([])
-    await expect(store.listPublishedRecords()).resolves.toEqual([])
   })
 
   test('upsertSessionProgress replaces by project and session key', async () => {
@@ -98,14 +95,6 @@ describe('RuntimeStateStore', () => {
       ]
     })
 
-    await expect(store.listSessionProgress()).resolves.toEqual([
-      {
-        projectId: 'project_1',
-        stoaSessionId: 'session_1',
-        lastProcessedEvidenceKey: 'evidence:2',
-        updatedAt: '2026-04-28T00:05:00.000Z'
-      }
-    ])
   })
 
   test('upsertRunRecord replaces by project and session key without Entire identity', async () => {
@@ -136,20 +125,6 @@ describe('RuntimeStateStore', () => {
         }
       ]
     })
-
-    await expect(store.listRunRecords()).resolves.toEqual([
-      {
-        projectId: 'project_1',
-        stoaSessionId: 'session_1',
-        runId: 'run_2',
-        worktreePath: 'C:/repo/.stoa/memory/runs/run_2/worktree',
-        memoryDir: 'C:/repo/.stoa/memory/runs/run_2/memory',
-        evolutionDir: 'C:/repo/.stoa/memory/runs/run_2/memory/evolution',
-        gepAssetsDir: 'C:/repo/.stoa/memory/runs/run_2/gep-assets',
-        reviewStateRef: 'memory/evolution/evolution_solidify_state.json',
-        updatedAt: '2026-04-28T01:05:00.000Z'
-      }
-    ])
 
     await expect(readFile(getRuntimeStateFilePath(repoRoot), 'utf-8')).resolves.not.toContain('entireCheckpointId')
   })
@@ -193,26 +168,6 @@ describe('RuntimeStateStore', () => {
       ]
     })
 
-    await expect(store.listPublishedRecords()).resolves.toEqual([
-      {
-        projectId: 'project_1',
-        stoaSessionId: 'session_1',
-        consumer: 'claude-code',
-        deliveryState: 'published',
-        runId: 'run_1',
-        publishedHash: 'sha256:abc',
-        updatedAt: '2026-04-28T02:05:00.000Z'
-      },
-      {
-        projectId: 'project_1',
-        stoaSessionId: 'session_1',
-        consumer: 'generic',
-        deliveryState: 'failed',
-        runId: 'run_2',
-        publishedHash: null,
-        updatedAt: '2026-04-28T02:06:00.000Z'
-      }
-    ])
   })
 
   test('serializes concurrent upserts across categories without losing data', async () => {
