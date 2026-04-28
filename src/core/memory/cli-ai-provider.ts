@@ -1,5 +1,6 @@
 import { execFile as nodeExecFile } from 'node:child_process'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { access, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { constants } from 'node:fs'
 import { extname, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import type { AppSettings, MemoryAiProvider } from '@shared/project-session'
@@ -46,6 +47,7 @@ export interface CliAiProviderOptions {
   execFile?: ExecFileLike
   resolveProviderExecutablePath?: ResolveProviderExecutablePath
   platform?: NodeJS.Platform
+  pathExists?: (candidatePath: string) => Promise<boolean>
 }
 
 export class CliAiProvider {
@@ -53,6 +55,7 @@ export class CliAiProvider {
   private readonly execFile: ExecFileLike
   private readonly resolveProviderExecutablePath: ResolveProviderExecutablePath
   private readonly platform: NodeJS.Platform
+  private readonly pathExists: (candidatePath: string) => Promise<boolean>
 
   constructor(options: CliAiProviderOptions) {
     this.settings = options.settings
@@ -60,6 +63,7 @@ export class CliAiProvider {
     this.resolveProviderExecutablePath =
       options.resolveProviderExecutablePath ?? defaultResolveProviderExecutablePath
     this.platform = options.platform ?? process.platform
+    this.pathExists = options.pathExists ?? defaultPathExists
   }
 
   async summarizeSession(request: SemanticSessionSummaryRequest): Promise<SemanticSessionSummary> {
@@ -168,7 +172,7 @@ export class CliAiProvider {
     })
 
     if (resolved.providerPath) {
-      return this.toInvocation(resolved.providerPath, resolved.shellPath, providerArgs)
+      return await this.toInvocation(resolved.providerPath, resolved.shellPath, providerArgs)
     }
 
     return {
@@ -205,44 +209,79 @@ export class CliAiProvider {
     })
   }
 
-  private toInvocation(
+  private async toInvocation(
     providerPath: string,
     shellPath: string | null,
     providerArgs: string[]
-  ): { command: string; args: string[] } {
-    if (this.platform !== 'win32' || !isWindowsScriptPath(providerPath)) {
+  ): Promise<{ command: string; args: string[] }> {
+    if (this.platform !== 'win32') {
       return {
         command: providerPath,
         args: providerArgs
       }
     }
 
-    if (hasPowerShellExtension(providerPath)) {
+    const canonicalProviderPath = await this.normalizeWindowsProviderPath(providerPath)
+
+    if (!isWindowsScriptPath(canonicalProviderPath)) {
+      return {
+        command: canonicalProviderPath,
+        args: providerArgs
+      }
+    }
+
+    if (hasPowerShellExtension(canonicalProviderPath)) {
       const powerShellPath = isPowerShellShell(shellPath) ? shellPath : 'powershell.exe'
       return {
         command: powerShellPath,
-        args: ['-NoLogo', '-NoProfile', '-File', providerPath, ...providerArgs]
+        args: ['-NoLogo', '-NoProfile', '-File', canonicalProviderPath, ...providerArgs]
       }
     }
 
     if (isCmdShell(shellPath)) {
       return {
         command: shellPath,
-        args: ['/d', '/s', '/c', buildCmdInvocation(providerPath, providerArgs)]
+        args: ['/d', '/s', '/c', buildCmdInvocation(canonicalProviderPath, providerArgs)]
       }
     }
 
     if (isPowerShellShell(shellPath)) {
       return {
         command: shellPath,
-        args: ['-NoLogo', '-NoProfile', '-Command', buildPowerShellInvocation(providerPath, providerArgs)]
+        args: ['-NoLogo', '-NoProfile', '-Command', buildPowerShellInvocation(canonicalProviderPath, providerArgs)]
       }
     }
 
     return {
       command: 'cmd.exe',
-      args: ['/d', '/s', '/c', buildCmdInvocation(providerPath, providerArgs)]
+      args: ['/d', '/s', '/c', buildCmdInvocation(canonicalProviderPath, providerArgs)]
     }
+  }
+
+  private async normalizeWindowsProviderPath(providerPath: string): Promise<string> {
+    const extension = extname(providerPath).toLowerCase()
+    const basePath = extension.length > 0
+      ? providerPath.slice(0, -extension.length)
+      : providerPath
+
+    const preferredCandidates = [
+      `${basePath}.exe`,
+      `${basePath}.ps1`,
+      `${basePath}.cmd`,
+      `${basePath}.bat`
+    ]
+
+    for (const candidatePath of preferredCandidates) {
+      if (candidatePath === providerPath) {
+        return providerPath
+      }
+
+      if (await this.pathExists(candidatePath)) {
+        return candidatePath
+      }
+    }
+
+    return providerPath
   }
 }
 
@@ -357,4 +396,13 @@ function buildPowerShellInvocation(providerPath: string, providerArgs: string[])
 
 function quotePowerShellValue(value: string): string {
   return `'${value.replaceAll("'", "''")}'`
+}
+
+async function defaultPathExists(candidatePath: string): Promise<boolean> {
+  try {
+    await access(candidatePath, constants.F_OK)
+    return true
+  } catch {
+    return false
+  }
 }

@@ -315,6 +315,72 @@ describe('CliAiProvider', () => {
     )
   })
 
+  test('canonicalizes an extensionless Windows Codex shim to the ps1 sibling and launches through PowerShell', async () => {
+    const decision: DistillationDecision = {
+      shouldDistill: true,
+      title: 'Prefer the PowerShell launcher',
+      summary: 'The extensionless npm shim should normalize to the ps1 sibling.',
+      strategy: ['Prefer safer sibling launchers before execution.'],
+      validationCommands: ['npm run typecheck']
+    }
+    const execFile = vi.fn((_command, _args, _options, callback) => {
+      callback(null, JSON.stringify({
+        type: 'item.completed',
+        item: {
+          type: 'agent_message',
+          text: JSON.stringify(decision)
+        }
+      }), '')
+    })
+    const pathExists = vi.fn(async (candidatePath: string) => {
+      return candidatePath === 'C:\\Users\\30280\\AppData\\Roaming\\npm\\codex.ps1'
+    })
+    const provider = new CliAiProvider({
+      settings: createSettings('codex'),
+      execFile,
+      resolveProviderExecutablePath: vi.fn().mockResolvedValue({
+        shellPath: 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+        providerPath: 'C:\\Users\\30280\\AppData\\Roaming\\npm\\codex'
+      }),
+      pathExists,
+      platform: 'win32'
+    })
+
+    await expect(provider.distill({
+      cwd: rootDir,
+      prompt: 'Decide whether to distill this session.'
+    })).resolves.toEqual(decision)
+
+    expect(pathExists).toHaveBeenCalledWith('C:\\Users\\30280\\AppData\\Roaming\\npm\\codex.exe')
+    expect(pathExists).toHaveBeenCalledWith('C:\\Users\\30280\\AppData\\Roaming\\npm\\codex.ps1')
+    expect(execFile).toHaveBeenCalledWith(
+      'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+      [
+        '-NoLogo',
+        '-NoProfile',
+        '-File',
+        'C:\\Users\\30280\\AppData\\Roaming\\npm\\codex.ps1',
+        'exec',
+        '--skip-git-repo-check',
+        '--sandbox',
+        'read-only',
+        '--output-schema',
+        expect.any(String),
+        '--color',
+        'never',
+        '--json',
+        '--cd',
+        rootDir,
+        'Decide whether to distill this session.'
+      ],
+      expect.objectContaining({
+        cwd: rootDir,
+        windowsHide: true
+      }),
+      expect.any(Function)
+    )
+  })
+
   test('shell-wraps Windows cmd provider scripts when the resolved provider path is a cmd launcher', async () => {
     const summary: SemanticSessionSummary = {
       summary: 'Reviewed through cmd wrapper.',
@@ -333,6 +399,7 @@ describe('CliAiProvider', () => {
         shellPath: 'C:\\Windows\\System32\\cmd.exe',
         providerPath: 'C:\\Users\\30280\\AppData\\Local\\Programs\\claude\\claude.cmd'
       }),
+      pathExists: vi.fn().mockResolvedValue(false),
       platform: 'win32'
     })
 
