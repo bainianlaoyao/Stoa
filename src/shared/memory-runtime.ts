@@ -2,6 +2,27 @@ export type MemoryRuntimeEvidenceProvider = 'claude-code' | 'codex'
 export type MemoryRuntimeEvidenceChannel = 'hook' | 'notify'
 export type MemoryRuntimeConsumer = MemoryRuntimeEvidenceProvider | 'opencode' | 'generic'
 export type MemoryRuntimeDeliveryState = 'pending' | 'published' | 'failed'
+export type SemanticSessionOutcome = 'success' | 'failure' | 'mixed' | 'unknown'
+
+export interface SemanticSessionSummary {
+  summary: string
+  outcome: SemanticSessionOutcome
+  lessons: string[]
+}
+
+export interface ReviewDecision {
+  decision: 'approve' | 'reject'
+  summary: string
+  concerns: string[]
+}
+
+export interface DistillationDecision {
+  shouldDistill: boolean
+  title: string
+  summary: string
+  strategy: string[]
+  validationCommands: string[]
+}
 
 export interface MemoryRuntimeEvidenceRawSource {
   provider: MemoryRuntimeEvidenceProvider
