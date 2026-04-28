@@ -238,23 +238,15 @@ export class CliAiProvider {
       }
     }
 
-    if (isCmdShell(shellPath)) {
-      return {
-        command: shellPath,
-        args: ['/d', '/s', '/c', buildCmdInvocation(canonicalProviderPath, providerArgs)]
-      }
-    }
-
-    if (isPowerShellShell(shellPath)) {
-      return {
-        command: shellPath,
-        args: ['-NoLogo', '-NoProfile', '-Command', buildPowerShellInvocation(canonicalProviderPath, providerArgs)]
-      }
+    if (hasBatchExtension(canonicalProviderPath)) {
+      throw new Error(
+        `Windows batch launchers are not supported for CLI AI provider execution: ${canonicalProviderPath}`
+      )
     }
 
     return {
-      command: 'cmd.exe',
-      args: ['/d', '/s', '/c', buildCmdInvocation(canonicalProviderPath, providerArgs)]
+      command: canonicalProviderPath,
+      args: providerArgs
     }
   }
 
@@ -360,6 +352,11 @@ function hasPowerShellExtension(providerPath: string): boolean {
   return extname(providerPath).toLowerCase() === '.ps1'
 }
 
+function hasBatchExtension(providerPath: string): boolean {
+  const extension = extname(providerPath).toLowerCase()
+  return extension === '.cmd' || extension === '.bat'
+}
+
 function isPowerShellShell(shellPath: string | null): shellPath is string {
   if (!shellPath) {
     return false
@@ -367,31 +364,6 @@ function isPowerShellShell(shellPath: string | null): shellPath is string {
 
   const normalized = shellPath.replaceAll('\\', '/').toLowerCase()
   return normalized.includes('powershell') || normalized.endsWith('/pwsh') || normalized.endsWith('/pwsh.exe')
-}
-
-function isCmdShell(shellPath: string | null): shellPath is string {
-  if (!shellPath) {
-    return false
-  }
-
-  const normalized = shellPath.replaceAll('\\', '/').toLowerCase()
-  return normalized.endsWith('/cmd.exe') || normalized.endsWith('/cmd')
-}
-
-function buildCmdInvocation(providerPath: string, providerArgs: string[]): string {
-  return `"${escapeCmdValue(providerPath)}"${providerArgs.map(arg => ` ${quoteCmdValue(arg)}`).join('')}`
-}
-
-function quoteCmdValue(value: string): string {
-  return `"${escapeCmdValue(value)}"`
-}
-
-function escapeCmdValue(value: string): string {
-  return value.replaceAll('"', '""')
-}
-
-function buildPowerShellInvocation(providerPath: string, providerArgs: string[]): string {
-  return ['&', quotePowerShellValue(providerPath), ...providerArgs.map(quotePowerShellValue)].join(' ')
 }
 
 function quotePowerShellValue(value: string): string {

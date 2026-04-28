@@ -381,17 +381,8 @@ describe('CliAiProvider', () => {
     )
   })
 
-  test('shell-wraps Windows cmd provider scripts when the resolved provider path is a cmd launcher', async () => {
-    const summary: SemanticSessionSummary = {
-      summary: 'Reviewed through cmd wrapper.',
-      outcome: 'success',
-      lessons: ['cmd launchers need shell wrapping on Windows.']
-    }
-    const execFile = vi.fn((_command, _args, _options, callback) => {
-      callback(null, JSON.stringify({
-        structured_output: summary
-      }), '')
-    })
+  test('rejects canonical Windows cmd launchers when no safer sibling exists', async () => {
+    const execFile = vi.fn()
     const provider = new CliAiProvider({
       settings: createSettings('claude-code'),
       execFile,
@@ -406,23 +397,11 @@ describe('CliAiProvider', () => {
     await expect(provider.summarizeSession({
       cwd: rootDir,
       prompt: 'Summarize this session.'
-    })).resolves.toEqual(summary)
-
-    expect(execFile).toHaveBeenCalledWith(
-      'C:\\Windows\\System32\\cmd.exe',
-      [
-        '/d',
-        '/s',
-        '/c',
-        expect.stringContaining('"C:\\Users\\30280\\AppData\\Local\\Programs\\claude\\claude.cmd"')
-      ],
-      expect.objectContaining({
-        cwd: rootDir,
-        windowsHide: true
-      }),
-      expect.any(Function)
+    })).rejects.toThrow(
+      'Windows batch launchers are not supported for CLI AI provider execution: C:\\Users\\30280\\AppData\\Local\\Programs\\claude\\claude.cmd'
     )
-    expect(execFile.mock.calls[0]?.[1]?.[3]).toContain('--no-session-persistence')
+
+    expect(execFile).not.toHaveBeenCalled()
   })
 
   test('deletes the Codex schema file when the command fails', async () => {
