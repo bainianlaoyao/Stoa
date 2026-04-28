@@ -18,3 +18,7 @@ test-results/
 .stoa/
 .cache/
 .env.test
+assets/
+.stoa
+.entire
+memory
