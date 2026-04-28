@@ -1,6 +1,6 @@
 import { execFile as nodeExecFile } from 'node:child_process'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { extname, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import type { AppSettings, MemoryAiProvider } from '@shared/project-session'
 import type {
@@ -45,18 +45,21 @@ export interface CliAiProviderOptions {
   settings: AppSettings
   execFile?: ExecFileLike
   resolveProviderExecutablePath?: ResolveProviderExecutablePath
+  platform?: NodeJS.Platform
 }
 
 export class CliAiProvider {
   private readonly settings: AppSettings
   private readonly execFile: ExecFileLike
   private readonly resolveProviderExecutablePath: ResolveProviderExecutablePath
+  private readonly platform: NodeJS.Platform
 
   constructor(options: CliAiProviderOptions) {
     this.settings = options.settings
     this.execFile = options.execFile ?? nodeExecFile
     this.resolveProviderExecutablePath =
       options.resolveProviderExecutablePath ?? defaultResolveProviderExecutablePath
+    this.platform = options.platform ?? process.platform
   }
 
   async summarizeSession(request: SemanticSessionSummaryRequest): Promise<SemanticSessionSummary> {
@@ -96,8 +99,7 @@ export class CliAiProvider {
     request: CliAiBaseRequest,
     contract: StructuredResponseContract<TResponse>
   ): Promise<TResponse> {
-    const command = await this.resolveExecutable(providerIdFromSettings(this.settings))
-    const stdout = await this.execCommand(command, [
+    const invocation = await this.resolveInvocation(providerIdFromSettings(this.settings), [
       '-p',
       request.prompt,
       '--bare',
@@ -110,7 +112,8 @@ export class CliAiProvider {
       '--tools',
       '',
       '--no-session-persistence'
-    ], request)
+    ])
+    const stdout = await this.execCommand(invocation.command, invocation.args, request)
 
     let parsed: unknown
     try {
@@ -127,13 +130,12 @@ export class CliAiProvider {
     request: CliAiBaseRequest,
     contract: StructuredResponseContract<TResponse>
   ): Promise<TResponse> {
-    const command = await this.resolveExecutable(providerIdFromSettings(this.settings))
     const schemaDir = await mkdtemp(join(tmpdir(), 'stoa-codex-schema-'))
     const schemaPath = join(schemaDir, 'output-schema.json')
 
     try {
       await writeFile(schemaPath, JSON.stringify(contract.schema), 'utf8')
-      const stdout = await this.execCommand(command, [
+      const invocation = await this.resolveInvocation(providerIdFromSettings(this.settings), [
         'exec',
         '--skip-git-repo-check',
         '--sandbox',
@@ -146,7 +148,8 @@ export class CliAiProvider {
         '--cd',
         request.cwd,
         request.prompt
-      ], request)
+      ])
+      const stdout = await this.execCommand(invocation.command, invocation.args, request)
 
       const parsedPayload = parseCodexStructuredPayload(stdout)
       return contract.parse(parsedPayload)
@@ -155,17 +158,23 @@ export class CliAiProvider {
     }
   }
 
-  private async resolveExecutable(providerId: MemoryAiProvider): Promise<string> {
+  private async resolveInvocation(
+    providerId: MemoryAiProvider,
+    providerArgs: string[]
+  ): Promise<{ command: string; args: string[] }> {
     const resolved = await this.resolveProviderExecutablePath(providerId, this.settings, {
       detectShell,
       detectProvider
     })
 
     if (resolved.providerPath) {
-      return resolved.providerPath
+      return this.toInvocation(resolved.providerPath, resolved.shellPath, providerArgs)
     }
 
-    return providerId === 'claude-code' ? 'claude' : 'codex'
+    return {
+      command: providerId === 'claude-code' ? 'claude' : 'codex',
+      args: providerArgs
+    }
   }
 
   private async execCommand(
@@ -194,6 +203,46 @@ export class CliAiProvider {
         }
       )
     })
+  }
+
+  private toInvocation(
+    providerPath: string,
+    shellPath: string | null,
+    providerArgs: string[]
+  ): { command: string; args: string[] } {
+    if (this.platform !== 'win32' || !isWindowsScriptPath(providerPath)) {
+      return {
+        command: providerPath,
+        args: providerArgs
+      }
+    }
+
+    if (hasPowerShellExtension(providerPath)) {
+      const powerShellPath = isPowerShellShell(shellPath) ? shellPath : 'powershell.exe'
+      return {
+        command: powerShellPath,
+        args: ['-NoLogo', '-NoProfile', '-File', providerPath, ...providerArgs]
+      }
+    }
+
+    if (isCmdShell(shellPath)) {
+      return {
+        command: shellPath,
+        args: ['/d', '/s', '/c', buildCmdInvocation(providerPath, providerArgs)]
+      }
+    }
+
+    if (isPowerShellShell(shellPath)) {
+      return {
+        command: shellPath,
+        args: ['-NoLogo', '-NoProfile', '-Command', buildPowerShellInvocation(providerPath, providerArgs)]
+      }
+    }
+
+    return {
+      command: 'cmd.exe',
+      args: ['/d', '/s', '/c', buildCmdInvocation(providerPath, providerArgs)]
+    }
   }
 }
 
@@ -261,4 +310,51 @@ function parseCodexStructuredPayload(stdout: string): unknown {
   } catch {
     throw new Error('Codex CLI returned invalid structured JSON')
   }
+}
+
+function isWindowsScriptPath(providerPath: string): boolean {
+  const extension = extname(providerPath).toLowerCase()
+  return extension === '.ps1' || extension === '.cmd' || extension === '.bat'
+}
+
+function hasPowerShellExtension(providerPath: string): boolean {
+  return extname(providerPath).toLowerCase() === '.ps1'
+}
+
+function isPowerShellShell(shellPath: string | null): shellPath is string {
+  if (!shellPath) {
+    return false
+  }
+
+  const normalized = shellPath.replaceAll('\\', '/').toLowerCase()
+  return normalized.includes('powershell') || normalized.endsWith('/pwsh') || normalized.endsWith('/pwsh.exe')
+}
+
+function isCmdShell(shellPath: string | null): shellPath is string {
+  if (!shellPath) {
+    return false
+  }
+
+  const normalized = shellPath.replaceAll('\\', '/').toLowerCase()
+  return normalized.endsWith('/cmd.exe') || normalized.endsWith('/cmd')
+}
+
+function buildCmdInvocation(providerPath: string, providerArgs: string[]): string {
+  return `"${escapeCmdValue(providerPath)}"${providerArgs.map(arg => ` ${quoteCmdValue(arg)}`).join('')}`
+}
+
+function quoteCmdValue(value: string): string {
+  return `"${escapeCmdValue(value)}"`
+}
+
+function escapeCmdValue(value: string): string {
+  return value.replaceAll('"', '""')
+}
+
+function buildPowerShellInvocation(providerPath: string, providerArgs: string[]): string {
+  return ['&', quotePowerShellValue(providerPath), ...providerArgs.map(quotePowerShellValue)].join(' ')
+}
+
+function quotePowerShellValue(value: string): string {
+  return `'${value.replaceAll("'", "''")}'`
 }
