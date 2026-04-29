@@ -1,6 +1,9 @@
 export type ObservedEventProvider = 'claude-code' | 'codex'
 export type ObservedEventChannel = 'hook' | 'notify'
 export type Consumer = ObservedEventProvider | 'opencode' | 'generic'
+export type InferenceCapability = 'distill' | 'optional-review'
+export type InferenceCapabilityProvider = ObservedEventProvider | 'api'
+export type InferenceCapabilityTarget = Extract<Consumer, 'claude-code' | 'codex' | 'generic'>
 
 export interface ObservedEventRawSource {
   provider: ObservedEventProvider

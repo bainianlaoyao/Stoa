@@ -9,7 +9,7 @@ import GlassPathField from '../primitives/GlassPathField.vue'
 
 const { t } = useI18n()
 const store = useSettingsStore()
-const memoryAiProviderOptions = [
+const evolverInferenceProviderOptions = [
   { value: 'claude-code', label: 'Claude Code' },
   { value: 'codex', label: 'Codex' }
 ]
@@ -55,9 +55,9 @@ function handleClaudeDangerouslySkipPermissionsChange(value: boolean): void {
   void store.updateSetting('claudeDangerouslySkipPermissions', value)
 }
 
-function handleMemoryAiProviderChange(value: string): void {
+function handleEvolverInferenceProviderChange(value: string): void {
   if (value === 'claude-code' || value === 'codex') {
-    void store.updateSetting('memoryAiProvider', value)
+    void store.updateSetting('evolverInferenceProvider', value)
   }
 }
 </script>
@@ -75,29 +75,29 @@ function handleMemoryAiProviderChange(value: string): void {
     </header>
 
     <div class="settings-section">
-      <section class="settings-card" aria-label="Memory AI provider">
+      <section class="settings-card" aria-label="Evolver inference provider">
         <div class="settings-card__header">
           <div>
-            <h4 class="settings-card__title">Memory AI provider</h4>
+            <h4 class="settings-card__title">Evolver inference provider</h4>
             <p class="settings-card__description">
-              Choose which provider contract future memory-runtime subprocesses should target.
+              Stoa uses that provider when Evolver requests LLM work such as distill or optional review.
             </p>
           </div>
-          <span class="settings-card__badge">Contract</span>
+          <span class="settings-card__badge">Host-owned</span>
         </div>
 
-        <div class="settings-inline-field" data-settings-field="memory-ai-provider">
+        <div class="settings-inline-field" data-settings-field="evolver-inference-provider">
           <GlassFormField
-            label="Memory AI provider"
+            label="Evolver inference provider"
             type="select"
-            :model-value="store.memoryAiProvider"
-            :options="memoryAiProviderOptions"
-            @update:model-value="handleMemoryAiProviderChange"
+            :model-value="store.evolverInferenceProvider"
+            :options="evolverInferenceProviderOptions"
+            @update:model-value="handleEvolverInferenceProviderChange"
           />
         </div>
 
         <p class="settings-item__hint">
-          This does not start a memory runtime yet. It only locks the persisted provider selection for upcoming work.
+          This does not start Evolver work by itself. It only persists which inference capability Stoa should use when requested.
         </p>
       </section>
 

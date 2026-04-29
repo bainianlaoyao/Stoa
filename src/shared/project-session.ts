@@ -9,7 +9,8 @@ import type { MemoryRuntimeEvidence } from './memory-runtime'
 import type { BlockingReason } from '@shared/observability'
 
 export type SessionType = 'shell' | 'opencode' | 'codex' | 'claude-code'
-export type MemoryAiProvider = 'codex' | 'claude-code' | 'api'
+export type EvolverInferenceProvider = 'codex' | 'claude-code' | 'api'
+export type EvolverExecutionMode = 'workspace-shell'
 export type SessionRecoveryMode = 'fresh-shell' | 'resume-external'
 export type SessionRuntimeState = 'created' | 'starting' | 'alive' | 'exited' | 'failed_to_start'
 export type SessionAgentState = 'unknown' | 'idle' | 'working' | 'blocked' | 'error'
@@ -130,7 +131,8 @@ export interface AppSettings {
   terminalFontSize: number
   terminalFontFamily: string
   providers: Record<string, string>
-  memoryAiProvider: MemoryAiProvider
+  evolverInferenceProvider: EvolverInferenceProvider
+  evolverExecutionMode: EvolverExecutionMode
   workspaceIde: WorkspaceIdeSettings
   claudeDangerouslySkipPermissions: boolean
   locale: string
@@ -156,7 +158,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   terminalFontSize: 14,
   terminalFontFamily: 'JetBrains Mono',
   providers: {},
-  memoryAiProvider: 'claude-code',
+  evolverInferenceProvider: 'claude-code',
+  evolverExecutionMode: 'workspace-shell',
   workspaceIde: {
     id: 'vscode',
     executablePath: ''

@@ -11,6 +11,9 @@ import ProvidersSettings from './ProvidersSettings.vue'
 import type { RendererApi } from '@shared/project-session'
 
 const providersSettingsPath = resolve(dirname(fileURLToPath(import.meta.url)), 'ProvidersSettings.vue')
+const projectSessionPath = resolve(dirname(fileURLToPath(import.meta.url)), '../../../shared/project-session.ts')
+const memoryRuntimePath = resolve(dirname(fileURLToPath(import.meta.url)), '../../../shared/memory-runtime.ts')
+const settingsStorePath = resolve(dirname(fileURLToPath(import.meta.url)), '../../stores/settings.ts')
 
 function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
   return {
@@ -50,7 +53,8 @@ function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
       terminalFontFamily: 'JetBrains Mono',
       providers: {},
       workspaceIde: { id: 'vscode', executablePath: '' },
-      memoryAiProvider: 'claude-code',
+      evolverInferenceProvider: 'claude-code',
+      evolverExecutionMode: 'workspace-shell',
       claudeDangerouslySkipPermissions: false,
       locale: 'en'
     }),
@@ -164,11 +168,12 @@ describe('ProvidersSettings', () => {
     expect(wrapper.find('.settings-card__badge').exists()).toBe(true)
   })
 
-  it('renders the memory AI provider selector', () => {
+  it('renders the evolver inference provider selector with host-owned copy', () => {
     const wrapper = mountProvidersSettings()
 
-    expect(wrapper.find('[data-settings-field="memory-ai-provider"]').exists()).toBe(true)
-    expect(wrapper.text()).toContain('Memory AI provider')
+    expect(wrapper.find('[data-settings-field="evolver-inference-provider"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('Evolver inference provider')
+    expect(wrapper.text()).toContain('Stoa uses that provider when Evolver requests LLM work such as distill or optional review.')
   })
 
   it('renders Browse button for each provider', () => {
@@ -218,7 +223,7 @@ describe('ProvidersSettings', () => {
     expect(setSettingMock).toHaveBeenCalledWith('claudeDangerouslySkipPermissions', true)
   })
 
-  it('updates the memory AI provider setting from the selector', async () => {
+  it('updates the evolver inference provider setting from the selector', async () => {
     const setSettingMock = vi.fn().mockResolvedValue(undefined)
     setupVibecodingMock({ setSetting: setSettingMock })
 
@@ -226,7 +231,7 @@ describe('ProvidersSettings', () => {
 
     await nextTick()
 
-    const trigger = wrapper.find('[data-settings-field="memory-ai-provider"] [data-testid="glass-listbox-button"]')
+    const trigger = wrapper.find('[data-settings-field="evolver-inference-provider"] [data-testid="glass-listbox-button"]')
     expect(trigger.exists()).toBe(true)
 
     await trigger.trigger('click')
@@ -237,7 +242,27 @@ describe('ProvidersSettings', () => {
 
     await option!.trigger('click')
 
-    expect(setSettingMock).toHaveBeenCalledWith('memoryAiProvider', 'codex')
+    expect(setSettingMock).toHaveBeenCalledWith('evolverInferenceProvider', 'codex')
+  })
+
+  it('defines evolver host settings contracts and inference capability terminology', () => {
+    const projectSessionSource = readFileSync(projectSessionPath, 'utf8')
+    const memoryRuntimeSource = readFileSync(memoryRuntimePath, 'utf8')
+    const settingsStoreSource = readFileSync(settingsStorePath, 'utf8')
+
+    expect(projectSessionSource).toContain("export type EvolverInferenceProvider = 'codex' | 'claude-code' | 'api'")
+    expect(projectSessionSource).toContain("export type EvolverExecutionMode = 'workspace-shell'")
+    expect(projectSessionSource).toContain('evolverInferenceProvider: EvolverInferenceProvider')
+    expect(projectSessionSource).toContain('evolverExecutionMode: EvolverExecutionMode')
+    expect(projectSessionSource).toContain("evolverInferenceProvider: 'claude-code'")
+    expect(projectSessionSource).toContain("evolverExecutionMode: 'workspace-shell'")
+
+    expect(memoryRuntimeSource).toContain('export type InferenceCapability =')
+    expect(memoryRuntimeSource).toContain('export type InferenceCapabilityProvider =')
+
+    expect(settingsStoreSource).toContain("const evolverInferenceProvider = ref<EvolverInferenceProvider>('claude-code')")
+    expect(settingsStoreSource).toContain("const evolverExecutionMode = ref<EvolverExecutionMode>('workspace-shell')")
+    expect(settingsStoreSource).toContain("key === 'evolverInferenceProvider'")
   })
 
   it('does not misuse shadow tokens as badge fills or keep non-baseline switch timings', () => {
