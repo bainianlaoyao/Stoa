@@ -154,7 +154,7 @@ describe('SessionEvidenceStore', () => {
     })
   })
 
-  test('seals a turn and resolves evidence refs in seal order', async () => {
+  test('seals a turn and resolves evidence refs in timestamp order', async () => {
     const projectPath = await createTestTempDir('session-evidence-store-turns-')
     const store = new SessionEvidenceStore()
 
@@ -198,16 +198,16 @@ describe('SessionEvidenceStore', () => {
 
     await expect(store.listEvidenceRefsForTurn(projectPath, 'session-77', 'turn-77')).resolves.toEqual([
       expect.objectContaining({
-        evidenceId: 'event-2',
-        turnId: 'turn-77',
-        eventType: 'codex.PostToolUse',
-        toolName: 'Write'
-      }),
-      expect.objectContaining({
         evidenceId: 'event-1',
         turnId: 'turn-77',
         eventType: 'codex.Stop',
         toolName: null
+      }),
+      expect.objectContaining({
+        evidenceId: 'event-2',
+        turnId: 'turn-77',
+        eventType: 'codex.PostToolUse',
+        toolName: 'Write'
       })
     ])
   })

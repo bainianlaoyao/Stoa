@@ -475,13 +475,18 @@ describe('E2E: Provider Integration', () => {
       expect(content).toContain('stoa-hook-session-start.cmd')
       await expect(stat(join(workspaceDir, '.claude', 'hooks', 'stoa-hook-session-start.cjs'))).resolves.toMatchObject({ isFile: expect.any(Function) })
       await expect(stat(join(workspaceDir, '.claude', 'hooks', 'stoa-hook-session-start.cmd'))).resolves.toMatchObject({ isFile: expect.any(Function) })
-      await expect(stat(join(workspaceDir, '.claude', 'hooks', 'stoa-hook-user-prompt-submit.cjs'))).resolves.toMatchObject({ isFile: expect.any(Function) })
+      await expect(stat(join(workspaceDir, '.claude', 'hooks', 'stoa-hook-user-prompt-submit.cjs'))).rejects.toThrow()
       expect(content).not.toContain('stoa-evolver-signal-detect.cjs')
       expect(content).not.toContain('stoa-evolver-session-end.cjs')
       await expect(stat(join(workspaceDir, '.claude', 'hooks', 'stoa-evolver-signal-detect.cjs'))).rejects.toThrow()
       await expect(stat(join(workspaceDir, '.claude', 'hooks', 'stoa-evolver-session-end.cjs'))).rejects.toThrow()
       expect(content).not.toContain('secret-claude')
       expect(content).not.toContain(target.session_id)
+      expect(parsedClaudeHttpHook(content, 'UserPromptSubmit')).toMatchObject({
+        type: 'http',
+        url: 'http://127.0.0.1:43127/hooks/claude-code',
+        timeout: 5
+      })
     })
   })
 
@@ -1118,3 +1123,18 @@ describe('E2E: Provider Integration', () => {
   })
 
 })
+
+function parsedClaudeHttpHook(
+  settingsJson: string,
+  eventName: string
+): Record<string, unknown> {
+  const settings = JSON.parse(settingsJson) as {
+    hooks?: Record<string, Array<{ hooks?: Array<Record<string, unknown>> }>>
+  }
+  const hook = settings.hooks?.[eventName]?.[0]?.hooks?.[0]
+  if (!hook) {
+    throw new Error(`${eventName} hook is missing.`)
+  }
+
+  return hook
+}

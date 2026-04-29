@@ -10,9 +10,7 @@ const STOA_HOOK_ALLOWED_ENV_VARS = [
 
 const STOA_CLAUDE_HOOK_SCRIPT_NAMES = {
   sessionStart: 'stoa-hook-session-start.cjs',
-  sessionStartLauncher: 'stoa-hook-session-start.cmd',
-  userPromptSubmit: 'stoa-hook-user-prompt-submit.cjs',
-  userPromptSubmitLauncher: 'stoa-hook-user-prompt-submit.cmd'
+  sessionStartLauncher: 'stoa-hook-session-start.cmd'
 } as const
 
 interface ClaudeCommandHook {
@@ -99,7 +97,7 @@ function buildClaudeHooksForContext(context: ProviderCommandContext): ClaudeHook
         createClaudeCommandHook(buildHookCommand('SessionStart'), 4)
       ],
       UserPromptSubmit: [
-        createClaudeCommandHook(buildHookCommand('UserPromptSubmit'), 5)
+        createStoaHttpHook(context)
       ],
       PostToolUse: [
         createStoaHttpHook(context, 'Write')
@@ -117,22 +115,15 @@ function buildClaudeHooksForContext(context: ProviderCommandContext): ClaudeHook
   }
 }
 
-function buildHookCommand(eventName: 'SessionStart' | 'UserPromptSubmit'): string {
-  const scriptFileName = eventName === 'SessionStart'
-    ? STOA_CLAUDE_HOOK_SCRIPT_NAMES.sessionStart
-    : STOA_CLAUDE_HOOK_SCRIPT_NAMES.userPromptSubmit
-  const launcherFileName = eventName === 'SessionStart'
-    ? STOA_CLAUDE_HOOK_SCRIPT_NAMES.sessionStartLauncher
-    : STOA_CLAUDE_HOOK_SCRIPT_NAMES.userPromptSubmitLauncher
-
+function buildHookCommand(_eventName: 'SessionStart'): string {
   if (process.platform === 'win32') {
-    return `.\\.claude\\hooks\\${launcherFileName}`
+    return `.\\.claude\\hooks\\${STOA_CLAUDE_HOOK_SCRIPT_NAMES.sessionStartLauncher}`
   }
 
-  return `"${process.execPath}" "./.claude/hooks/${scriptFileName}"`
+  return `"${process.execPath}" "./.claude/hooks/${STOA_CLAUDE_HOOK_SCRIPT_NAMES.sessionStart}"`
 }
 
-function buildHookBridgeSource(eventName: 'SessionStart' | 'UserPromptSubmit'): string {
+function buildSessionStartBridgeSource(): string {
   return [
     'async function main() {',
     "  const sessionId = process.env.STOA_SESSION_ID;",
@@ -155,7 +146,7 @@ function buildHookBridgeSource(eventName: 'SessionStart' | 'UserPromptSubmit'): 
     '      body = {};',
     '    }',
     '  }',
-    `  body = { hook_event_name: ${JSON.stringify(eventName)}, ...body };`,
+    '  body = { hook_event_name: "SessionStart", ...body };',
     "  const response = await fetch(`http://127.0.0.1:${webhookPort}/hooks/claude-code`, {",
     "    method: 'POST',",
     '    headers: {',
@@ -182,12 +173,7 @@ async function writeHookBridgeScripts(claudeDir: string): Promise<void> {
 
   await writeFile(
     join(hooksDir, STOA_CLAUDE_HOOK_SCRIPT_NAMES.sessionStart),
-    buildHookBridgeSource('SessionStart'),
-    'utf-8'
-  )
-  await writeFile(
-    join(hooksDir, STOA_CLAUDE_HOOK_SCRIPT_NAMES.userPromptSubmit),
-    buildHookBridgeSource('UserPromptSubmit'),
+    buildSessionStartBridgeSource(),
     'utf-8'
   )
 
@@ -197,14 +183,6 @@ async function writeHookBridgeScripts(claudeDir: string): Promise<void> {
       buildWindowsNodeLauncherSource({
         runtimePath: process.execPath,
         scriptFileName: STOA_CLAUDE_HOOK_SCRIPT_NAMES.sessionStart
-      }),
-      'utf-8'
-    )
-    await writeFile(
-      join(hooksDir, STOA_CLAUDE_HOOK_SCRIPT_NAMES.userPromptSubmitLauncher),
-      buildWindowsNodeLauncherSource({
-        runtimePath: process.execPath,
-        scriptFileName: STOA_CLAUDE_HOOK_SCRIPT_NAMES.userPromptSubmit
       }),
       'utf-8'
     )

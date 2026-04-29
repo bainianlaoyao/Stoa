@@ -228,6 +228,31 @@ export interface ObservationEventListOptions {
   includeEphemeral?: boolean
 }
 
+export interface MemoryStateSummaryRequest {
+  projectRoot: string
+  stoaSessionId?: string
+  providerSessionId?: string
+}
+
+export interface MemoryTurnTraceRequest {
+  projectRoot: string
+  stoaSessionId: string
+  providerSessionId?: string
+  turnId: string
+}
+
+export interface MemoryRecallExplanationRequest {
+  projectRoot: string
+  consumer: 'claude-code' | 'codex' | 'opencode' | 'generic'
+  stoaSessionId: string
+  providerSessionId?: string
+  taskText: string
+}
+
+export interface MemoryAssetRequest {
+  ref: string
+}
+
 export interface RendererApi {
   getBootstrapState: () => Promise<BootstrapState>
   createProject: (request: CreateProjectRequest) => Promise<ProjectSummary>
@@ -237,6 +262,10 @@ export interface RendererApi {
   setActiveProject: (projectId: string) => Promise<void>
   setActiveSession: (sessionId: string) => Promise<void>
   archiveSession: (sessionId: string) => Promise<void>
+  getMemoryStateSummary: (input: MemoryStateSummaryRequest) => Promise<Record<string, unknown>>
+  traceMemoryTurn: (input: MemoryTurnTraceRequest) => Promise<Record<string, unknown>>
+  explainMemoryRecall: (input: MemoryRecallExplanationRequest) => Promise<Record<string, unknown>>
+  getMemoryAsset: (input: MemoryAssetRequest) => Promise<Record<string, unknown> | null>
   getTerminalReplay: (sessionId: string) => Promise<string>
   sendSessionInput: (sessionId: string, data: string) => Promise<void>
   sendSessionResize: (sessionId: string, cols: number, rows: number) => Promise<void>

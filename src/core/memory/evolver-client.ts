@@ -66,6 +66,57 @@ export interface ProcessTurnOptions {
   turnId: string
   evidenceRefs: EvidenceRef[]
   jobId?: string
+  inference?: {
+    provider?: string
+    modelHint?: string
+  }
+  execution?: {
+    mode?: string
+  }
+}
+
+export interface TurnScopedBridgeOptions {
+  projectRoot: string
+  stoaSessionId: string
+  providerSessionId?: string
+  turnId: string
+}
+
+export interface CompleteReviewOptions extends TurnScopedBridgeOptions {
+  response: string
+}
+
+export interface CompleteSolidifyOptions extends TurnScopedBridgeOptions {
+  result: ExecutionResult
+}
+
+export interface CompleteDistillOptions extends TurnScopedBridgeOptions {
+  response: string
+}
+
+export interface StateSummaryOptions {
+  projectRoot: string
+  stoaSessionId?: string
+  providerSessionId?: string
+}
+
+export interface ExplainRecallOptions extends RecallOptions {}
+
+export interface GetAssetOptions {
+  ref: string
+}
+
+export interface ExecutionResult {
+  ok: boolean
+  exitCode: number
+  stdout: string
+  stderr: string
+  commandResults: Array<{
+    command: string
+    exitCode: number
+    stdout: string
+    stderr: string
+  }>
 }
 
 export class EvolverClient {
@@ -101,6 +152,52 @@ export class EvolverClient {
 
   async processTurn(options: ProcessTurnOptions): Promise<ProcessTurnResult> {
     return await this.runHostBridgeCommand<ProcessTurnResult>('process-turn', options)
+  }
+
+  async prepareReview(
+    options: TurnScopedBridgeOptions
+  ): Promise<{ prompt: string; responseFormat: 'text' | 'json' } | null> {
+    return await this.runHostBridgeCommand('prepare-review', options)
+  }
+
+  async completeReview(options: CompleteReviewOptions): Promise<void> {
+    await this.runHostBridgeCommand<unknown>('complete-review', options)
+  }
+
+  async prepareSolidify(
+    options: TurnScopedBridgeOptions
+  ): Promise<{ commands: string[] } | null> {
+    return await this.runHostBridgeCommand('prepare-solidify', options)
+  }
+
+  async completeSolidify(options: CompleteSolidifyOptions): Promise<void> {
+    await this.runHostBridgeCommand<unknown>('complete-solidify', options)
+  }
+
+  async prepareDistill(
+    options: TurnScopedBridgeOptions
+  ): Promise<{ prompt: string; responseFormat: 'text' | 'json' } | null> {
+    return await this.runHostBridgeCommand('prepare-distill', options)
+  }
+
+  async completeDistill(options: CompleteDistillOptions): Promise<void> {
+    await this.runHostBridgeCommand<unknown>('complete-distill', options)
+  }
+
+  async getStateSummary(options: StateSummaryOptions): Promise<Record<string, unknown>> {
+    return await this.runHostBridgeCommand('state-summary', options)
+  }
+
+  async traceTurn(options: TurnScopedBridgeOptions): Promise<Record<string, unknown>> {
+    return await this.runHostBridgeCommand('trace-turn', options)
+  }
+
+  async explainRecall(options: ExplainRecallOptions): Promise<Record<string, unknown>> {
+    return await this.runHostBridgeCommand('explain-recall', options)
+  }
+
+  async getAsset(options: GetAssetOptions): Promise<Record<string, unknown> | null> {
+    return await this.runHostBridgeCommand('get-asset', options)
   }
 
   async run(options: EvolverRunOptions): Promise<EvolverRunResult> {
@@ -186,24 +283,31 @@ export class EvolverClient {
   }
 
   private async runHostBridgeCommand<TOutput>(
-    action: 'warm-start' | 'recall' | 'observe-write' | 'process-turn',
+    action:
+      | 'warm-start'
+      | 'recall'
+      | 'observe-write'
+      | 'process-turn'
+      | 'prepare-review'
+      | 'complete-review'
+      | 'prepare-solidify'
+      | 'complete-solidify'
+      | 'prepare-distill'
+      | 'complete-distill'
+      | 'state-summary'
+      | 'trace-turn'
+      | 'explain-recall'
+      | 'get-asset',
     payload: object
   ): Promise<TOutput> {
-    const projectRoot = readProjectRoot(payload as Record<string, unknown>)
+    const projectRoot = maybeReadProjectRoot(payload as Record<string, unknown>)
     const requestFilePath = await this.writeBridgeRequestFile(action, payload)
 
     return await this.runJsonCommand({
       command: this.command,
       args: [...this.argsPrefix, 'host-bridge', action, `--request-file=${requestFilePath}`, '--json'],
       cwd: this.cwd,
-      env: {
-        ...this.env,
-        STOA_EVOLVER_PROJECT_ROOT: projectRoot,
-        EVOLVER_REPO_ROOT: projectRoot,
-        MEMORY_DIR: join(projectRoot, '.stoa', 'evolver', 'memory'),
-        EVOLUTION_DIR: join(projectRoot, '.stoa', 'evolver', 'memory', 'evolution'),
-        GEP_ASSETS_DIR: join(projectRoot, '.stoa', 'evolver', 'assets', 'gep')
-      }
+      env: buildHostBridgeEnv(this.env, projectRoot)
     }) as TOutput
   }
 
@@ -220,11 +324,30 @@ export class EvolverClient {
   }
 }
 
-function readProjectRoot(payload: Record<string, unknown>): string {
+function maybeReadProjectRoot(payload: Record<string, unknown>): string | null {
   const projectRoot = payload.projectRoot
-  if (typeof projectRoot !== 'string' || projectRoot.trim().length === 0) {
-    throw new Error('Host bridge payload must include a non-empty projectRoot')
+  if (typeof projectRoot !== 'string') {
+    return null
   }
 
-  return projectRoot
+  const trimmedProjectRoot = projectRoot.trim()
+  return trimmedProjectRoot.length > 0 ? trimmedProjectRoot : null
+}
+
+function buildHostBridgeEnv(
+  env: NodeJS.ProcessEnv,
+  projectRoot: string | null
+): NodeJS.ProcessEnv {
+  if (!projectRoot) {
+    return env
+  }
+
+  return {
+    ...env,
+    STOA_EVOLVER_PROJECT_ROOT: projectRoot,
+    EVOLVER_REPO_ROOT: projectRoot,
+    MEMORY_DIR: join(projectRoot, '.stoa', 'evolver', 'memory'),
+    EVOLUTION_DIR: join(projectRoot, '.stoa', 'evolver', 'memory', 'evolution'),
+    GEP_ASSETS_DIR: join(projectRoot, '.stoa', 'evolver', 'assets', 'gep')
+  }
 }
