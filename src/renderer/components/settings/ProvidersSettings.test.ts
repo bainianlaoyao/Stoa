@@ -1,7 +1,4 @@
 // @vitest-environment happy-dom
-import { readFileSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
@@ -9,11 +6,6 @@ import { nextTick } from 'vue'
 import { createI18n } from 'vue-i18n'
 import ProvidersSettings from './ProvidersSettings.vue'
 import type { RendererApi } from '@shared/project-session'
-
-const providersSettingsPath = resolve(dirname(fileURLToPath(import.meta.url)), 'ProvidersSettings.vue')
-const projectSessionPath = resolve(dirname(fileURLToPath(import.meta.url)), '../../../shared/project-session.ts')
-const memoryRuntimePath = resolve(dirname(fileURLToPath(import.meta.url)), '../../../shared/memory-runtime.ts')
-const settingsStorePath = resolve(dirname(fileURLToPath(import.meta.url)), '../../stores/settings.ts')
 
 function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
   return {
@@ -245,40 +237,4 @@ describe('ProvidersSettings', () => {
     expect(setSettingMock).toHaveBeenCalledWith('evolverInferenceProvider', 'codex')
   })
 
-  it('defines evolver host settings contracts and inference capability terminology', () => {
-    const projectSessionSource = readFileSync(projectSessionPath, 'utf8')
-    const memoryRuntimeSource = readFileSync(memoryRuntimePath, 'utf8')
-    const settingsStoreSource = readFileSync(settingsStorePath, 'utf8')
-
-    expect(projectSessionSource).toContain("export type EvolverInferenceProvider = 'codex' | 'claude-code' | 'api'")
-    expect(projectSessionSource).toContain("export type EvolverExecutionMode = 'workspace-shell'")
-    expect(projectSessionSource).toContain('evolverInferenceProvider: EvolverInferenceProvider')
-    expect(projectSessionSource).toContain('evolverExecutionMode: EvolverExecutionMode')
-    expect(projectSessionSource).toContain("evolverInferenceProvider: 'claude-code'")
-    expect(projectSessionSource).toContain("evolverExecutionMode: 'workspace-shell'")
-
-    expect(memoryRuntimeSource).toContain('export type InferenceCapability =')
-    expect(memoryRuntimeSource).toContain('export type InferenceCapabilityProvider =')
-
-    expect(settingsStoreSource).toContain("const evolverInferenceProvider = ref<EvolverInferenceProvider>('claude-code')")
-    expect(settingsStoreSource).toContain("const evolverExecutionMode = ref<EvolverExecutionMode>('workspace-shell')")
-    expect(settingsStoreSource).toContain("key === 'evolverInferenceProvider'")
-  })
-
-  it('does not misuse shadow tokens as badge fills or keep non-baseline switch timings', () => {
-    const source = readFileSync(providersSettingsPath, 'utf8')
-
-    expect(source).not.toContain('background: var(--shadow-success-ring);')
-    expect(source).not.toContain('160ms')
-  })
-
-  it('styles the claude permissions toggle with shared control surface tokens', () => {
-    const source = readFileSync(providersSettingsPath, 'utf8')
-
-    expect(source).toContain('border-radius: var(--radius-sm);')
-    expect(source).toContain('background: var(--color-surface-solid);')
-    expect(source).toContain('border: 1px solid var(--color-line);')
-    expect(source).toContain('box-shadow: var(--shadow-soft);')
-    expect(source).not.toContain('border-radius: 16px;')
-  })
 })

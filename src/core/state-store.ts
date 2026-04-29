@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path'
 import { homedir } from 'node:os'
 import type {
   PersistedAppStateV2,
-  PersistedGlobalStateV3,
+  PersistedGlobalStateV4,
   PersistedProject,
   PersistedProjectSessions,
   PersistedSession,
@@ -25,8 +25,8 @@ export const DEFAULT_STATE: PersistedAppStateV2 = {
   settings: { ...DEFAULT_SETTINGS }
 }
 
-export const DEFAULT_GLOBAL_STATE: PersistedGlobalStateV3 = {
-  version: 3,
+export const DEFAULT_GLOBAL_STATE: PersistedGlobalStateV4 = {
+  version: 4,
   active_project_id: null,
   active_session_id: null,
   projects: [],
@@ -99,11 +99,11 @@ function isValidPersistedState(value: unknown): value is PersistedAppStateV2 {
     && Array.isArray(value.sessions)
 }
 
-function isValidGlobalState(value: unknown): value is PersistedGlobalStateV3 {
+function isValidGlobalState(value: unknown): value is PersistedGlobalStateV4 {
   return typeof value === 'object'
     && value !== null
     && 'version' in value
-    && value.version === 3
+    && value.version === 4
     && 'projects' in value
     && Array.isArray(value.projects)
 }
@@ -281,11 +281,11 @@ export async function readPersistedState<TState = PersistedAppStateV2>(filePath 
   })
 }
 
-export async function readGlobalState(filePath = getGlobalStateFilePath()): Promise<PersistedGlobalStateV3> {
+export async function readGlobalState(filePath = getGlobalStateFilePath()): Promise<PersistedGlobalStateV4> {
   return await withFileAccess(filePath, async () => {
     try {
       const raw = await readFile(filePath, 'utf-8')
-      const parsed = JSON.parse(raw) as PersistedGlobalStateV3
+      const parsed = JSON.parse(raw) as PersistedGlobalStateV4
       if (!isValidGlobalState(parsed)) {
         throw new StateReadError('Invalid global state', undefined, filePath, false)
       }
@@ -377,7 +377,7 @@ export async function writePersistedState<TState>(
 }
 
 export async function writeGlobalState(
-  state: PersistedGlobalStateV3,
+  state: PersistedGlobalStateV4,
   filePath = getGlobalStateFilePath()
 ): Promise<void> {
   await writeJsonAtomically(filePath, state)

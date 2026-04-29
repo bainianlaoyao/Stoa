@@ -177,8 +177,8 @@ export interface PersistedAppStateV2 {
   settings?: AppSettings
 }
 
-export interface PersistedGlobalStateV3 {
-  version: 3
+export interface PersistedGlobalStateV4 {
+  version: 4
   active_project_id: string | null
   active_session_id: string | null
   projects: PersistedProject[]

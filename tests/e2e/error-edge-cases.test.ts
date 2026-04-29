@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, test } from 'vitest'
 import { ProjectSessionManager } from '@core/project-session-manager'
 import { readGlobalState, readProjectSessions, writeProjectSessions } from '@core/state-store'
-import type { PersistedGlobalStateV3 } from '@shared/project-session'
+import type { PersistedGlobalStateV4 } from '@shared/project-session'
 import { createTestTempDir } from '../../testing/test-temp'
 
 const tempDirs: string[] = []
@@ -25,7 +25,7 @@ async function createGlobalStatePath(): Promise<string> {
   return join(dir, 'global.json')
 }
 
-async function readGlobalFile(path: string): Promise<PersistedGlobalStateV3> {
+async function readGlobalFile(path: string): Promise<PersistedGlobalStateV4> {
   return await readGlobalState(path)
 }
 
@@ -290,7 +290,7 @@ describe('E2E: Error and Edge Cases', () => {
             updated_at: now
           }
         ]
-      } satisfies PersistedGlobalStateV3))
+      } satisfies PersistedGlobalStateV4))
       await writeProjectSessions(workspaceDir, {
         version: 4,
         project_id: 'project_alpha',

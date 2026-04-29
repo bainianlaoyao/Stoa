@@ -4,7 +4,7 @@ import type {
   BootstrapState,
   CreateProjectRequest,
   CreateSessionRequest,
-  PersistedGlobalStateV3,
+  PersistedGlobalStateV4,
   PersistedProject,
   PersistedProjectSessions,
   PersistedSession,
@@ -249,7 +249,7 @@ export class ProjectSessionManager {
     return manager
   }
 
-  private static async readGlobalStateWithRetry(globalStatePath?: string): Promise<PersistedGlobalStateV3> {
+  private static async readGlobalStateWithRetry(globalStatePath?: string): Promise<PersistedGlobalStateV4> {
     try {
       return await readGlobalState(globalStatePath)
     } catch (error) {
@@ -540,11 +540,11 @@ export class ProjectSessionManager {
       await writeProjectSessions(project.path, data)
     }
 
-    const globalState: PersistedGlobalStateV3 =
+    const globalState: PersistedGlobalStateV4 =
       persistedProjects.length === 0
         ? { ...structuredClone(DEFAULT_GLOBAL_STATE), settings: this.settings }
         : {
-            version: 3,
+            version: 4,
             active_project_id: this.state.activeProjectId,
             active_session_id: this.state.activeSessionId,
             projects: persistedProjects,

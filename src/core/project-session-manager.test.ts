@@ -78,7 +78,7 @@ describe('ProjectSessionManager', () => {
   test('fills missing persisted settings with current defaults', async () => {
     const globalStatePath = await createTempGlobalStatePath()
     await writeFile(globalStatePath, JSON.stringify({
-      version: 3,
+      version: 4,
       active_project_id: null,
       active_session_id: null,
       projects: [],
@@ -156,6 +156,22 @@ describe('ProjectSessionManager', () => {
     })).rejects.toThrow()
   })
 
+  test('rejects startup when persisted global state uses incompatible v3 schema', async () => {
+    const globalStatePath = await createTempGlobalStatePath()
+    await writeFile(globalStatePath, JSON.stringify({
+      version: 3,
+      active_project_id: null,
+      active_session_id: null,
+      projects: [],
+      settings: { ...DEFAULT_SETTINGS }
+    }), 'utf-8')
+
+    await expect(ProjectSessionManager.create({
+      webhookPort: null,
+      globalStatePath
+    })).rejects.toThrow()
+  })
+
   test('retries a transient global state read once before bootstrap completes', async () => {
     vi.resetModules()
 
@@ -174,7 +190,7 @@ describe('ProjectSessionManager', () => {
     const readGlobalState = vi.fn()
       .mockRejectedValueOnce(new MockStateReadError('temporarily locked', 'D:/transient/global.json', true))
       .mockResolvedValueOnce({
-        version: 3,
+        version: 4,
         active_project_id: null,
         active_session_id: null,
         projects: [],
@@ -185,7 +201,7 @@ describe('ProjectSessionManager', () => {
 
     vi.doMock('@core/state-store', () => ({
       DEFAULT_GLOBAL_STATE: {
-        version: 3,
+        version: 4,
         active_project_id: null,
         active_session_id: null,
         projects: [],
@@ -342,7 +358,7 @@ describe('ProjectSessionManager', () => {
     const now = new Date().toISOString()
 
     await stateStore.writeGlobalState({
-      version: 3,
+      version: 4,
       active_project_id: 'project_missing',
       active_session_id: null,
       projects: [
@@ -378,7 +394,7 @@ describe('ProjectSessionManager', () => {
     const now = new Date().toISOString()
 
     await stateStore.writeGlobalState({
-      version: 3,
+      version: 4,
       active_project_id: 'project_missing',
       active_session_id: 'session_real',
       projects: [
@@ -434,7 +450,7 @@ describe('ProjectSessionManager', () => {
     const now = new Date().toISOString()
 
     await stateStore.writeGlobalState({
-      version: 3,
+      version: 4,
       active_project_id: null,
       active_session_id: 'session_real',
       projects: [
