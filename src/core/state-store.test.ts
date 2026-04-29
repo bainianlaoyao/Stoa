@@ -11,7 +11,7 @@ import {
   writeGlobalState,
   writeProjectSessions
 } from './state-store'
-import type { PersistedGlobalStateV3, PersistedProject, PersistedProjectSessions } from '@shared/project-session'
+import type { PersistedGlobalStateV4, PersistedProject, PersistedProjectSessions } from '@shared/project-session'
 import { createTestTempDir } from '../../testing/test-temp'
 
 const tempDirs: string[] = []
@@ -33,18 +33,18 @@ describe('state-store', () => {
     await Promise.allSettled(tempDirs.splice(0).map(async (dir) => import('node:fs/promises').then(({ rm }) => rm(dir, { recursive: true, force: true }))))
   })
 
-  test('returns the v3 default global state when no file exists', async () => {
+  test('returns the v4 default global state when no file exists', async () => {
     const globalStatePath = await createTempGlobalStatePath()
 
     await expect(readGlobalState(globalStatePath)).resolves.toEqual(DEFAULT_GLOBAL_STATE)
-    expect(DEFAULT_GLOBAL_STATE.version).toBe(3)
+    expect(DEFAULT_GLOBAL_STATE.version).toBe(4)
     expect(DEFAULT_GLOBAL_STATE.projects).toEqual([])
   })
 
-  test('writes and re-reads persisted v3 global state', async () => {
+  test('writes and re-reads persisted v4 global state', async () => {
     const globalStatePath = await createTempGlobalStatePath()
-    const state: PersistedGlobalStateV3 = {
-      version: 3,
+    const state: PersistedGlobalStateV4 = {
+      version: 4,
       active_project_id: 'project_alpha',
       active_session_id: 'session_shell_1',
       projects: [
@@ -62,21 +62,21 @@ describe('state-store', () => {
     await writeGlobalState(state, globalStatePath)
 
     await expect(readGlobalState(globalStatePath)).resolves.toEqual(state)
-    const raw = JSON.parse(await fsPromises.readFile(globalStatePath, 'utf-8')) as PersistedGlobalStateV3
+    const raw = JSON.parse(await fsPromises.readFile(globalStatePath, 'utf-8')) as PersistedGlobalStateV4
     expect(raw.active_project_id).toBe('project_alpha')
-    expect(raw.version).toBe(3)
+    expect(raw.version).toBe(4)
   })
 
   test('serializes concurrent writes to the same global state file and keeps the last payload', async () => {
     const globalStatePath = await createTempGlobalStatePath()
-    const first: PersistedGlobalStateV3 = {
-      version: 3,
+    const first: PersistedGlobalStateV4 = {
+      version: 4,
       active_project_id: 'project_alpha',
       active_session_id: null,
       projects: []
     }
-    const second: PersistedGlobalStateV3 = {
-      version: 3,
+    const second: PersistedGlobalStateV4 = {
+      version: 4,
       active_project_id: 'project_beta',
       active_session_id: null,
       projects: []
@@ -260,7 +260,7 @@ describe('state-store', () => {
   test('throws when global state file uses an unsupported version', async () => {
     const globalStatePath = await createTempGlobalStatePath()
     await fsPromises.writeFile(globalStatePath, JSON.stringify({
-      version: 99,
+      version: 3,
       active_project_id: null,
       active_session_id: null,
       projects: []

@@ -6,8 +6,8 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { autoUpdater } from 'electron-updater'
 import { IPC_CHANNELS } from '@core/ipc-channels'
-import { getClaudeCodePublishedContextPath } from '@core/memory/claude-code-injector'
 import { resolveBundledEvolverCli } from '@core/memory/bundled-evolver'
+import { getConsumerContextPath } from '@core/memory/delivery-paths'
 import { EvolverClient } from '@core/memory/evolver-client'
 import { InMemoryObservationStore } from '@core/observation-store'
 import type { ListObservationEventsOptions } from '@core/observation-store'
@@ -26,7 +26,15 @@ import { launchTrackedSessionRuntime } from './launch-tracked-session-runtime'
 import { syncObservabilitySessionsFromManager } from './observability-sync'
 import { UpdateService } from './update-service'
 import { DEFAULT_SETTINGS } from '@shared/project-session'
-import type { CreateProjectRequest, CreateSessionRequest, OpenWorkspaceRequest } from '@shared/project-session'
+import type {
+  CreateProjectRequest,
+  CreateSessionRequest,
+  MemoryAssetRequest,
+  MemoryRecallExplanationRequest,
+  MemoryStateSummaryRequest,
+  MemoryTurnTraceRequest,
+  OpenWorkspaceRequest
+} from '@shared/project-session'
 import type { UpdateState } from '@shared/update-state'
 import type { PtyHost } from '@core/pty-host'
 
@@ -686,7 +694,7 @@ app.whenReady().then(async () => {
         replayLength: terminalReplay.length
       })
 
-      const publishedContextPath = getClaudeCodePublishedContextPath(packagedSmokeProjectDir)
+      const publishedContextPath = getConsumerContextPath(packagedSmokeProjectDir, 'claude-code')
       await mkdir(dirname(publishedContextPath), { recursive: true })
       await writeFile(
         publishedContextPath,
@@ -974,6 +982,22 @@ app.whenReady().then(async () => {
 
   ipcMain.handle(IPC_CHANNELS.sessionListArchived, async () => {
     return projectSessionManager?.getArchivedSessions() ?? []
+  })
+
+  ipcMain.handle(IPC_CHANNELS.memoryGetStateSummary, async (_event, input: MemoryStateSummaryRequest) => {
+    return await evolverBridge?.getStateSummary(input) ?? {}
+  })
+
+  ipcMain.handle(IPC_CHANNELS.memoryTraceTurn, async (_event, input: MemoryTurnTraceRequest) => {
+    return await evolverBridge?.traceTurn(input) ?? {}
+  })
+
+  ipcMain.handle(IPC_CHANNELS.memoryExplainRecall, async (_event, input: MemoryRecallExplanationRequest) => {
+    return await evolverBridge?.explainRecall(input) ?? {}
+  })
+
+  ipcMain.handle(IPC_CHANNELS.memoryGetAsset, async (_event, input: MemoryAssetRequest) => {
+    return await evolverBridge?.getAsset(input) ?? null
   })
 
   ipcMain.handle(IPC_CHANNELS.updateGetState, async () => {

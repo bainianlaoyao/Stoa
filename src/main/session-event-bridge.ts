@@ -3,7 +3,7 @@ import { RuntimeStateStore } from '@core/memory/runtime-state-store'
 import { SessionEvidenceStore } from '@core/memory/session-evidence-store'
 import { createTranscriptSnapshot } from '@core/memory/transcript-snapshot'
 import { createLocalWebhookServer } from '@core/webhook-server'
-import type { EvolverClient, ProcessTurnOptions, RecallOptions, WarmStartOptions } from '@core/memory/evolver-client'
+import type { EvolverClient, RecallOptions, WarmStartOptions } from '@core/memory/evolver-client'
 import type { ProjectSessionManager } from '@core/project-session-manager'
 import type { CanonicalSessionEvent, SessionStatePatchEvent, SessionType } from '@shared/project-session'
 import type { DeliveryEnvelope, EvidenceRef, RuntimeJobRecord } from '@shared/memory-runtime'
@@ -27,7 +27,16 @@ interface EvolverBridgeLike {
   warmStart: (options: WarmStartOptions) => Promise<DeliveryEnvelope | null>
   recall: (options: RecallOptions) => Promise<DeliveryEnvelope | null>
   observeWrite: EvolverClient['observeWrite']
-  processTurn: (options: ProcessTurnOptions) => Promise<{ jobId: string }>
+}
+
+interface TurnMaintenanceRunnerLike {
+  run: (input: {
+    projectRoot: string
+    stoaSessionId: string
+    providerSessionId?: string
+    turnId: string
+    evidenceRefs: EvidenceRef[]
+  }) => Promise<{ jobId: string }>
 }
 
 interface RuntimeStateStoreLike {
@@ -52,6 +61,7 @@ interface SessionEventBridgeOptions {
   evidenceStore?: EvidenceStoreLike
   transcriptSnapshotter?: (event: CanonicalSessionEvent) => Promise<Awaited<ReturnType<typeof createTranscriptSnapshot>>>
   evolverBridge?: EvolverBridgeLike
+  turnMaintenanceRunner?: TurnMaintenanceRunnerLike
   createRuntimeStateStore?: (projectPath: string) => RuntimeStateStoreLike
 }
 
@@ -65,6 +75,7 @@ export class SessionEventBridge {
   private readonly evidenceStore: EvidenceStoreLike
   private readonly transcriptSnapshotter: (event: CanonicalSessionEvent) => Promise<Awaited<ReturnType<typeof createTranscriptSnapshot>>>
   private readonly evolverBridge?: EvolverBridgeLike
+  private readonly turnMaintenanceRunner?: TurnMaintenanceRunnerLike
   private readonly createRuntimeStateStore: (projectPath: string) => RuntimeStateStoreLike
   private server: ReturnType<typeof createLocalWebhookServer> | null = null
   private port: number | null = null
@@ -86,6 +97,7 @@ export class SessionEventBridge {
     }
     this.transcriptSnapshotter = options.transcriptSnapshotter ?? createTranscriptSnapshot
     this.evolverBridge = options.evolverBridge
+    this.turnMaintenanceRunner = options.turnMaintenanceRunner
     this.createRuntimeStateStore = options.createRuntimeStateStore ?? ((projectPath) => new RuntimeStateStore(projectPath))
   }
 
@@ -334,7 +346,7 @@ export class SessionEventBridge {
     event: CanonicalSessionEvent,
     evidenceRef: EvidenceRef | null
   ): Promise<SessionEventBridgeHookResponse | null> {
-    if (!event.evidence || !this.evolverBridge) {
+    if (!event.evidence) {
       return null
     }
 
@@ -356,6 +368,10 @@ export class SessionEventBridge {
 
     switch (hookEventName) {
       case 'SessionStart': {
+        if (!this.evolverBridge) {
+          return null
+        }
+
         const delivery = await this.evolverBridge.warmStart({
           projectRoot: projectPath,
           consumer,
@@ -365,6 +381,10 @@ export class SessionEventBridge {
         return toHookResponse(delivery, hookEventName)
       }
       case 'UserPromptSubmit': {
+        if (!this.evolverBridge) {
+          return null
+        }
+
         const taskText = event.evidence.promptText?.trim()
         if (!taskText) {
           return null
@@ -380,6 +400,10 @@ export class SessionEventBridge {
         return toHookResponse(delivery, hookEventName)
       }
       case 'PostToolUse': {
+        if (!this.evolverBridge) {
+          return null
+        }
+
         if (event.evidence.toolName !== 'Write' || !evidenceRef) {
           return null
         }
@@ -453,27 +477,33 @@ export class SessionEventBridge {
 
     this.turnEvidenceIds.delete(turnKey)
 
-    void this.runProcessTurnJob({
+    const evidenceRefs = await this.evidenceStore.listEvidenceRefsForTurn?.(
       projectPath,
-      projectId: event.project_id,
+      event.session_id,
+      turnId
+    ) ?? []
+
+    void this.runTurnMaintenanceJob({
+      projectPath,
       stoaSessionId: event.session_id,
       providerSessionId: event.evidence?.providerSessionId ?? undefined,
       turnId,
       sessionKey,
-      queuedJobId
+      queuedJobId,
+      evidenceRefs
     })
   }
 
-  private async runProcessTurnJob(input: {
+  private async runTurnMaintenanceJob(input: {
     projectPath: string
-    projectId: string
     stoaSessionId: string
     providerSessionId?: string
     turnId: string
     sessionKey: string
     queuedJobId: string
+    evidenceRefs: EvidenceRef[]
   }): Promise<void> {
-    if (!this.evolverBridge) {
+    if (!this.turnMaintenanceRunner) {
       return
     }
 
@@ -491,18 +521,12 @@ export class SessionEventBridge {
     })
 
     try {
-      const evidenceRefs = await this.evidenceStore.listEvidenceRefsForTurn?.(
-        input.projectPath,
-        input.stoaSessionId,
-        input.turnId
-      ) ?? []
-      const result = await this.evolverBridge.processTurn({
+      const result = await this.turnMaintenanceRunner.run({
         projectRoot: input.projectPath,
         stoaSessionId: input.stoaSessionId,
         providerSessionId: input.providerSessionId,
         turnId: input.turnId,
-        evidenceRefs,
-        jobId: input.queuedJobId
+        evidenceRefs: input.evidenceRefs
       })
 
       await updateJob({
@@ -522,7 +546,7 @@ export class SessionEventBridge {
         updatedAt: this.nowIso()
       })
       console.error(
-        `[session-event-bridge] processTurn failed for session ${input.stoaSessionId} turn ${input.turnId}:`,
+        `[session-event-bridge] turn maintenance failed for session ${input.stoaSessionId} turn ${input.turnId}:`,
         error
       )
     }

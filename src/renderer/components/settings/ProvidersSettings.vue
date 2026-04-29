@@ -9,9 +9,10 @@ import GlassPathField from '../primitives/GlassPathField.vue'
 
 const { t } = useI18n()
 const store = useSettingsStore()
-const memoryAiProviderOptions = [
+const evolverInferenceProviderOptions = [
   { value: 'claude-code', label: 'Claude Code' },
-  { value: 'codex', label: 'Codex' }
+  { value: 'codex', label: 'Codex' },
+  { value: 'api', label: t('providers.evolverInference.options.api') }
 ]
 
 const providerList = listProviderDescriptors()
@@ -55,9 +56,9 @@ function handleClaudeDangerouslySkipPermissionsChange(value: boolean): void {
   void store.updateSetting('claudeDangerouslySkipPermissions', value)
 }
 
-function handleMemoryAiProviderChange(value: string): void {
-  if (value === 'claude-code' || value === 'codex') {
-    void store.updateSetting('memoryAiProvider', value)
+function handleEvolverInferenceProviderChange(value: string): void {
+  if (value === 'claude-code' || value === 'codex' || value === 'api') {
+    void store.updateSetting('evolverInferenceProvider', value)
   }
 }
 </script>
@@ -75,29 +76,29 @@ function handleMemoryAiProviderChange(value: string): void {
     </header>
 
     <div class="settings-section">
-      <section class="settings-card" aria-label="Memory AI provider">
+      <section class="settings-card" :aria-label="t('providers.evolverInference.ariaLabel')">
         <div class="settings-card__header">
           <div>
-            <h4 class="settings-card__title">Memory AI provider</h4>
+            <h4 class="settings-card__title">{{ t('providers.evolverInference.title') }}</h4>
             <p class="settings-card__description">
-              Choose which provider contract future memory-runtime subprocesses should target.
+              {{ t('providers.evolverInference.description') }}
             </p>
           </div>
-          <span class="settings-card__badge">Contract</span>
+          <span class="settings-card__badge">{{ t('providers.evolverInference.badge') }}</span>
         </div>
 
-        <div class="settings-inline-field" data-settings-field="memory-ai-provider">
+        <div class="settings-inline-field" data-settings-field="evolver-inference-provider">
           <GlassFormField
-            label="Memory AI provider"
+            :label="t('providers.evolverInference.label')"
             type="select"
-            :model-value="store.memoryAiProvider"
-            :options="memoryAiProviderOptions"
-            @update:model-value="handleMemoryAiProviderChange"
+            :model-value="store.evolverInferenceProvider"
+            :options="evolverInferenceProviderOptions"
+            @update:model-value="handleEvolverInferenceProviderChange"
           />
         </div>
 
         <p class="settings-item__hint">
-          This does not start a memory runtime yet. It only locks the persisted provider selection for upcoming work.
+          {{ t('providers.evolverInference.hint') }}
         </p>
       </section>
 

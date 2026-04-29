@@ -8,6 +8,17 @@ const STOA_HOOK_ALLOWED_ENV_VARS = [
   'STOA_SESSION_SECRET'
 ] as const
 
+const STOA_CLAUDE_HOOK_SCRIPT_NAMES = {
+  sessionStart: 'stoa-hook-session-start.cjs',
+  sessionStartLauncher: 'stoa-hook-session-start.cmd'
+} as const
+
+interface ClaudeCommandHook {
+  type: 'command'
+  command: string
+  timeout: number
+}
+
 interface ClaudeHttpHook {
   type: 'http'
   url: string
@@ -16,14 +27,9 @@ interface ClaudeHttpHook {
   timeout: number
 }
 
-interface ClaudeCommandHook {
-  type: 'command'
-  command: string
-}
-
 interface ClaudeHookMatcher {
   matcher?: string
-  hooks: Array<ClaudeHttpHook | ClaudeCommandHook>
+  hooks: Array<ClaudeCommandHook | ClaudeHttpHook>
 }
 
 interface ClaudeHookSettings {
@@ -74,12 +80,12 @@ function createStoaHttpHook(context: ProviderCommandContext, matcher?: string): 
   }
 }
 
-function createStoaCommandHook(command: string, matcher?: string): ClaudeHookMatcher {
+function createClaudeCommandHook(command: string, timeout: number): ClaudeHookMatcher {
   return {
-    ...(matcher ? { matcher } : {}),
     hooks: [{
       type: 'command',
-      command
+      command,
+      timeout
     }]
   }
 }
@@ -88,7 +94,7 @@ function buildClaudeHooksForContext(context: ProviderCommandContext): ClaudeHook
   return {
     hooks: {
       SessionStart: [
-        createStoaCommandHook('node .claude/hooks/stoa-hook-session-start.cjs SessionStart')
+        createClaudeCommandHook(buildHookCommand('SessionStart'), 4)
       ],
       UserPromptSubmit: [
         createStoaHttpHook(context)
@@ -109,71 +115,91 @@ function buildClaudeHooksForContext(context: ProviderCommandContext): ClaudeHook
   }
 }
 
+function buildHookCommand(_eventName: 'SessionStart'): string {
+  if (process.platform === 'win32') {
+    return `.\\.claude\\hooks\\${STOA_CLAUDE_HOOK_SCRIPT_NAMES.sessionStartLauncher}`
+  }
+
+  return `"${process.execPath}" "./.claude/hooks/${STOA_CLAUDE_HOOK_SCRIPT_NAMES.sessionStart}"`
+}
+
+function buildSessionStartBridgeSource(): string {
+  return [
+    'async function main() {',
+    "  const sessionId = process.env.STOA_SESSION_ID;",
+    "  const projectId = process.env.STOA_PROJECT_ID;",
+    "  const sessionSecret = process.env.STOA_SESSION_SECRET;",
+    "  const webhookPort = process.env.STOA_WEBHOOK_PORT;",
+    '  if (!sessionId || !projectId || !sessionSecret || !webhookPort) {',
+    '    return;',
+    '  }',
+    "  let input = '';",
+    "  process.stdin.setEncoding('utf8');",
+    '  for await (const chunk of process.stdin) {',
+    '    input += chunk;',
+    '  }',
+    '  let body = {};',
+    '  if (input.trim()) {',
+    '    try {',
+    '      body = JSON.parse(input);',
+    '    } catch {',
+    '      body = {};',
+    '    }',
+    '  }',
+    '  body = { hook_event_name: "SessionStart", ...body };',
+    "  const response = await fetch(`http://127.0.0.1:${webhookPort}/hooks/claude-code`, {",
+    "    method: 'POST',",
+    '    headers: {',
+    "      'content-type': 'application/json',",
+    "      'x-stoa-session-id': sessionId,",
+    "      'x-stoa-project-id': projectId,",
+    "      'x-stoa-secret': sessionSecret",
+    '    },',
+    '    body: JSON.stringify(body)',
+    '  });',
+    "  const text = await response.text();",
+    "  if (response.ok && text.trim()) {",
+    '    process.stdout.write(text.trim());',
+    '  }',
+    '}',
+    "main().catch(() => { process.exit(0); });",
+    ''
+  ].join('\n')
+}
+
 async function writeHookBridgeScripts(claudeDir: string): Promise<void> {
   const hooksDir = join(claudeDir, 'hooks')
   await mkdir(hooksDir, { recursive: true })
+
   await writeFile(
-    join(hooksDir, 'stoa-hook-session-start.cjs'),
-    `'use strict'
-
-const { createInterface } = require('node:readline')
-
-const sessionId = process.env.STOA_SESSION_ID
-const projectId = process.env.STOA_PROJECT_ID
-const sessionSecret = process.env.STOA_SESSION_SECRET
-const webhookPort = process.env.STOA_WEBHOOK_PORT
-const hookEventName = process.argv[2]
-
-if (!sessionId || !projectId || !sessionSecret || !webhookPort || !hookEventName) {
-  process.exit(0)
-}
-
-async function main() {
-  let input = ''
-  for await (const line of createInterface({ input: process.stdin })) {
-    input += line
-  }
-
-  let body = {}
-  if (input.trim()) {
-    try {
-      body = JSON.parse(input)
-    } catch {
-      body = {}
-    }
-  }
-
-  if (!('hook_event_name' in body)) {
-    body = { hook_event_name: hookEventName, ...body }
-  }
-
-  const response = await fetch(\`http://127.0.0.1:\${webhookPort}/hooks/claude-code\`, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-stoa-session-id': sessionId,
-      'x-stoa-project-id': projectId,
-      'x-stoa-secret': sessionSecret
-    },
-    body: JSON.stringify(body)
-  })
-
-  const text = (await response.text()).trim()
-  if (text) {
-    process.stdout.write(text)
-  }
-}
-
-main().catch((error) => {
-  const message = error instanceof Error ? error.stack ?? error.message : String(error)
-  if (message) {
-    process.stderr.write(message)
-  }
-  process.exitCode = 1
-})
-`,
+    join(hooksDir, STOA_CLAUDE_HOOK_SCRIPT_NAMES.sessionStart),
+    buildSessionStartBridgeSource(),
     'utf-8'
   )
+
+  if (process.platform === 'win32') {
+    await writeFile(
+      join(hooksDir, STOA_CLAUDE_HOOK_SCRIPT_NAMES.sessionStartLauncher),
+      buildWindowsNodeLauncherSource({
+        runtimePath: process.execPath,
+        scriptFileName: STOA_CLAUDE_HOOK_SCRIPT_NAMES.sessionStart
+      }),
+      'utf-8'
+    )
+  }
+}
+
+function buildWindowsNodeLauncherSource(input: {
+  runtimePath: string
+  scriptFileName: string
+}): string {
+  return [
+    '@echo off',
+    'setlocal',
+    'set "ELECTRON_RUN_AS_NODE=1"',
+    `"${input.runtimePath}" "%~dp0${input.scriptFileName}"`,
+    ''
+  ].join('\r\n')
 }
 
 async function writeSharedClaudeHooks(target: ProviderRuntimeTarget, context: ProviderCommandContext): Promise<void> {
