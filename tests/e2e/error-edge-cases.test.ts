@@ -156,7 +156,7 @@ describe('E2E: Error and Edge Cases', () => {
     test('fails startup when projects key is missing from global state', async () => {
       const globalStatePath = await createGlobalStatePath()
       await writeRawStateFile(globalStatePath, JSON.stringify({
-        version: 3,
+        version: 4,
         active_project_id: null,
         active_session_id: null
       }))
@@ -167,7 +167,7 @@ describe('E2E: Error and Edge Cases', () => {
       })).rejects.toThrow('Invalid global state')
     })
 
-    test('accepts valid v3 global state without legacy sessions key', async () => {
+    test('rejects valid-looking v3 global state without legacy sessions key', async () => {
       const globalStatePath = await createGlobalStatePath()
       await writeRawStateFile(globalStatePath, JSON.stringify({
         version: 3,
@@ -176,13 +176,10 @@ describe('E2E: Error and Edge Cases', () => {
         projects: []
       }))
 
-      const manager = await ProjectSessionManager.create({
+      await expect(ProjectSessionManager.create({
         webhookPort: null,
         globalStatePath
-      })
-
-      const snapshot = manager.snapshot()
-      expect(snapshot.sessions).toHaveLength(0)
+      })).rejects.toThrow('Invalid global state')
     })
   })
 
@@ -241,7 +238,7 @@ describe('E2E: Error and Edge Cases', () => {
       })
 
       const diskState = await readGlobalFile(globalStatePath)
-      expect(diskState.version).toBe(3)
+      expect(diskState.version).toBe(4)
       expect(diskState.projects).toEqual([])
       expect(diskState.active_project_id).toBeNull()
       expect(diskState.active_session_id).toBeNull()
@@ -277,7 +274,7 @@ describe('E2E: Error and Edge Cases', () => {
       const now = new Date().toISOString()
 
       await writeRawStateFile(globalStatePath, JSON.stringify({
-        version: 3,
+        version: 4,
         active_project_id: 'project_alpha',
         active_session_id: 'session_missing',
         projects: [
