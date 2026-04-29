@@ -367,7 +367,6 @@ onBeforeUnmount(() => {
               />
               <img class="route-provider-icon" :src="providerIcon(session.type)" :alt="session.type" />
               <div class="route-copy route-copy--session">
-                <span class="route-name">{{ session.title }}</span>
                 <span v-if="sessionStatusLabel(session)" class="route-session-label">{{ sessionStatusLabel(session) }}</span>
               </div>
             </button>
@@ -435,7 +434,6 @@ onBeforeUnmount(() => {
     >
       <div class="detail-popover__name">{{ detailState.name }}</div>
       <div v-if="detailState.path" class="detail-popover__info">{{ detailState.path }}</div>
-      <div v-if="detailState.sessionType" class="detail-popover__info">{{ detailState.sessionType }}</div>
       <div v-if="detailState.phase" class="detail-popover__info">{{ detailState.phase }}</div>
     </div>
   </Teleport>
@@ -600,7 +598,7 @@ onBeforeUnmount(() => {
 
 .route-provider-icon {
   flex: none;
-  height: 1em;
+  height: 2.25em;
   width: auto;
 }
 
