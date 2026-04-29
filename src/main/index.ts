@@ -735,8 +735,15 @@ app.whenReady().then(async () => {
       const sessionStartPayload = parseJsonTail(sessionStartOutput) as {
         agent_message?: string
         additionalContext?: string
+        hookSpecificOutput?: {
+          additionalContext?: string
+        }
       }
-      const injectedMemoryText = `${sessionStartPayload.agent_message ?? ''}\n${sessionStartPayload.additionalContext ?? ''}`
+      const injectedMemoryText = [
+        sessionStartPayload.agent_message ?? '',
+        sessionStartPayload.additionalContext ?? '',
+        sessionStartPayload.hookSpecificOutput?.additionalContext ?? ''
+      ].join('\n')
       if (!injectedMemoryText.includes('Packaged smoke memory context is available')) {
         throw new Error(`Packaged smoke Claude SessionStart hook did not surface the published memory.\nOutput: ${sessionStartOutput}`)
       }

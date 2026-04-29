@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises'
@@ -27,9 +27,11 @@ const SECOND_PROMPT = [
 const HEADLESS_TIMEOUT_MS = 15 * 60 * 1000
 const JOB_TIMEOUT_MS = 5 * 60 * 1000
 let lastRepoRoot: string | null = null
+let lastBaseDir: string | null = null
 
 async function main(): Promise<void> {
   const baseDir = await mkdtemp(join(tmpdir(), 'stoa-first-round-real-'))
+  lastBaseDir = baseDir
   const repoRoot = join(baseDir, 'project')
   lastRepoRoot = repoRoot
   const globalStatePath = join(baseDir, 'global.json')
@@ -109,7 +111,8 @@ async function main(): Promise<void> {
 
     const firstResult = await invokeClaudeHeadless(
       await provider.buildStartCommand(session1Target, session1Context),
-      FIRST_PROMPT
+      FIRST_PROMPT,
+      join(baseDir, 'claude-session1-first.debug.log')
     )
     const firstCommandFile = await readCommandFile(repoRoot)
     if (!/\bpip\b/i.test(firstCommandFile) || /\buv\b/i.test(firstCommandFile)) {
@@ -121,7 +124,8 @@ async function main(): Promise<void> {
 
     const secondResult = await invokeClaudeHeadless(
       await provider.buildResumeCommand(session1Target, session1.externalSessionId!, session1Context),
-      SECOND_PROMPT
+      SECOND_PROMPT,
+      join(baseDir, 'claude-session1-resume.debug.log')
     )
     const secondCommandFile = await readCommandFile(repoRoot)
     if (!/\buv\b/i.test(secondCommandFile)) {
@@ -147,7 +151,8 @@ async function main(): Promise<void> {
 
     const thirdResult = await invokeClaudeHeadless(
       await provider.buildStartCommand(session2Target, session2Context),
-      FIRST_PROMPT
+      FIRST_PROMPT,
+      join(baseDir, 'claude-session2-first.debug.log')
     )
     const thirdCommandFile = await readCommandFile(repoRoot)
     if (!/\buv\b/i.test(thirdCommandFile)) {
@@ -172,7 +177,12 @@ async function main(): Promise<void> {
           'Session 2, invocation 3: fresh Claude session should automatically carry the uv preference.'
         ],
         commandFile: COMMAND_FILE_NAME,
-        providerPath: providerPath ?? 'claude'
+        providerPath: providerPath ?? 'claude',
+        debugLogs: [
+          join(baseDir, 'claude-session1-first.debug.log'),
+          join(baseDir, 'claude-session1-resume.debug.log'),
+          join(baseDir, 'claude-session2-first.debug.log')
+        ]
       }
     }, null, 2))
   } finally {
@@ -223,6 +233,17 @@ async function invokeClaudeHeadless(command: ProviderCommand, prompt: string): P
   command: ProviderCommand
   stdout: string
   parsed: Record<string, unknown> | null
+  debugFilePath: string
+}>;
+async function invokeClaudeHeadless(
+  command: ProviderCommand,
+  prompt: string,
+  debugFilePath: string
+): Promise<{
+  command: ProviderCommand
+  stdout: string
+  parsed: Record<string, unknown> | null
+  debugFilePath: string
 }> {
   const headlessArgs = [
     ...command.args,
@@ -231,12 +252,14 @@ async function invokeClaudeHeadless(command: ProviderCommand, prompt: string): P
     '--output-format',
     'json',
     '--permission-mode',
-    'acceptEdits'
+    'bypassPermissions',
+    '--debug-file',
+    debugFilePath
   ]
-  const output = runChecked(command.command, headlessArgs, command.cwd, {
+  const output = await runCheckedAsync(command.command, headlessArgs, command.cwd, {
     env: command.env,
     timeoutMs: HEADLESS_TIMEOUT_MS,
-    shell: process.platform === 'win32'
+    shell: false
   })
 
   const parsed = parseJsonTail(output.stdout)
@@ -246,7 +269,8 @@ async function invokeClaudeHeadless(command: ProviderCommand, prompt: string): P
       args: headlessArgs
     },
     stdout: output.stdout,
-    parsed: isRecord(parsed) ? parsed : null
+    parsed: isRecord(parsed) ? parsed : null,
+    debugFilePath
   }
 }
 
@@ -416,12 +440,93 @@ function runChecked(
   return normalized
 }
 
+async function runCheckedAsync(
+  command: string,
+  args: string[],
+  cwd: string,
+  options?: {
+    env?: NodeJS.ProcessEnv
+    timeoutMs?: number
+    shell?: boolean
+  }
+): Promise<{
+  status: number
+  stdout: string
+  stderr: string
+}> {
+  return await new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd,
+      env: options?.env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+      shell: options?.shell ?? false
+    })
+
+    let stdout = ''
+    let stderr = ''
+    let settled = false
+
+    const timeout = setTimeout(() => {
+      if (settled) {
+        return
+      }
+      settled = true
+      child.kill()
+      reject(new Error(`Command timed out: ${command} ${args.join(' ')}`))
+    }, options?.timeoutMs ?? 120_000)
+
+    child.stdout.on('data', (chunk: Buffer | string) => {
+      stdout += chunk.toString()
+    })
+    child.stderr.on('data', (chunk: Buffer | string) => {
+      stderr += chunk.toString()
+    })
+
+    child.on('error', (error) => {
+      if (settled) {
+        return
+      }
+      settled = true
+      clearTimeout(timeout)
+      reject(error)
+    })
+
+    child.on('close', (code) => {
+      if (settled) {
+        return
+      }
+      settled = true
+      clearTimeout(timeout)
+      const normalized = {
+        status: code ?? 1,
+        stdout,
+        stderr
+      }
+
+      if (normalized.status !== 0) {
+        reject(new Error([
+          `Command failed: ${command} ${args.join(' ')}`,
+          `cwd=${cwd}`,
+          `exitCode=${normalized.status}`,
+          `stdout=${normalized.stdout}`,
+          `stderr=${normalized.stderr}`
+        ].join('\n')))
+        return
+      }
+
+      resolve(normalized)
+    })
+  })
+}
+
 main().catch(async (error) => {
   const message = error instanceof Error ? error.stack ?? error.message : String(error)
   const diagnosticPath = lastRepoRoot ? join(lastRepoRoot, COMMAND_FILE_NAME) : null
   const diagnostic = diagnosticPath && existsSync(diagnosticPath)
     ? `\ncommandFileSha256=${createHash('sha256').update(await readFile(diagnosticPath, 'utf8')).digest('hex')}`
     : ''
-  console.error(`${message}${diagnostic}`)
+  const baseDirLine = lastBaseDir ? `\nbaseDir=${lastBaseDir}` : ''
+  console.error(`${message}${diagnostic}${baseDirLine}`)
   process.exitCode = 1
 })

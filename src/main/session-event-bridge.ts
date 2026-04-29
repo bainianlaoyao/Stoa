@@ -41,6 +41,7 @@ interface SessionEventBridgeHookResponse {
   additional_context?: string
   systemMessage?: string
   hookSpecificOutput?: {
+    hookEventName?: string
     additionalContext?: string
     systemMessage?: string
   }
@@ -361,7 +362,7 @@ export class SessionEventBridge {
           stoaSessionId: event.session_id,
           providerSessionId: event.evidence.providerSessionId
         })
-        return toHookResponse(delivery)
+        return toHookResponse(delivery, hookEventName)
       }
       case 'UserPromptSubmit': {
         const taskText = event.evidence.promptText?.trim()
@@ -376,7 +377,7 @@ export class SessionEventBridge {
           providerSessionId: event.evidence.providerSessionId,
           taskText
         })
-        return toHookResponse(delivery)
+        return toHookResponse(delivery, hookEventName)
       }
       case 'PostToolUse': {
         if (event.evidence.toolName !== 'Write' || !evidenceRef) {
@@ -578,19 +579,18 @@ function toMemoryConsumer(sessionType: SessionType): WarmStartOptions['consumer'
   }
 }
 
-function toHookResponse(delivery: DeliveryEnvelope | null): SessionEventBridgeHookResponse | null {
+function toHookResponse(
+  delivery: DeliveryEnvelope | null,
+  hookEventName: 'SessionStart' | 'UserPromptSubmit'
+): SessionEventBridgeHookResponse | null {
   if (!delivery?.content) {
     return null
   }
 
   return {
-    agent_message: delivery.content,
-    additionalContext: delivery.content,
-    additional_context: delivery.content,
-    systemMessage: delivery.content,
     hookSpecificOutput: {
-      additionalContext: delivery.content,
-      systemMessage: delivery.content
+      hookEventName,
+      additionalContext: delivery.content
     }
   }
 }

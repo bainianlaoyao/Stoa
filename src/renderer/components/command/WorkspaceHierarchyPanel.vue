@@ -265,7 +265,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <aside class="min-h-0 overflow-hidden rounded-[var(--radius-sm)] bg-surface" data-testid="workspace-hierarchy-panel" aria-label="Workspace hierarchy">
+  <aside class="min-h-0 overflow-y-auto rounded-[var(--radius-sm)] bg-surface" data-testid="workspace-hierarchy-panel" aria-label="Workspace hierarchy">
     <div class="min-h-0 overflow-auto p-2.5 grid gap-3 align-content-start" data-testid="route-body">
       <div class="grid gap-1" data-testid="route-actions">
         <button class="route-action flex items-center justify-between gap-2 px-2.5 py-2 rounded-[var(--radius-sm)] bg-surface-solid text-text-strong cursor-pointer transition-all duration-200 hover:bg-black-faint focus-visible:bg-black-faint focus-visible:outline-none" type="button" data-testid="workspace.new-project" @click="showNewProject = true">
@@ -503,9 +503,9 @@ onBeforeUnmount(() => {
 }
 
 .route-item.child {
-  grid-template-columns: 6px 14px minmax(0, 1fr);
+  grid-template-columns: 6px 18px minmax(0, 1fr);
   gap: 6px;
-  padding: 4px 8px 4px 20px;
+  padding: 2px 8px 2px 20px;
 }
 
 .route-item:hover:not(.route-item--active),
@@ -598,7 +598,7 @@ onBeforeUnmount(() => {
 
 .route-provider-icon {
   flex: none;
-  height: 2.25em;
+  height: 1.75em;
   width: auto;
 }
 
@@ -845,5 +845,31 @@ onBeforeUnmount(() => {
 .route-add-session:hover {
   background: var(--color-black-soft);
   color: var(--color-text-strong);
+}
+
+aside[data-testid="workspace-hierarchy-panel"] {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+aside[data-testid="workspace-hierarchy-panel"]:hover {
+  scrollbar-color: var(--color-black-soft) transparent;
+}
+
+aside[data-testid="workspace-hierarchy-panel"]::-webkit-scrollbar {
+  width: 4px;
+}
+
+aside[data-testid="workspace-hierarchy-panel"]::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+aside[data-testid="workspace-hierarchy-panel"]::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 2px;
+}
+
+aside[data-testid="workspace-hierarchy-panel"]:hover::-webkit-scrollbar-thumb {
+  background: var(--color-black-soft);
 }
 </style>

@@ -513,6 +513,72 @@ describe('SessionEventBridge', () => {
     })
   })
 
+  test('claude UserPromptSubmit hook returns Claude-compatible hookSpecificOutput when recall produces memory', async () => {
+    const stateDir = await createTestTempDir('session-event-bridge-recall-state-')
+    const workspaceDir = await createTestTempDir('session-event-bridge-recall-workspace-')
+    tempDirs.push(stateDir, workspaceDir)
+    const manager = await ProjectSessionManager.create({
+      webhookPort: null,
+      globalStatePath: join(stateDir, 'global.json')
+    })
+    const project = await manager.createProject({
+      name: 'P1',
+      path: workspaceDir
+    })
+    const session = await manager.createSession({
+      projectId: project.id,
+      type: 'claude-code',
+      title: 'Claude Session'
+    })
+    await manager.markRuntimeAlive(session.id, session.externalSessionId)
+
+    const bridge = new SessionEventBridge(
+      manager,
+      {
+        applyProviderStatePatch: async (patch) => {
+          await manager.applySessionStatePatch(patch)
+        }
+      },
+      undefined,
+      {
+        evolverBridge: {
+          warmStart: vi.fn(async () => null),
+          recall: vi.fn(async () => ({
+            content: 'Use uv instead of pip.',
+            sourceRefs: [],
+            selectionPolicy: 'test'
+          })),
+          observeWrite: vi.fn(async () => {}),
+          processTurn: vi.fn(async () => ({ jobId: 'job_1' }))
+        }
+      }
+    )
+    bridges.push(bridge)
+
+    const port = await bridge.start()
+    const secret = bridge.issueSessionSecret(session.id)
+    const response = await postClaudeHook(
+      port,
+      {
+        hook_event_name: 'UserPromptSubmit',
+        prompt: 'Install requests for this repository.'
+      },
+      {
+        'x-stoa-secret': secret,
+        'x-stoa-session-id': session.id,
+        'x-stoa-project-id': project.id
+      }
+    )
+
+    expect(response.statusCode).toBe(200)
+    expect(JSON.parse(response.body)).toEqual({
+      hookSpecificOutput: {
+        hookEventName: 'UserPromptSubmit',
+        additionalContext: 'Use uv instead of pip.'
+      }
+    })
+  })
+
   test('claude PreToolUse after PermissionRequest infers permission resolved before resuming running state', async () => {
     const stateDir = await createTestTempDir('session-event-bridge-state-')
     const workspaceDir = await createTestTempDir('session-event-bridge-workspace-')

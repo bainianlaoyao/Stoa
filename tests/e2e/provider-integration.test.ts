@@ -472,16 +472,118 @@ describe('E2E: Provider Integration', () => {
         'StopFailure',
         'UserPromptSubmit'
       ])
-      expect(content).toContain('stoa-hook-session-start.cmd')
-      await expect(stat(join(workspaceDir, '.claude', 'hooks', 'stoa-hook-session-start.cjs'))).resolves.toMatchObject({ isFile: expect.any(Function) })
-      await expect(stat(join(workspaceDir, '.claude', 'hooks', 'stoa-hook-session-start.cmd'))).resolves.toMatchObject({ isFile: expect.any(Function) })
-      await expect(stat(join(workspaceDir, '.claude', 'hooks', 'stoa-hook-user-prompt-submit.cjs'))).resolves.toMatchObject({ isFile: expect.any(Function) })
+      expect(content).toContain('node .claude/hooks/stoa-hook-session-start.cjs SessionStart')
+      expect(content).not.toContain('stoa-hook-user-prompt-submit.cjs')
+      const sessionStartBridgePath = join(workspaceDir, '.claude', 'hooks', 'stoa-hook-session-start.cjs')
+      await expect(stat(sessionStartBridgePath)).resolves.toMatchObject({ isFile: expect.any(Function) })
+      const sessionStartBridge = await readFile(sessionStartBridgePath, 'utf8')
+      expect(sessionStartBridge).toContain('process.env.STOA_SESSION_ID')
+      expect(sessionStartBridge).toContain('process.env.STOA_PROJECT_ID')
+      expect(sessionStartBridge).toContain('process.env.STOA_SESSION_SECRET')
+      expect(sessionStartBridge).toContain('process.env.STOA_WEBHOOK_PORT')
+      expect(sessionStartBridge).not.toContain('secret-claude')
+      expect(sessionStartBridge).not.toContain(target.session_id)
+      await expect(stat(join(workspaceDir, '.claude', 'hooks', 'stoa-hook-user-prompt-submit.cjs'))).rejects.toThrow()
       expect(content).not.toContain('stoa-evolver-signal-detect.cjs')
       expect(content).not.toContain('stoa-evolver-session-end.cjs')
       await expect(stat(join(workspaceDir, '.claude', 'hooks', 'stoa-evolver-signal-detect.cjs'))).rejects.toThrow()
       await expect(stat(join(workspaceDir, '.claude', 'hooks', 'stoa-evolver-session-end.cjs'))).rejects.toThrow()
       expect(content).not.toContain('secret-claude')
       expect(content).not.toContain(target.session_id)
+    })
+
+    test('SessionStart bridge posts Claude hook payloads through the local webhook server', async () => {
+      const acceptedEvents: CanonicalSessionEvent[] = []
+      const server = createLocalWebhookServer({
+        getSessionSecret(sessionId) {
+          return sessionId === 'session_claude_bridge' ? 'bridge-secret' : null
+        },
+        onEvent(event) {
+          acceptedEvents.push(event)
+          return {
+            hookSpecificOutput: {
+              hookEventName: 'SessionStart',
+              additionalContext: 'Use uv when managing Python environments.'
+            }
+          }
+        }
+      })
+
+      try {
+        const port = await server.start()
+        const workspaceDir = await createTempDir('stoa-claude-session-start-bridge-')
+        const provider = getProvider('claude-code')
+        const target = createTarget({
+          path: workspaceDir,
+          type: 'claude-code',
+          session_id: 'session_claude_bridge',
+          project_id: 'project_claude_bridge',
+          external_session_id: 'external-claude-bridge'
+        })
+
+        await provider.installSidecar(target, createContext({ webhookPort: port, sessionSecret: 'bridge-secret' }))
+
+        const result = await new Promise<{ exitCode: number | null; stdout: string; stderr: string }>((resolve) => {
+          const child = spawn('node', [join(workspaceDir, '.claude', 'hooks', 'stoa-hook-session-start.cjs'), 'SessionStart'], {
+            env: {
+              ...process.env as Record<string, string>,
+              STOA_SESSION_ID: 'session_claude_bridge',
+              STOA_PROJECT_ID: 'project_claude_bridge',
+              STOA_SESSION_SECRET: 'bridge-secret',
+              STOA_WEBHOOK_PORT: String(port)
+            },
+            cwd: workspaceDir,
+            stdio: ['pipe', 'pipe', 'pipe']
+          })
+
+          let stdout = ''
+          let stderr = ''
+          child.stdout?.on('data', (chunk: Buffer) => { stdout += chunk.toString() })
+          child.stderr?.on('data', (chunk: Buffer) => { stderr += chunk.toString() })
+          child.stdin?.write(JSON.stringify({
+            hook_event_name: 'SessionStart',
+            session_id: 'external-claude-bridge',
+            cwd: '/repo/claude',
+            model: 'claude-sonnet-4-6'
+          }))
+          child.stdin?.end()
+          child.on('close', (code) => resolve({ exitCode: code, stdout, stderr }))
+        })
+
+        expect(result.exitCode).toBe(0)
+        expect(result.stderr).toBe('')
+        expect(JSON.parse(result.stdout)).toEqual({
+          hookSpecificOutput: {
+            hookEventName: 'SessionStart',
+            additionalContext: 'Use uv when managing Python environments.'
+          }
+        })
+        expect(acceptedEvents).toHaveLength(1)
+        expect(acceptedEvents[0]).toMatchObject({
+          event_type: 'claude-code.SessionStart',
+          session_id: 'session_claude_bridge',
+          project_id: 'project_claude_bridge',
+          payload: {
+            intent: 'runtime.alive',
+            agentState: 'idle',
+            summary: 'SessionStart',
+            externalSessionId: 'external-claude-bridge'
+          },
+          evidence: {
+            rawSource: {
+              provider: 'claude-code',
+              channel: 'hook',
+              rawEventName: 'SessionStart'
+            },
+            hookEventName: 'SessionStart',
+            providerSessionId: 'external-claude-bridge',
+            cwd: '/repo/claude',
+            model: 'claude-sonnet-4-6'
+          }
+        })
+      } finally {
+        await server.stop()
+      }
     })
   })
 

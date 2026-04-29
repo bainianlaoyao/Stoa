@@ -1,6 +1,4 @@
 import { describe, expect, test } from 'vitest'
-import { exec } from 'node:child_process'
-import { createServer } from 'node:http'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -173,12 +171,9 @@ describe('claude-code provider', () => {
         'StopFailure',
         'UserPromptSubmit'
       ])
-      const sessionStartCommand = readSessionStartHookCommand(content)
-      expect(sessionStartCommand).toContain(process.platform === 'win32'
-        ? 'stoa-hook-session-start.cmd'
-        : 'stoa-hook-session-start.cjs')
-      expect(sessionStartCommand.startsWith('node ')).toBe(false)
-      expect(content).not.toContain('stoa-evolver-session-start.cjs')
+      const sessionStartHook = readHookEntry(content, 'SessionStart')
+      expect(sessionStartHook.type).toBe('command')
+      expect(sessionStartHook.command).toBe('node .claude/hooks/stoa-hook-session-start.cjs SessionStart')
       expect(content).not.toContain('stoa-evolver-session-end.cjs')
       expect(content).not.toContain('stoa-evolver-signal-detect.cjs')
       expect(content).not.toContain('session_claude_env')
@@ -188,7 +183,7 @@ describe('claude-code provider', () => {
     }
   })
 
-  test('installSidecar writes Claude-local hook bridge scripts', async () => {
+  test('installSidecar uses a command bridge for SessionStart and HTTP for later Claude hooks', async () => {
     const workspaceDir = await mkdtemp(join(tmpdir(), 'stoa-claude-hook-wrapper-'))
     try {
       const provider = createClaudeCodeProvider()
@@ -206,224 +201,59 @@ describe('claude-code provider', () => {
         providerPort: 43128
       })
 
-      const startWrapper = await readFile(join(workspaceDir, '.claude', 'hooks', 'stoa-hook-session-start.cjs'), 'utf8')
-      const promptWrapper = await readFile(join(workspaceDir, '.claude', 'hooks', 'stoa-hook-user-prompt-submit.cjs'), 'utf8')
-      expect(startWrapper).toContain('/hooks/claude-code')
-      expect(startWrapper).toContain('hook_event_name: "SessionStart"')
-      expect(promptWrapper).toContain('hook_event_name: "UserPromptSubmit"')
-      if (process.platform === 'win32') {
-        const launcher = await readFile(join(workspaceDir, '.claude', 'hooks', 'stoa-hook-session-start.cmd'), 'utf8')
-        expect(launcher).toContain(process.execPath)
-        expect(launcher).toContain('ELECTRON_RUN_AS_NODE')
-      }
-      await expect(readFile(join(workspaceDir, '.claude', 'hooks', 'stoa-hook-user-prompt-submit.cjs'), 'utf8')).resolves.toContain('UserPromptSubmit')
+      const content = await readFile(join(workspaceDir, '.claude', 'settings.local.json'), 'utf8')
+      const sessionStartBridge = await readFile(join(workspaceDir, '.claude', 'hooks', 'stoa-hook-session-start.cjs'), 'utf8')
+      const sessionStartHook = readHookEntry(content, 'SessionStart')
+      const userPromptHook = readHookEntry(content, 'UserPromptSubmit')
+      expect(sessionStartHook.type).toBe('command')
+      expect(sessionStartHook.command).toBe('node .claude/hooks/stoa-hook-session-start.cjs SessionStart')
+      expect(userPromptHook.type).toBe('http')
+      expect(userPromptHook.url).toBe('http://127.0.0.1:43127/hooks/claude-code')
+      expect(userPromptHook.allowedEnvVars).toEqual([
+        'STOA_SESSION_ID',
+        'STOA_PROJECT_ID',
+        'STOA_SESSION_SECRET'
+      ])
+      expect(userPromptHook.headers).toEqual({
+        'x-stoa-session-id': '${STOA_SESSION_ID}',
+        'x-stoa-project-id': '${STOA_PROJECT_ID}',
+        'x-stoa-secret': '${STOA_SESSION_SECRET}'
+      })
+      expect(sessionStartBridge).toContain('process.env.STOA_SESSION_ID')
+      expect(sessionStartBridge).toContain('process.env.STOA_PROJECT_ID')
+      expect(sessionStartBridge).toContain('process.env.STOA_SESSION_SECRET')
+      expect(sessionStartBridge).toContain('process.env.STOA_WEBHOOK_PORT')
+      expect(sessionStartBridge).not.toContain('session_claude_evolver')
+      expect(sessionStartBridge).not.toContain('project_alpha')
+      expect(sessionStartBridge).not.toContain('secret-env')
+      await expect(readFile(join(workspaceDir, '.claude', 'hooks', 'stoa-hook-user-prompt-submit.cjs'), 'utf8')).rejects.toThrow()
       await expect(readFile(join(workspaceDir, '.claude', 'hooks', 'stoa-evolver-session-end.cjs'), 'utf8')).rejects.toThrow()
       await expect(readFile(join(workspaceDir, '.claude', 'hooks', 'stoa-evolver-signal-detect.cjs'), 'utf8')).rejects.toThrow()
     } finally {
       await rm(workspaceDir, { recursive: true, force: true })
     }
   })
-
-  test('generated Claude session-start bridge prints webhook JSON responses', async () => {
-    const workspaceDir = await mkdtemp(join(tmpdir(), 'stoa-claude-hook-run-'))
-    const received: Array<Record<string, unknown>> = []
-    const server = await createHookResponseServer('session_claude_evolver_run', 'secret-env', received, {
-      agent_message: 'Use uv instead of pip for Python package management.',
-      additionalContext: 'Use uv instead of pip for Python package management.'
-    })
-    try {
-      const provider = createClaudeCodeProvider()
-
-      await provider.installSidecar({
-        session_id: 'session_claude_evolver_run',
-        project_id: 'project_alpha',
-        path: workspaceDir,
-        title: 'Claude Alpha',
-        type: 'claude-code',
-        external_session_id: 'external-evolver-run'
-      }, {
-        webhookPort: server.port,
-        sessionSecret: 'secret-env',
-        providerPort: 43128
-      })
-
-      const stdout = await runSessionStartHookFromSettings(workspaceDir, {
-        ...process.env,
-        STOA_SESSION_ID: 'session_claude_evolver_run',
-        STOA_PROJECT_ID: 'project_alpha',
-        STOA_SESSION_SECRET: 'secret-env',
-        STOA_WEBHOOK_PORT: String(server.port)
-      })
-
-      const parsed = JSON.parse(stdout) as { agent_message?: string; additionalContext?: string }
-      expect(parsed.agent_message).toContain('Use uv instead of pip')
-      expect(parsed.additionalContext).toContain('Use uv instead of pip')
-      expect(received).toHaveLength(1)
-      expect(received[0]).toMatchObject({
-        hook_event_name: 'SessionStart'
-      })
-    } finally {
-      await server.stop()
-      await rm(workspaceDir, { recursive: true, force: true })
-    }
-  })
-
-  test('generated Claude user-prompt bridge forwards prompt payloads and prints webhook JSON responses', async () => {
-    const workspaceDir = await mkdtemp(join(tmpdir(), 'stoa-claude-prompt-hook-'))
-    const received: Array<Record<string, unknown>> = []
-    const server = await createHookResponseServer('session_claude_evolver_auto_context', 'secret-env', received, {
-      agent_message: 'Repository memory says to use uv.',
-      additionalContext: 'Repository memory says to use uv.'
-    })
-    try {
-      const provider = createClaudeCodeProvider()
-
-      await provider.installSidecar({
-        session_id: 'session_claude_evolver_auto_context',
-        project_id: 'project_alpha',
-        path: workspaceDir,
-        title: 'Claude Alpha',
-        type: 'claude-code',
-        external_session_id: 'external-evolver-auto-context'
-      }, {
-        webhookPort: server.port,
-        sessionSecret: 'secret-env',
-        providerPort: 43128
-      })
-
-      const settingsJson = await readFile(join(workspaceDir, '.claude', 'settings.local.json'), 'utf8')
-      const settings = JSON.parse(settingsJson) as {
-        hooks?: Record<string, Array<{ hooks?: Array<{ command?: string }> }>>
-      }
-      const command = settings.hooks?.UserPromptSubmit?.[0]?.hooks?.[0]?.command
-      if (!command) {
-        throw new Error('UserPromptSubmit hook command is missing.')
-      }
-
-      const stdout = await runHookCommand(command, workspaceDir, {
-        ...process.env,
-        STOA_SESSION_ID: 'session_claude_evolver_auto_context',
-        STOA_PROJECT_ID: 'project_alpha',
-        STOA_SESSION_SECRET: 'secret-env',
-        STOA_WEBHOOK_PORT: String(server.port)
-      }, {
-        prompt: 'Install a Python package for this repository.'
-      })
-
-      const parsed = JSON.parse(stdout) as { agent_message?: string; additionalContext?: string }
-      expect(parsed.agent_message).toContain('use uv')
-      expect(parsed.additionalContext).toContain('use uv')
-      expect(received).toHaveLength(1)
-      expect(received[0]).toMatchObject({
-        hook_event_name: 'UserPromptSubmit',
-        prompt: 'Install a Python package for this repository.'
-      })
-    } finally {
-      await server.stop()
-      await rm(workspaceDir, { recursive: true, force: true })
-    }
-  })
 })
 
-function readSessionStartHookCommand(settingsJson: string): string {
+function readHookEntry(settingsJson: string, hookName: string): {
+  type?: string
+  url?: string
+  command?: string
+  headers?: Record<string, string>
+  allowedEnvVars?: string[]
+} {
   const settings = JSON.parse(settingsJson) as {
-    hooks?: Record<string, Array<{ hooks?: Array<{ command?: string }> }>>
+    hooks?: Record<string, Array<{ hooks?: Array<{
+      type?: string
+      url?: string
+      command?: string
+      headers?: Record<string, string>
+      allowedEnvVars?: string[]
+    }> }>>
   }
-  const command = settings.hooks?.SessionStart?.[0]?.hooks?.[0]?.command
-  if (!command) {
-    throw new Error('SessionStart hook command is missing.')
+  const hook = settings.hooks?.[hookName]?.[0]?.hooks?.[0]
+  if (!hook) {
+    throw new Error(`${hookName} hook is missing.`)
   }
-  return command
-}
-
-async function runSessionStartHookFromSettings(
-  workspaceDir: string,
-  env: NodeJS.ProcessEnv
-): Promise<string> {
-  const settingsJson = await readFile(join(workspaceDir, '.claude', 'settings.local.json'), 'utf8')
-  const command = readSessionStartHookCommand(settingsJson)
-  return await runHookCommand(command, workspaceDir, env)
-}
-
-async function runHookCommand(
-  command: string,
-  workspaceDir: string,
-  env: NodeJS.ProcessEnv,
-  stdinPayload?: Record<string, unknown>
-): Promise<string> {
-  return await new Promise<string>((resolve, reject) => {
-    exec(
-      command,
-      {
-        cwd: workspaceDir,
-        env,
-        windowsHide: true
-      },
-      (error, stdout, stderr) => {
-        if (error) {
-          reject(new Error(stderr || error.message))
-          return
-        }
-        resolve(stdout)
-      }
-    ).stdin?.end(stdinPayload ? JSON.stringify(stdinPayload) : '')
-  })
-}
-
-async function createHookResponseServer(
-  expectedSessionId: string,
-  expectedSecret: string,
-  received: Array<Record<string, unknown>>,
-  responsePayload: Record<string, unknown>
-): Promise<{
-  port: number
-  stop: () => Promise<void>
-}> {
-  const server = createServer((request, response) => {
-    if (request.method !== 'POST' || request.url !== '/hooks/claude-code') {
-      response.statusCode = 404
-      response.end()
-      return
-    }
-
-    if (
-      request.headers['x-stoa-session-id'] !== expectedSessionId
-      || request.headers['x-stoa-secret'] !== expectedSecret
-    ) {
-      response.statusCode = 401
-      response.end(JSON.stringify({ accepted: false, reason: 'invalid_secret' }))
-      return
-    }
-
-    let body = ''
-    request.setEncoding('utf8')
-    request.on('data', chunk => { body += chunk })
-    request.on('end', () => {
-      received.push(JSON.parse(body) as Record<string, unknown>)
-      response.statusCode = 200
-      response.setHeader('content-type', 'application/json')
-      response.end(JSON.stringify(responsePayload))
-    })
-  })
-
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()))
-  const address = server.address()
-  if (!address || typeof address === 'string') {
-    throw new Error('Failed to start local hook response server.')
-  }
-
-  return {
-    port: address.port,
-    stop: async () => {
-      await new Promise<void>((resolve, reject) => {
-        server.close((error) => {
-          if (error) {
-            reject(error)
-            return
-          }
-          resolve()
-        })
-      })
-    }
-  }
+  return hook
 }
