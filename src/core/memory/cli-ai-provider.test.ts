@@ -57,7 +57,7 @@ describe('CliAiProvider', () => {
 
     expect(resolveExecutablePath).toHaveBeenCalledWith(
       'claude-code',
-      expect.objectContaining({ memoryAiProvider: 'claude-code' }),
+      expect.objectContaining({ evolverInferenceProvider: 'claude-code' }),
       expect.objectContaining({
         detectShell: expect.any(Function),
         detectProvider: expect.any(Function)
@@ -413,9 +413,9 @@ describe('CliAiProvider', () => {
   })
 })
 
-function createSettings(memoryAiProvider: AppSettings['memoryAiProvider']): AppSettings {
+function createSettings(evolverInferenceProvider: AppSettings['evolverInferenceProvider']): AppSettings {
   return {
     ...DEFAULT_SETTINGS,
-    memoryAiProvider
+    evolverInferenceProvider
   }
 }

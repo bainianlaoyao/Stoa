@@ -97,26 +97,53 @@ describe('ProjectSessionManager', () => {
     })
 
     expect(manager.getSettings().workspaceIde).toEqual(DEFAULT_SETTINGS.workspaceIde)
+    expect(manager.getSettings().evolverInferenceProvider).toBe(DEFAULT_SETTINGS.evolverInferenceProvider)
+    expect(manager.getSettings().evolverExecutionMode).toBe(DEFAULT_SETTINGS.evolverExecutionMode)
 
-    const persisted = JSON.parse(await readFile(globalStatePath, 'utf-8')) as { settings?: { workspaceIde?: unknown } }
+    const persisted = JSON.parse(await readFile(globalStatePath, 'utf-8')) as {
+      settings?: {
+        workspaceIde?: unknown
+        evolverInferenceProvider?: unknown
+        evolverExecutionMode?: unknown
+      }
+    }
     expect(persisted.settings?.workspaceIde).toEqual(DEFAULT_SETTINGS.workspaceIde)
+    expect(persisted.settings?.evolverInferenceProvider).toBe(DEFAULT_SETTINGS.evolverInferenceProvider)
+    expect(persisted.settings?.evolverExecutionMode).toBe(DEFAULT_SETTINGS.evolverExecutionMode)
   })
 
-  test('persists memory AI provider setting across reloads', async () => {
+  test('persists evolver inference provider setting across reloads', async () => {
     const globalStatePath = await createTempGlobalStatePath()
     const manager = await ProjectSessionManager.create({
       webhookPort: null,
       globalStatePath
     })
 
-    await manager.setSetting('memoryAiProvider', 'codex')
+    await manager.setSetting('evolverInferenceProvider', 'codex')
 
     const reloaded = await ProjectSessionManager.create({
       webhookPort: null,
       globalStatePath
     })
 
-    expect(reloaded.getSettings().memoryAiProvider).toBe('codex')
+    expect(reloaded.getSettings().evolverInferenceProvider).toBe('codex')
+  })
+
+  test('persists evolver execution mode setting across reloads', async () => {
+    const globalStatePath = await createTempGlobalStatePath()
+    const manager = await ProjectSessionManager.create({
+      webhookPort: null,
+      globalStatePath
+    })
+
+    await manager.setSetting('evolverExecutionMode', 'workspace-shell')
+
+    const reloaded = await ProjectSessionManager.create({
+      webhookPort: null,
+      globalStatePath
+    })
+
+    expect(reloaded.getSettings().evolverExecutionMode).toBe('workspace-shell')
   })
 
   test('rejects startup when persisted global state is corrupted', async () => {

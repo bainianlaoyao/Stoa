@@ -2,7 +2,7 @@ import { execFile as nodeExecFile } from 'node:child_process'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { extname, join } from 'node:path'
 import { tmpdir } from 'node:os'
-import type { AppSettings, MemoryAiProvider } from '@shared/project-session'
+import type { AppSettings, EvolverInferenceProvider } from '@shared/project-session'
 import type {
   DistillationResponse,
   ReviewDecision,
@@ -87,7 +87,7 @@ export class CliAiProvider {
     request: CliAiBaseRequest,
     contract: StructuredResponseContract<TResponse>
   ): Promise<TResponse> {
-    const providerId = this.settings.memoryAiProvider
+    const providerId = this.settings.evolverInferenceProvider
     if (providerId === 'claude-code') {
       return await this.runClaudeRequest(request, contract)
     }
@@ -159,7 +159,7 @@ export class CliAiProvider {
   }
 
   private async resolveInvocation(
-    providerId: MemoryAiProvider,
+    providerId: EvolverInferenceProvider,
     providerArgs: string[]
   ): Promise<{ command: string; args: string[] }> {
     const resolved = await this.resolveProviderExecutablePath(providerId, this.settings, {
@@ -245,8 +245,8 @@ export class CliAiProvider {
   }
 }
 
-function providerIdFromSettings(settings: AppSettings): MemoryAiProvider {
-  return settings.memoryAiProvider
+function providerIdFromSettings(settings: AppSettings): EvolverInferenceProvider {
+  return settings.evolverInferenceProvider
 }
 
 function readStructuredOutput(value: unknown): unknown {
