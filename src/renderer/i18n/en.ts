@@ -81,7 +81,10 @@ export default {
       description: 'Stoa uses that provider when Evolver requests LLM work such as distill or optional review.',
       badge: 'Host-owned',
       label: 'Evolver inference provider',
-      hint: 'This does not start Evolver work by itself. It only persists which inference capability Stoa should use when requested.'
+      hint: 'This does not start Evolver work by itself. It only persists which inference capability Stoa should use when requested.',
+      options: {
+        api: 'OpenAI API'
+      }
     },
     sessionProviders: 'Session providers',
     sessionProvidersRadial: 'Session providers (radial)',

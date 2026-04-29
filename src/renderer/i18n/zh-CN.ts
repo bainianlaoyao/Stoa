@@ -76,12 +76,15 @@ export default {
     placeholderMissing: '\u672A\u627E\u5230',
     selectExecutable: '\u9009\u62E9 {provider} \u53EF\u6267\u884C\u6587\u4EF6',
     evolverInference: {
-      ariaLabel: 'Evolver inference provider',
+      ariaLabel: 'Evolver 推理提供商',
       title: 'Evolver \u63A8\u7406\u63D0\u4F9B\u5546',
       description: 'Evolver \u8BF7\u6C42 distill \u6216\u53EF\u9009 review \u7B49 LLM \u5DE5\u4F5C\u65F6\uFF0CStoa \u4F1A\u4F7F\u7528\u8BE5\u63D0\u4F9B\u5546\u3002',
       badge: 'Stoa \u6240\u6709',
       label: 'Evolver \u63A8\u7406\u63D0\u4F9B\u5546',
-      hint: '\u8FD9\u4E0D\u4F1A\u76F4\u63A5\u542F\u52A8 Evolver \u5DE5\u4F5C\u3002\u5B83\u53EA\u4F1A\u6301\u4E45\u5316 Stoa \u5728\u88AB\u8BF7\u6C42\u65F6\u5E94\u4F7F\u7528\u7684\u63A8\u7406\u80FD\u529B\u63D0\u4F9B\u5546\u3002'
+      hint: '\u8FD9\u4E0D\u4F1A\u76F4\u63A5\u542F\u52A8 Evolver \u5DE5\u4F5C\u3002\u5B83\u53EA\u4F1A\u6301\u4E45\u5316 Stoa \u5728\u88AB\u8BF7\u6C42\u65F6\u5E94\u4F7F\u7528\u7684\u63A8\u7406\u80FD\u529B\u63D0\u4F9B\u5546\u3002',
+      options: {
+        api: 'OpenAI API'
+      }
     },
     sessionProviders: '\u4F1A\u8BDD\u63D0\u4F9B\u5546',
     sessionProvidersRadial: '\u4F1A\u8BDD\u63D0\u4F9B\u5546\uFF08\u73AF\u5F62\uFF09',

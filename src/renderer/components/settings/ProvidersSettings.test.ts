@@ -9,34 +9,12 @@ import { nextTick } from 'vue'
 import { createI18n } from 'vue-i18n'
 import ProvidersSettings from './ProvidersSettings.vue'
 import type { RendererApi } from '@shared/project-session'
+import { useSettingsStore } from '@renderer/stores/settings'
+import enMessages from '@renderer/i18n/en'
 
 const providersSettingsPath = resolve(dirname(fileURLToPath(import.meta.url)), 'ProvidersSettings.vue')
-const providerMessages = {
-  eyebrow: 'Providers',
-  title: 'Provider runtime paths',
-  description: 'Keep executable discovery predictable so provider-backed sessions can start without extra repair work.',
-  cardDescription: 'Set an explicit executable path or let Stoa use the local detected runtime.',
-  executablePath: 'Executable path',
-  browse: 'Browse',
-  detecting: 'Detecting...',
-  autoDetected: 'Auto-detected',
-  customPath: 'Custom path',
-  notFound: 'Not found — click Browse to locate',
-  placeholderMissing: 'not found',
-  selectExecutable: 'Select {provider} executable',
-  evolverInference: {
-    ariaLabel: 'Evolver inference provider',
-    title: 'Evolver inference provider',
-    description: 'Stoa uses that provider when Evolver requests LLM work such as distill or optional review.',
-    badge: 'Host-owned',
-    label: 'Evolver inference provider',
-    hint: 'This does not start Evolver work by itself. It only persists which inference capability Stoa should use when requested.'
-  },
-  claude: {
-    skipPermissions: 'Skip Claude permission prompts',
-    skipPermissionsDescription: 'Append `--dangerously-skip-permissions` when starting or resuming Claude sessions.'
-  }
-} as const
+const providerMessages = enMessages.providers
+let pinia: ReturnType<typeof createPinia>
 
 function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
   return {
@@ -151,14 +129,15 @@ function createTestI18n() {
 
 function mountProvidersSettings() {
   return mount(ProvidersSettings, {
-    global: { plugins: [createPinia(), createTestI18n()] },
+    global: { plugins: [pinia, createTestI18n()] },
     attachTo: document.body
   })
 }
 
 describe('ProvidersSettings', () => {
   beforeEach(() => {
-    setActivePinia(createPinia())
+    pinia = createPinia()
+    setActivePinia(pinia)
     setupVibecodingMock()
   })
 
@@ -192,11 +171,35 @@ describe('ProvidersSettings', () => {
     expect(card.text()).toContain(providerMessages.evolverInference.hint)
   })
 
+  it('renders a hydrated api inference provider selection from persisted settings', async () => {
+    setupVibecodingMock({
+      getSettings: vi.fn().mockResolvedValue({
+        shellPath: '',
+        terminalFontSize: 14,
+        terminalFontFamily: 'JetBrains Mono',
+        providers: {},
+        workspaceIde: { id: 'vscode', executablePath: '' },
+        evolverInferenceProvider: 'api',
+        evolverExecutionMode: 'workspace-shell',
+        claudeDangerouslySkipPermissions: false,
+        locale: 'en'
+      })
+    })
+    const store = useSettingsStore()
+    await store.loadSettings()
+
+    const wrapper = mountProvidersSettings()
+    const trigger = wrapper.get('[data-settings-field="evolver-inference-provider"] [data-testid="glass-listbox-button"]')
+
+    expect(store.evolverInferenceProvider).toBe('api')
+    expect(trigger.text()).toContain(providerMessages.evolverInference.options.api)
+  })
+
   it('renders Browse button for each provider', () => {
     const wrapper = mountProvidersSettings()
     const browseButtons = wrapper.findAll('[data-settings-field^="provider-"] .btn-ghost')
     expect(browseButtons.length).toBeGreaterThanOrEqual(1)
-    expect(browseButtons[0].text()).toBe('Browse')
+    expect(browseButtons[0].text()).toBe(providerMessages.browse)
   })
 
   it('shows "Detecting..." hint on mount', () => {
@@ -205,7 +208,7 @@ describe('ProvidersSettings', () => {
     const wrapper = mountProvidersSettings()
     const hint = wrapper.find('[aria-label="OpenCode provider"] .settings-item__hint')
     expect(hint.exists()).toBe(true)
-    expect(hint.text()).toBe('Detecting...')
+    expect(hint.text()).toBe(providerMessages.detecting)
   })
 
   it('clicking Browse calls store.pickFile', async () => {
@@ -259,6 +262,27 @@ describe('ProvidersSettings', () => {
     await option!.trigger('click')
 
     expect(setSettingMock).toHaveBeenCalledWith('evolverInferenceProvider', 'codex')
+  })
+
+  it('updates the evolver inference provider setting to api from the selector', async () => {
+    const setSettingMock = vi.fn().mockResolvedValue(undefined)
+    setupVibecodingMock({ setSetting: setSettingMock })
+
+    const wrapper = mountProvidersSettings()
+
+    await nextTick()
+
+    const trigger = wrapper.get('[data-settings-field="evolver-inference-provider"] [data-testid="glass-listbox-button"]')
+    await trigger.trigger('click')
+    await nextTick()
+
+    const option = wrapper.findAll('.glass-listbox__option')
+      .find((candidate) => candidate.text() === providerMessages.evolverInference.options.api)
+    expect(option).toBeDefined()
+
+    await option!.trigger('click')
+
+    expect(setSettingMock).toHaveBeenCalledWith('evolverInferenceProvider', 'api')
   })
 
   it('keeps the claude permissions toggle on shared control surface tokens and baseline timing', () => {

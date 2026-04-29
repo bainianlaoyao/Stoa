@@ -11,7 +11,8 @@ const { t } = useI18n()
 const store = useSettingsStore()
 const evolverInferenceProviderOptions = [
   { value: 'claude-code', label: 'Claude Code' },
-  { value: 'codex', label: 'Codex' }
+  { value: 'codex', label: 'Codex' },
+  { value: 'api', label: t('providers.evolverInference.options.api') }
 ]
 
 const providerList = listProviderDescriptors()
@@ -56,7 +57,7 @@ function handleClaudeDangerouslySkipPermissionsChange(value: boolean): void {
 }
 
 function handleEvolverInferenceProviderChange(value: string): void {
-  if (value === 'claude-code' || value === 'codex') {
+  if (value === 'claude-code' || value === 'codex' || value === 'api') {
     void store.updateSetting('evolverInferenceProvider', value)
   }
 }
