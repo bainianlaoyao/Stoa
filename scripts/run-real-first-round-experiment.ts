@@ -5,12 +5,12 @@ import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { ProjectSessionManager } from '../src/core/project-session-manager'
-import { resolveBundledEvolverCli } from '../src/core/memory/bundled-evolver'
-import { EvolverClient } from '../src/core/memory/evolver-client'
+import { createMemoryRuntimeHost } from '../src/core/memory/runtime-host'
 import { RuntimeStateStore } from '../src/core/memory/runtime-state-store'
+import { detectProvider, detectShell } from '../src/core/settings-detector'
 import { SessionEventBridge } from '../src/main/session-event-bridge'
 import { createClaudeCodeProvider } from '../src/extensions/providers/claude-code-provider'
-import type { ProviderCommand, ProviderCommandContext } from '../src/shared/project-session'
+import { DEFAULT_SETTINGS, type ProviderCommand, type ProviderCommandContext } from '../src/shared/project-session'
 
 const COMMAND_FILE_NAME = '.python-install-command.txt'
 const FIRST_PROMPT = [
@@ -63,13 +63,25 @@ async function main(): Promise<void> {
     defaultSessionType: 'claude-code'
   })
 
-  const bundledEvolverCli = await resolveBundledEvolverCli(process.cwd())
-  const evolverBridge = new EvolverClient({
-    command: bundledEvolverCli.command,
-    cwd: bundledEvolverCli.repoRoot,
-    argsPrefix: bundledEvolverCli.argsPrefix,
-    env: bundledEvolverCli.env
+  const memoryRuntimeHost = await createMemoryRuntimeHost({
+    settings: {
+      ...DEFAULT_SETTINGS,
+      evolverInferenceProvider: 'claude-code',
+      evolverExecutionMode: 'workspace-shell',
+      providers: providerPath ? { 'claude-code': providerPath } : {}
+    },
+    cwd: process.cwd(),
+    detectShell,
+    detectProvider
   })
+
+  if (
+    memoryRuntimeHost.availability !== 'full'
+    || !memoryRuntimeHost.evolverBridge
+    || !memoryRuntimeHost.turnMaintenanceRunner
+  ) {
+    throw new Error(`Memory runtime host is unavailable: ${memoryRuntimeHost.diagnostics.join(' | ')}`)
+  }
 
   const bridge = new SessionEventBridge(
     manager,
@@ -79,7 +91,10 @@ async function main(): Promise<void> {
       }
     },
     undefined,
-    { evolverBridge }
+    {
+      evolverBridge: memoryRuntimeHost.evolverBridge,
+      turnMaintenanceRunner: memoryRuntimeHost.turnMaintenanceRunner
+    }
   )
 
   const provider = createClaudeCodeProvider()

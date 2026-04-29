@@ -21,4 +21,4 @@ test-results/
 assets/
 .stoa
 .entire
-memory
+/memory

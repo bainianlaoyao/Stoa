@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { RuntimeStateStore } from '@core/memory/runtime-state-store'
 import { SessionEvidenceStore } from '@core/memory/session-evidence-store'
+import { TurnMaintenancePhaseError } from '@core/memory/turn-maintenance-runner'
 import { createTranscriptSnapshot } from '@core/memory/transcript-snapshot'
 import { createLocalWebhookServer } from '@core/webhook-server'
 import type { EvolverClient, RecallOptions, WarmStartOptions } from '@core/memory/evolver-client'
@@ -42,6 +43,7 @@ interface TurnMaintenanceRunnerLike {
 interface RuntimeStateStoreLike {
   recordSealedTurn: RuntimeStateStore['recordSealedTurn']
   upsertJob: RuntimeStateStore['upsertJob']
+  replaceJob: RuntimeStateStore['replaceJob']
 }
 
 interface SessionEventBridgeHookResponse {
@@ -466,6 +468,18 @@ export class SessionEventBridge {
       sealedAt: event.timestamp
     })
 
+    this.turnEvidenceIds.delete(turnKey)
+
+    const evidenceRefs = await this.evidenceStore.listEvidenceRefsForTurn?.(
+      projectPath,
+      event.session_id,
+      turnId
+    ) ?? []
+
+    if (!this.turnMaintenanceRunner) {
+      return
+    }
+
     const queuedJobId = `job_${turnId}`
     await runtimeStateStore.upsertJob({
       jobId: queuedJobId,
@@ -474,14 +488,6 @@ export class SessionEventBridge {
       state: 'queued',
       updatedAt: this.nowIso()
     })
-
-    this.turnEvidenceIds.delete(turnKey)
-
-    const evidenceRefs = await this.evidenceStore.listEvidenceRefsForTurn?.(
-      projectPath,
-      event.session_id,
-      turnId
-    ) ?? []
 
     void this.runTurnMaintenanceJob({
       projectPath,
@@ -508,7 +514,11 @@ export class SessionEventBridge {
     }
 
     const runtimeStateStore = this.createRuntimeStateStore(input.projectPath)
-    const updateJob = async (record: RuntimeJobRecord) => {
+    const updateJob = async (record: RuntimeJobRecord, previousJobId?: string) => {
+      if (previousJobId && previousJobId !== record.jobId) {
+        await runtimeStateStore.replaceJob(previousJobId, record)
+        return
+      }
       await runtimeStateStore.upsertJob(record)
     }
 
@@ -535,16 +545,17 @@ export class SessionEventBridge {
         turnId: input.turnId,
         state: 'done',
         updatedAt: this.nowIso()
-      })
+      }, input.queuedJobId)
     } catch (error) {
+      const failedJobId = error instanceof TurnMaintenancePhaseError ? error.jobId : input.queuedJobId
       await updateJob({
-        jobId: input.queuedJobId,
+        jobId: failedJobId,
         sessionKey: input.sessionKey,
         turnId: input.turnId,
         state: 'failed',
         error: error instanceof Error ? error.message : String(error),
         updatedAt: this.nowIso()
-      })
+      }, input.queuedJobId)
       console.error(
         `[session-event-bridge] turn maintenance failed for session ${input.stoaSessionId} turn ${input.turnId}:`,
         error

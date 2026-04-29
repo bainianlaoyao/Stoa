@@ -99,6 +99,25 @@ function isValidPersistedState(value: unknown): value is PersistedAppStateV2 {
     && Array.isArray(value.sessions)
 }
 
+function isV3GlobalState(value: unknown): value is { version: 3; active_project_id: unknown; active_session_id: unknown; projects: unknown[]; settings?: unknown } {
+  return typeof value === 'object'
+    && value !== null
+    && 'version' in value
+    && (value as { version: unknown }).version === 3
+    && 'projects' in value
+    && Array.isArray((value as { projects: unknown }).projects)
+}
+
+function migrateV3ToV4(value: { version: 3; active_project_id: unknown; active_session_id: unknown; projects: unknown[]; settings?: unknown }): PersistedGlobalStateV4 {
+  return {
+    version: 4,
+    active_project_id: typeof value.active_project_id === 'string' ? value.active_project_id : null,
+    active_session_id: typeof value.active_session_id === 'string' ? value.active_session_id : null,
+    projects: value.projects as PersistedProject[],
+    settings: value.settings as PersistedGlobalStateV4['settings']
+  }
+}
+
 function isValidGlobalState(value: unknown): value is PersistedGlobalStateV4 {
   return typeof value === 'object'
     && value !== null
@@ -285,12 +304,16 @@ export async function readGlobalState(filePath = getGlobalStateFilePath()): Prom
   return await withFileAccess(filePath, async () => {
     try {
       const raw = await readFile(filePath, 'utf-8')
-      const parsed = JSON.parse(raw) as PersistedGlobalStateV4
-      if (!isValidGlobalState(parsed)) {
-        throw new StateReadError('Invalid global state', undefined, filePath, false)
+      const parsed = JSON.parse(raw) as unknown
+      if (isValidGlobalState(parsed)) {
+        return parsed
       }
 
-      return parsed
+      if (isV3GlobalState(parsed)) {
+        return migrateV3ToV4(parsed)
+      }
+
+      throw new StateReadError('Invalid global state', undefined, filePath, false)
     } catch (error) {
       if (error instanceof StateReadError) {
         throw error

@@ -6,9 +6,8 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { autoUpdater } from 'electron-updater'
 import { IPC_CHANNELS } from '@core/ipc-channels'
-import { resolveBundledEvolverCli } from '@core/memory/bundled-evolver'
 import { getConsumerContextPath } from '@core/memory/delivery-paths'
-import { EvolverClient } from '@core/memory/evolver-client'
+import { createMemoryRuntimeHost } from '@core/memory/runtime-host'
 import { InMemoryObservationStore } from '@core/observation-store'
 import type { ListObservationEventsOptions } from '@core/observation-store'
 import { ObservabilityService } from '@core/observability-service'
@@ -509,21 +508,24 @@ app.whenReady().then(async () => {
     },
     observabilityService
   )
-  let evolverBridge: EvolverClient | undefined
-  try {
-    const bundledEvolverCli = await resolveBundledEvolverCli(process.cwd())
-    evolverBridge = new EvolverClient({
-      command: bundledEvolverCli.command,
-      cwd: bundledEvolverCli.repoRoot,
-      argsPrefix: bundledEvolverCli.argsPrefix,
-      env: bundledEvolverCli.env
-    })
-  } catch (error) {
-    console.warn('[main] Bundled Evolver bridge is unavailable. Memory orchestration will stay disabled.', error)
+  const memoryRuntimeHost = await createMemoryRuntimeHost({
+    settings: {
+      getSettings() {
+        return projectSessionManager!.getSettings()
+      }
+    },
+    cwd: process.cwd(),
+    detectShell,
+    detectProvider
+  })
+
+  for (const diagnostic of memoryRuntimeHost.diagnostics) {
+    console.warn(`[main] ${diagnostic}`)
   }
 
   sessionEventBridge = new SessionEventBridge(projectSessionManager, runtimeController, observabilityService, {
-    evolverBridge
+    evolverBridge: memoryRuntimeHost.evolverBridge,
+    turnMaintenanceRunner: memoryRuntimeHost.turnMaintenanceRunner
   })
   updateService = new UpdateService({
     app,
@@ -985,19 +987,19 @@ app.whenReady().then(async () => {
   })
 
   ipcMain.handle(IPC_CHANNELS.memoryGetStateSummary, async (_event, input: MemoryStateSummaryRequest) => {
-    return await evolverBridge?.getStateSummary(input) ?? {}
+    return await memoryRuntimeHost.evolverBridge?.getStateSummary(input) ?? {}
   })
 
   ipcMain.handle(IPC_CHANNELS.memoryTraceTurn, async (_event, input: MemoryTurnTraceRequest) => {
-    return await evolverBridge?.traceTurn(input) ?? {}
+    return await memoryRuntimeHost.evolverBridge?.traceTurn(input) ?? {}
   })
 
   ipcMain.handle(IPC_CHANNELS.memoryExplainRecall, async (_event, input: MemoryRecallExplanationRequest) => {
-    return await evolverBridge?.explainRecall(input) ?? {}
+    return await memoryRuntimeHost.evolverBridge?.explainRecall(input) ?? {}
   })
 
   ipcMain.handle(IPC_CHANNELS.memoryGetAsset, async (_event, input: MemoryAssetRequest) => {
-    return await evolverBridge?.getAsset(input) ?? null
+    return await memoryRuntimeHost.evolverBridge?.getAsset(input) ?? null
   })
 
   ipcMain.handle(IPC_CHANNELS.updateGetState, async () => {

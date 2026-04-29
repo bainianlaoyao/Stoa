@@ -6,6 +6,8 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 import { InMemoryObservationStore } from '@core/observation-store'
 import { ObservabilityService } from '@core/observability-service'
 import { ProjectSessionManager } from '@core/project-session-manager'
+import { RuntimeStateStore } from '@core/memory/runtime-state-store'
+import { TurnMaintenancePhaseError } from '@core/memory/turn-maintenance-runner'
 import type { CanonicalSessionEvent, SessionStatePatchEvent } from '@shared/project-session'
 import type { ObservationEvent } from '@shared/observability'
 import { createTestTempDir } from '../../testing/test-temp'
@@ -548,8 +550,7 @@ describe('SessionEventBridge', () => {
             sourceRefs: [],
             selectionPolicy: 'test'
           })),
-          observeWrite: vi.fn(async () => {}),
-          processTurn: vi.fn(async () => ({ jobId: 'job_1' }))
+          observeWrite: vi.fn(async () => {})
         }
       }
     )
@@ -1118,8 +1119,7 @@ describe('SessionEventBridge', () => {
     expect(warmStart).toHaveBeenCalledOnce()
     expect(JSON.parse(response.body)).toMatchObject({
       hookSpecificOutput: {
-        additionalContext: 'recent memory',
-        systemMessage: 'recent memory'
+        additionalContext: 'recent memory'
       }
     })
   })
@@ -1212,6 +1212,274 @@ describe('SessionEventBridge', () => {
         evidenceRefs: [persistedEvidenceRef]
       })
     })
+  })
+
+  test('Stop replaces the queued placeholder job when the runner reports a different real job id', async () => {
+    const stateDir = await createTestTempDir('session-event-bridge-real-job-state-')
+    const workspaceDir = await createTestTempDir('session-event-bridge-real-job-workspace-')
+    tempDirs.push(stateDir, workspaceDir)
+
+    const manager = await ProjectSessionManager.create({
+      webhookPort: null,
+      globalStatePath: join(stateDir, 'global.json')
+    })
+    const project = await manager.createProject({
+      name: 'P1',
+      path: workspaceDir,
+      defaultSessionType: 'claude-code'
+    })
+    const session = await manager.createSession({
+      projectId: project.id,
+      type: 'claude-code',
+      title: 'Claude Session'
+    })
+    await manager.markRuntimeAlive(session.id, session.externalSessionId)
+
+    const persistedEvidenceRef = {
+      evidenceId: 'evt_stop_real_job',
+      projectId: project.id,
+      stoaSessionId: session.id,
+      providerSessionId: session.externalSessionId,
+      turnId: 'turn_stop_real_job',
+      eventId: 'evt_stop_real_job',
+      eventType: 'claude-code.Stop',
+      evidenceKey: 'claude-code:provider-session-1:turn_stop_real_job',
+      kind: 'turn-slice' as const,
+      metadataPath: join(workspaceDir, '.stoa', 'memory', 'evidence', session.id, 'evt_stop_real_job', 'metadata.json'),
+      path: join(workspaceDir, '.stoa', 'memory', 'evidence', session.id, 'evt_stop_real_job', 'turn-slice.json'),
+      createdAt: '2026-04-29T00:00:00.000Z',
+      toolName: null
+    }
+    const turnMaintenanceRunner = {
+      run: vi.fn(async () => ({ jobId: 'job_real_turn_stop_real_job' }))
+    }
+    const bridge = new SessionEventBridge(manager, {
+      applyProviderStatePatch: async () => {}
+    }, undefined, {
+      evidenceStore: {
+        persist: async () => ({
+          eventDirectoryPath: join(workspaceDir, '.stoa', 'memory', 'evidence', session.id, 'evt_stop_real_job'),
+          metadataPath: persistedEvidenceRef.metadataPath,
+          snapshotPath: persistedEvidenceRef.path,
+          evidenceKey: persistedEvidenceRef.evidenceKey,
+          evidenceRef: persistedEvidenceRef
+        }),
+        sealTurn: async () => {},
+        listEvidenceRefsForTurn: async () => [persistedEvidenceRef]
+      },
+      transcriptSnapshotter: async () => ({
+        kind: 'turn-slice',
+        fileName: 'turn-slice.json',
+        content: Buffer.from('{"summary":"stop"}', 'utf8')
+      }),
+      turnMaintenanceRunner
+    })
+    bridges.push(bridge)
+
+    const port = await bridge.start()
+    const secret = bridge.issueSessionSecret(session.id)
+    const response = await postClaudeHook(
+      port,
+      { hook_event_name: 'Stop' },
+      {
+        'x-stoa-secret': secret,
+        'x-stoa-session-id': session.id,
+        'x-stoa-project-id': project.id
+      }
+    )
+
+    expect(response.statusCode).toBe(202)
+
+    const runtimeStateStore = new RuntimeStateStore(workspaceDir)
+    const sessionKey = `${project.id}\n${session.id}`
+    await vi.waitFor(async () => {
+      await expect(runtimeStateStore.listJobsForSession(sessionKey)).resolves.toEqual([
+        {
+          jobId: 'job_real_turn_stop_real_job',
+          sessionKey,
+          turnId: 'turn_stop_real_job',
+          state: 'done',
+          updatedAt: expect.any(String)
+        }
+      ])
+      await expect(runtimeStateStore.getJob('job_turn_stop_real_job')).resolves.toBeNull()
+    })
+  })
+
+  test('Stop does not queue runtime jobs when no turn maintenance runner is configured', async () => {
+    const stateDir = await createTestTempDir('session-event-bridge-no-runner-state-')
+    const workspaceDir = await createTestTempDir('session-event-bridge-no-runner-workspace-')
+    tempDirs.push(stateDir, workspaceDir)
+
+    const manager = await ProjectSessionManager.create({
+      webhookPort: null,
+      globalStatePath: join(stateDir, 'global.json')
+    })
+    const project = await manager.createProject({
+      name: 'P1',
+      path: workspaceDir,
+      defaultSessionType: 'claude-code'
+    })
+    const session = await manager.createSession({
+      projectId: project.id,
+      type: 'claude-code',
+      title: 'Claude Session'
+    })
+    await manager.markRuntimeAlive(session.id, session.externalSessionId)
+
+    const persistedEvidenceRef = {
+      evidenceId: 'evt_stop_no_runner',
+      projectId: project.id,
+      stoaSessionId: session.id,
+      providerSessionId: session.externalSessionId,
+      turnId: 'turn_stop_no_runner',
+      eventId: 'evt_stop_no_runner',
+      eventType: 'claude-code.Stop',
+      evidenceKey: 'claude-code:provider-session-1:turn_stop_no_runner',
+      kind: 'turn-slice' as const,
+      metadataPath: join(workspaceDir, '.stoa', 'memory', 'evidence', session.id, 'evt_stop_no_runner', 'metadata.json'),
+      path: join(workspaceDir, '.stoa', 'memory', 'evidence', session.id, 'evt_stop_no_runner', 'turn-slice.json'),
+      createdAt: '2026-04-29T00:00:00.000Z',
+      toolName: null
+    }
+    const bridge = new SessionEventBridge(manager, {
+      applyProviderStatePatch: async () => {}
+    }, undefined, {
+      evidenceStore: {
+        persist: async () => ({
+          eventDirectoryPath: join(workspaceDir, '.stoa', 'memory', 'evidence', session.id, 'evt_stop_no_runner'),
+          metadataPath: persistedEvidenceRef.metadataPath,
+          snapshotPath: persistedEvidenceRef.path,
+          evidenceKey: persistedEvidenceRef.evidenceKey,
+          evidenceRef: persistedEvidenceRef
+        }),
+        sealTurn: async () => {},
+        listEvidenceRefsForTurn: vi.fn(async () => [persistedEvidenceRef])
+      },
+      transcriptSnapshotter: async () => ({
+        kind: 'turn-slice',
+        fileName: 'turn-slice.json',
+        content: Buffer.from('{"summary":"stop"}', 'utf8')
+      })
+    })
+    bridges.push(bridge)
+
+    const port = await bridge.start()
+    const secret = bridge.issueSessionSecret(session.id)
+    const response = await postClaudeHook(
+      port,
+      { hook_event_name: 'Stop' },
+      {
+        'x-stoa-secret': secret,
+        'x-stoa-session-id': session.id,
+        'x-stoa-project-id': project.id
+      }
+    )
+
+    expect(response.statusCode).toBe(202)
+    const runtimeStateStore = new RuntimeStateStore(workspaceDir)
+    const sessionKey = `${project.id}\n${session.id}`
+    await expect(runtimeStateStore.listJobsForSession(sessionKey)).resolves.toEqual([])
+  })
+
+  test('Stop replaces the queued placeholder job when turn maintenance fails with a real job id', async () => {
+    const stateDir = await createTestTempDir('session-event-bridge-failed-job-state-')
+    const workspaceDir = await createTestTempDir('session-event-bridge-failed-job-workspace-')
+    tempDirs.push(stateDir, workspaceDir)
+
+    const manager = await ProjectSessionManager.create({
+      webhookPort: null,
+      globalStatePath: join(stateDir, 'global.json')
+    })
+    const project = await manager.createProject({
+      name: 'P1',
+      path: workspaceDir,
+      defaultSessionType: 'claude-code'
+    })
+    const session = await manager.createSession({
+      projectId: project.id,
+      type: 'claude-code',
+      title: 'Claude Session'
+    })
+    await manager.markRuntimeAlive(session.id, session.externalSessionId)
+
+    const persistedEvidenceRef = {
+      evidenceId: 'evt_stop_failed_job',
+      projectId: project.id,
+      stoaSessionId: session.id,
+      providerSessionId: session.externalSessionId,
+      turnId: 'turn_stop_failed_job',
+      eventId: 'evt_stop_failed_job',
+      eventType: 'claude-code.Stop',
+      evidenceKey: 'claude-code:provider-session-1:turn_stop_failed_job',
+      kind: 'turn-slice' as const,
+      metadataPath: join(workspaceDir, '.stoa', 'memory', 'evidence', session.id, 'evt_stop_failed_job', 'metadata.json'),
+      path: join(workspaceDir, '.stoa', 'memory', 'evidence', session.id, 'evt_stop_failed_job', 'turn-slice.json'),
+      createdAt: '2026-04-29T00:00:00.000Z',
+      toolName: null
+    }
+    const turnMaintenanceRunner = {
+      run: vi.fn(async () => {
+        throw new TurnMaintenancePhaseError('job_real_turn_stop_failed_job', 'distill failed', new Error('distill failed'))
+      })
+    }
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const bridge = new SessionEventBridge(manager, {
+      applyProviderStatePatch: async () => {}
+    }, undefined, {
+      evidenceStore: {
+        persist: async () => ({
+          eventDirectoryPath: join(workspaceDir, '.stoa', 'memory', 'evidence', session.id, 'evt_stop_failed_job'),
+          metadataPath: persistedEvidenceRef.metadataPath,
+          snapshotPath: persistedEvidenceRef.path,
+          evidenceKey: persistedEvidenceRef.evidenceKey,
+          evidenceRef: persistedEvidenceRef
+        }),
+        sealTurn: async () => {},
+        listEvidenceRefsForTurn: async () => [persistedEvidenceRef]
+      },
+      transcriptSnapshotter: async () => ({
+        kind: 'turn-slice',
+        fileName: 'turn-slice.json',
+        content: Buffer.from('{"summary":"stop"}', 'utf8')
+      }),
+      turnMaintenanceRunner
+    })
+    bridges.push(bridge)
+
+    try {
+      const port = await bridge.start()
+      const secret = bridge.issueSessionSecret(session.id)
+      const response = await postClaudeHook(
+        port,
+        { hook_event_name: 'Stop' },
+        {
+          'x-stoa-secret': secret,
+          'x-stoa-session-id': session.id,
+          'x-stoa-project-id': project.id
+        }
+      )
+
+      expect(response.statusCode).toBe(202)
+
+      const runtimeStateStore = new RuntimeStateStore(workspaceDir)
+      const sessionKey = `${project.id}\n${session.id}`
+      await vi.waitFor(async () => {
+        await expect(runtimeStateStore.listJobsForSession(sessionKey)).resolves.toEqual([
+          {
+            jobId: 'job_real_turn_stop_failed_job',
+            sessionKey,
+            turnId: 'turn_stop_failed_job',
+            state: 'failed',
+            error: 'distill failed',
+            updatedAt: expect.any(String)
+          }
+        ])
+        await expect(runtimeStateStore.getJob('job_turn_stop_failed_job')).resolves.toBeNull()
+      })
+    } finally {
+      consoleError.mockRestore()
+    }
   })
 
   test('main shutdown path awaits bridge stop before re-triggering quit', () => {

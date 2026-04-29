@@ -108,6 +108,40 @@ describe('RuntimeStateStore', () => {
     )
   })
 
+  test('replaces a placeholder job id with the real job id without leaving stale records', async () => {
+    const store = new RuntimeStateStore(repoRoot)
+    await store.upsertJob(jobRecord({
+      jobId: 'job_placeholder',
+      state: 'running'
+    }))
+
+    await store.replaceJob('job_placeholder', jobRecord({
+      jobId: 'job_real',
+      state: 'done',
+      updatedAt: '2026-04-28T10:03:00.000Z'
+    }))
+
+    await expect(store.read()).resolves.toEqual({
+      version: 1,
+      sealedTurns: [],
+      jobs: [
+        jobRecord({
+          jobId: 'job_real',
+          state: 'done',
+          updatedAt: '2026-04-28T10:03:00.000Z'
+        })
+      ]
+    })
+    await expect(store.getJob('job_placeholder')).resolves.toBeNull()
+    await expect(store.getJob('job_real')).resolves.toEqual(
+      jobRecord({
+        jobId: 'job_real',
+        state: 'done',
+        updatedAt: '2026-04-28T10:03:00.000Z'
+      })
+    )
+  })
+
   test('lists jobs for a session key in updatedAt order', async () => {
     const store = new RuntimeStateStore(repoRoot)
     await store.upsertJob(jobRecord({

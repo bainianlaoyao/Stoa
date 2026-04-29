@@ -147,6 +147,19 @@ export class RuntimeStateStore {
     })
   }
 
+  async replaceJob(previousJobId: string, record: RuntimeJobRecord): Promise<void> {
+    await this.updateStore(store => {
+      const jobs = store.jobs.filter(candidate =>
+        candidate.jobId !== previousJobId && candidate.jobId !== record.jobId
+      )
+      jobs.push({ ...record })
+      return {
+        ...store,
+        jobs
+      }
+    })
+  }
+
   async getJob(jobId: string): Promise<RuntimeJobRecord | null> {
     const store = await this.read()
     return store.jobs.find(candidate => candidate.jobId === jobId) ?? null

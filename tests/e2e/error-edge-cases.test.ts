@@ -167,7 +167,7 @@ describe('E2E: Error and Edge Cases', () => {
       })).rejects.toThrow('Invalid global state')
     })
 
-    test('rejects valid-looking v3 global state without legacy sessions key', async () => {
+    test('migrates valid-looking v3 global state without legacy sessions key', async () => {
       const globalStatePath = await createGlobalStatePath()
       await writeRawStateFile(globalStatePath, JSON.stringify({
         version: 3,
@@ -176,10 +176,12 @@ describe('E2E: Error and Edge Cases', () => {
         projects: []
       }))
 
-      await expect(ProjectSessionManager.create({
+      const manager = await ProjectSessionManager.create({
         webhookPort: null,
         globalStatePath
-      })).rejects.toThrow('Invalid global state')
+      })
+
+      expect(manager.snapshot().projects).toEqual([])
     })
   })
 

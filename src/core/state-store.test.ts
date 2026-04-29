@@ -257,10 +257,24 @@ describe('state-store', () => {
     await expect(readGlobalState(globalStatePath)).rejects.toThrow()
   })
 
-  test('throws when global state file uses an unsupported version', async () => {
+  test('migrates v3 global state to v4', async () => {
     const globalStatePath = await createTempGlobalStatePath()
     await fsPromises.writeFile(globalStatePath, JSON.stringify({
       version: 3,
+      active_project_id: null,
+      active_session_id: null,
+      projects: []
+    }), 'utf-8')
+
+    const result = await readGlobalState(globalStatePath)
+    expect(result.version).toBe(4)
+    expect(result.projects).toEqual([])
+  })
+
+  test('throws when global state file uses an unsupported version', async () => {
+    const globalStatePath = await createTempGlobalStatePath()
+    await fsPromises.writeFile(globalStatePath, JSON.stringify({
+      version: 99,
       active_project_id: null,
       active_session_id: null,
       projects: []

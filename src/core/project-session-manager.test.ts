@@ -156,7 +156,7 @@ describe('ProjectSessionManager', () => {
     })).rejects.toThrow()
   })
 
-  test('rejects startup when persisted global state uses incompatible v3 schema', async () => {
+  test('migrates persisted v3 global state during bootstrap', async () => {
     const globalStatePath = await createTempGlobalStatePath()
     await writeFile(globalStatePath, JSON.stringify({
       version: 3,
@@ -166,10 +166,13 @@ describe('ProjectSessionManager', () => {
       settings: { ...DEFAULT_SETTINGS }
     }), 'utf-8')
 
-    await expect(ProjectSessionManager.create({
+    const manager = await ProjectSessionManager.create({
       webhookPort: null,
       globalStatePath
-    })).rejects.toThrow()
+    })
+
+    expect(manager.snapshot().projects).toEqual([])
+    expect(manager.getSettings().evolverInferenceProvider).toBe(DEFAULT_SETTINGS.evolverInferenceProvider)
   })
 
   test('retries a transient global state read once before bootstrap completes', async () => {
