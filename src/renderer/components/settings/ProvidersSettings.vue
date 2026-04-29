@@ -75,20 +75,20 @@ function handleEvolverInferenceProviderChange(value: string): void {
     </header>
 
     <div class="settings-section">
-      <section class="settings-card" aria-label="Evolver inference provider">
+      <section class="settings-card" :aria-label="t('providers.evolverInference.ariaLabel')">
         <div class="settings-card__header">
           <div>
-            <h4 class="settings-card__title">Evolver inference provider</h4>
+            <h4 class="settings-card__title">{{ t('providers.evolverInference.title') }}</h4>
             <p class="settings-card__description">
-              Stoa uses that provider when Evolver requests LLM work such as distill or optional review.
+              {{ t('providers.evolverInference.description') }}
             </p>
           </div>
-          <span class="settings-card__badge">Host-owned</span>
+          <span class="settings-card__badge">{{ t('providers.evolverInference.badge') }}</span>
         </div>
 
         <div class="settings-inline-field" data-settings-field="evolver-inference-provider">
           <GlassFormField
-            label="Evolver inference provider"
+            :label="t('providers.evolverInference.label')"
             type="select"
             :model-value="store.evolverInferenceProvider"
             :options="evolverInferenceProviderOptions"
@@ -97,7 +97,7 @@ function handleEvolverInferenceProviderChange(value: string): void {
         </div>
 
         <p class="settings-item__hint">
-          This does not start Evolver work by itself. It only persists which inference capability Stoa should use when requested.
+          {{ t('providers.evolverInference.hint') }}
         </p>
       </section>
 

@@ -1,4 +1,7 @@
 // @vitest-environment happy-dom
+import { readFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
@@ -6,6 +9,34 @@ import { nextTick } from 'vue'
 import { createI18n } from 'vue-i18n'
 import ProvidersSettings from './ProvidersSettings.vue'
 import type { RendererApi } from '@shared/project-session'
+
+const providersSettingsPath = resolve(dirname(fileURLToPath(import.meta.url)), 'ProvidersSettings.vue')
+const providerMessages = {
+  eyebrow: 'Providers',
+  title: 'Provider runtime paths',
+  description: 'Keep executable discovery predictable so provider-backed sessions can start without extra repair work.',
+  cardDescription: 'Set an explicit executable path or let Stoa use the local detected runtime.',
+  executablePath: 'Executable path',
+  browse: 'Browse',
+  detecting: 'Detecting...',
+  autoDetected: 'Auto-detected',
+  customPath: 'Custom path',
+  notFound: 'Not found — click Browse to locate',
+  placeholderMissing: 'not found',
+  selectExecutable: 'Select {provider} executable',
+  evolverInference: {
+    ariaLabel: 'Evolver inference provider',
+    title: 'Evolver inference provider',
+    description: 'Stoa uses that provider when Evolver requests LLM work such as distill or optional review.',
+    badge: 'Host-owned',
+    label: 'Evolver inference provider',
+    hint: 'This does not start Evolver work by itself. It only persists which inference capability Stoa should use when requested.'
+  },
+  claude: {
+    skipPermissions: 'Skip Claude permission prompts',
+    skipPermissionsDescription: 'Append `--dangerously-skip-permissions` when starting or resuming Claude sessions.'
+  }
+} as const
 
 function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
   return {
@@ -111,18 +142,7 @@ function createTestI18n() {
     messages: {
       en: {
         providers: {
-          eyebrow: 'Providers',
-          title: 'Provider runtime paths',
-          description: 'Keep executable discovery predictable so provider-backed sessions can start without extra repair work.',
-          cardDescription: 'Set an explicit executable path or let Stoa use the local detected runtime.',
-          executablePath: 'Executable path',
-          placeholderMissing: 'not found',
-          autoDetected: 'Auto-detected',
-          browse: 'Browse',
-          detecting: 'Detecting...',
-          customPath: 'Custom path',
-          notFound: 'Not found — click Browse to locate',
-          selectExecutable: 'Select {provider} executable'
+          ...providerMessages
         }
       }
     }
@@ -156,16 +176,20 @@ describe('ProvidersSettings', () => {
   it('renders provider section heading and status badge', () => {
     const wrapper = mountProvidersSettings()
 
-    expect(wrapper.find('.settings-panel__title').text()).toBe('Provider runtime paths')
+    expect(wrapper.find('.settings-panel__title').text()).toBe(providerMessages.title)
     expect(wrapper.find('.settings-card__badge').exists()).toBe(true)
   })
 
   it('renders the evolver inference provider selector with host-owned copy', () => {
     const wrapper = mountProvidersSettings()
+    const card = wrapper.find(`[aria-label="${providerMessages.evolverInference.ariaLabel}"]`)
 
+    expect(card.exists()).toBe(true)
     expect(wrapper.find('[data-settings-field="evolver-inference-provider"]').exists()).toBe(true)
-    expect(wrapper.text()).toContain('Evolver inference provider')
-    expect(wrapper.text()).toContain('Stoa uses that provider when Evolver requests LLM work such as distill or optional review.')
+    expect(card.text()).toContain(providerMessages.evolverInference.title)
+    expect(card.text()).toContain(providerMessages.evolverInference.description)
+    expect(card.text()).toContain(providerMessages.evolverInference.badge)
+    expect(card.text()).toContain(providerMessages.evolverInference.hint)
   })
 
   it('renders Browse button for each provider', () => {
@@ -235,6 +259,18 @@ describe('ProvidersSettings', () => {
     await option!.trigger('click')
 
     expect(setSettingMock).toHaveBeenCalledWith('evolverInferenceProvider', 'codex')
+  })
+
+  it('keeps the claude permissions toggle on shared control surface tokens and baseline timing', () => {
+    const source = readFileSync(providersSettingsPath, 'utf8')
+
+    expect(source).toContain('border-radius: var(--radius-sm);')
+    expect(source).toContain('background: var(--color-surface-solid);')
+    expect(source).toContain('border: 1px solid var(--color-line);')
+    expect(source).toContain('box-shadow: var(--shadow-soft);')
+    expect(source).not.toContain('background: var(--shadow-success-ring);')
+    expect(source).not.toContain('160ms')
+    expect(source).not.toContain('border-radius: 16px;')
   })
 
 })
