@@ -1,6 +1,10 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
-import type { MemoryAiProvider, WorkspaceIdeSettings } from '@shared/project-session'
+import type {
+  EvolverExecutionMode,
+  EvolverInferenceProvider,
+  WorkspaceIdeSettings
+} from '@shared/project-session'
 import { BUILTIN_FONT_FAMILIES } from '@shared/project-session'
 import i18n, { SUPPORTED_LOCALES } from '@renderer/i18n'
 import type { SupportedLocale } from '@renderer/i18n'
@@ -11,7 +15,8 @@ export const useSettingsStore = defineStore('settings', () => {
   const terminalFontFamily = ref('JetBrains Mono')
   const providers = ref<Record<string, string>>({})
   const workspaceIde = ref<WorkspaceIdeSettings>({ id: 'vscode', executablePath: '' })
-  const memoryAiProvider = ref<MemoryAiProvider>('claude-code')
+  const evolverInferenceProvider = ref<EvolverInferenceProvider>('claude-code')
+  const evolverExecutionMode = ref<EvolverExecutionMode>('workspace-shell')
   const claudeDangerouslySkipPermissions = ref(false)
   const locale = ref<string>(i18n.global.locale.value as string)
   const loaded = ref(false)
@@ -26,8 +31,15 @@ export const useSettingsStore = defineStore('settings', () => {
       }
       providers.value = { ...settings.providers }
       workspaceIde.value = { ...settings.workspaceIde }
-      if (settings.memoryAiProvider === 'codex' || settings.memoryAiProvider === 'claude-code' || settings.memoryAiProvider === 'api') {
-        memoryAiProvider.value = settings.memoryAiProvider
+      if (
+        settings.evolverInferenceProvider === 'codex'
+        || settings.evolverInferenceProvider === 'claude-code'
+        || settings.evolverInferenceProvider === 'api'
+      ) {
+        evolverInferenceProvider.value = settings.evolverInferenceProvider
+      }
+      if (settings.evolverExecutionMode === 'workspace-shell') {
+        evolverExecutionMode.value = settings.evolverExecutionMode
       }
       claudeDangerouslySkipPermissions.value = settings.claudeDangerouslySkipPermissions === true
       if (settings.locale && SUPPORTED_LOCALES.includes(settings.locale as SupportedLocale)) {
@@ -52,8 +64,13 @@ export const useSettingsStore = defineStore('settings', () => {
       providers.value = { ...(value as Record<string, string>) }
     } else if (key === 'workspaceIde' && isWorkspaceIdeSettings(value)) {
       workspaceIde.value = { ...value }
-    } else if (key === 'memoryAiProvider' && (value === 'codex' || value === 'claude-code' || value === 'api')) {
-      memoryAiProvider.value = value
+    } else if (
+      key === 'evolverInferenceProvider'
+      && (value === 'codex' || value === 'claude-code' || value === 'api')
+    ) {
+      evolverInferenceProvider.value = value
+    } else if (key === 'evolverExecutionMode' && value === 'workspace-shell') {
+      evolverExecutionMode.value = value
     } else if (key === 'claudeDangerouslySkipPermissions' && typeof value === 'boolean') {
       claudeDangerouslySkipPermissions.value = value
     } else if (key === 'locale' && typeof value === 'string') {
@@ -108,7 +125,16 @@ export const useSettingsStore = defineStore('settings', () => {
   }
 
   return {
-    shellPath, terminalFontSize, terminalFontFamily, providers, workspaceIde, memoryAiProvider, claudeDangerouslySkipPermissions, locale, loaded,
+    shellPath,
+    terminalFontSize,
+    terminalFontFamily,
+    providers,
+    workspaceIde,
+    evolverInferenceProvider,
+    evolverExecutionMode,
+    claudeDangerouslySkipPermissions,
+    locale,
+    loaded,
     loadSettings, updateSetting, detectAndSetShell, detectAndSetProvider, detectAndSetVscode,
     pickFolder, pickFile, applyLocale
   }

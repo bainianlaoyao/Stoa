@@ -9,7 +9,8 @@ import type { MemoryRuntimeEvidence } from './memory-runtime'
 import type { BlockingReason } from '@shared/observability'
 
 export type SessionType = 'shell' | 'opencode' | 'codex' | 'claude-code'
-export type MemoryAiProvider = 'codex' | 'claude-code' | 'api'
+export type EvolverInferenceProvider = 'codex' | 'claude-code' | 'api'
+export type EvolverExecutionMode = 'workspace-shell'
 export type SessionRecoveryMode = 'fresh-shell' | 'resume-external'
 export type SessionRuntimeState = 'created' | 'starting' | 'alive' | 'exited' | 'failed_to_start'
 export type SessionAgentState = 'unknown' | 'idle' | 'working' | 'blocked' | 'error'
@@ -130,7 +131,8 @@ export interface AppSettings {
   terminalFontSize: number
   terminalFontFamily: string
   providers: Record<string, string>
-  memoryAiProvider: MemoryAiProvider
+  evolverInferenceProvider: EvolverInferenceProvider
+  evolverExecutionMode: EvolverExecutionMode
   workspaceIde: WorkspaceIdeSettings
   claudeDangerouslySkipPermissions: boolean
   locale: string
@@ -156,7 +158,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   terminalFontSize: 14,
   terminalFontFamily: 'JetBrains Mono',
   providers: {},
-  memoryAiProvider: 'claude-code',
+  evolverInferenceProvider: 'claude-code',
+  evolverExecutionMode: 'workspace-shell',
   workspaceIde: {
     id: 'vscode',
     executablePath: ''
@@ -174,8 +177,8 @@ export interface PersistedAppStateV2 {
   settings?: AppSettings
 }
 
-export interface PersistedGlobalStateV3 {
-  version: 3
+export interface PersistedGlobalStateV4 {
+  version: 4
   active_project_id: string | null
   active_session_id: string | null
   projects: PersistedProject[]
@@ -225,6 +228,31 @@ export interface ObservationEventListOptions {
   includeEphemeral?: boolean
 }
 
+export interface MemoryStateSummaryRequest {
+  projectRoot: string
+  stoaSessionId?: string
+  providerSessionId?: string
+}
+
+export interface MemoryTurnTraceRequest {
+  projectRoot: string
+  stoaSessionId: string
+  providerSessionId?: string
+  turnId: string
+}
+
+export interface MemoryRecallExplanationRequest {
+  projectRoot: string
+  consumer: 'claude-code' | 'codex' | 'opencode' | 'generic'
+  stoaSessionId: string
+  providerSessionId?: string
+  taskText: string
+}
+
+export interface MemoryAssetRequest {
+  ref: string
+}
+
 export interface RendererApi {
   getBootstrapState: () => Promise<BootstrapState>
   createProject: (request: CreateProjectRequest) => Promise<ProjectSummary>
@@ -234,6 +262,10 @@ export interface RendererApi {
   setActiveProject: (projectId: string) => Promise<void>
   setActiveSession: (sessionId: string) => Promise<void>
   archiveSession: (sessionId: string) => Promise<void>
+  getMemoryStateSummary: (input: MemoryStateSummaryRequest) => Promise<Record<string, unknown>>
+  traceMemoryTurn: (input: MemoryTurnTraceRequest) => Promise<Record<string, unknown>>
+  explainMemoryRecall: (input: MemoryRecallExplanationRequest) => Promise<Record<string, unknown>>
+  getMemoryAsset: (input: MemoryAssetRequest) => Promise<Record<string, unknown> | null>
   getTerminalReplay: (sessionId: string) => Promise<string>
   sendSessionInput: (sessionId: string, data: string) => Promise<void>
   sendSessionResize: (sessionId: string, cols: number, rows: number) => Promise<void>

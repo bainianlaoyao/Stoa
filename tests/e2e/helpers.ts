@@ -5,7 +5,7 @@ import { ProjectSessionManager } from '@core/project-session-manager'
 import { readGlobalState } from '@core/state-store'
 import type { ProviderCommand, SessionType } from '@shared/project-session'
 import type { ProviderDefinition, ProviderRuntimeTarget } from '@extensions/providers'
-import type { PersistedGlobalStateV3 } from '@shared/project-session'
+import type { PersistedGlobalStateV4 } from '@shared/project-session'
 import { createTestTempDir } from '../../testing/test-temp'
 
 export const tempDirs: string[] = []
@@ -28,7 +28,7 @@ export async function createTestGlobalStatePath(): Promise<string> {
   return join(dir, 'global.json')
 }
 
-export async function readGlobalStateFile(path: string): Promise<PersistedGlobalStateV3> {
+export async function readGlobalStateFile(path: string): Promise<PersistedGlobalStateV4> {
   return await readGlobalState(path)
 }
 

@@ -230,7 +230,7 @@ export class SessionEvidenceStore {
       return []
     }
 
-    const refs: EvidenceRef[] = []
+    const refs: Array<EvidenceRef & { __sortTimestamp: string; __sortEventId: string }> = []
     for (const evidenceId of parsed.evidenceIds) {
       const metadataPath = join(
         projectPath,
@@ -259,11 +259,20 @@ export class SessionEvidenceStore {
         metadataPath,
         path: join(dirname(metadataPath), metadata.snapshot.fileName),
         createdAt: metadata.timestamp,
-        toolName: metadata.evidence.toolName ?? null
+        toolName: metadata.evidence.toolName ?? null,
+        __sortTimestamp: metadata.timestamp,
+        __sortEventId: metadata.eventId
       })
     }
 
-    return refs
+    refs.sort((left, right) => {
+      if (left.__sortTimestamp !== right.__sortTimestamp) {
+        return left.__sortTimestamp.localeCompare(right.__sortTimestamp)
+      }
+      return left.__sortEventId.localeCompare(right.__sortEventId)
+    })
+
+    return refs.map(({ __sortTimestamp: _sortTimestamp, __sortEventId: _sortEventId, ...ref }) => ref)
   }
 
   private async readMetadata(filePath: string): Promise<PersistedSessionEvidenceMetadata | null> {

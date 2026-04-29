@@ -1,0 +1,130 @@
+// @vitest-environment happy-dom
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
+import { useSettingsStore } from './settings'
+import type { RendererApi } from '@shared/project-session'
+
+function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
+  return {
+    getBootstrapState: vi.fn().mockResolvedValue({ activeProjectId: null, activeSessionId: null, terminalWebhookPort: 0, projects: [], sessions: [] }),
+    createProject: vi.fn().mockResolvedValue(null),
+    deleteProject: vi.fn().mockResolvedValue(undefined),
+    createSession: vi.fn().mockResolvedValue(null),
+    openWorkspace: vi.fn().mockResolvedValue(undefined),
+    archiveSession: vi.fn().mockResolvedValue(undefined),
+    restoreSession: vi.fn().mockResolvedValue(undefined),
+    listArchivedSessions: vi.fn().mockResolvedValue([]),
+    getMemoryStateSummary: vi.fn().mockResolvedValue({}),
+    traceMemoryTurn: vi.fn().mockResolvedValue({}),
+    explainMemoryRecall: vi.fn().mockResolvedValue({}),
+    getMemoryAsset: vi.fn().mockResolvedValue(null),
+    setActiveProject: vi.fn().mockResolvedValue(undefined),
+    setActiveSession: vi.fn().mockResolvedValue(undefined),
+    getTerminalReplay: vi.fn().mockResolvedValue(''),
+    sendSessionInput: vi.fn().mockResolvedValue(undefined),
+    sendSessionResize: vi.fn().mockResolvedValue(undefined),
+    onTerminalData: vi.fn().mockReturnValue(() => {}),
+    onSessionEvent: vi.fn().mockReturnValue(() => {}),
+    getSessionPresence: vi.fn().mockResolvedValue(null),
+    getProjectObservability: vi.fn().mockResolvedValue(null),
+    getAppObservability: vi.fn().mockResolvedValue(null),
+    listSessionObservationEvents: vi.fn().mockResolvedValue({ events: [], nextCursor: null }),
+    onSessionPresenceChanged: vi.fn().mockReturnValue(() => {}),
+    onProjectObservabilityChanged: vi.fn().mockReturnValue(() => {}),
+    onAppObservabilityChanged: vi.fn().mockReturnValue(() => {}),
+    getSettings: vi.fn().mockResolvedValue({
+      shellPath: '',
+      terminalFontSize: 14,
+      terminalFontFamily: 'JetBrains Mono',
+      providers: {},
+      evolverInferenceProvider: 'codex',
+      evolverExecutionMode: 'workspace-shell',
+      workspaceIde: { id: 'vscode', executablePath: '' },
+      claudeDangerouslySkipPermissions: false,
+      locale: 'en'
+    }),
+    setSetting: vi.fn().mockResolvedValue(undefined),
+    pickFolder: vi.fn().mockResolvedValue(null),
+    pickFile: vi.fn().mockResolvedValue(null),
+    detectShell: vi.fn().mockResolvedValue(null),
+    detectProvider: vi.fn().mockResolvedValue(null),
+    detectVscode: vi.fn().mockResolvedValue(null),
+    minimizeWindow: vi.fn().mockResolvedValue(undefined),
+    maximizeWindow: vi.fn().mockResolvedValue(undefined),
+    closeWindow: vi.fn().mockResolvedValue(undefined),
+    isWindowMaximized: vi.fn().mockResolvedValue(false),
+    onWindowMaximizeChange: vi.fn().mockReturnValue(() => {}),
+    getUpdateState: vi.fn().mockResolvedValue({
+      phase: 'idle',
+      currentVersion: '0.1.0',
+      availableVersion: null,
+      downloadedVersion: null,
+      downloadProgressPercent: null,
+      lastCheckedAt: null,
+      message: null,
+      requiresSessionWarning: false
+    }),
+    checkForUpdates: vi.fn().mockResolvedValue({
+      phase: 'up-to-date',
+      currentVersion: '0.1.0',
+      availableVersion: null,
+      downloadedVersion: null,
+      downloadProgressPercent: null,
+      lastCheckedAt: null,
+      message: 'You are up to date.',
+      requiresSessionWarning: false
+    }),
+    downloadUpdate: vi.fn().mockResolvedValue({
+      phase: 'downloaded',
+      currentVersion: '0.1.0',
+      availableVersion: '0.2.0',
+      downloadedVersion: '0.2.0',
+      downloadProgressPercent: 100,
+      lastCheckedAt: null,
+      message: 'Update 0.2.0 is ready to install.',
+      requiresSessionWarning: false
+    }),
+    quitAndInstallUpdate: vi.fn().mockResolvedValue(undefined),
+    dismissUpdate: vi.fn().mockResolvedValue(undefined),
+    onUpdateState: vi.fn().mockReturnValue(() => {}),
+    ...overrides
+  }
+}
+
+describe('useSettingsStore', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
+  it('hydrates evolver settings from the runtime contract', async () => {
+    window.stoa = createStoaMock()
+    const store = useSettingsStore()
+
+    await store.loadSettings()
+
+    expect(store.evolverInferenceProvider).toBe('codex')
+    expect(store.evolverExecutionMode).toBe('workspace-shell')
+  })
+
+  it('persists evolver inference provider updates through setSetting', async () => {
+    const setSetting = vi.fn().mockResolvedValue(undefined)
+    window.stoa = createStoaMock({ setSetting })
+    const store = useSettingsStore()
+
+    await store.updateSetting('evolverInferenceProvider', 'claude-code')
+
+    expect(setSetting).toHaveBeenCalledWith('evolverInferenceProvider', 'claude-code')
+    expect(store.evolverInferenceProvider).toBe('claude-code')
+  })
+
+  it('persists evolver execution mode updates through setSetting', async () => {
+    const setSetting = vi.fn().mockResolvedValue(undefined)
+    window.stoa = createStoaMock({ setSetting })
+    const store = useSettingsStore()
+
+    await store.updateSetting('evolverExecutionMode', 'workspace-shell')
+
+    expect(setSetting).toHaveBeenCalledWith('evolverExecutionMode', 'workspace-shell')
+    expect(store.evolverExecutionMode).toBe('workspace-shell')
+  })
+})

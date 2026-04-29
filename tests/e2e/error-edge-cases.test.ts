@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, test } from 'vitest'
 import { ProjectSessionManager } from '@core/project-session-manager'
 import { readGlobalState, readProjectSessions, writeProjectSessions } from '@core/state-store'
-import type { PersistedGlobalStateV3 } from '@shared/project-session'
+import type { PersistedGlobalStateV4 } from '@shared/project-session'
 import { createTestTempDir } from '../../testing/test-temp'
 
 const tempDirs: string[] = []
@@ -25,7 +25,7 @@ async function createGlobalStatePath(): Promise<string> {
   return join(dir, 'global.json')
 }
 
-async function readGlobalFile(path: string): Promise<PersistedGlobalStateV3> {
+async function readGlobalFile(path: string): Promise<PersistedGlobalStateV4> {
   return await readGlobalState(path)
 }
 
@@ -156,7 +156,7 @@ describe('E2E: Error and Edge Cases', () => {
     test('fails startup when projects key is missing from global state', async () => {
       const globalStatePath = await createGlobalStatePath()
       await writeRawStateFile(globalStatePath, JSON.stringify({
-        version: 3,
+        version: 4,
         active_project_id: null,
         active_session_id: null
       }))
@@ -167,7 +167,7 @@ describe('E2E: Error and Edge Cases', () => {
       })).rejects.toThrow('Invalid global state')
     })
 
-    test('accepts valid v3 global state without legacy sessions key', async () => {
+    test('rejects valid-looking v3 global state without legacy sessions key', async () => {
       const globalStatePath = await createGlobalStatePath()
       await writeRawStateFile(globalStatePath, JSON.stringify({
         version: 3,
@@ -176,13 +176,10 @@ describe('E2E: Error and Edge Cases', () => {
         projects: []
       }))
 
-      const manager = await ProjectSessionManager.create({
+      await expect(ProjectSessionManager.create({
         webhookPort: null,
         globalStatePath
-      })
-
-      const snapshot = manager.snapshot()
-      expect(snapshot.sessions).toHaveLength(0)
+      })).rejects.toThrow('Invalid global state')
     })
   })
 
@@ -241,7 +238,7 @@ describe('E2E: Error and Edge Cases', () => {
       })
 
       const diskState = await readGlobalFile(globalStatePath)
-      expect(diskState.version).toBe(3)
+      expect(diskState.version).toBe(4)
       expect(diskState.projects).toEqual([])
       expect(diskState.active_project_id).toBeNull()
       expect(diskState.active_session_id).toBeNull()
@@ -277,7 +274,7 @@ describe('E2E: Error and Edge Cases', () => {
       const now = new Date().toISOString()
 
       await writeRawStateFile(globalStatePath, JSON.stringify({
-        version: 3,
+        version: 4,
         active_project_id: 'project_alpha',
         active_session_id: 'session_missing',
         projects: [
@@ -290,7 +287,7 @@ describe('E2E: Error and Edge Cases', () => {
             updated_at: now
           }
         ]
-      } satisfies PersistedGlobalStateV3))
+      } satisfies PersistedGlobalStateV4))
       await writeProjectSessions(workspaceDir, {
         version: 4,
         project_id: 'project_alpha',

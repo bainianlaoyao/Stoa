@@ -4,7 +4,7 @@ import type {
   BootstrapState,
   CreateProjectRequest,
   CreateSessionRequest,
-  PersistedGlobalStateV3,
+  PersistedGlobalStateV4,
   PersistedProject,
   PersistedProjectSessions,
   PersistedSession,
@@ -145,12 +145,15 @@ function normalizeAppSettings(settings?: Partial<AppSettings>): AppSettings {
     providers: typeof settings.providers === 'object' && settings.providers !== null
       ? { ...settings.providers }
       : defaults.providers,
-    memoryAiProvider:
-      settings.memoryAiProvider === 'codex'
-      || settings.memoryAiProvider === 'claude-code'
-      || settings.memoryAiProvider === 'api'
-        ? settings.memoryAiProvider
-        : defaults.memoryAiProvider,
+    evolverInferenceProvider:
+      settings.evolverInferenceProvider === 'codex'
+      || settings.evolverInferenceProvider === 'claude-code'
+      || settings.evolverInferenceProvider === 'api'
+        ? settings.evolverInferenceProvider
+        : defaults.evolverInferenceProvider,
+    evolverExecutionMode: settings.evolverExecutionMode === 'workspace-shell'
+      ? settings.evolverExecutionMode
+      : defaults.evolverExecutionMode,
     workspaceIde: isWorkspaceIdeSetting(settings.workspaceIde)
       ? { ...settings.workspaceIde }
       : defaults.workspaceIde,
@@ -246,7 +249,7 @@ export class ProjectSessionManager {
     return manager
   }
 
-  private static async readGlobalStateWithRetry(globalStatePath?: string): Promise<PersistedGlobalStateV3> {
+  private static async readGlobalStateWithRetry(globalStatePath?: string): Promise<PersistedGlobalStateV4> {
     try {
       return await readGlobalState(globalStatePath)
     } catch (error) {
@@ -479,8 +482,13 @@ export class ProjectSessionManager {
       this.settings.terminalFontFamily = value
     } else if (key === 'providers' && typeof value === 'object' && value !== null) {
       this.settings.providers = value as Record<string, string>
-    } else if (key === 'memoryAiProvider' && (value === 'codex' || value === 'claude-code' || value === 'api')) {
-      this.settings.memoryAiProvider = value
+    } else if (
+      key === 'evolverInferenceProvider'
+      && (value === 'codex' || value === 'claude-code' || value === 'api')
+    ) {
+      this.settings.evolverInferenceProvider = value
+    } else if (key === 'evolverExecutionMode' && value === 'workspace-shell') {
+      this.settings.evolverExecutionMode = value
     } else if (key === 'workspaceIde' && isWorkspaceIdeSetting(value)) {
       this.settings.workspaceIde = value
     } else if (key === 'claudeDangerouslySkipPermissions' && typeof value === 'boolean') {
@@ -532,11 +540,11 @@ export class ProjectSessionManager {
       await writeProjectSessions(project.path, data)
     }
 
-    const globalState: PersistedGlobalStateV3 =
+    const globalState: PersistedGlobalStateV4 =
       persistedProjects.length === 0
         ? { ...structuredClone(DEFAULT_GLOBAL_STATE), settings: this.settings }
         : {
-            version: 3,
+            version: 4,
             active_project_id: this.state.activeProjectId,
             active_session_id: this.state.activeSessionId,
             projects: persistedProjects,

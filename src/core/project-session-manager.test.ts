@@ -78,7 +78,7 @@ describe('ProjectSessionManager', () => {
   test('fills missing persisted settings with current defaults', async () => {
     const globalStatePath = await createTempGlobalStatePath()
     await writeFile(globalStatePath, JSON.stringify({
-      version: 3,
+      version: 4,
       active_project_id: null,
       active_session_id: null,
       projects: [],
@@ -97,31 +97,74 @@ describe('ProjectSessionManager', () => {
     })
 
     expect(manager.getSettings().workspaceIde).toEqual(DEFAULT_SETTINGS.workspaceIde)
+    expect(manager.getSettings().evolverInferenceProvider).toBe(DEFAULT_SETTINGS.evolverInferenceProvider)
+    expect(manager.getSettings().evolverExecutionMode).toBe(DEFAULT_SETTINGS.evolverExecutionMode)
 
-    const persisted = JSON.parse(await readFile(globalStatePath, 'utf-8')) as { settings?: { workspaceIde?: unknown } }
+    const persisted = JSON.parse(await readFile(globalStatePath, 'utf-8')) as {
+      settings?: {
+        workspaceIde?: unknown
+        evolverInferenceProvider?: unknown
+        evolverExecutionMode?: unknown
+      }
+    }
     expect(persisted.settings?.workspaceIde).toEqual(DEFAULT_SETTINGS.workspaceIde)
+    expect(persisted.settings?.evolverInferenceProvider).toBe(DEFAULT_SETTINGS.evolverInferenceProvider)
+    expect(persisted.settings?.evolverExecutionMode).toBe(DEFAULT_SETTINGS.evolverExecutionMode)
   })
 
-  test('persists memory AI provider setting across reloads', async () => {
+  test('persists evolver inference provider setting across reloads', async () => {
     const globalStatePath = await createTempGlobalStatePath()
     const manager = await ProjectSessionManager.create({
       webhookPort: null,
       globalStatePath
     })
 
-    await manager.setSetting('memoryAiProvider', 'codex')
+    await manager.setSetting('evolverInferenceProvider', 'codex')
 
     const reloaded = await ProjectSessionManager.create({
       webhookPort: null,
       globalStatePath
     })
 
-    expect(reloaded.getSettings().memoryAiProvider).toBe('codex')
+    expect(reloaded.getSettings().evolverInferenceProvider).toBe('codex')
+  })
+
+  test('persists evolver execution mode setting across reloads', async () => {
+    const globalStatePath = await createTempGlobalStatePath()
+    const manager = await ProjectSessionManager.create({
+      webhookPort: null,
+      globalStatePath
+    })
+
+    await manager.setSetting('evolverExecutionMode', 'workspace-shell')
+
+    const reloaded = await ProjectSessionManager.create({
+      webhookPort: null,
+      globalStatePath
+    })
+
+    expect(reloaded.getSettings().evolverExecutionMode).toBe('workspace-shell')
   })
 
   test('rejects startup when persisted global state is corrupted', async () => {
     const globalStatePath = await createTempGlobalStatePath()
     await writeFile(globalStatePath, '{broken json', 'utf-8')
+
+    await expect(ProjectSessionManager.create({
+      webhookPort: null,
+      globalStatePath
+    })).rejects.toThrow()
+  })
+
+  test('rejects startup when persisted global state uses incompatible v3 schema', async () => {
+    const globalStatePath = await createTempGlobalStatePath()
+    await writeFile(globalStatePath, JSON.stringify({
+      version: 3,
+      active_project_id: null,
+      active_session_id: null,
+      projects: [],
+      settings: { ...DEFAULT_SETTINGS }
+    }), 'utf-8')
 
     await expect(ProjectSessionManager.create({
       webhookPort: null,
@@ -147,7 +190,7 @@ describe('ProjectSessionManager', () => {
     const readGlobalState = vi.fn()
       .mockRejectedValueOnce(new MockStateReadError('temporarily locked', 'D:/transient/global.json', true))
       .mockResolvedValueOnce({
-        version: 3,
+        version: 4,
         active_project_id: null,
         active_session_id: null,
         projects: [],
@@ -158,7 +201,7 @@ describe('ProjectSessionManager', () => {
 
     vi.doMock('@core/state-store', () => ({
       DEFAULT_GLOBAL_STATE: {
-        version: 3,
+        version: 4,
         active_project_id: null,
         active_session_id: null,
         projects: [],
@@ -315,7 +358,7 @@ describe('ProjectSessionManager', () => {
     const now = new Date().toISOString()
 
     await stateStore.writeGlobalState({
-      version: 3,
+      version: 4,
       active_project_id: 'project_missing',
       active_session_id: null,
       projects: [
@@ -351,7 +394,7 @@ describe('ProjectSessionManager', () => {
     const now = new Date().toISOString()
 
     await stateStore.writeGlobalState({
-      version: 3,
+      version: 4,
       active_project_id: 'project_missing',
       active_session_id: 'session_real',
       projects: [
@@ -407,7 +450,7 @@ describe('ProjectSessionManager', () => {
     const now = new Date().toISOString()
 
     await stateStore.writeGlobalState({
-      version: 3,
+      version: 4,
       active_project_id: null,
       active_session_id: 'session_real',
       projects: [

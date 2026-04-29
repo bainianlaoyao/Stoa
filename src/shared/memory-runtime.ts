@@ -1,6 +1,47 @@
 export type ObservedEventProvider = 'claude-code' | 'codex'
 export type ObservedEventChannel = 'hook' | 'notify'
 export type Consumer = ObservedEventProvider | 'opencode' | 'generic'
+export type InferencePurpose = 'distill' | 'llm-review'
+export type InferenceCapabilityProvider = ObservedEventProvider | 'api'
+export type InferenceCapabilityTarget = Extract<Consumer, 'claude-code' | 'codex' | 'generic'>
+
+export interface InferenceCapability {
+  provider?: InferenceCapabilityProvider
+  modelHint?: string
+  invoke: (input: {
+    purpose: InferencePurpose
+    prompt: string
+    responseFormat: 'text' | 'json'
+    projectRoot: string
+    timeoutMs?: number
+    modelHint?: string
+  }) => Promise<{
+    content: string
+    model?: string
+    provider?: string
+    usage?: { inputTokens?: number; outputTokens?: number }
+  }>
+}
+
+export interface ExecutionCapability {
+  mode: 'workspace-shell'
+  run: (input: {
+    commands: string[]
+    projectRoot: string
+    timeoutMs?: number
+  }) => Promise<{
+    ok: boolean
+    exitCode: number
+    stdout: string
+    stderr: string
+    commandResults: Array<{
+      command: string
+      exitCode: number
+      stdout: string
+      stderr: string
+    }>
+  }>
+}
 
 export interface ObservedEventRawSource {
   provider: ObservedEventProvider
