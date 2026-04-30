@@ -179,10 +179,6 @@ describe('E2E: Main Process Config Guard', () => {
         ['archiveSession', 'sessionArchive'],
         ['restoreSession', 'sessionRestore'],
         ['listArchivedSessions', 'sessionListArchived'],
-        ['getMemoryStateSummary', 'memoryGetStateSummary'],
-        ['traceMemoryTurn', 'memoryTraceTurn'],
-        ['explainMemoryRecall', 'memoryExplainRecall'],
-        ['getMemoryAsset', 'memoryGetAsset'],
         ['getSettings', 'settingsGet'],
         ['setSetting', 'settingsSet'],
         ['pickFolder', 'dialogPickFolder'],
@@ -229,7 +225,7 @@ describe('E2E: Main Process Config Guard', () => {
       const matches = mainSource.match(handlePattern)
 
       expect(matches, 'Expected ipcMain.handle calls to reference IPC_CHANNELS.xxx').not.toBeNull()
-      expect(matches!.length).toBeGreaterThanOrEqual(18)
+      expect(matches!.length).toBeGreaterThanOrEqual(14)
     })
 
     it('IPC handler for project:create calls createProject', () => {
@@ -295,10 +291,6 @@ describe('E2E: Main Process Config Guard', () => {
         'archiveSession',
         'restoreSession',
         'listArchivedSessions',
-        'getMemoryStateSummary',
-        'traceMemoryTurn',
-        'explainMemoryRecall',
-        'getMemoryAsset',
         'getUpdateState',
         'checkForUpdates',
         'downloadUpdate',
@@ -356,10 +348,6 @@ describe('E2E: Main Process Config Guard', () => {
       expect(invMap.get('archiveSession')).toBe('session:archive')
       expect(invMap.get('restoreSession')).toBe('session:restore')
       expect(invMap.get('listArchivedSessions')).toBe('session:list-archived')
-      expect(invMap.get('getMemoryStateSummary')).toBe('memory:get-state-summary')
-      expect(invMap.get('traceMemoryTurn')).toBe('memory:trace-turn')
-      expect(invMap.get('explainMemoryRecall')).toBe('memory:explain-recall')
-      expect(invMap.get('getMemoryAsset')).toBe('memory:get-asset')
       expect(invMap.get('getUpdateState')).toBe('update:get-state')
       expect(invMap.get('checkForUpdates')).toBe('update:check')
       expect(invMap.get('downloadUpdate')).toBe('update:download')
@@ -383,10 +371,6 @@ describe('E2E: Main Process Config Guard', () => {
       expect(constants.get('updateDismiss')).toBe('update:dismiss')
       expect(constants.get('updateState')).toBe('update:state')
       expect(constants.get('workspaceOpen')).toBe('workspace:open')
-      expect(constants.get('memoryGetStateSummary')).toBe('memory:get-state-summary')
-      expect(constants.get('memoryTraceTurn')).toBe('memory:trace-turn')
-      expect(constants.get('memoryExplainRecall')).toBe('memory:explain-recall')
-      expect(constants.get('memoryGetAsset')).toBe('memory:get-asset')
       expect(constants.get('memoryNotification')).toBe('memory:notification')
     })
   })

@@ -78,10 +78,7 @@ function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
     onWindowMaximizeChange: vi.fn().mockReturnValue(() => {}),
     restoreSession: vi.fn().mockResolvedValue(undefined),
     listArchivedSessions: vi.fn().mockResolvedValue([]),
-    getMemoryStateSummary: vi.fn().mockResolvedValue({}),
-    traceMemoryTurn: vi.fn().mockResolvedValue({}),
-    explainMemoryRecall: vi.fn().mockResolvedValue({}),
-    getMemoryAsset: vi.fn().mockResolvedValue(null),
+
     getUpdateState: vi.fn().mockResolvedValue({
       phase: 'idle',
       currentVersion: '0.1.0',

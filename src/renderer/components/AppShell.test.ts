@@ -52,10 +52,7 @@ describe('AppShell', () => {
       archiveSession: vi.fn().mockResolvedValue(undefined),
       restoreSession: vi.fn().mockResolvedValue(undefined),
       listArchivedSessions: vi.fn().mockResolvedValue([]),
-      getMemoryStateSummary: vi.fn().mockResolvedValue({}),
-      traceMemoryTurn: vi.fn().mockResolvedValue({}),
-      explainMemoryRecall: vi.fn().mockResolvedValue({}),
-      getMemoryAsset: vi.fn().mockResolvedValue(null),
+
       setActiveProject: vi.fn().mockResolvedValue(undefined),
       setActiveSession: vi.fn().mockResolvedValue(undefined),
       getTerminalReplay: vi.fn().mockResolvedValue(''),

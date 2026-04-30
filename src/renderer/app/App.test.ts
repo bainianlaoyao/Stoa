@@ -138,10 +138,7 @@ function setupStoa(overrides?: Partial<typeof window.stoa>) {
     archiveSession: vi.fn().mockResolvedValue(undefined),
     restoreSession: vi.fn().mockResolvedValue(undefined),
     listArchivedSessions: vi.fn().mockResolvedValue([]),
-    getMemoryStateSummary: vi.fn().mockResolvedValue({}),
-    traceMemoryTurn: vi.fn().mockResolvedValue({}),
-    explainMemoryRecall: vi.fn().mockResolvedValue({}),
-    getMemoryAsset: vi.fn().mockResolvedValue(null),
+
     getTerminalReplay: vi.fn().mockResolvedValue(''),
     sendSessionInput: vi.fn().mockResolvedValue(undefined),
     sendSessionResize: vi.fn().mockResolvedValue(undefined),

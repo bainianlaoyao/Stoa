@@ -29,11 +29,7 @@ import { DEFAULT_SETTINGS } from '@shared/project-session'
 import type {
   CreateProjectRequest,
   CreateSessionRequest,
-  MemoryAssetRequest,
   MemoryNotificationEvent,
-  MemoryRecallExplanationRequest,
-  MemoryStateSummaryRequest,
-  MemoryTurnTraceRequest,
   OpenWorkspaceRequest
 } from '@shared/project-session'
 import type { UpdateState } from '@shared/update-state'
@@ -1039,22 +1035,6 @@ app.whenReady().then(async () => {
 
   ipcMain.handle(IPC_CHANNELS.sessionListArchived, async () => {
     return projectSessionManager?.getArchivedSessions() ?? []
-  })
-
-  ipcMain.handle(IPC_CHANNELS.memoryGetStateSummary, async (_event, input: MemoryStateSummaryRequest) => {
-    return await memoryRuntimeHost.evolverBridge?.getStateSummary(input) ?? {}
-  })
-
-  ipcMain.handle(IPC_CHANNELS.memoryTraceTurn, async (_event, input: MemoryTurnTraceRequest) => {
-    return await memoryRuntimeHost.evolverBridge?.traceTurn(input) ?? {}
-  })
-
-  ipcMain.handle(IPC_CHANNELS.memoryExplainRecall, async (_event, input: MemoryRecallExplanationRequest) => {
-    return await memoryRuntimeHost.evolverBridge?.explainRecall(input) ?? {}
-  })
-
-  ipcMain.handle(IPC_CHANNELS.memoryGetAsset, async (_event, input: MemoryAssetRequest) => {
-    return await memoryRuntimeHost.evolverBridge?.getAsset(input) ?? null
   })
 
   ipcMain.handle(IPC_CHANNELS.updateGetState, async () => {

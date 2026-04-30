@@ -4,11 +4,7 @@ import type {
   AppSettings,
   CreateProjectRequest,
   CreateSessionRequest,
-  MemoryAssetRequest,
   MemoryNotificationEvent,
-  MemoryRecallExplanationRequest,
-  MemoryStateSummaryRequest,
-  MemoryTurnTraceRequest,
   ObservationEventListOptions,
   OpenWorkspaceRequest,
   RendererApi,
@@ -72,18 +68,6 @@ const api: RendererApi = {
   },
   async listArchivedSessions() {
     return ipcRenderer.invoke(IPC_CHANNELS.sessionListArchived)
-  },
-  async getMemoryStateSummary(input: MemoryStateSummaryRequest) {
-    return ipcRenderer.invoke(IPC_CHANNELS.memoryGetStateSummary, input) as Promise<Record<string, unknown>>
-  },
-  async traceMemoryTurn(input: MemoryTurnTraceRequest) {
-    return ipcRenderer.invoke(IPC_CHANNELS.memoryTraceTurn, input) as Promise<Record<string, unknown>>
-  },
-  async explainMemoryRecall(input: MemoryRecallExplanationRequest) {
-    return ipcRenderer.invoke(IPC_CHANNELS.memoryExplainRecall, input) as Promise<Record<string, unknown>>
-  },
-  async getMemoryAsset(input: MemoryAssetRequest) {
-    return ipcRenderer.invoke(IPC_CHANNELS.memoryGetAsset, input) as Promise<Record<string, unknown> | null>
   },
   async getUpdateState() {
     return ipcRenderer.invoke(IPC_CHANNELS.updateGetState) as Promise<UpdateState>
