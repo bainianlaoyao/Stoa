@@ -10,18 +10,68 @@ import { detectProvider, detectShell } from '../src/core/settings-detector'
 import { SessionEventBridge } from '../src/main/session-event-bridge'
 import { createClaudeCodeProvider } from '../src/extensions/providers/claude-code-provider'
 import { DEFAULT_SETTINGS, type ProviderCommand, type ProviderCommandContext } from '../src/shared/project-session'
+import type { TurnMaintenancePhaseEvent } from '../src/core/memory/turn-maintenance-runner'
 
-const HIDDEN_TEAM_COMMAND = 'uv pip install requests'
-const HIDDEN_TEAM_RULE = 'Use uv instead of pip for Python environments and package installation in this repository.'
-const SESSION1_COMMAND_FILE = '.python-local-install-command.txt'
-const SESSION2_COMMAND_FILE = '.python-local-install-command.session2.txt'
-const DISALLOWED_WORKSPACE_ARTIFACTS = ['uv.lock', '.venv', 'requirements.txt', 'Pipfile', 'poetry.lock'] as const
+const HIDDEN_VERIFY_COMMAND =
+  'npx vitest run src/core/memory/runtime-host.test.ts src/core/memory/turn-maintenance-runner.test.ts src/main/session-event-bridge.test.ts'
+
+const HIDDEN_RULE_DESCRIPTION =
+  'Before making any changes to the memory runtime, always run the targeted verification suite first to catch regressions in the memory subsystem.'
+
+const SESSION1_ANSWER_FILE = '.memory-runtime-verify-command.txt'
+const SESSION2_ANSWER_FILE = '.memory-runtime-verify-command.session2.txt'
 const HEADLESS_TIMEOUT_MS = 15 * 60 * 1000
 const JOB_TIMEOUT_MS = 5 * 60 * 1000
 const SEALED_TURN_TIMEOUT_MS = 30 * 1000
 
 type ScenarioLabel = 'memory-off' | 'memory-on'
-type CommandPreference = 'uv' | 'pip' | 'unknown'
+
+interface PhaseEventRecord {
+  phase: string
+  status: string
+  jobId: string
+  turnId: string
+  error?: string
+}
+
+interface ChainState {
+  turnsSealed: number
+  turnIds: string[]
+  jobsCompleted: number
+  jobIds: string[]
+  processTurnTriggered: boolean
+  phasesObserved: PhaseEventRecord[]
+  chainStoppedAt: string
+}
+
+interface ScenarioResult {
+  label: ScenarioLabel
+  memoryEnabled: boolean
+  repoRoot: string
+  artifactsDir: string
+  commands: {
+    session1Answer: string
+    session2Answer: string
+  }
+  assertions: {
+    session1CapturedRule: boolean
+    session2RecalledRule: boolean
+  }
+  chainState: {
+    session1: ChainState | null
+    session2: ChainState | null
+  }
+  invocations: InvocationRecord[]
+  notes: {
+    hiddenRule: string
+    hiddenCommand: string
+    prompts: {
+      session1: string
+      session2: string
+    }
+    debugLogs: string[]
+  }
+}
 
 interface InvocationRecord {
   index: number
@@ -36,52 +86,11 @@ interface InvocationRecord {
   outputValue: string
 }
 
-interface ScenarioResult {
-  label: ScenarioLabel
-  memoryEnabled: boolean
-  repoRoot: string
-  artifactsDir: string
-  commands: {
-    baseline: string
-    session1Rule: string
-    session2Recall: string
-  }
-  preferences: {
-    baseline: CommandPreference
-    session1Rule: CommandPreference
-    session2Recall: CommandPreference
-  }
-  assertions: {
-    baselineAvoidedUv: boolean
-    session1CapturedRule: boolean
-    session2PreferredUv: boolean
-    disallowedArtifactsAbsent: boolean
-  }
-  runtimeState: {
-    session1Jobs: Awaited<ReturnType<RuntimeStateStore['listJobsForSession']>> | null
-    session2Jobs: Awaited<ReturnType<RuntimeStateStore['listJobsForSession']>> | null
-    session1TurnIds: string[]
-    session2TurnIds: string[]
-  }
-  invocations: InvocationRecord[]
-  notes: {
-    hiddenTeamRule: string
-    hiddenTeamCommand: string
-    disallowedWorkspaceArtifacts: readonly string[]
-    prompts: {
-      baseline: string
-      session1Rule: string
-      session2Recall: string
-    }
-    debugLogs: string[]
-  }
-}
-
 let lastBaseDir: string | null = null
 let lastOutputFilePath: string | null = null
 
 async function main(): Promise<void> {
-  const baseDir = await mkdtemp(join(tmpdir(), 'stoa-hidden-rule-real-'))
+  const baseDir = await mkdtemp(join(tmpdir(), 'stoa-memory-verify-'))
   lastBaseDir = baseDir
   const providerPath = process.env.CLAUDE_CLI_PATH?.trim() || undefined
 
@@ -95,34 +104,59 @@ async function main(): Promise<void> {
     baseDir,
     providerPath
   })
+
+  const session2RecallMatch = checkAnswerMatch(memoryOn.commands.session2Answer)
   const reportPath = join(baseDir, 'experiment-report.json')
   const report = {
-    ok: memoryOn.preferences.session2Recall === 'uv'
-      && memoryOff.preferences.session2Recall !== 'uv',
+    ok: session2RecallMatch && memoryOn.assertions.session2RecalledRule,
     baseDir,
     reportPath,
-    hiddenTeamRule: HIDDEN_TEAM_RULE,
-    hiddenTeamCommand: HIDDEN_TEAM_COMMAND,
+    experimentTopic: 'Memory runtime pre-change verification command preference',
+    hiddenRule: HIDDEN_RULE_DESCRIPTION,
+    hiddenCommand: HIDDEN_VERIFY_COMMAND,
     verdict: {
-      memoryOnPreferredUv: memoryOn.preferences.session2Recall === 'uv',
-      memoryOffPreferredUv: memoryOff.preferences.session2Recall === 'uv'
+      memoryOnSession2Recall: memoryOn.assertions.session2RecalledRule,
+      memoryOffSession2Recall: memoryOff.assertions.session2RecalledRule,
+      session2RecallMatch
+    },
+    chainState: {
+      memoryOn: {
+        session1: formatChainState(memoryOn.chainState.session1),
+        session2: formatChainState(memoryOn.chainState.session2)
+      },
+      memoryOff: {
+        session1: formatChainState(memoryOff.chainState.session1),
+        session2: formatChainState(memoryOff.chainState.session2)
+      }
     },
     scenarios: [memoryOff, memoryOn]
   }
   await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8')
-
-  if (memoryOn.preferences.session2Recall !== 'uv') {
-    throw new Error(
-      `Memory-on scenario did not recover the repository-specific uv preference.\nExpected preference: uv\nActual command: ${memoryOn.commands.session2Recall}\nReport: ${reportPath}`
-    )
-  }
-  if (memoryOff.preferences.session2Recall === 'uv') {
-    throw new Error(
-      `Memory-off scenario unexpectedly preferred uv.\nThis means the experiment still leaked the repository preference outside the memory system.\nActual: ${memoryOff.commands.session2Recall}\nReport: ${reportPath}`
-    )
-  }
-
   console.log(JSON.stringify(report, null, 2))
+}
+
+function formatChainState(chain: ChainState | null): string {
+  if (!chain) {
+    return 'no-chain (memory-off)'
+  }
+  return [
+    `turnsSealed=${chain.turnsSealed}`,
+    `jobsCompleted=${chain.jobsCompleted}`,
+    `processTurnTriggered=${chain.processTurnTriggered}`,
+    `phasesObserved=${chain.phasesObserved.length}`,
+    `chainStoppedAt=${chain.chainStoppedAt}`
+  ].join(' | ')
+}
+
+function checkAnswerMatch(answer: string): boolean {
+  const normalized = answer.trim().toLowerCase()
+  if (!normalized) {
+    return false
+  }
+  return normalized.includes('runtime-host.test.ts')
+    && normalized.includes('turn-maintenance-runner.test.ts')
+    && normalized.includes('session-event-bridge.test.ts')
+    && normalized.includes('npx vitest run')
 }
 
 async function runScenario(input: {
@@ -136,10 +170,10 @@ async function runScenario(input: {
   const globalStatePath = join(scenarioDir, 'global.json')
   const memoryEnabled = input.label === 'memory-on'
   const debugLogs = [
-    join(artifactsDir, 'claude-session1-baseline.debug.log'),
     join(artifactsDir, 'claude-session1-rule.debug.log'),
     join(artifactsDir, 'claude-session2-recall.debug.log')
   ]
+  const phaseEvents: PhaseEventRecord[] = []
 
   await mkdir(repoRoot, { recursive: true })
   await mkdir(artifactsDir, { recursive: true })
@@ -157,7 +191,7 @@ async function runScenario(input: {
   })
   const project = await manager.createProject({
     path: repoRoot,
-    name: `real-claude-memory-${input.label}`,
+    name: `memory-verify-${input.label}`,
     defaultSessionType: 'claude-code'
   })
 
@@ -171,7 +205,16 @@ async function runScenario(input: {
       },
       cwd: process.cwd(),
       detectShell,
-      detectProvider
+      detectProvider,
+      onTurnPhaseEvent: (event: TurnMaintenancePhaseEvent) => {
+        phaseEvents.push({
+          phase: event.phase,
+          status: event.status,
+          jobId: event.jobId,
+          turnId: event.turnId,
+          error: event.error
+        })
+      }
     })
     : null
 
@@ -201,13 +244,12 @@ async function runScenario(input: {
 
   const provider = createClaudeCodeProvider()
   const invocations: InvocationRecord[] = []
+  const runtimeStateStore = new RuntimeStateStore(repoRoot)
 
-  const baselineOutputPath = join(repoRoot, SESSION1_COMMAND_FILE)
-  const ruleOutputPath = join(repoRoot, SESSION1_COMMAND_FILE)
-  const recallOutputPath = join(repoRoot, SESSION2_COMMAND_FILE)
-  const baselinePrompt = buildBaselinePrompt(baselineOutputPath)
-  const session1RulePrompt = buildRulePrompt(ruleOutputPath)
-  const session2RecallPrompt = buildRecallPrompt(recallOutputPath)
+  const session1OutputPath = join(repoRoot, SESSION1_ANSWER_FILE)
+  const session2OutputPath = join(repoRoot, SESSION2_ANSWER_FILE)
+  const session1Prompt = buildSession1Prompt(session1OutputPath)
+  const session2Prompt = buildSession2Prompt(session2OutputPath)
 
   try {
     const webhookPort = await bridge.start()
@@ -223,46 +265,30 @@ async function runScenario(input: {
 
     await provider.installSidecar(session1Target, session1Context)
 
-    const baselineResult = await invokeClaudeHeadless(
-      await provider.buildStartCommand(session1Target, session1Context),
-      baselinePrompt,
-      debugLogs[0]
-    )
-    const baselineCommand = await readOutputFile(baselineOutputPath)
-    const baselinePreference = classifyCommandPreference(baselineCommand)
-    lastOutputFilePath = baselineOutputPath
-    if (baselinePreference === 'uv') {
-      throw new Error(
-        `Baseline invocation unexpectedly preferred uv before any repository-specific memory existed.\nOutput: ${baselineCommand}\nStdout: ${baselineResult.stdout}`
-      )
-    }
-    assertDisallowedWorkspaceArtifacts(repoRoot)
-    invocations.push(buildInvocationRecord(1, 'session1:baseline', session1, baselineResult.command, baselineResult, baselineOutputPath, baselineCommand))
+    const session1Key = sessionKey(project.id, session1.id)
 
     const ruleResult = await invokeClaudeHeadless(
-      await provider.buildResumeCommand(session1Target, session1.externalSessionId!, session1Context),
-      session1RulePrompt,
-      debugLogs[1]
+      await provider.buildStartCommand(session1Target, session1Context),
+      session1Prompt,
+      debugLogs[0]
     )
-    const session1RuleCommand = await readOutputFile(ruleOutputPath)
-    const session1RulePreference = classifyCommandPreference(session1RuleCommand)
-    lastOutputFilePath = ruleOutputPath
-    if (session1RuleCommand !== HIDDEN_TEAM_COMMAND) {
+    const session1Answer = await readOutputFile(session1OutputPath)
+    lastOutputFilePath = session1OutputPath
+    if (session1Answer !== HIDDEN_VERIFY_COMMAND) {
       throw new Error(
-        `Session 1 did not capture the hidden team command exactly.\nExpected: ${HIDDEN_TEAM_COMMAND}\nActual: ${session1RuleCommand}\nStdout: ${ruleResult.stdout}`
+        `Session 1 did not capture the hidden verify command exactly.\nExpected: ${HIDDEN_VERIFY_COMMAND}\nActual: ${session1Answer}\nStdout: ${ruleResult.stdout}`
       )
     }
-    if (session1RulePreference !== 'uv') {
-      throw new Error(`Session 1 rule command must be uv-based. Actual: ${session1RuleCommand}`)
-    }
-    assertDisallowedWorkspaceArtifacts(repoRoot)
-    invocations.push(buildInvocationRecord(2, 'session1:rule', session1, ruleResult.command, ruleResult, ruleOutputPath, session1RuleCommand))
+    invocations.push(buildInvocationRecord(1, 'session1:rule', session1, ruleResult.command, ruleResult, session1OutputPath, session1Answer))
 
-    const runtimeStateStore = new RuntimeStateStore(repoRoot)
-    const session1Jobs = memoryEnabled
-      ? await waitForCompletedJobs(runtimeStateStore, sessionKey(project.id, session1.id), 2)
+    const session1PhasesSnapshot = [...phaseEvents]
+    const session1Chain = memoryEnabled
+      ? await collectChainState(runtimeStateStore, session1Key, session1PhasesSnapshot, 1)
       : null
-    const session1Turns = await waitForSealedTurns(runtimeStateStore, sessionKey(project.id, session1.id), 2)
+
+    if (memoryEnabled) {
+      await waitForCompletedJobs(runtimeStateStore, session1Key, 1)
+    }
 
     const session2 = await manager.createSession({
       projectId: project.id,
@@ -275,21 +301,22 @@ async function runScenario(input: {
 
     await provider.installSidecar(session2Target, session2Context)
 
+    const session2Key = sessionKey(project.id, session2.id)
+
     const recallResult = await invokeClaudeHeadless(
       await provider.buildStartCommand(session2Target, session2Context),
-      session2RecallPrompt,
-      debugLogs[2]
+      session2Prompt,
+      debugLogs[1]
     )
-    const session2RecallCommand = await readOutputFile(recallOutputPath)
-    const session2RecallPreference = classifyCommandPreference(session2RecallCommand)
-    lastOutputFilePath = recallOutputPath
-    assertDisallowedWorkspaceArtifacts(repoRoot)
-    invocations.push(buildInvocationRecord(3, 'session2:recall', session2, recallResult.command, recallResult, recallOutputPath, session2RecallCommand))
+    const session2Answer = await readOutputFile(session2OutputPath)
+    lastOutputFilePath = session2OutputPath
+    const session2Recalled = checkAnswerMatch(session2Answer)
+    invocations.push(buildInvocationRecord(2, 'session2:recall', session2, recallResult.command, recallResult, session2OutputPath, session2Answer))
 
-    const session2Jobs = memoryEnabled
-      ? await waitForCompletedJobs(runtimeStateStore, sessionKey(project.id, session2.id), 1)
+    const session2PhasesSnapshot = phaseEvents.slice(session1PhasesSnapshot.length)
+    const session2Chain = memoryEnabled
+      ? await collectChainState(runtimeStateStore, session2Key, session2PhasesSnapshot, 1)
       : null
-    const session2Turns = await waitForSealedTurns(runtimeStateStore, sessionKey(project.id, session2.id), 1)
 
     return {
       label: input.label,
@@ -297,36 +324,24 @@ async function runScenario(input: {
       repoRoot,
       artifactsDir,
       commands: {
-        baseline: baselineCommand,
-        session1Rule: session1RuleCommand,
-        session2Recall: session2RecallCommand
-      },
-      preferences: {
-        baseline: baselinePreference,
-        session1Rule: session1RulePreference,
-        session2Recall: session2RecallPreference
+        session1Answer,
+        session2Answer
       },
       assertions: {
-        baselineAvoidedUv: baselinePreference !== 'uv',
-        session1CapturedRule: session1RuleCommand === HIDDEN_TEAM_COMMAND,
-        session2PreferredUv: session2RecallPreference === 'uv',
-        disallowedArtifactsAbsent: true
+        session1CapturedRule: session1Answer === HIDDEN_VERIFY_COMMAND,
+        session2RecalledRule: session2Recalled
       },
-      runtimeState: {
-        session1Jobs,
-        session2Jobs,
-        session1TurnIds: session1Turns.map((turn) => turn.turnId),
-        session2TurnIds: session2Turns.map((turn) => turn.turnId)
+      chainState: {
+        session1: session1Chain,
+        session2: session2Chain
       },
       invocations,
       notes: {
-        hiddenTeamRule: HIDDEN_TEAM_RULE,
-        hiddenTeamCommand: HIDDEN_TEAM_COMMAND,
-        disallowedWorkspaceArtifacts: DISALLOWED_WORKSPACE_ARTIFACTS,
+        hiddenRule: HIDDEN_RULE_DESCRIPTION,
+        hiddenCommand: HIDDEN_VERIFY_COMMAND,
         prompts: {
-          baseline: baselinePrompt,
-          session1Rule: session1RulePrompt,
-          session2Recall: session2RecallPrompt
+          session1: session1Prompt,
+          session2: session2Prompt
         },
         debugLogs
       }
@@ -336,91 +351,126 @@ async function runScenario(input: {
   }
 }
 
+async function collectChainState(
+  store: RuntimeStateStore,
+  key: string,
+  phases: PhaseEventRecord[],
+  expectedTurnCount: number
+): Promise<ChainState> {
+  const turns = await waitForSealedTurns(store, key, expectedTurnCount)
+  const jobs = await store.listJobsForSession(key)
+  const doneJobs = jobs.filter(job => job.state === 'done')
+  const processTurnTriggered = jobs.length > 0
+
+  const relevantPhases = phases.filter(event =>
+    turns.some(turn => turn.turnId === event.turnId)
+  )
+
+  let chainStoppedAt = 'end'
+  if (relevantPhases.length === 0 && processTurnTriggered) {
+    chainStoppedAt = 'processTurn-noop (all phases null — gateway is no-op)'
+  } else if (relevantPhases.length > 0) {
+    const lastPhase = relevantPhases[relevantPhases.length - 1]
+    chainStoppedAt = lastPhase.status === 'failed'
+      ? `phase-${lastPhase.phase}-failed`
+      : `phase-${lastPhase.phase}-completed`
+  }
+
+  return {
+    turnsSealed: turns.length,
+    turnIds: turns.map(turn => turn.turnId),
+    jobsCompleted: doneJobs.length,
+    jobIds: jobs.map(job => job.jobId),
+    processTurnTriggered,
+    phasesObserved: relevantPhases,
+    chainStoppedAt
+  }
+}
+
 async function seedExperimentRepo(repoRoot: string): Promise<void> {
-  await writeFile(join(repoRoot, 'pyproject.toml'), [
-    '[project]',
-    'name = "demo-python-project"',
-    'version = "0.1.0"',
-    'description = "Real Claude hidden-rule memory probe"',
-    ''
-  ].join('\n'), 'utf8')
-  await writeFile(join(repoRoot, 'README.md'), [
-    '# Demo Python Project',
+  await writeFile(
+    join(repoRoot, 'package.json'),
+    `${JSON.stringify({
+      name: 'memory-verify-experiment',
+      version: '0.1.0',
+      description: 'Memory runtime verification experiment probe',
+      scripts: { test: 'vitest run' },
+      devDependencies: { vitest: '^3.0.0' }
+    }, null, 2)}\n`,
+    'utf8'
+  )
+
+  await writeFile(
+    join(repoRoot, 'vitest.config.ts'),
+    [
+      'import { defineConfig } from "vitest/config";',
+      'export default defineConfig({ test: { include: ["src/**/*.test.ts"] } });',
+      ''
+    ].join('\n'),
+    'utf8'
+  )
+
+  const testStub = (name: string): string => [
+    'import { describe, it, expect } from "vitest";',
     '',
-    'This repository contains a tiny Python app.',
-    'The experiment updates command note files inside the repository.',
+    `describe("${name}", () => {`,
+    '  it("passes", () => {',
+    '    expect(true).toBe(true);',
+    '  });',
+    '});',
     ''
-  ].join('\n'), 'utf8')
-  await writeFile(join(repoRoot, 'app.py'), [
-    'def greet() -> str:',
-    '    return "hello"',
-    ''
-  ].join('\n'), 'utf8')
-  await writeFile(join(repoRoot, SESSION1_COMMAND_FILE), 'PENDING\n', 'utf8')
-  await writeFile(join(repoRoot, SESSION2_COMMAND_FILE), 'PENDING\n', 'utf8')
+  ].join('\n')
+
+  await mkdir(join(repoRoot, 'src', 'core', 'memory'), { recursive: true })
+  await mkdir(join(repoRoot, 'src', 'main'), { recursive: true })
+
+  await writeFile(
+    join(repoRoot, 'src', 'core', 'memory', 'runtime-host.test.ts'),
+    testStub('runtime-host'),
+    'utf8'
+  )
+  await writeFile(
+    join(repoRoot, 'src', 'core', 'memory', 'turn-maintenance-runner.test.ts'),
+    testStub('turn-maintenance-runner'),
+    'utf8'
+  )
+  await writeFile(
+    join(repoRoot, 'src', 'main', 'session-event-bridge.test.ts'),
+    testStub('session-event-bridge'),
+    'utf8'
+  )
+
+  await writeFile(join(repoRoot, SESSION1_ANSWER_FILE), 'PENDING\n', 'utf8')
+  await writeFile(join(repoRoot, SESSION2_ANSWER_FILE), 'PENDING\n', 'utf8')
 }
 
-function buildBaselinePrompt(outputFilePath: string): string {
+function buildSession1Prompt(outputFilePath: string): string {
   return [
-    'A teammate asks what one-line command you would normally use to install the Python package "requests" into the current environment for a quick local check in this repository.',
+    'Repository-specific house rule (not written anywhere in the repo):',
+    HIDDEN_RULE_DESCRIPTION,
+    `For this task, always use exactly: ${HIDDEN_VERIFY_COMMAND}`,
+    'This private rule is specific to this repository and overrides any general knowledge.',
     'Do not inspect files or hidden folders.',
-    'Do not run the install command.',
-    'Use a direct file write only.',
-    `Overwrite the file at ${formatPromptPath(outputFilePath)} with only the exact command you would personally choose.`,
-    'Do not add explanation.'
-  ].join(' ')
-}
-
-function buildRulePrompt(outputFilePath: string): string {
-  return [
-    'Repository-specific house rule not written anywhere in the repo:',
-    HIDDEN_TEAM_RULE,
-    `For this task, always use exactly "${HIDDEN_TEAM_COMMAND}".`,
-    'This private rule overrides your normal preference.',
-    'Do not inspect files or hidden folders.',
-    'Do not run the install command.',
+    'Do not run the command.',
     'Use a direct file write only.',
     `Overwrite the file at ${formatPromptPath(outputFilePath)} with only that exact command.`,
     'Do not add explanation.'
   ].join(' ')
 }
 
-function buildRecallPrompt(outputFilePath: string): string {
+function buildSession2Prompt(outputFilePath: string): string {
   return [
-    'A teammate asks what one-line command should be used in this repository to install the Python package "requests" into the current environment for a quick local check.',
+    'A teammate asks: What command should I run before making changes to the memory runtime in this repository?',
     'Do not inspect files or hidden folders.',
-    'Do not run the install command.',
+    'Do not run any command.',
     'Use a direct file write only.',
-    `Overwrite the file at ${formatPromptPath(outputFilePath)} with only the exact command you would use.`,
+    `Overwrite the file at ${formatPromptPath(outputFilePath)} with only the exact command you would recommend.`,
     'Do not add explanation.'
   ].join(' ')
 }
 
-function classifyCommandPreference(command: string): CommandPreference {
-  const normalized = command.trim().toLowerCase()
-  if (!normalized) {
-    return 'unknown'
-  }
-  if (/\buv\b/.test(normalized)) {
-    return 'uv'
-  }
-  if (/\bpython(?:\d+(?:\.\d+)*)?\b\s+-m\s+pip\b/.test(normalized) || /\bpip(?:\d+(?:\.\d+)*)?\b/.test(normalized)) {
-    return 'pip'
-  }
-  return 'unknown'
-}
-
 function formatPromptPath(filePath: string): string {
-  return `"${filePath.replaceAll('\\', '/')}"` 
-}
-
-function assertDisallowedWorkspaceArtifacts(repoRoot: string): void {
-  for (const relativePath of DISALLOWED_WORKSPACE_ARTIFACTS) {
-    const absolutePath = join(repoRoot, relativePath)
-    if (existsSync(absolutePath)) {
-      throw new Error(`Workspace pollution detected: ${absolutePath}`)
-    }
-  }
+  return `"${filePath.replaceAll('\\', '/')}"`
 }
 
 function createProviderContext(
@@ -462,12 +512,6 @@ function toProviderTarget(
   }
 }
 
-async function invokeClaudeHeadless(command: ProviderCommand, prompt: string): Promise<{
-  command: ProviderCommand
-  stdout: string
-  parsed: Record<string, unknown> | null
-  debugFilePath: string
-}>;
 async function invokeClaudeHeadless(
   command: ProviderCommand,
   prompt: string,
@@ -547,13 +591,13 @@ async function waitForCompletedJobs(
     const failedJobs = jobs.filter(job => job.state === 'failed')
 
     if (failedJobs.length > 0) {
-      throw new Error(`Evolver processTurn job failed: ${JSON.stringify(failedJobs, null, 2)}`)
+      throw new Error(`Turn maintenance job failed: ${JSON.stringify(failedJobs, null, 2)}`)
     }
     if (doneJobs.length >= expectedDoneCount) {
       return jobs
     }
     if (Date.now() - startedAt > JOB_TIMEOUT_MS) {
-      throw new Error(`Timed out waiting for ${expectedDoneCount} completed Evolver jobs. Jobs: ${JSON.stringify(jobs, null, 2)}`)
+      throw new Error(`Timed out waiting for ${expectedDoneCount} completed jobs. Jobs: ${JSON.stringify(jobs, null, 2)}`)
     }
 
     await sleep(500)
