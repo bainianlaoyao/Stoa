@@ -177,6 +177,9 @@ describe('claude-code provider', () => {
       expect(sessionStartCommand).toContain(process.platform === 'win32'
         ? 'stoa-hook-session-start.cmd'
         : 'stoa-hook-session-start.cjs')
+      if (process.platform === 'win32') {
+        expect(sessionStartCommand.startsWith('"')).toBe(true)
+      }
       expect(sessionStartCommand.startsWith('node ')).toBe(false)
       expect(readHttpHook(content, 'UserPromptSubmit')).toMatchObject({
         type: 'http',

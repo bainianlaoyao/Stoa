@@ -144,6 +144,7 @@ function createPreloadApi(bus: FakeIpcBus): RendererApi {
     sendSessionInput: (sessionId: string, data: string) => bus.invoke(IPC_CHANNELS.sessionInput, sessionId, data),
     sendSessionResize: (sessionId: string, cols: number, rows: number) => bus.invoke(IPC_CHANNELS.sessionResize, sessionId, cols, rows),
     onTerminalData: () => () => {},
+    onMemoryNotification: () => () => {},
     onSessionPresenceChanged: () => () => {},
     onProjectObservabilityChanged: () => () => {},
     onAppObservabilityChanged: () => () => {}
@@ -501,17 +502,18 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
         sendSessionInput: IPC_CHANNELS.sessionInput,
         sendSessionResize: IPC_CHANNELS.sessionResize,
         onTerminalData: IPC_CHANNELS.terminalData,
+        onMemoryNotification: IPC_CHANNELS.memoryNotification,
         onSessionPresenceChanged: IPC_CHANNELS.observabilitySessionPresenceChanged,
         onProjectObservabilityChanged: IPC_CHANNELS.observabilityProjectChanged,
         onAppObservabilityChanged: IPC_CHANNELS.observabilityAppChanged
       }
 
       const methods = Object.keys(apiMethodToChannel)
-      expect(methods).toHaveLength(17)
+      expect(methods).toHaveLength(18)
 
       const channelValues = Object.values(apiMethodToChannel)
       const uniqueChannels = new Set(channelValues)
-      expect(uniqueChannels.size).toBe(17)
+      expect(uniqueChannels.size).toBe(18)
 
       for (const channel of channelValues) {
         expect(typeof channel).toBe('string')

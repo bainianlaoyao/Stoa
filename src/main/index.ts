@@ -8,6 +8,7 @@ import { autoUpdater } from 'electron-updater'
 import { IPC_CHANNELS } from '@core/ipc-channels'
 import { getConsumerContextPath } from '@core/memory/delivery-paths'
 import { createMemoryRuntimeHost } from '@core/memory/runtime-host'
+import type { TurnMaintenancePhaseEvent } from '@core/memory/turn-maintenance-runner'
 import { InMemoryObservationStore } from '@core/observation-store'
 import type { ListObservationEventsOptions } from '@core/observation-store'
 import { ObservabilityService } from '@core/observability-service'
@@ -29,6 +30,7 @@ import type {
   CreateProjectRequest,
   CreateSessionRequest,
   MemoryAssetRequest,
+  MemoryNotificationEvent,
   MemoryRecallExplanationRequest,
   MemoryStateSummaryRequest,
   MemoryTurnTraceRequest,
@@ -384,6 +386,51 @@ function pushUpdateState(state: UpdateState): void {
   }
 }
 
+function pushMemoryNotification(notification: MemoryNotificationEvent): void {
+  const win = mainWindow
+  if (win && !win.isDestroyed()) {
+    win.webContents.send(IPC_CHANNELS.memoryNotification, notification)
+  }
+}
+
+function toMemoryNotification(event: TurnMaintenancePhaseEvent): MemoryNotificationEvent {
+  const titleByPhase = {
+    solidify: event.status === 'started'
+      ? 'Memory solidifying'
+      : event.status === 'completed'
+        ? 'Memory solidified'
+        : 'Solidify failed',
+    distill: event.status === 'started'
+      ? 'Memory distilling'
+      : event.status === 'completed'
+        ? 'Memory distilled'
+        : 'Distill failed'
+  } as const
+  const messageByPhase = {
+    solidify: event.status === 'started'
+      ? 'Turn validation is running now.'
+      : event.status === 'completed'
+        ? 'Turn validation completed and results were stored.'
+        : (event.error ?? 'Evolver solidify phase failed.'),
+    distill: event.status === 'started'
+      ? 'Turn lessons are being distilled into Evolver memory.'
+      : event.status === 'completed'
+        ? 'Turn lessons were distilled into Evolver memory.'
+        : (event.error ?? 'Evolver distill phase failed.')
+  } as const
+
+  return {
+    id: `${event.jobId}:${event.phase}:${event.status}`,
+    projectId: '',
+    sessionId: event.stoaSessionId,
+    kind: event.phase,
+    status: event.status === 'started' ? 'info' : event.status === 'completed' ? 'success' : 'error',
+    title: titleByPhase[event.phase],
+    message: messageByPhase[event.phase],
+    createdAt: new Date().toISOString()
+  }
+}
+
 function pushObservabilitySnapshotsForSession(sessionId: string): void {
   if (!mainWindow || mainWindow.isDestroyed() || !projectSessionManager || !observabilityService) {
     return
@@ -516,7 +563,14 @@ app.whenReady().then(async () => {
     },
     cwd: process.cwd(),
     detectShell,
-    detectProvider
+    detectProvider,
+    onTurnPhaseEvent(event) {
+      const session = projectSessionManager?.snapshot().sessions.find((candidate) => candidate.id === event.stoaSessionId)
+      pushMemoryNotification({
+        ...toMemoryNotification(event),
+        projectId: session?.projectId ?? ''
+      })
+    }
   })
 
   for (const diagnostic of memoryRuntimeHost.diagnostics) {
@@ -525,7 +579,8 @@ app.whenReady().then(async () => {
 
   sessionEventBridge = new SessionEventBridge(projectSessionManager, runtimeController, observabilityService, {
     evolverBridge: memoryRuntimeHost.evolverBridge,
-    turnMaintenanceRunner: memoryRuntimeHost.turnMaintenanceRunner
+    turnMaintenanceRunner: memoryRuntimeHost.turnMaintenanceRunner,
+    onMemoryNotification: pushMemoryNotification
   })
   updateService = new UpdateService({
     app,

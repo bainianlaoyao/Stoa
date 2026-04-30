@@ -38,6 +38,7 @@ const emit = defineEmits<{
 }>()
 
 const showNewProject = ref(false)
+const LONG_PRESS_MS = 220
 
 const collapsedProjectIds = ref<Set<string>>(new Set())
 
@@ -53,6 +54,8 @@ const radialMenuCenter = ref({ x: 0, y: 0 })
 
 let longPressTimer: ReturnType<typeof setTimeout> | null = null
 let longPressActivated = false
+let addButtonPressStartedAt = 0
+let addButtonPressedProjectId: string | null = null
 
 function generateTitle(projectId: string, type: SessionType): string {
   const project = props.hierarchy.find(p => p.id === projectId)
@@ -180,6 +183,8 @@ function onAddButtonMouseDown(event: MouseEvent, projectId: string) {
   floatingCardProjectId.value = projectId
   floatingCardPosition.value = { x: rect.left, y: rect.top, width: rect.width, height: rect.height }
   radialMenuCenter.value = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+  addButtonPressStartedAt = event.timeStamp
+  addButtonPressedProjectId = projectId
   longPressActivated = false
 
   longPressTimer = setTimeout(() => {
@@ -187,24 +192,34 @@ function onAddButtonMouseDown(event: MouseEvent, projectId: string) {
     longPressActivated = true
     floatingCardVisible.value = false
     radialMenuVisible.value = true
-  }, 100)
+  }, LONG_PRESS_MS)
 }
 
-function onAddButtonMouseUp() {
-  if (longPressActivated) {
+function onAddButtonMouseUp(event: MouseEvent, projectId: string) {
+  const pressDuration = Math.max(0, event.timeStamp - addButtonPressStartedAt)
+  if (longPressTimer !== null) {
+    clearTimeout(longPressTimer)
+    longPressTimer = null
+  }
+
+  const pressedProjectId = addButtonPressedProjectId
+  addButtonPressedProjectId = null
+
+  if (pressedProjectId !== projectId) {
+    longPressActivated = false
+    return
+  }
+
+  if (pressDuration >= LONG_PRESS_MS) {
     radialMenuVisible.value = false
     longPressActivated = false
     return
   }
 
-  if (longPressTimer !== null) {
-    clearTimeout(longPressTimer)
-    longPressTimer = null
-    const shouldCloseFloatingCard = floatingCardVisible.value && floatingCardProjectId.value === radialMenuProjectId.value
-
-    floatingCardVisible.value = !shouldCloseFloatingCard
-    radialMenuVisible.value = false
-  }
+  const shouldCloseFloatingCard = floatingCardVisible.value && floatingCardProjectId.value === projectId
+  floatingCardVisible.value = !shouldCloseFloatingCard
+  radialMenuVisible.value = false
+  longPressActivated = false
 }
 
 function onAddButtonMouseLeave() {
@@ -212,6 +227,7 @@ function onAddButtonMouseLeave() {
     clearTimeout(longPressTimer)
     longPressTimer = null
   }
+  addButtonPressedProjectId = null
   longPressActivated = false
 }
 
@@ -332,7 +348,7 @@ onBeforeUnmount(() => {
                 :aria-label="t('workspace.addSessionTo', { name: project.name })"
                 :title="t('workspace.addSessionTitle')"
                 @mousedown="onAddButtonMouseDown($event, project.id)"
-                @mouseup="onAddButtonMouseUp"
+                @mouseup="onAddButtonMouseUp($event, project.id)"
                 @mouseleave="onAddButtonMouseLeave"
               >
                 <span class="route-icon-button__glyph" aria-hidden="true">+</span>

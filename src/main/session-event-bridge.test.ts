@@ -534,6 +534,7 @@ describe('SessionEventBridge', () => {
     })
     await manager.markRuntimeAlive(session.id, session.externalSessionId)
 
+    const onMemoryNotification = vi.fn()
     const bridge = new SessionEventBridge(
       manager,
       {
@@ -551,7 +552,9 @@ describe('SessionEventBridge', () => {
             selectionPolicy: 'test'
           })),
           observeWrite: vi.fn(async () => {})
-        }
+        },
+        onMemoryNotification,
+        nowIso: () => '2026-04-29T02:00:00.000Z'
       }
     )
     bridges.push(bridge)
@@ -578,6 +581,79 @@ describe('SessionEventBridge', () => {
         additionalContext: 'Use uv instead of pip.'
       }
     })
+    expect(onMemoryNotification).toHaveBeenCalledWith({
+      id: expect.any(String),
+      projectId: project.id,
+      sessionId: session.id,
+      kind: 'recall',
+      status: 'success',
+      title: 'Memory recalled',
+      message: 'Relevant Evolver context was injected for this turn.',
+      createdAt: '2026-04-29T02:00:00.000Z'
+    })
+  })
+
+  test('claude UserPromptSubmit hook degrades cleanly when recall command fails', async () => {
+    const stateDir = await createTestTempDir('session-event-bridge-recall-failure-state-')
+    const workspaceDir = await createTestTempDir('session-event-bridge-recall-failure-workspace-')
+    tempDirs.push(stateDir, workspaceDir)
+    const manager = await ProjectSessionManager.create({
+      webhookPort: null,
+      globalStatePath: join(stateDir, 'global.json')
+    })
+    const project = await manager.createProject({
+      name: 'P1',
+      path: workspaceDir
+    })
+    const session = await manager.createSession({
+      projectId: project.id,
+      type: 'claude-code',
+      title: 'Claude Session'
+    })
+    await manager.markRuntimeAlive(session.id, session.externalSessionId)
+
+    const onMemoryNotification = vi.fn()
+    const bridge = new SessionEventBridge(
+      manager,
+      {
+        applyProviderStatePatch: async (patch) => {
+          await manager.applySessionStatePatch(patch)
+        }
+      },
+      undefined,
+      {
+        evolverBridge: {
+          warmStart: vi.fn(async () => null),
+          recall: vi.fn(async () => {
+            throw new Error('Command failed: evolver')
+          }),
+          observeWrite: vi.fn(async () => {})
+        },
+        onMemoryNotification
+      }
+    )
+    bridges.push(bridge)
+
+    const port = await bridge.start()
+    const secret = bridge.issueSessionSecret(session.id)
+    const response = await postClaudeHook(
+      port,
+      {
+        hook_event_name: 'UserPromptSubmit',
+        prompt: 'Install requests for this repository.'
+      },
+      {
+        'x-stoa-secret': secret,
+        'x-stoa-session-id': session.id,
+        'x-stoa-project-id': project.id
+      }
+    )
+
+    expect(response.statusCode).toBe(202)
+    expect(JSON.parse(response.body)).toEqual({
+      accepted: true
+    })
+    expect(onMemoryNotification).not.toHaveBeenCalled()
   })
 
   test('claude PreToolUse after PermissionRequest infers permission resolved before resuming running state', async () => {

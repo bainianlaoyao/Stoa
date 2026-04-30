@@ -21,6 +21,19 @@ If a task touches styling, layout, panels, controls, previews, or renderer-facin
 
 Only direct user instruction can override it.
 
+## Upstream Boundary Rule
+
+`research/upstreams/evolver` is a vendored upstream dependency, not Stoa-owned implementation space.
+
+For any Evolver integration work:
+
+- Do not modify files under `research/upstreams/evolver`
+- Treat the vendored Evolver tree as read-only source
+- If Stoa needs adapters, wrappers, guards, compatibility handling, or integration glue, implement them on the Stoa side only
+- If the vendored Evolver tree becomes locally modified during exploration, reset or re-clone it instead of keeping local patches
+
+This rule is about ownership boundaries for upstream code. It does not relax the separate rule below that forbids product-side compatibility migrations.
+
 不允许写任何兼容性代码, 做任何兼容性迁移行为. 我们处于原型开发阶段.所有改进做breaking change.
 
 ## Quality Gate — Test Pipeline Must Pass

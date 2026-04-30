@@ -3,6 +3,7 @@ import {
   sessionPresenceBlockedBehavior,
   sessionPresenceCompleteBehavior,
   sessionPresenceFailedBehavior,
+  sessionMemoryNotificationBehavior,
   sessionPresenceReadyBehavior,
   sessionPresenceRunningBehavior,
   sessionRestoreBehavior,
@@ -59,6 +60,15 @@ describe('session behavior assets', () => {
       'provider.runningEvent.afterPermissionRequest'
     )
     expect(sessionTelemetryBlockedBehavior.observationLayers).toEqual(['ui', 'main-debug-state', 'persisted-state'])
+  })
+
+  it('declares memory lifecycle notifications as lightweight active-session feedback', () => {
+    expect(sessionMemoryNotificationBehavior.id).toBe('session.memory-notification')
+    expect(sessionMemoryNotificationBehavior.expects).toContain('memory.toast.recallVisible')
+    expect(sessionMemoryNotificationBehavior.expects).toContain('memory.toast.autoDismissed')
+    expect(sessionMemoryNotificationBehavior.invalidPreconditions).toContain('session.inactive')
+    expect(sessionMemoryNotificationBehavior.recovery).toContain('inactiveSessionNotificationIgnored')
+    expect(sessionMemoryNotificationBehavior.observationLayers).toEqual(['ui', 'main-debug-state'])
   })
 
   it('declares ready presence as calm non-accent renderer status', () => {

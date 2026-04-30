@@ -89,6 +89,28 @@ export const sessionTelemetryBlockedBehavior = defineBehavior({
   coverageBudget: 'critical'
 })
 
+export const sessionMemoryNotificationBehavior = defineBehavior({
+  id: 'session.memory-notification',
+  actor: 'system',
+  goal: 'surface recall and maintenance-stage memory events as small transient notifications for the active session',
+  entities: ['project', 'session', 'memory-runtime', 'renderer-toast'],
+  usageModes: ['active_workflow'],
+  preconditions: ['project.exists', 'session.active', 'session.providerManaged'],
+  action: 'memory.notify',
+  expects: [
+    'memory.toast.recallVisible',
+    'memory.toast.solidifyVisible',
+    'memory.toast.distillVisible',
+    'memory.toast.autoDismissed'
+  ],
+  invalidPreconditions: ['session.missing', 'session.inactive', 'memory.notification.channelMissing'],
+  interruptions: ['session.switchesBeforeNotification', 'memory.phase.failure'],
+  recovery: ['inactiveSessionNotificationIgnored', 'memory.errorToastVisible'],
+  observationLayers: ['ui', 'main-debug-state'],
+  risk: 'medium',
+  coverageBudget: 'high'
+})
+
 export const sessionPresenceReadyBehavior = defineBehavior({
   id: 'session.presence.ready',
   actor: 'system',

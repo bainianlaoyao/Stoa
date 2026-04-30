@@ -253,6 +253,20 @@ export interface MemoryAssetRequest {
   ref: string
 }
 
+export type MemoryNotificationKind = 'recall' | 'solidify' | 'distill'
+export type MemoryNotificationStatus = 'success' | 'info' | 'error'
+
+export interface MemoryNotificationEvent {
+  id: string
+  projectId: string
+  sessionId: string
+  kind: MemoryNotificationKind
+  status: MemoryNotificationStatus
+  title: string
+  message: string
+  createdAt: string
+}
+
 export interface RendererApi {
   getBootstrapState: () => Promise<BootstrapState>
   createProject: (request: CreateProjectRequest) => Promise<ProjectSummary>
@@ -270,6 +284,7 @@ export interface RendererApi {
   sendSessionInput: (sessionId: string, data: string) => Promise<void>
   sendSessionResize: (sessionId: string, cols: number, rows: number) => Promise<void>
   onTerminalData: (callback: (chunk: TerminalDataChunk) => void) => () => void
+  onMemoryNotification: (callback: (event: MemoryNotificationEvent) => void) => () => void
   onSessionEvent: (callback: (event: SessionSummaryEvent) => void) => () => void
   getSessionPresence: (sessionId: string) => Promise<SessionPresenceSnapshot | null>
   getProjectObservability: (projectId: string) => Promise<ProjectObservabilitySnapshot | null>

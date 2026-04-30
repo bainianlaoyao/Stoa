@@ -1,3 +1,6 @@
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, test, vi } from 'vitest'
 import { createMemoryRuntimeHost } from './runtime-host'
 
@@ -41,6 +44,82 @@ describe('createMemoryRuntimeHost', () => {
     expect(host.evolverBridge).toBeDefined()
     expect(host.turnMaintenanceRunner).toBeDefined()
     expect(host.diagnostics[0]).toContain('Inference provider "api" is unavailable for turn maintenance; Stoa will stay in recall-only mode.')
+  })
+
+  test('routes recall through the bundled host-bridge subcommand', async () => {
+    const runJsonCommand = vi.fn().mockResolvedValue({
+      content: 'Recall memory',
+      sourceRefs: [],
+      selectionPolicy: 'task-recall-v1'
+    })
+    const host = await createMemoryRuntimeHost({
+      settings: {
+        evolverInferenceProvider: 'api',
+        evolverExecutionMode: 'workspace-shell',
+        providers: {},
+        shellPath: ''
+      },
+      runJsonCommand,
+      resolveBundledEvolverCli: vi.fn(async () => ({
+        command: 'node',
+        repoRoot: 'D:/repo/research/upstreams/evolver',
+        argsPrefix: ['index.js'],
+        env: {}
+      }))
+    })
+
+    await expect(host.evolverBridge?.recall({
+      projectRoot: 'C:/repo',
+      consumer: 'codex',
+      stoaSessionId: 'session_1',
+      providerSessionId: 'provider-session-1',
+      taskText: 'Fix the provider bridge'
+    })).resolves.toMatchObject({
+      content: 'Recall memory',
+      selectionPolicy: 'task-recall-v1'
+    })
+
+    expect(runJsonCommand).toHaveBeenCalledOnce()
+    expect(runJsonCommand.mock.calls[0]![0]).toMatchObject({
+      command: 'node',
+      args: ['index.js', 'host-bridge', 'recall', expect.stringMatching(/^--request-file=/), '--json']
+    })
+  })
+
+  test('handles processTurn locally without dispatching the host-bridge CLI command', async () => {
+    const runJsonCommand = vi.fn()
+    const projectRoot = await mkdtemp(join(tmpdir(), 'stoa-runtime-host-'))
+    const host = await createMemoryRuntimeHost({
+      settings: {
+        evolverInferenceProvider: 'api',
+        evolverExecutionMode: 'workspace-shell',
+        providers: {},
+        shellPath: ''
+      },
+      runJsonCommand,
+      resolveBundledEvolverCli: vi.fn(async () => ({
+        command: 'node',
+        repoRoot: 'D:/repo/research/upstreams/evolver',
+        argsPrefix: ['index.js'],
+        env: {}
+      }))
+    })
+
+    try {
+      await expect(host.evolverBridge?.processTurn({
+        projectRoot,
+        stoaSessionId: 'session_1',
+        providerSessionId: 'provider-session-1',
+        turnId: 'turn_1',
+        evidenceRefs: []
+      })).resolves.toMatchObject({
+        jobId: expect.stringMatching(/^job_turn_1_/)
+      })
+
+      expect(runJsonCommand).not.toHaveBeenCalled()
+    } finally {
+      await rm(projectRoot, { recursive: true, force: true })
+    }
   })
 
   test('returns full availability when bundled evolver and claude inference are available', async () => {

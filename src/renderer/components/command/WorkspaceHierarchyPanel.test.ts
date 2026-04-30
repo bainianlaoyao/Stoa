@@ -3,7 +3,8 @@ import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { nextTick } from 'vue'
+import { mount, type DOMWrapper } from '@vue/test-utils'
 import { createPinia } from 'pinia'
 import WorkspaceHierarchyPanel from './WorkspaceHierarchyPanel.vue'
 import NewProjectModal from './NewProjectModal.vue'
@@ -30,6 +31,9 @@ const mockAddButtonRect = {
   y: 36,
   toJSON: () => ({})
 }
+const addButtonMouseDownTime = 1_000
+const quickClickMouseUpTime = addButtonMouseDownTime + 50
+const longPressMouseUpTime = addButtonMouseDownTime + 260
 
 function createHierarchy(): ProjectHierarchyNode[] {
   return [
@@ -177,6 +181,20 @@ function mountPanel(
   })
 }
 
+async function dispatchMouseEvent(
+  node: DOMWrapper<Element>,
+  type: 'mousedown' | 'mouseup',
+  timeStamp: number
+) {
+  const event = new MouseEvent(type, { bubbles: true })
+  Object.defineProperty(event, 'timeStamp', {
+    configurable: true,
+    value: timeStamp
+  })
+  node.element.dispatchEvent(event)
+  await nextTick()
+}
+
 function createSessionRowViewModels(
   overrides: Partial<Record<string, Partial<SessionRowViewModel>>> = {}
 ): Record<string, SessionRowViewModel> {
@@ -215,8 +233,8 @@ async function openFloatingCard(wrapper: ReturnType<typeof mountPanel>) {
   Object.defineProperty(addButton.element, 'getBoundingClientRect', {
     value: () => mockAddButtonRect
   })
-  await addButton.trigger('mousedown')
-  await addButton.trigger('mouseup')
+  await dispatchMouseEvent(addButton, 'mousedown', addButtonMouseDownTime)
+  await dispatchMouseEvent(addButton, 'mouseup', quickClickMouseUpTime)
 }
 
 async function openRadialMenu(wrapper: ReturnType<typeof mountPanel>) {
@@ -225,8 +243,8 @@ async function openRadialMenu(wrapper: ReturnType<typeof mountPanel>) {
   Object.defineProperty(addButton.element, 'getBoundingClientRect', {
     value: () => mockAddButtonRect
   })
-  await addButton.trigger('mousedown')
-  await vi.advanceTimersByTimeAsync(220)
+  await dispatchMouseEvent(addButton, 'mousedown', addButtonMouseDownTime)
+  await vi.advanceTimersByTimeAsync(260)
 }
 
 describe('WorkspaceHierarchyPanel', () => {
@@ -471,11 +489,30 @@ describe('WorkspaceHierarchyPanel', () => {
         value: () => mockAddButtonRect
       })
 
-      await addButton.trigger('mousedown')
-      await vi.advanceTimersByTimeAsync(220)
+      await dispatchMouseEvent(addButton, 'mousedown', addButtonMouseDownTime)
+      await vi.advanceTimersByTimeAsync(260)
       expect(wrapper.findComponent(ProviderRadialMenu).props('visible')).toBe(true)
 
-      await addButton.trigger('mouseup')
+      await dispatchMouseEvent(addButton, 'mouseup', longPressMouseUpTime)
+      expect(wrapper.findComponent(ProviderRadialMenu).props('visible')).toBe(false)
+    })
+
+    it('keeps short clicks opening the floating card even when timer work runs before mouseup', async () => {
+      vi.useFakeTimers()
+      const wrapper = mountPanel()
+      const addButton = wrapper.find('.route-add-session')
+
+      Object.defineProperty(addButton.element, 'getBoundingClientRect', {
+        value: () => mockAddButtonRect
+      })
+
+      await dispatchMouseEvent(addButton, 'mousedown', addButtonMouseDownTime)
+      await vi.advanceTimersByTimeAsync(260)
+      expect(wrapper.findComponent(ProviderRadialMenu).props('visible')).toBe(true)
+
+      await dispatchMouseEvent(addButton, 'mouseup', quickClickMouseUpTime)
+
+      expect(wrapper.findComponent(ProviderFloatingCard).props('visible')).toBe(true)
       expect(wrapper.findComponent(ProviderRadialMenu).props('visible')).toBe(false)
     })
 

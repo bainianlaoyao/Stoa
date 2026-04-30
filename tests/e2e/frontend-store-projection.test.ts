@@ -39,6 +39,7 @@ function createRendererApiWithPresence(
     sendSessionInput: async () => {},
     sendSessionResize: async () => {},
     onTerminalData: () => noop,
+    onMemoryNotification: () => noop,
     getSessionPresence: async (sessionId) => presenceBySessionId[sessionId] ?? null,
     getProjectObservability: async () => null,
     getAppObservability: async () => null,

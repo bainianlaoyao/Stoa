@@ -117,6 +117,92 @@ describe('TurnMaintenanceRunner', () => {
     })
   })
 
+  test('emits started and completion events when maintenance phases finish', async () => {
+    const gateway = {
+      processTurn: vi.fn(async () => ({ jobId: 'job_turn_notify' })),
+      prepareReview: vi.fn(async () => null),
+      completeReview: vi.fn(async () => undefined),
+      prepareSolidify: vi.fn(async () => ({ commands: ['npm test'] })),
+      completeSolidify: vi.fn(async () => undefined),
+      prepareDistill: vi.fn(async () => ({ prompt: 'distill me', responseFormat: 'text' as const })),
+      completeDistill: vi.fn(async () => undefined)
+    }
+    const inference: InferenceCapability = {
+      provider: 'codex',
+      modelHint: 'gpt-5.5',
+      invoke: vi.fn(async () => ({
+        content: 'distilled response',
+        provider: 'codex',
+        model: 'gpt-5.5'
+      }))
+    }
+    const execution: ExecutionCapability = {
+      mode: 'workspace-shell',
+      run: vi.fn(async () => ({
+        ok: true,
+        exitCode: 0,
+        stdout: 'ok',
+        stderr: '',
+        commandResults: []
+      }))
+    }
+    const onPhaseEvent = vi.fn()
+
+    const runner = new TurnMaintenanceRunner(
+      gateway,
+      { resolve: vi.fn(async () => inference) },
+      { resolve: vi.fn(async () => execution) },
+      { onPhaseEvent }
+    )
+
+    await expect(runner.run({
+      projectRoot: 'C:/repo',
+      stoaSessionId: 'session_1',
+      providerSessionId: 'provider-session-1',
+      turnId: 'turn_notify',
+      evidenceRefs: [evidenceRef()]
+    })).resolves.toEqual({
+      jobId: 'job_turn_notify'
+    })
+
+    expect(onPhaseEvent).toHaveBeenNthCalledWith(1, {
+      phase: 'solidify',
+      status: 'started',
+      jobId: 'job_turn_notify',
+      projectRoot: 'C:/repo',
+      stoaSessionId: 'session_1',
+      providerSessionId: 'provider-session-1',
+      turnId: 'turn_notify'
+    })
+    expect(onPhaseEvent).toHaveBeenNthCalledWith(2, {
+      phase: 'solidify',
+      status: 'completed',
+      jobId: 'job_turn_notify',
+      projectRoot: 'C:/repo',
+      stoaSessionId: 'session_1',
+      providerSessionId: 'provider-session-1',
+      turnId: 'turn_notify'
+    })
+    expect(onPhaseEvent).toHaveBeenNthCalledWith(3, {
+      phase: 'distill',
+      status: 'started',
+      jobId: 'job_turn_notify',
+      projectRoot: 'C:/repo',
+      stoaSessionId: 'session_1',
+      providerSessionId: 'provider-session-1',
+      turnId: 'turn_notify'
+    })
+    expect(onPhaseEvent).toHaveBeenNthCalledWith(4, {
+      phase: 'distill',
+      status: 'completed',
+      jobId: 'job_turn_notify',
+      projectRoot: 'C:/repo',
+      stoaSessionId: 'session_1',
+      providerSessionId: 'provider-session-1',
+      turnId: 'turn_notify'
+    })
+  })
+
   test('returns a skipped job when inference capability is unavailable', async () => {
     const gateway = {
       processTurn: vi.fn(async () => ({ jobId: 'job_turn_1' })),
@@ -207,6 +293,74 @@ describe('TurnMaintenanceRunner', () => {
       jobId: 'job_real_123',
       message: 'review failed'
     } satisfies Partial<TurnMaintenancePhaseError>)
+  })
+
+  test('emits distill started and failure events before surfacing the phase error', async () => {
+    const gateway = {
+      processTurn: vi.fn(async () => ({ jobId: 'job_real_distill' })),
+      prepareReview: vi.fn(async () => null),
+      completeReview: vi.fn(async () => undefined),
+      prepareSolidify: vi.fn(async () => null),
+      completeSolidify: vi.fn(async () => undefined),
+      prepareDistill: vi.fn(async () => ({ prompt: 'distill me', responseFormat: 'json' as const })),
+      completeDistill: vi.fn(async () => undefined)
+    }
+    const inference: InferenceCapability = {
+      provider: 'claude-code',
+      invoke: vi.fn(async () => {
+        throw new Error('distill failed')
+      })
+    }
+    const execution: ExecutionCapability = {
+      mode: 'workspace-shell',
+      run: vi.fn(async () => ({
+        ok: true,
+        exitCode: 0,
+        stdout: '',
+        stderr: '',
+        commandResults: []
+      }))
+    }
+    const onPhaseEvent = vi.fn()
+
+    const runner = new TurnMaintenanceRunner(
+      gateway,
+      { resolve: vi.fn(async () => inference) },
+      { resolve: vi.fn(async () => execution) },
+      { onPhaseEvent }
+    )
+
+    await expect(runner.run({
+      projectRoot: 'C:/repo',
+      stoaSessionId: 'session_1',
+      providerSessionId: 'provider-session-1',
+      turnId: 'turn_distill_fail',
+      evidenceRefs: [evidenceRef()]
+    })).rejects.toMatchObject({
+      name: 'TurnMaintenancePhaseError',
+      jobId: 'job_real_distill',
+      message: 'distill failed'
+    } satisfies Partial<TurnMaintenancePhaseError>)
+
+    expect(onPhaseEvent).toHaveBeenNthCalledWith(1, {
+      phase: 'distill',
+      status: 'started',
+      jobId: 'job_real_distill',
+      projectRoot: 'C:/repo',
+      stoaSessionId: 'session_1',
+      providerSessionId: 'provider-session-1',
+      turnId: 'turn_distill_fail'
+    })
+    expect(onPhaseEvent).toHaveBeenNthCalledWith(2, {
+      phase: 'distill',
+      status: 'failed',
+      jobId: 'job_real_distill',
+      projectRoot: 'C:/repo',
+      stoaSessionId: 'session_1',
+      providerSessionId: 'provider-session-1',
+      turnId: 'turn_distill_fail',
+      error: 'distill failed'
+    })
   })
 })
 

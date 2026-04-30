@@ -3,7 +3,9 @@ import { onMounted, onBeforeUnmount } from 'vue'
 import { storeToRefs } from 'pinia'
 import type { OpenWorkspaceRequest, SessionType } from '@shared/project-session'
 import AppShell from '@renderer/components/AppShell.vue'
+import MemoryToastHost from '@renderer/components/memory/MemoryToastHost.vue'
 import UpdatePrompt from '@renderer/components/update/UpdatePrompt.vue'
+import { useMemoryNotificationsStore } from '@renderer/stores/memory-notifications'
 import { useWorkspaceStore } from '@renderer/stores/workspaces'
 import { useSettingsStore } from '@renderer/stores/settings'
 import { useUpdateStore } from '@renderer/stores/update'
@@ -11,6 +13,7 @@ import { useUpdateStore } from '@renderer/stores/update'
 const workspaceStore = useWorkspaceStore()
 const settingsStore = useSettingsStore()
 const updateStore = useUpdateStore()
+const memoryNotificationsStore = useMemoryNotificationsStore()
 const {
   projectHierarchy,
   activeProjectId,
@@ -22,6 +25,7 @@ const {
   state: updateState,
   shouldShowPrompt
 } = storeToRefs(updateStore)
+const { notifications: memoryNotifications } = storeToRefs(memoryNotificationsStore)
 
 function handleProjectSelect(projectId: string): void {
   workspaceStore.setActiveProject(projectId)
@@ -110,11 +114,18 @@ async function handleOpenWorkspace(request: OpenWorkspaceRequest): Promise<void>
 }
 
 let unsubscribeUpdateState: (() => void) | null = null
+let unsubscribeMemoryNotification: (() => void) | null = null
 let isUnmounted = false
 
 onMounted(async () => {
   unsubscribeUpdateState = window.stoa.onUpdateState((state) => {
     updateStore.applyState(state)
+  })
+  unsubscribeMemoryNotification = window.stoa.onMemoryNotification((event) => {
+    if (event.sessionId !== activeSessionId.value) {
+      return
+    }
+    memoryNotificationsStore.enqueue(event)
   })
 
   const bootstrapState = await window.stoa.getBootstrapState()
@@ -146,6 +157,8 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   isUnmounted = true
   unsubscribeUpdateState?.()
+  unsubscribeMemoryNotification?.()
+  memoryNotificationsStore.reset()
   workspaceStore.unsubscribeObservability()
 })
 </script>
@@ -175,5 +188,6 @@ onBeforeUnmount(() => {
       @download="void updateStore.downloadUpdate()"
       @install="void updateStore.quitAndInstallUpdate()"
     />
+    <MemoryToastHost :notifications="memoryNotifications" />
   </div>
 </template>

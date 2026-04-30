@@ -5,6 +5,7 @@ import type {
   CreateProjectRequest,
   CreateSessionRequest,
   MemoryAssetRequest,
+  MemoryNotificationEvent,
   MemoryRecallExplanationRequest,
   MemoryStateSummaryRequest,
   MemoryTurnTraceRequest,
@@ -103,6 +104,11 @@ const api: RendererApi = {
     const handler = (_event: Electron.IpcRendererEvent, chunk: TerminalDataChunk) => callback(chunk)
     ipcRenderer.on(IPC_CHANNELS.terminalData, handler)
     return () => ipcRenderer.removeListener(IPC_CHANNELS.terminalData, handler)
+  },
+  onMemoryNotification(callback: (event: MemoryNotificationEvent) => void) {
+    const handler = (_event: Electron.IpcRendererEvent, event: MemoryNotificationEvent) => callback(event)
+    ipcRenderer.on(IPC_CHANNELS.memoryNotification, handler)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.memoryNotification, handler)
   },
   onSessionEvent(callback: (event: SessionSummaryEvent) => void) {
     const handler = (_event: Electron.IpcRendererEvent, event: SessionSummaryEvent) => callback(event)

@@ -25,6 +25,21 @@ interface ExecutionCapabilityResolver {
   resolve: () => Promise<ExecutionCapability>
 }
 
+export interface TurnMaintenancePhaseEvent {
+  phase: 'solidify' | 'distill'
+  status: 'started' | 'completed' | 'failed'
+  jobId: string
+  projectRoot: string
+  stoaSessionId: string
+  providerSessionId?: string
+  turnId: string
+  error?: string
+}
+
+interface TurnMaintenanceObserver {
+  onPhaseEvent?: (event: TurnMaintenancePhaseEvent) => void
+}
+
 export class TurnMaintenancePhaseError extends Error {
   constructor(
     readonly jobId: string,
@@ -40,7 +55,8 @@ export class TurnMaintenanceRunner {
   constructor(
     private readonly gateway: TurnMaintenanceGateway,
     private readonly inference: InferenceCapabilityResolver,
-    private readonly execution: ExecutionCapabilityResolver
+    private readonly execution: ExecutionCapabilityResolver,
+    private readonly observer: TurnMaintenanceObserver = {}
   ) {}
 
   async run(input: TurnScopedBridgeOptions & Pick<ProcessTurnOptions, 'evidenceRefs'>): Promise<ProcessTurnResult> {
@@ -92,31 +108,95 @@ export class TurnMaintenanceRunner {
         })
       }
 
-      const solidify = await this.gateway.prepareSolidify(turnScope)
-      if (solidify) {
-        const result = await execution.run({
-          commands: solidify.commands,
-          projectRoot: input.projectRoot
+      try {
+        const solidify = await this.gateway.prepareSolidify(turnScope)
+        if (solidify) {
+          this.observer.onPhaseEvent?.({
+            phase: 'solidify',
+            status: 'started',
+            jobId: job.jobId,
+            projectRoot: input.projectRoot,
+            stoaSessionId: input.stoaSessionId,
+            providerSessionId: input.providerSessionId,
+            turnId: input.turnId
+          })
+          const result = await execution.run({
+            commands: solidify.commands,
+            projectRoot: input.projectRoot
+          })
+          await this.gateway.completeSolidify({
+            ...turnScope,
+            result
+          })
+          this.observer.onPhaseEvent?.({
+            phase: 'solidify',
+            status: 'completed',
+            jobId: job.jobId,
+            projectRoot: input.projectRoot,
+            stoaSessionId: input.stoaSessionId,
+            providerSessionId: input.providerSessionId,
+            turnId: input.turnId
+          })
+        }
+      } catch (error) {
+        this.observer.onPhaseEvent?.({
+          phase: 'solidify',
+          status: 'failed',
+          jobId: job.jobId,
+          projectRoot: input.projectRoot,
+          stoaSessionId: input.stoaSessionId,
+          providerSessionId: input.providerSessionId,
+          turnId: input.turnId,
+          error: error instanceof Error ? error.message : String(error)
         })
-        await this.gateway.completeSolidify({
-          ...turnScope,
-          result
-        })
+        throw error
       }
 
-      const distill = await this.gateway.prepareDistill(turnScope)
-      if (distill) {
-        const distillResponse = await inference.invoke({
-          purpose: 'distill',
-          prompt: distill.prompt,
-          responseFormat: distill.responseFormat,
+      try {
+        const distill = await this.gateway.prepareDistill(turnScope)
+        if (distill) {
+          this.observer.onPhaseEvent?.({
+            phase: 'distill',
+            status: 'started',
+            jobId: job.jobId,
+            projectRoot: input.projectRoot,
+            stoaSessionId: input.stoaSessionId,
+            providerSessionId: input.providerSessionId,
+            turnId: input.turnId
+          })
+          const distillResponse = await inference.invoke({
+            purpose: 'distill',
+            prompt: distill.prompt,
+            responseFormat: distill.responseFormat,
+            projectRoot: input.projectRoot,
+            modelHint: inference.modelHint
+          })
+          await this.gateway.completeDistill({
+            ...turnScope,
+            response: distillResponse.content
+          })
+          this.observer.onPhaseEvent?.({
+            phase: 'distill',
+            status: 'completed',
+            jobId: job.jobId,
+            projectRoot: input.projectRoot,
+            stoaSessionId: input.stoaSessionId,
+            providerSessionId: input.providerSessionId,
+            turnId: input.turnId
+          })
+        }
+      } catch (error) {
+        this.observer.onPhaseEvent?.({
+          phase: 'distill',
+          status: 'failed',
+          jobId: job.jobId,
           projectRoot: input.projectRoot,
-          modelHint: inference.modelHint
+          stoaSessionId: input.stoaSessionId,
+          providerSessionId: input.providerSessionId,
+          turnId: input.turnId,
+          error: error instanceof Error ? error.message : String(error)
         })
-        await this.gateway.completeDistill({
-          ...turnScope,
-          response: distillResponse.content
-        })
+        throw error
       }
     } catch (error) {
       throw new TurnMaintenancePhaseError(

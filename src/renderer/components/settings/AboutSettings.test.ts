@@ -47,6 +47,7 @@ function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
     explainMemoryRecall: vi.fn().mockResolvedValue({}),
     getMemoryAsset: vi.fn().mockResolvedValue(null),
     onTerminalData: vi.fn().mockReturnValue(() => {}),
+    onMemoryNotification: vi.fn().mockReturnValue(() => {}),
     onSessionEvent: vi.fn().mockReturnValue(() => {}),
     getSessionPresence: vi.fn().mockResolvedValue(null),
     getProjectObservability: vi.fn().mockResolvedValue(null),

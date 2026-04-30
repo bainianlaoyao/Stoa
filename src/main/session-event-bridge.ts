@@ -6,7 +6,12 @@ import { createTranscriptSnapshot } from '@core/memory/transcript-snapshot'
 import { createLocalWebhookServer } from '@core/webhook-server'
 import type { EvolverClient, RecallOptions, WarmStartOptions } from '@core/memory/evolver-client'
 import type { ProjectSessionManager } from '@core/project-session-manager'
-import type { CanonicalSessionEvent, SessionStatePatchEvent, SessionType } from '@shared/project-session'
+import type {
+  CanonicalSessionEvent,
+  MemoryNotificationEvent,
+  SessionStatePatchEvent,
+  SessionType
+} from '@shared/project-session'
 import type { DeliveryEnvelope, EvidenceRef, RuntimeJobRecord } from '@shared/memory-runtime'
 import type { ObservationCategory, ObservationEvent, ObservationRetention, ObservationSeverity } from '@shared/observability'
 
@@ -65,6 +70,7 @@ interface SessionEventBridgeOptions {
   evolverBridge?: EvolverBridgeLike
   turnMaintenanceRunner?: TurnMaintenanceRunnerLike
   createRuntimeStateStore?: (projectPath: string) => RuntimeStateStoreLike
+  onMemoryNotification?: (notification: MemoryNotificationEvent) => void
 }
 
 export class SessionEventBridge {
@@ -79,6 +85,7 @@ export class SessionEventBridge {
   private readonly evolverBridge?: EvolverBridgeLike
   private readonly turnMaintenanceRunner?: TurnMaintenanceRunnerLike
   private readonly createRuntimeStateStore: (projectPath: string) => RuntimeStateStoreLike
+  private readonly onMemoryNotification?: (notification: MemoryNotificationEvent) => void
   private server: ReturnType<typeof createLocalWebhookServer> | null = null
   private port: number | null = null
 
@@ -101,6 +108,7 @@ export class SessionEventBridge {
     this.evolverBridge = options.evolverBridge
     this.turnMaintenanceRunner = options.turnMaintenanceRunner
     this.createRuntimeStateStore = options.createRuntimeStateStore ?? ((projectPath) => new RuntimeStateStore(projectPath))
+    this.onMemoryNotification = options.onMemoryNotification
   }
 
   async start(): Promise<number> {
@@ -392,14 +400,33 @@ export class SessionEventBridge {
           return null
         }
 
-        const delivery = await this.evolverBridge.recall({
-          projectRoot: projectPath,
-          consumer,
-          stoaSessionId: event.session_id,
-          providerSessionId: event.evidence.providerSessionId,
-          taskText
-        })
-        return toHookResponse(delivery, hookEventName)
+        try {
+          const delivery = await this.evolverBridge.recall({
+            projectRoot: projectPath,
+            consumer,
+            stoaSessionId: event.session_id,
+            providerSessionId: event.evidence.providerSessionId,
+            taskText
+          })
+          this.onMemoryNotification?.({
+            id: `${event.event_id}:recall`,
+            projectId: event.project_id,
+            sessionId: event.session_id,
+            kind: 'recall',
+            status: delivery?.content ? 'success' : 'info',
+            title: delivery?.content ? 'Memory recalled' : 'Recall checked',
+            message: delivery?.content
+              ? 'Relevant Evolver context was injected for this turn.'
+              : 'No relevant Evolver memory matched this turn.',
+            createdAt: this.nowIso()
+          })
+          return toHookResponse(delivery, hookEventName)
+        } catch (error) {
+          console.warn(
+            `[session-event-bridge] recall failed for session ${event.session_id}: ${error instanceof Error ? error.message : String(error)}`
+          )
+          return null
+        }
       }
       case 'PostToolUse': {
         if (!this.evolverBridge) {

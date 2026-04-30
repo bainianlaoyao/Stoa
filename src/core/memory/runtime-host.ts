@@ -6,11 +6,12 @@ import type { EvolverClientOptions } from './evolver-client'
 import { EvolverClient } from './evolver-client'
 import { ExecutionRouter } from './execution-router'
 import { InferenceRouter } from './inference-router'
+import { StoaEvolverBridge } from './stoa-evolver-bridge'
 import {
   createClaudeCodeInferenceCapability,
   createWorkspaceShellExecutionCapability
 } from './runtime-capabilities'
-import { TurnMaintenanceRunner } from './turn-maintenance-runner'
+import { TurnMaintenanceRunner, type TurnMaintenancePhaseEvent } from './turn-maintenance-runner'
 
 type RuntimeHostSettings = Pick<
   AppSettings,
@@ -24,7 +25,7 @@ interface RuntimeHostSettingsReader {
 export interface MemoryRuntimeHost {
   availability: 'disabled' | 'recall-only' | 'full'
   diagnostics: string[]
-  evolverBridge?: EvolverClient
+  evolverBridge?: StoaEvolverBridge
   turnMaintenanceRunner?: TurnMaintenanceRunner
 }
 
@@ -35,6 +36,7 @@ export interface CreateMemoryRuntimeHostOptions {
   runJsonCommand?: EvolverClientOptions['runJsonCommand']
   detectShell?: () => Promise<string | null>
   detectProvider?: (providerId: string, shellPath?: string | null) => Promise<string | null>
+  onTurnPhaseEvent?: (event: TurnMaintenancePhaseEvent) => void
 }
 
 export async function createMemoryRuntimeHost(options: CreateMemoryRuntimeHostOptions): Promise<MemoryRuntimeHost> {
@@ -53,12 +55,16 @@ export async function createMemoryRuntimeHost(options: CreateMemoryRuntimeHostOp
     }
   }
 
-  const evolverBridge = new EvolverClient({
+  const evolverClient = new EvolverClient({
     command: bundledEvolverCli.command,
     cwd: bundledEvolverCli.repoRoot,
     argsPrefix: bundledEvolverCli.argsPrefix,
     env: bundledEvolverCli.env,
     runJsonCommand: options.runJsonCommand
+  })
+  const evolverBridge = new StoaEvolverBridge({
+    repoRoot: bundledEvolverCli.repoRoot,
+    delegate: evolverClient
   })
 
   const hasStrictProviderResolution = typeof options.detectProvider === 'function' || typeof options.detectShell === 'function'
@@ -117,7 +123,10 @@ export async function createMemoryRuntimeHost(options: CreateMemoryRuntimeHostOp
     turnMaintenanceRunner: new TurnMaintenanceRunner(
       evolverBridge,
       inferenceRouter,
-      executionRouter
+      executionRouter,
+      {
+        onPhaseEvent: options.onTurnPhaseEvent
+      }
     )
   }
 }

@@ -387,6 +387,7 @@ describe('E2E: Main Process Config Guard', () => {
       expect(constants.get('memoryTraceTurn')).toBe('memory:trace-turn')
       expect(constants.get('memoryExplainRecall')).toBe('memory:explain-recall')
       expect(constants.get('memoryGetAsset')).toBe('memory:get-asset')
+      expect(constants.get('memoryNotification')).toBe('memory:notification')
     })
   })
 
@@ -405,8 +406,16 @@ describe('E2E: Main Process Config Guard', () => {
       expect(preloadSource).toMatch(/ipcRenderer\.on\(\s*IPC_CHANNELS\.updateState/)
     })
 
+    it('preload registers listener for memory:notification channel', () => {
+      expect(preloadSource).toMatch(/ipcRenderer\.on\(\s*IPC_CHANNELS\.memoryNotification/)
+    })
+
     it('main process uses webContents.send for update state', () => {
       expect(mainSource).toMatch(/webContents\.send\(\s*IPC_CHANNELS\.updateState/)
+    })
+
+    it('main process uses webContents.send for memory notifications', () => {
+      expect(mainSource).toMatch(/webContents\.send\(\s*IPC_CHANNELS\.memoryNotification/)
     })
 
     it('activate path resends the latest update state after recreating the window', () => {

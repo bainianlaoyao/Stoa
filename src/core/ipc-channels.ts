@@ -15,6 +15,7 @@ export const IPC_CHANNELS = {
   memoryTraceTurn: 'memory:trace-turn',
   memoryExplainRecall: 'memory:explain-recall',
   memoryGetAsset: 'memory:get-asset',
+  memoryNotification: 'memory:notification',
   sessionEvent: 'session:event',
   workspaceOpen: 'workspace:open',
   observabilityGetSessionPresence: 'observability:get-session-presence',

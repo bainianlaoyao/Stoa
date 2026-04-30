@@ -62,6 +62,7 @@ describe('AppShell', () => {
       sendSessionInput: vi.fn().mockResolvedValue(undefined),
       sendSessionResize: vi.fn().mockResolvedValue(undefined),
       onTerminalData: vi.fn().mockReturnValue(() => {}),
+      onMemoryNotification: vi.fn().mockReturnValue(() => {}),
       onSessionEvent: vi.fn().mockReturnValue(() => {}),
       getSessionPresence: vi.fn().mockResolvedValue(null),
       getProjectObservability: vi.fn().mockResolvedValue(null),

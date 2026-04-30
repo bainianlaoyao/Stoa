@@ -5,7 +5,12 @@ import { createPinia, setActivePinia, type Pinia } from 'pinia'
 import { useWorkspaceStore } from '@renderer/stores/workspaces'
 import { useUpdateStore } from '@renderer/stores/update'
 import App from './App.vue'
-import type { BootstrapState, ProjectSummary, SessionSummary } from '@shared/project-session'
+import type {
+  BootstrapState,
+  MemoryNotificationEvent,
+  ProjectSummary,
+  SessionSummary
+} from '@shared/project-session'
 import type { SessionPresenceSnapshot } from '@shared/observability'
 import type { UpdateState } from '@shared/update-state'
 
@@ -102,6 +107,20 @@ function createUpdateState(overrides: Partial<UpdateState> = {}): UpdateState {
   }
 }
 
+function createMemoryNotification(overrides: Partial<MemoryNotificationEvent> = {}): MemoryNotificationEvent {
+  return {
+    id: 'memory-toast-1',
+    projectId: 'project_1',
+    sessionId: 'session_1',
+    kind: 'recall',
+    status: 'success',
+    title: 'Memory recalled',
+    message: 'Relevant Evolver context was injected for this turn.',
+    createdAt: '2026-04-29T02:00:00.000Z',
+    ...overrides
+  }
+}
+
 async function flush(): Promise<void> {
   await new Promise((r) => setTimeout(r, 0))
   await new Promise((r) => setTimeout(r, 0))
@@ -127,6 +146,7 @@ function setupStoa(overrides?: Partial<typeof window.stoa>) {
     sendSessionInput: vi.fn().mockResolvedValue(undefined),
     sendSessionResize: vi.fn().mockResolvedValue(undefined),
     onTerminalData: vi.fn().mockReturnValue(() => {}),
+    onMemoryNotification: vi.fn().mockReturnValue(() => {}),
     onSessionEvent: vi.fn().mockReturnValue(() => {}),
     getSessionPresence: vi.fn().mockResolvedValue(null),
     getProjectObservability: vi.fn().mockResolvedValue(null),
@@ -262,6 +282,16 @@ describe('App (root)', () => {
       expect(onUpdateState).toHaveBeenCalledOnce()
     })
 
+    it('on mount subscribes to pushed memory notifications', async () => {
+      const onMemoryNotification = vi.fn().mockReturnValue(() => {})
+      setupStoa({ onMemoryNotification })
+
+      wrapper = await mountApp(pinia)
+      await flush()
+
+      expect(onMemoryNotification).toHaveBeenCalledOnce()
+    })
+
     it('applies pushed update state from the bridge', async () => {
       let listener: ((state: UpdateState) => void) | undefined
       setupStoa({
@@ -278,6 +308,61 @@ describe('App (root)', () => {
 
       expect(useUpdateStore(pinia).state.phase).toBe('downloaded')
       expect(useUpdateStore(pinia).state.downloadedVersion).toBe('0.2.0')
+    })
+
+    it('renders a pushed memory notification for the active session', async () => {
+      let listener: ((event: MemoryNotificationEvent) => void) | undefined
+      const hydratedState: BootstrapState = {
+        activeProjectId: 'project_1',
+        activeSessionId: 'session_1',
+        terminalWebhookPort: 0,
+        projects: [{ id: 'project_1', name: 'Proj', path: '/p', createdAt: 't', updatedAt: 't' }],
+        sessions: [createSessionSummary({ id: 'session_1', projectId: 'project_1', title: 'Claude Session' })]
+      }
+
+      setupStoa({
+        getBootstrapState: vi.fn().mockResolvedValue(hydratedState),
+        onMemoryNotification: vi.fn().mockImplementation((callback: (event: MemoryNotificationEvent) => void) => {
+          listener = callback
+          return () => {}
+        })
+      })
+
+      wrapper = await mountApp(pinia)
+      await flush()
+      listener?.(createMemoryNotification())
+      await flush()
+
+      expect(wrapper.get('[data-testid="memory-toast-host"]').text()).toContain('Memory recalled')
+      expect(wrapper.get('[data-testid="memory-toast"]').text()).toContain(
+        'Relevant Evolver context was injected for this turn.'
+      )
+    })
+
+    it('ignores pushed memory notifications for inactive sessions', async () => {
+      let listener: ((event: MemoryNotificationEvent) => void) | undefined
+      const hydratedState: BootstrapState = {
+        activeProjectId: 'project_1',
+        activeSessionId: 'session_1',
+        terminalWebhookPort: 0,
+        projects: [{ id: 'project_1', name: 'Proj', path: '/p', createdAt: 't', updatedAt: 't' }],
+        sessions: [createSessionSummary({ id: 'session_1', projectId: 'project_1', title: 'Claude Session' })]
+      }
+
+      setupStoa({
+        getBootstrapState: vi.fn().mockResolvedValue(hydratedState),
+        onMemoryNotification: vi.fn().mockImplementation((callback: (event: MemoryNotificationEvent) => void) => {
+          listener = callback
+          return () => {}
+        })
+      })
+
+      wrapper = await mountApp(pinia)
+      await flush()
+      listener?.(createMemoryNotification({ sessionId: 'session_2' }))
+      await flush()
+
+      expect(wrapper.find('[data-testid="memory-toast-host"]').exists()).toBe(false)
     })
 
     it('reads update state after subscribing so startup sees the latest transition', async () => {

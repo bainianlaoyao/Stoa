@@ -117,7 +117,7 @@ function buildClaudeHooksForContext(context: ProviderCommandContext): ClaudeHook
 
 function buildHookCommand(_eventName: 'SessionStart'): string {
   if (process.platform === 'win32') {
-    return `.\\.claude\\hooks\\${STOA_CLAUDE_HOOK_SCRIPT_NAMES.sessionStartLauncher}`
+    return `".\\.claude\\hooks\\${STOA_CLAUDE_HOOK_SCRIPT_NAMES.sessionStartLauncher}"`
   }
 
   return `"${process.execPath}" "./.claude/hooks/${STOA_CLAUDE_HOOK_SCRIPT_NAMES.sessionStart}"`

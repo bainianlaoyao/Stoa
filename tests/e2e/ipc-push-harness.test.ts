@@ -2,7 +2,12 @@ import { beforeEach, describe, expect, test } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { IPC_CHANNELS } from '@core/ipc-channels'
 import { useWorkspaceStore } from '@renderer/stores/workspaces'
-import type { RendererApi, SessionSummary, TerminalDataChunk } from '@shared/project-session'
+import type {
+  MemoryNotificationEvent,
+  RendererApi,
+  SessionSummary,
+  TerminalDataChunk
+} from '@shared/project-session'
 import type { SessionPresenceSnapshot } from '@shared/observability'
 import { FakeIpcPushBus } from './helpers'
 
@@ -20,6 +25,11 @@ function createPreloadApi(bus: FakeIpcPushBus): RendererApi {
       const handler = (_event: undefined, chunk: TerminalDataChunk) => callback(chunk)
       bus.on(IPC_CHANNELS.terminalData, handler)
       return () => bus.removeListener(IPC_CHANNELS.terminalData, handler)
+    },
+    onMemoryNotification(callback) {
+      const handler = (_event: undefined, event: MemoryNotificationEvent) => callback(event)
+      bus.on(IPC_CHANNELS.memoryNotification, handler)
+      return () => bus.removeListener(IPC_CHANNELS.memoryNotification, handler)
     },
     onSessionPresenceChanged(callback) {
       const handler = (_event: undefined, snapshot: SessionPresenceSnapshot) => callback(snapshot)
@@ -143,6 +153,40 @@ describe('E2E: IPC Push Harness', () => {
     expect(received[0]!.runtimeState).toBe('starting')
     expect(received[1]!.runtimeState).toBe('alive')
     expect(received[2]!.runtimeState).toBe('exited')
+  })
+
+  test('delivers memory notifications to active subscribers', () => {
+    const bus = new FakeIpcPushBus()
+    const api = createPreloadApi(bus)
+    const received: MemoryNotificationEvent[] = []
+
+    api.onMemoryNotification((event) => {
+      received.push(event)
+    })
+
+    bus.push(IPC_CHANNELS.memoryNotification, {
+      id: 'memory-toast-1',
+      projectId: 'project_alpha',
+      sessionId: 'session_op_1',
+      kind: 'recall',
+      status: 'success',
+      title: 'Memory recalled',
+      message: 'Relevant Evolver context was injected for this turn.',
+      createdAt: '2026-04-29T02:00:00.000Z'
+    } satisfies MemoryNotificationEvent)
+
+    expect(received).toEqual([
+      {
+        id: 'memory-toast-1',
+        projectId: 'project_alpha',
+        sessionId: 'session_op_1',
+        kind: 'recall',
+        status: 'success',
+        title: 'Memory recalled',
+        message: 'Relevant Evolver context was injected for this turn.',
+        createdAt: '2026-04-29T02:00:00.000Z'
+      }
+    ])
   })
 
   test('unsubscribe stops further push delivery', () => {

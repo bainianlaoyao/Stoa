@@ -70,6 +70,7 @@ function createStoaMock(overrides?: Partial<typeof window.stoa>): typeof window.
     sendSessionInput: vi.fn().mockResolvedValue(undefined),
     sendSessionResize: vi.fn().mockResolvedValue(undefined),
     onTerminalData: vi.fn().mockReturnValue(() => {}),
+    onMemoryNotification: vi.fn().mockReturnValue(() => {}),
     getSessionPresence: vi.fn().mockResolvedValue(null),
     getProjectObservability: vi.fn().mockResolvedValue(null),
     getAppObservability: vi.fn().mockResolvedValue({
