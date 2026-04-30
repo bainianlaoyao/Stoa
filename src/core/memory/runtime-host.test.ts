@@ -4,6 +4,8 @@ import { join } from 'node:path'
 import { describe, expect, test, vi } from 'vitest'
 import { createMemoryRuntimeHost } from './runtime-host'
 
+const MOCK_EVOLVER_REPO_ROOT = 'D:/repo/research/upstreams/evolver'
+
 describe('createMemoryRuntimeHost', () => {
   test('returns disabled availability when bundled evolver is unavailable', async () => {
     const host = await createMemoryRuntimeHost({
@@ -13,7 +15,7 @@ describe('createMemoryRuntimeHost', () => {
         providers: {},
         shellPath: ''
       },
-      resolveBundledEvolverCli: vi.fn(async () => {
+      resolveBundledEvolverRepoRoot: vi.fn(async () => {
         throw new Error('missing evolver')
       })
     })
@@ -32,12 +34,7 @@ describe('createMemoryRuntimeHost', () => {
         providers: {},
         shellPath: ''
       },
-      resolveBundledEvolverCli: vi.fn(async () => ({
-        command: 'node',
-        repoRoot: 'D:/repo/research/upstreams/evolver',
-        argsPrefix: ['index.js'],
-        env: {}
-      }))
+      resolveBundledEvolverRepoRoot: vi.fn(async () => MOCK_EVOLVER_REPO_ROOT)
     })
 
     expect(host.availability).toBe('recall-only')
@@ -60,12 +57,7 @@ describe('createMemoryRuntimeHost', () => {
         shellPath: ''
       },
       runJsonCommand,
-      resolveBundledEvolverCli: vi.fn(async () => ({
-        command: 'node',
-        repoRoot: 'D:/repo/research/upstreams/evolver',
-        argsPrefix: ['index.js'],
-        env: {}
-      }))
+      resolveBundledEvolverRepoRoot: vi.fn(async () => MOCK_EVOLVER_REPO_ROOT)
     })
 
     await expect(host.evolverBridge?.recall({
@@ -81,8 +73,8 @@ describe('createMemoryRuntimeHost', () => {
 
     expect(runJsonCommand).toHaveBeenCalledOnce()
     expect(runJsonCommand.mock.calls[0]![0]).toMatchObject({
-      command: 'node',
-      args: ['index.js', 'host-bridge', 'recall', expect.stringMatching(/^--request-file=/), '--json']
+      command: process.execPath,
+      args: [join(MOCK_EVOLVER_REPO_ROOT, 'index.js'), 'host-bridge', 'recall', expect.stringMatching(/^--request-file=/), '--json']
     })
   })
 
@@ -97,12 +89,7 @@ describe('createMemoryRuntimeHost', () => {
         shellPath: ''
       },
       runJsonCommand,
-      resolveBundledEvolverCli: vi.fn(async () => ({
-        command: 'node',
-        repoRoot: 'D:/repo/research/upstreams/evolver',
-        argsPrefix: ['index.js'],
-        env: {}
-      }))
+      resolveBundledEvolverRepoRoot: vi.fn(async () => MOCK_EVOLVER_REPO_ROOT)
     })
 
     try {
@@ -132,12 +119,7 @@ describe('createMemoryRuntimeHost', () => {
         },
         shellPath: ''
       },
-      resolveBundledEvolverCli: vi.fn(async () => ({
-        command: 'node',
-        repoRoot: 'D:/repo/research/upstreams/evolver',
-        argsPrefix: ['index.js'],
-        env: {}
-      }))
+      resolveBundledEvolverRepoRoot: vi.fn(async () => MOCK_EVOLVER_REPO_ROOT)
     })
 
     expect(host.availability).toBe('full')
@@ -155,12 +137,7 @@ describe('createMemoryRuntimeHost', () => {
         providers: {},
         shellPath: ''
       },
-      resolveBundledEvolverCli: vi.fn(async () => ({
-        command: 'node',
-        repoRoot: 'D:/repo/research/upstreams/evolver',
-        argsPrefix: ['index.js'],
-        env: {}
-      })),
+      resolveBundledEvolverRepoRoot: vi.fn(async () => MOCK_EVOLVER_REPO_ROOT),
       detectShell: vi.fn(async () => 'C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe'),
       detectProvider
     })
@@ -179,12 +156,7 @@ describe('createMemoryRuntimeHost', () => {
         providers: {},
         shellPath: ''
       },
-      resolveBundledEvolverCli: vi.fn(async () => ({
-        command: 'node',
-        repoRoot: 'D:/repo/research/upstreams/evolver',
-        argsPrefix: ['index.js'],
-        env: {}
-      })),
+      resolveBundledEvolverRepoRoot: vi.fn(async () => MOCK_EVOLVER_REPO_ROOT),
       detectShell: vi.fn(async () => 'C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe'),
       detectProvider: vi.fn(async () => null)
     })

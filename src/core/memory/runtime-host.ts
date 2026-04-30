@@ -1,7 +1,8 @@
+import { join } from 'node:path'
 import type { AppSettings, EvolverInferenceProvider } from '@shared/project-session'
 import { getProviderDescriptorByProviderId } from '@shared/provider-descriptors'
 import { resolveProviderExecutablePath } from '@core/provider-path-resolver'
-import { resolveBundledEvolverCli } from './bundled-evolver'
+import { resolveBundledEvolverRepoRoot } from './bundled-evolver'
 import type { EvolverClientOptions } from './evolver-client'
 import { EvolverClient } from './evolver-client'
 import { ExecutionRouter } from './execution-router'
@@ -32,7 +33,7 @@ export interface MemoryRuntimeHost {
 export interface CreateMemoryRuntimeHostOptions {
   settings: RuntimeHostSettings | RuntimeHostSettingsReader
   cwd?: string
-  resolveBundledEvolverCli?: typeof resolveBundledEvolverCli
+  resolveBundledEvolverRepoRoot?: typeof resolveBundledEvolverRepoRoot
   runJsonCommand?: EvolverClientOptions['runJsonCommand']
   detectShell?: () => Promise<string | null>
   detectProvider?: (providerId: string, shellPath?: string | null) => Promise<string | null>
@@ -43,9 +44,9 @@ export async function createMemoryRuntimeHost(options: CreateMemoryRuntimeHostOp
   const settingsReader = normalizeSettingsReader(options.settings)
   const diagnostics: string[] = []
 
-  let bundledEvolverCli: Awaited<ReturnType<typeof resolveBundledEvolverCli>>
+  let repoRoot: string
   try {
-    bundledEvolverCli = await (options.resolveBundledEvolverCli ?? resolveBundledEvolverCli)(options.cwd ?? process.cwd())
+    repoRoot = await (options.resolveBundledEvolverRepoRoot ?? resolveBundledEvolverRepoRoot)(options.cwd ?? process.cwd())
   } catch (error) {
     return {
       availability: 'disabled',
@@ -56,14 +57,14 @@ export async function createMemoryRuntimeHost(options: CreateMemoryRuntimeHostOp
   }
 
   const evolverClient = new EvolverClient({
-    command: bundledEvolverCli.command,
-    cwd: bundledEvolverCli.repoRoot,
-    argsPrefix: bundledEvolverCli.argsPrefix,
-    env: bundledEvolverCli.env,
+    command: process.execPath,
+    cwd: repoRoot,
+    argsPrefix: [join(repoRoot, 'index.js')],
+    env: {},
     runJsonCommand: options.runJsonCommand
   })
   const evolverBridge = new StoaEvolverBridge({
-    repoRoot: bundledEvolverCli.repoRoot,
+    repoRoot,
     delegate: evolverClient
   })
 

@@ -4,8 +4,6 @@ import { join } from 'node:path'
 
 export interface BundledEvolverResolverOptions {
   resourcesPath?: string
-  execPath?: string
-  isElectronRuntime?: boolean
 }
 
 async function pathExists(candidatePath: string): Promise<boolean> {
@@ -46,10 +44,6 @@ function buildRepoRootCandidates(cwd: string, options: BundledEvolverResolverOpt
   return candidates.filter((candidate): candidate is string => candidate !== null)
 }
 
-function isElectronRuntime(options: BundledEvolverResolverOptions): boolean {
-  return options.isElectronRuntime ?? typeof process.versions.electron === 'string'
-}
-
 export async function resolveBundledEvolverRepoRoot(
   cwd: string = process.cwd(),
   options: BundledEvolverResolverOptions = {}
@@ -63,36 +57,4 @@ export async function resolveBundledEvolverRepoRoot(
   }
 
   throw new Error('Bundled Evolver repository is unavailable')
-}
-
-export async function resolveBundledEvolverCli(
-  cwd: string = process.cwd(),
-  options: BundledEvolverResolverOptions = {}
-): Promise<{
-  command: string
-  argsPrefix: string[]
-  repoRoot: string
-  env: NodeJS.ProcessEnv
-}> {
-  const repoRoot = await resolveBundledEvolverRepoRoot(cwd, options)
-  const packagedResourcesPath = resolvePackagedResourcesPath(options)
-  const packagedRepoRoot = packagedResourcesPath !== null
-    ? join(packagedResourcesPath, 'evolver')
-    : null
-  const env: NodeJS.ProcessEnv = {}
-
-  if (
-    packagedRepoRoot !== null
-    && repoRoot === packagedRepoRoot
-    && isElectronRuntime(options)
-  ) {
-    env.ELECTRON_RUN_AS_NODE = '1'
-  }
-
-  return {
-    command: options.execPath ?? process.execPath,
-    argsPrefix: [join(repoRoot, 'index.js')],
-    repoRoot,
-    env
-  }
 }
