@@ -103,19 +103,10 @@ describe('Upstream Boundary Guard', () => {
   })
 
   it('no Stoa source file imports from patched src/stoa/ surface', () => {
-    // Files scheduled for deletion in later tasks (Task 3 and Task 4)
-    // still reference patched surfaces. They are tracked as known violations
-    // and excluded until their deletion task lands.
-    const scheduledForDeletion = new Set([
-      'src/core/memory/evolver-publish-context.test.ts',
-    ])
-
     const violations: Array<{ file: string; detail: string }> = []
 
     for (const { relPath, fullPath } of allFiles) {
       if (relPath.includes('upstream-boundary-guard.test.ts')) continue
-      const normalizedRelPath = relPath.replace(/\\/g, '/')
-      if (scheduledForDeletion.has(normalizedRelPath)) continue
 
       const content = readSrc(fullPath)
       const violation = hasPatchedSurfaceImport(content)
