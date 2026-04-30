@@ -574,7 +574,6 @@ app.whenReady().then(async () => {
   }
 
   sessionEventBridge = new SessionEventBridge(projectSessionManager, runtimeController, observabilityService, {
-    evolverBridge: memoryRuntimeHost.evolverBridge,
     turnMaintenanceRunner: memoryRuntimeHost.turnMaintenanceRunner,
     onMemoryNotification: pushMemoryNotification
   })

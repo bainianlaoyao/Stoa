@@ -4,15 +4,13 @@ import { SessionEvidenceStore } from '@core/memory/session-evidence-store'
 import { TurnMaintenancePhaseError } from '@core/memory/turn-maintenance-runner'
 import { createTranscriptSnapshot } from '@core/memory/transcript-snapshot'
 import { createLocalWebhookServer } from '@core/webhook-server'
-import type { EvolverClient, RecallOptions, WarmStartOptions } from '@core/memory/evolver-client'
 import type { ProjectSessionManager } from '@core/project-session-manager'
 import type {
   CanonicalSessionEvent,
   MemoryNotificationEvent,
   SessionStatePatchEvent,
-  SessionType
 } from '@shared/project-session'
-import type { DeliveryEnvelope, EvidenceRef, RuntimeJobRecord } from '@shared/memory-runtime'
+import type { EvidenceRef, RuntimeJobRecord } from '@shared/memory-runtime'
 import type { ObservationCategory, ObservationEvent, ObservationRetention, ObservationSeverity } from '@shared/observability'
 
 interface SessionEventApplier {
@@ -27,12 +25,6 @@ interface EvidenceStoreLike {
   persist: SessionEvidenceStore['persist']
   sealTurn?: SessionEvidenceStore['sealTurn']
   listEvidenceRefsForTurn?: SessionEvidenceStore['listEvidenceRefsForTurn']
-}
-
-interface EvolverBridgeLike {
-  warmStart: (options: WarmStartOptions) => Promise<DeliveryEnvelope | null>
-  recall: (options: RecallOptions) => Promise<DeliveryEnvelope | null>
-  observeWrite: EvolverClient['observeWrite']
 }
 
 interface TurnMaintenanceRunnerLike {
@@ -67,7 +59,6 @@ interface SessionEventBridgeOptions {
   nowIso?: () => string
   evidenceStore?: EvidenceStoreLike
   transcriptSnapshotter?: (event: CanonicalSessionEvent) => Promise<Awaited<ReturnType<typeof createTranscriptSnapshot>>>
-  evolverBridge?: EvolverBridgeLike
   turnMaintenanceRunner?: TurnMaintenanceRunnerLike
   createRuntimeStateStore?: (projectPath: string) => RuntimeStateStoreLike
   onMemoryNotification?: (notification: MemoryNotificationEvent) => void
@@ -82,7 +73,6 @@ export class SessionEventBridge {
   private readonly nowIso: () => string
   private readonly evidenceStore: EvidenceStoreLike
   private readonly transcriptSnapshotter: (event: CanonicalSessionEvent) => Promise<Awaited<ReturnType<typeof createTranscriptSnapshot>>>
-  private readonly evolverBridge?: EvolverBridgeLike
   private readonly turnMaintenanceRunner?: TurnMaintenanceRunnerLike
   private readonly createRuntimeStateStore: (projectPath: string) => RuntimeStateStoreLike
   private readonly onMemoryNotification?: (notification: MemoryNotificationEvent) => void
@@ -105,7 +95,6 @@ export class SessionEventBridge {
         ?? defaultEvidenceStore.listEvidenceRefsForTurn.bind(defaultEvidenceStore)
     }
     this.transcriptSnapshotter = options.transcriptSnapshotter ?? createTranscriptSnapshot
-    this.evolverBridge = options.evolverBridge
     this.turnMaintenanceRunner = options.turnMaintenanceRunner
     this.createRuntimeStateStore = options.createRuntimeStateStore ?? ((projectPath) => new RuntimeStateStore(projectPath))
     this.onMemoryNotification = options.onMemoryNotification
@@ -366,86 +355,16 @@ export class SessionEventBridge {
       return null
     }
 
-    const consumer = toMemoryConsumer(session.type)
-    if (!consumer) {
-      return null
-    }
-
     const hookEventName = event.evidence.hookEventName
     if (!hookEventName) {
       return null
     }
 
     switch (hookEventName) {
-      case 'SessionStart': {
-        if (!this.evolverBridge) {
-          return null
-        }
-
-        const delivery = await this.evolverBridge.warmStart({
-          projectRoot: projectPath,
-          consumer,
-          stoaSessionId: event.session_id,
-          providerSessionId: event.evidence.providerSessionId
-        })
-        return toHookResponse(delivery, hookEventName)
-      }
-      case 'UserPromptSubmit': {
-        if (!this.evolverBridge) {
-          return null
-        }
-
-        const taskText = event.evidence.promptText?.trim()
-        if (!taskText) {
-          return null
-        }
-
-        try {
-          const delivery = await this.evolverBridge.recall({
-            projectRoot: projectPath,
-            consumer,
-            stoaSessionId: event.session_id,
-            providerSessionId: event.evidence.providerSessionId,
-            taskText
-          })
-          this.onMemoryNotification?.({
-            id: `${event.event_id}:recall`,
-            projectId: event.project_id,
-            sessionId: event.session_id,
-            kind: 'recall',
-            status: delivery?.content ? 'success' : 'info',
-            title: delivery?.content ? 'Memory recalled' : 'Recall checked',
-            message: delivery?.content
-              ? 'Relevant Evolver context was injected for this turn.'
-              : 'No relevant Evolver memory matched this turn.',
-            createdAt: this.nowIso()
-          })
-          return toHookResponse(delivery, hookEventName)
-        } catch (error) {
-          console.warn(
-            `[session-event-bridge] recall failed for session ${event.session_id}: ${error instanceof Error ? error.message : String(error)}`
-          )
-          return null
-        }
-      }
-      case 'PostToolUse': {
-        if (!this.evolverBridge) {
-          return null
-        }
-
-        if (event.evidence.toolName !== 'Write' || !evidenceRef) {
-          return null
-        }
-
-        await this.evolverBridge.observeWrite({
-          projectRoot: projectPath,
-          stoaSessionId: event.session_id,
-          providerSessionId: event.evidence.providerSessionId,
-          turnId: evidenceRef.turnId ?? undefined,
-          evidenceRefs: [evidenceRef]
-        })
+      case 'SessionStart':
+      case 'UserPromptSubmit':
+      case 'PostToolUse':
         return null
-      }
       case 'Stop':
       case 'StopFailure': {
         await this.finalizeTurn(projectPath, event, evidenceRef)
@@ -627,33 +546,6 @@ export class SessionEventBridge {
     this.activeTurnIds.clear()
     this.port = null
     await this.manager.setTerminalWebhookPort(null)
-  }
-}
-
-function toMemoryConsumer(sessionType: SessionType): WarmStartOptions['consumer'] | null {
-  switch (sessionType) {
-    case 'claude-code':
-    case 'codex':
-    case 'opencode':
-      return sessionType
-    default:
-      return null
-  }
-}
-
-function toHookResponse(
-  delivery: DeliveryEnvelope | null,
-  hookEventName: 'SessionStart' | 'UserPromptSubmit'
-): SessionEventBridgeHookResponse | null {
-  if (!delivery?.content) {
-    return null
-  }
-
-  return {
-    hookSpecificOutput: {
-      hookEventName,
-      additionalContext: delivery.content
-    }
   }
 }
 

@@ -1,20 +1,28 @@
 import type { ExecutionCapability, InferenceCapability, ProcessTurnResult } from '@shared/memory-runtime'
-import type {
-  CompleteDistillOptions,
-  CompleteReviewOptions,
-  CompleteSolidifyOptions,
-  ProcessTurnOptions,
-  TurnScopedBridgeOptions
-} from './evolver-client'
+import type { ExecutionResult, TurnMaintenanceGateway, TurnScopedBridgeOptions } from './evolver-engine-adapter'
 
-interface TurnMaintenanceGateway {
-  processTurn: (options: ProcessTurnOptions) => Promise<ProcessTurnResult>
-  prepareReview: (options: TurnScopedBridgeOptions) => Promise<{ prompt: string; responseFormat: 'text' | 'json' } | null>
-  completeReview: (options: CompleteReviewOptions) => Promise<void>
-  prepareSolidify: (options: TurnScopedBridgeOptions) => Promise<{ commands: string[] } | null>
-  completeSolidify: (options: CompleteSolidifyOptions) => Promise<void>
-  prepareDistill: (options: TurnScopedBridgeOptions) => Promise<{ prompt: string; responseFormat: 'text' | 'json' } | null>
-  completeDistill: (options: CompleteDistillOptions) => Promise<void>
+interface ProcessTurnOptions extends TurnScopedBridgeOptions {
+  evidenceRefs: import('@shared/memory-runtime').EvidenceRef[]
+  jobId?: string
+  inference?: {
+    provider?: string
+    modelHint?: string
+  }
+  execution?: {
+    mode?: string
+  }
+}
+
+interface CompleteReviewOptions extends TurnScopedBridgeOptions {
+  response: string
+}
+
+interface CompleteSolidifyOptions extends TurnScopedBridgeOptions {
+  result: ExecutionResult
+}
+
+interface CompleteDistillOptions extends TurnScopedBridgeOptions {
+  response: string
 }
 
 interface InferenceCapabilityResolver {

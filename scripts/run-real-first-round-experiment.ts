@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { ProjectSessionManager } from '../src/core/project-session-manager'
-import { createMemoryRuntimeHost, type MemoryRuntimeHost } from '../src/core/memory/runtime-host'
+import { createMemoryRuntimeHost } from '../src/core/memory/runtime-host'
 import { RuntimeStateStore } from '../src/core/memory/runtime-state-store'
 import { detectProvider, detectShell } from '../src/core/settings-detector'
 import { SessionEventBridge } from '../src/main/session-event-bridge'
@@ -63,13 +63,6 @@ interface ScenarioResult {
     session1TurnIds: string[]
     session2TurnIds: string[]
   }
-  memoryDiagnostics: {
-    availability: MemoryRuntimeHost['availability']
-    diagnostics: string[]
-    stateSummary: Record<string, unknown>
-    explainRecall: Record<string, unknown>
-    traceTurn: Record<string, unknown>
-  } | null
   invocations: InvocationRecord[]
   notes: {
     hiddenTeamRule: string
@@ -184,7 +177,6 @@ async function runScenario(input: {
 
   if (memoryEnabled && (
     memoryRuntimeHost?.availability !== 'full'
-    || !memoryRuntimeHost.evolverBridge
     || !memoryRuntimeHost.turnMaintenanceRunner
   )) {
     throw new Error(
@@ -200,9 +192,8 @@ async function runScenario(input: {
       }
     },
     undefined,
-    memoryEnabled && memoryRuntimeHost?.evolverBridge && memoryRuntimeHost.turnMaintenanceRunner
+    memoryEnabled && memoryRuntimeHost?.turnMaintenanceRunner
       ? {
-        evolverBridge: memoryRuntimeHost.evolverBridge,
         turnMaintenanceRunner: memoryRuntimeHost.turnMaintenanceRunner
       }
       : {}
@@ -300,10 +291,6 @@ async function runScenario(input: {
       : null
     const session2Turns = await waitForSealedTurns(runtimeStateStore, sessionKey(project.id, session2.id), 1)
 
-    const memoryDiagnostics = memoryEnabled && memoryRuntimeHost?.evolverBridge
-      ? await collectMemoryDiagnostics(memoryRuntimeHost, repoRoot, session2, session2Turns[0]!, session2RecallPrompt)
-      : null
-
     return {
       label: input.label,
       memoryEnabled,
@@ -331,7 +318,6 @@ async function runScenario(input: {
         session1TurnIds: session1Turns.map((turn) => turn.turnId),
         session2TurnIds: session2Turns.map((turn) => turn.turnId)
       },
-      memoryDiagnostics,
       invocations,
       notes: {
         hiddenTeamRule: HIDDEN_TEAM_RULE,
@@ -426,43 +412,6 @@ function classifyCommandPreference(command: string): CommandPreference {
 
 function formatPromptPath(filePath: string): string {
   return `"${filePath.replaceAll('\\', '/')}"` 
-}
-
-async function collectMemoryDiagnostics(
-  memoryRuntimeHost: MemoryRuntimeHost,
-  repoRoot: string,
-  session: Awaited<ReturnType<ProjectSessionManager['createSession']>>,
-  session2Turn: { turnId: string },
-  taskText: string
-): Promise<NonNullable<ScenarioResult['memoryDiagnostics']>> {
-  if (!memoryRuntimeHost.evolverBridge) {
-    throw new Error('collectMemoryDiagnostics requires an evolverBridge')
-  }
-
-  const providerSessionId = session.externalSessionId ?? undefined
-
-  return {
-    availability: memoryRuntimeHost.availability,
-    diagnostics: memoryRuntimeHost.diagnostics,
-    stateSummary: await memoryRuntimeHost.evolverBridge.getStateSummary({
-      projectRoot: repoRoot,
-      stoaSessionId: session.id,
-      providerSessionId
-    }),
-    explainRecall: await memoryRuntimeHost.evolverBridge.explainRecall({
-      projectRoot: repoRoot,
-      consumer: 'claude-code',
-      stoaSessionId: session.id,
-      providerSessionId,
-      taskText
-    }),
-    traceTurn: await memoryRuntimeHost.evolverBridge.traceTurn({
-      projectRoot: repoRoot,
-      stoaSessionId: session.id,
-      providerSessionId,
-      turnId: session2Turn.turnId
-    })
-  }
 }
 
 function assertDisallowedWorkspaceArtifacts(repoRoot: string): void {

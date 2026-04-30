@@ -107,13 +107,6 @@ describe('Upstream Boundary Guard', () => {
     // still reference patched surfaces. They are tracked as known violations
     // and excluded until their deletion task lands.
     const scheduledForDeletion = new Set([
-      'src/core/memory/evolver-client.ts',
-      'src/core/memory/evolver-client.test.ts',
-      'src/core/memory/stoa-evolver-bridge.ts',
-      'src/core/memory/stoa-evolver-bridge.test.ts',
-      'src/core/memory/host-bridge-cli.test.ts',
-      'src/core/memory/command-runner.ts',
-      'src/core/memory/command-runner.test.ts',
       'src/core/memory/evolver-publish-context.test.ts',
     ])
 

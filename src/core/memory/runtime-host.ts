@@ -1,13 +1,11 @@
-import { join } from 'node:path'
 import type { AppSettings, EvolverInferenceProvider } from '@shared/project-session'
 import { getProviderDescriptorByProviderId } from '@shared/provider-descriptors'
 import { resolveProviderExecutablePath } from '@core/provider-path-resolver'
 import { resolveBundledEvolverRepoRoot } from './bundled-evolver'
-import type { EvolverClientOptions } from './evolver-client'
-import { EvolverClient } from './evolver-client'
+import type { EvolverEngineAdapter } from './evolver-engine-adapter'
+import { createNoOpTurnMaintenanceGateway } from './evolver-engine-adapter'
 import { ExecutionRouter } from './execution-router'
 import { InferenceRouter } from './inference-router'
-import { StoaEvolverBridge } from './stoa-evolver-bridge'
 import {
   createClaudeCodeInferenceCapability,
   createWorkspaceShellExecutionCapability
@@ -26,7 +24,7 @@ interface RuntimeHostSettingsReader {
 export interface MemoryRuntimeHost {
   availability: 'disabled' | 'recall-only' | 'full'
   diagnostics: string[]
-  evolverBridge?: StoaEvolverBridge
+  engineAdapter?: EvolverEngineAdapter
   turnMaintenanceRunner?: TurnMaintenanceRunner
 }
 
@@ -34,7 +32,6 @@ export interface CreateMemoryRuntimeHostOptions {
   settings: RuntimeHostSettings | RuntimeHostSettingsReader
   cwd?: string
   resolveBundledEvolverRepoRoot?: typeof resolveBundledEvolverRepoRoot
-  runJsonCommand?: EvolverClientOptions['runJsonCommand']
   detectShell?: () => Promise<string | null>
   detectProvider?: (providerId: string, shellPath?: string | null) => Promise<string | null>
   onTurnPhaseEvent?: (event: TurnMaintenancePhaseEvent) => void
@@ -56,17 +53,12 @@ export async function createMemoryRuntimeHost(options: CreateMemoryRuntimeHostOp
     }
   }
 
-  const evolverClient = new EvolverClient({
-    command: process.execPath,
-    cwd: repoRoot,
-    argsPrefix: [join(repoRoot, 'index.js')],
-    env: {},
-    runJsonCommand: options.runJsonCommand
-  })
-  const evolverBridge = new StoaEvolverBridge({
+  const engineAdapter: EvolverEngineAdapter = {
     repoRoot,
-    delegate: evolverClient
-  })
+    warmStart: async () => null,
+    recall: async () => null,
+    observeWrite: async () => {}
+  }
 
   const hasStrictProviderResolution = typeof options.detectProvider === 'function' || typeof options.detectShell === 'function'
 
@@ -117,12 +109,14 @@ export async function createMemoryRuntimeHost(options: CreateMemoryRuntimeHostOp
     diagnostics.push(buildRecallOnlyDiagnostic(settingsReader.getSettings().evolverInferenceProvider, error))
   }
 
+  const gateway = createNoOpTurnMaintenanceGateway()
+
   return {
     availability,
     diagnostics,
-    evolverBridge,
+    engineAdapter,
     turnMaintenanceRunner: new TurnMaintenanceRunner(
-      evolverBridge,
+      gateway,
       inferenceRouter,
       executionRouter,
       {
