@@ -4,31 +4,27 @@ import { InferenceRouter } from './inference-router'
 
 describe('InferenceRouter', () => {
   test('resolves the configured inference provider capability', async () => {
-    const claudeCapability = makeInferenceCapability('claude-code')
-    const codexCapability = makeInferenceCapability('codex')
-    const apiCapability = makeInferenceCapability('api')
+    const claudeCapability = makeInferenceCapability()
 
     const router = new InferenceRouter(
       {
-        getInferenceProvider: () => 'codex'
+        getInferenceProvider: () => 'claude-code'
       },
       {
-        'claude-code': vi.fn(async () => claudeCapability),
-        codex: vi.fn(async () => codexCapability),
-        api: vi.fn(async () => apiCapability)
+        'claude-code': vi.fn(async () => claudeCapability)
       }
     )
 
-    await expect(router.resolve()).resolves.toBe(codexCapability)
+    await expect(router.resolve()).resolves.toBe(claudeCapability)
   })
 })
 
-function makeInferenceCapability(provider: 'claude-code' | 'codex' | 'api'): InferenceCapability {
+function makeInferenceCapability(): InferenceCapability {
   return {
-    provider,
+    provider: 'claude-code',
     invoke: vi.fn(async () => ({
-      content: `${provider} response`,
-      provider
+      content: 'claude-code response',
+      provider: 'claude-code'
     }))
   }
 }

@@ -146,9 +146,7 @@ function normalizeAppSettings(settings?: Partial<AppSettings>): AppSettings {
       ? { ...settings.providers }
       : defaults.providers,
     evolverInferenceProvider:
-      settings.evolverInferenceProvider === 'codex'
-      || settings.evolverInferenceProvider === 'claude-code'
-      || settings.evolverInferenceProvider === 'api'
+      settings.evolverInferenceProvider === 'claude-code'
         ? settings.evolverInferenceProvider
         : defaults.evolverInferenceProvider,
     evolverExecutionMode: settings.evolverExecutionMode === 'workspace-shell'
@@ -484,7 +482,7 @@ export class ProjectSessionManager {
       this.settings.providers = value as Record<string, string>
     } else if (
       key === 'evolverInferenceProvider'
-      && (value === 'codex' || value === 'claude-code' || value === 'api')
+      && value === 'claude-code'
     ) {
       this.settings.evolverInferenceProvider = value
     } else if (key === 'evolverExecutionMode' && value === 'workspace-shell') {

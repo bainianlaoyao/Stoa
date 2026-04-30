@@ -173,28 +173,11 @@ describe('ProvidersSettings', () => {
     expect(card.text()).toContain(providerMessages.evolverInference.hint)
   })
 
-  it('renders a hydrated api inference provider selection from persisted settings', async () => {
-    setupVibecodingMock({
-      getSettings: vi.fn().mockResolvedValue({
-        shellPath: '',
-        terminalFontSize: 14,
-        terminalFontFamily: 'JetBrains Mono',
-        providers: {},
-        workspaceIde: { id: 'vscode', executablePath: '' },
-        evolverInferenceProvider: 'api',
-        evolverExecutionMode: 'workspace-shell',
-        claudeDangerouslySkipPermissions: false,
-        locale: 'en'
-      })
-    })
-    const store = useSettingsStore()
-    await store.loadSettings()
-
+  it('renders a hydrated claude-code inference provider selection from persisted settings', async () => {
     const wrapper = mountProvidersSettings()
-    const trigger = wrapper.get('[data-settings-field="evolver-inference-provider"] [data-testid="glass-listbox-button"]')
+    const trigger = wrapper.find('[data-settings-field="evolver-inference-provider"] [data-testid="glass-listbox-button"]')
 
-    expect(store.evolverInferenceProvider).toBe('api')
-    expect(trigger.text()).toContain(providerMessages.evolverInference.options.api)
+    expect(trigger.text()).toContain('Claude Code')
   })
 
   it('renders Browse button for each provider', () => {
@@ -242,49 +225,6 @@ describe('ProvidersSettings', () => {
     await toggle.trigger('click')
 
     expect(setSettingMock).toHaveBeenCalledWith('claudeDangerouslySkipPermissions', true)
-  })
-
-  it('updates the evolver inference provider setting from the selector', async () => {
-    const setSettingMock = vi.fn().mockResolvedValue(undefined)
-    setupVibecodingMock({ setSetting: setSettingMock })
-
-    const wrapper = mountProvidersSettings()
-
-    await nextTick()
-
-    const trigger = wrapper.find('[data-settings-field="evolver-inference-provider"] [data-testid="glass-listbox-button"]')
-    expect(trigger.exists()).toBe(true)
-
-    await trigger.trigger('click')
-    await nextTick()
-
-    const option = wrapper.findAll('.glass-listbox__option').find((candidate) => candidate.text() === 'Codex')
-    expect(option).toBeDefined()
-
-    await option!.trigger('click')
-
-    expect(setSettingMock).toHaveBeenCalledWith('evolverInferenceProvider', 'codex')
-  })
-
-  it('updates the evolver inference provider setting to api from the selector', async () => {
-    const setSettingMock = vi.fn().mockResolvedValue(undefined)
-    setupVibecodingMock({ setSetting: setSettingMock })
-
-    const wrapper = mountProvidersSettings()
-
-    await nextTick()
-
-    const trigger = wrapper.get('[data-settings-field="evolver-inference-provider"] [data-testid="glass-listbox-button"]')
-    await trigger.trigger('click')
-    await nextTick()
-
-    const option = wrapper.findAll('.glass-listbox__option')
-      .find((candidate) => candidate.text() === providerMessages.evolverInference.options.api)
-    expect(option).toBeDefined()
-
-    await option!.trigger('click')
-
-    expect(setSettingMock).toHaveBeenCalledWith('evolverInferenceProvider', 'api')
   })
 
   it('keeps the claude permissions toggle on shared control surface tokens and baseline timing', () => {

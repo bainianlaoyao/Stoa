@@ -23,24 +23,7 @@ describe('createMemoryRuntimeHost', () => {
     expect(host.diagnostics).toContain('Bundled Evolver bridge is unavailable: missing evolver')
   })
 
-  test('returns recall-only availability when the selected inference provider is unsupported', async () => {
-    const host = await createMemoryRuntimeHost({
-      settings: {
-        evolverInferenceProvider: 'api',
-        evolverExecutionMode: 'workspace-shell',
-        providers: {},
-        shellPath: ''
-      },
-      resolveBundledEvolverRepoRoot: vi.fn(async () => MOCK_EVOLVER_REPO_ROOT)
-    })
-
-    expect(host.availability).toBe('recall-only')
-    expect(host.engineAdapter).toBeDefined()
-    expect(host.turnMaintenanceRunner).toBeDefined()
-    expect(host.diagnostics[0]).toContain('Inference provider "api" is unavailable for turn maintenance; Stoa will stay in recall-only mode.')
-  })
-
-  test('returns full availability when bundled evolver and claude inference are available', async () => {
+  test('returns recall-only availability when strict provider detection cannot resolve claude', async () => {
     const host = await createMemoryRuntimeHost({
       settings: {
         evolverInferenceProvider: 'claude-code',

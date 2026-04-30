@@ -9,7 +9,7 @@ import type { MemoryRuntimeEvidence } from './memory-runtime'
 import type { BlockingReason } from '@shared/observability'
 
 export type SessionType = 'shell' | 'opencode' | 'codex' | 'claude-code'
-export type EvolverInferenceProvider = 'codex' | 'claude-code' | 'api'
+export type EvolverInferenceProvider = 'claude-code'
 export type EvolverExecutionMode = 'workspace-shell'
 export type SessionRecoveryMode = 'fresh-shell' | 'resume-external'
 export type SessionRuntimeState = 'created' | 'starting' | 'alive' | 'exited' | 'failed_to_start'

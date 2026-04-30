@@ -31,11 +31,7 @@ export const useSettingsStore = defineStore('settings', () => {
       }
       providers.value = { ...settings.providers }
       workspaceIde.value = { ...settings.workspaceIde }
-      if (
-        settings.evolverInferenceProvider === 'codex'
-        || settings.evolverInferenceProvider === 'claude-code'
-        || settings.evolverInferenceProvider === 'api'
-      ) {
+      if (settings.evolverInferenceProvider === 'claude-code') {
         evolverInferenceProvider.value = settings.evolverInferenceProvider
       }
       if (settings.evolverExecutionMode === 'workspace-shell') {
@@ -66,7 +62,7 @@ export const useSettingsStore = defineStore('settings', () => {
       workspaceIde.value = { ...value }
     } else if (
       key === 'evolverInferenceProvider'
-      && (value === 'codex' || value === 'claude-code' || value === 'api')
+      && value === 'claude-code'
     ) {
       evolverInferenceProvider.value = value
     } else if (key === 'evolverExecutionMode' && value === 'workspace-shell') {

@@ -35,7 +35,7 @@ function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
       terminalFontSize: 14,
       terminalFontFamily: 'JetBrains Mono',
       providers: {},
-      evolverInferenceProvider: 'codex',
+      evolverInferenceProvider: 'claude-code',
       evolverExecutionMode: 'workspace-shell',
       workspaceIde: { id: 'vscode', executablePath: '' },
       claudeDangerouslySkipPermissions: false,
@@ -100,8 +100,29 @@ describe('useSettingsStore', () => {
 
     await store.loadSettings()
 
-    expect(store.evolverInferenceProvider).toBe('codex')
+    expect(store.evolverInferenceProvider).toBe('claude-code')
     expect(store.evolverExecutionMode).toBe('workspace-shell')
+  })
+
+  it('normalizes unsupported evolver inference provider to default', async () => {
+    window.stoa = createStoaMock({
+      getSettings: vi.fn().mockResolvedValue({
+        shellPath: '',
+        terminalFontSize: 14,
+        terminalFontFamily: 'JetBrains Mono',
+        providers: {},
+        evolverInferenceProvider: 'codex',
+        evolverExecutionMode: 'workspace-shell',
+        workspaceIde: { id: 'vscode', executablePath: '' },
+        claudeDangerouslySkipPermissions: false,
+        locale: 'en'
+      })
+    })
+    const store = useSettingsStore()
+
+    await store.loadSettings()
+
+    expect(store.evolverInferenceProvider).toBe('claude-code')
   })
 
   it('persists evolver inference provider updates through setSetting', async () => {

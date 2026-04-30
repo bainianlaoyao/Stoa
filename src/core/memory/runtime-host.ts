@@ -74,12 +74,6 @@ export async function createMemoryRuntimeHost(options: CreateMemoryRuntimeHostOp
           strict: hasStrictProviderResolution
         })
         return createClaudeCodeInferenceCapability(providerPath ?? undefined)
-      },
-      codex: async () => {
-        throw new Error('Codex headless inference is not implemented.')
-      },
-      api: async () => {
-        throw new Error('API-based inference is not implemented.')
       }
     }
   )
@@ -139,7 +133,7 @@ function normalizeSettingsReader(
 }
 
 async function resolveInferenceProviderPath(
-  providerId: Extract<EvolverInferenceProvider, 'claude-code' | 'codex'>,
+  providerId: 'claude-code',
   settingsReader: RuntimeHostSettingsReader,
   options: {
     detectProvider?: (providerId: string, shellPath?: string | null) => Promise<string | null>
@@ -181,7 +175,7 @@ async function resolveInferenceProviderPath(
   throw new Error(`Provider executable for "${providerId}" could not be resolved.`)
 }
 
-function defaultProviderCommand(providerId: Extract<EvolverInferenceProvider, 'claude-code' | 'codex'>): string {
+function defaultProviderCommand(providerId: 'claude-code'): string {
   const descriptor = getProviderDescriptorByProviderId(providerId)
   return descriptor?.executableName ?? providerId
 }

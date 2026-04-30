@@ -10,9 +10,7 @@ import GlassPathField from '../primitives/GlassPathField.vue'
 const { t } = useI18n()
 const store = useSettingsStore()
 const evolverInferenceProviderOptions = [
-  { value: 'claude-code', label: 'Claude Code' },
-  { value: 'codex', label: 'Codex' },
-  { value: 'api', label: t('providers.evolverInference.options.api') }
+  { value: 'claude-code', label: 'Claude Code' }
 ]
 
 const providerList = listProviderDescriptors()
@@ -57,7 +55,7 @@ function handleClaudeDangerouslySkipPermissionsChange(value: boolean): void {
 }
 
 function handleEvolverInferenceProviderChange(value: string): void {
-  if (value === 'claude-code' || value === 'codex' || value === 'api') {
+  if (value === 'claude-code') {
     void store.updateSetting('evolverInferenceProvider', value)
   }
 }

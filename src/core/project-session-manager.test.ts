@@ -119,14 +119,14 @@ describe('ProjectSessionManager', () => {
       globalStatePath
     })
 
-    await manager.setSetting('evolverInferenceProvider', 'codex')
+    await manager.setSetting('evolverInferenceProvider', 'claude-code')
 
     const reloaded = await ProjectSessionManager.create({
       webhookPort: null,
       globalStatePath
     })
 
-    expect(reloaded.getSettings().evolverInferenceProvider).toBe('codex')
+    expect(reloaded.getSettings().evolverInferenceProvider).toBe('claude-code')
   })
 
   test('persists evolver execution mode setting across reloads', async () => {
