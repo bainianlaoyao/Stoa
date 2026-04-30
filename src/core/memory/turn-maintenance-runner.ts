@@ -1,8 +1,8 @@
-import type { ExecutionCapability, InferenceCapability, ProcessTurnResult } from '@shared/memory-runtime'
+import type { EvidenceRef, ExecutionCapability, InferenceCapability, ProcessTurnResult } from '@shared/memory-runtime'
 import type { ExecutionResult, TurnMaintenanceGateway, TurnScopedBridgeOptions } from './evolver-engine-adapter'
 
 interface ProcessTurnOptions extends TurnScopedBridgeOptions {
-  evidenceRefs: import('@shared/memory-runtime').EvidenceRef[]
+  evidenceRefs: EvidenceRef[]
   jobId?: string
   inference?: {
     provider?: string
@@ -11,18 +11,6 @@ interface ProcessTurnOptions extends TurnScopedBridgeOptions {
   execution?: {
     mode?: string
   }
-}
-
-interface CompleteReviewOptions extends TurnScopedBridgeOptions {
-  response: string
-}
-
-interface CompleteSolidifyOptions extends TurnScopedBridgeOptions {
-  result: ExecutionResult
-}
-
-interface CompleteDistillOptions extends TurnScopedBridgeOptions {
-  response: string
 }
 
 interface InferenceCapabilityResolver {

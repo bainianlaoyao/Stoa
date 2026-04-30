@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from 'vitest'
 import type { EvidenceRef, ExecutionCapability, InferenceCapability } from '@shared/memory-runtime'
+import { createNoOpTurnMaintenanceGateway } from './evolver-engine-adapter'
 import { TurnMaintenancePhaseError, TurnMaintenanceRunner } from './turn-maintenance-runner'
 
 describe('TurnMaintenanceRunner', () => {
@@ -246,6 +247,92 @@ describe('TurnMaintenanceRunner', () => {
 
     expect(gateway.processTurn).not.toHaveBeenCalled()
     expect(gateway.prepareReview).not.toHaveBeenCalled()
+    expect(execution.run).not.toHaveBeenCalled()
+  })
+
+  test('returns a skipped job when execution capability is unavailable', async () => {
+    const gateway = {
+      processTurn: vi.fn(async () => ({ jobId: 'job_turn_1' })),
+      prepareReview: vi.fn(async () => null),
+      completeReview: vi.fn(async () => undefined),
+      prepareSolidify: vi.fn(async () => null),
+      completeSolidify: vi.fn(async () => undefined),
+      prepareDistill: vi.fn(async () => null),
+      completeDistill: vi.fn(async () => undefined)
+    }
+    const inference: InferenceCapability = {
+      provider: 'codex',
+      modelHint: 'gpt-5.5',
+      invoke: vi.fn(async () => ({
+        content: 'ok',
+        provider: 'codex',
+        model: 'gpt-5.5'
+      }))
+    }
+
+    const runner = new TurnMaintenanceRunner(
+      gateway,
+      { resolve: vi.fn(async () => inference) },
+      {
+        resolve: vi.fn(async () => {
+          throw new Error('execution unavailable')
+        })
+      }
+    )
+
+    await expect(runner.run({
+      projectRoot: 'C:/repo',
+      stoaSessionId: 'session_1',
+      providerSessionId: 'provider-session-1',
+      turnId: 'turn_1',
+      evidenceRefs: [evidenceRef()]
+    })).resolves.toEqual({
+      jobId: 'job_turn_1_skipped'
+    })
+
+    expect(gateway.processTurn).not.toHaveBeenCalled()
+    expect(inference.invoke).not.toHaveBeenCalled()
+  })
+
+  test('runs through all no-op phases without error', async () => {
+    const gateway = createNoOpTurnMaintenanceGateway()
+    const inference: InferenceCapability = {
+      provider: 'codex',
+      modelHint: 'gpt-5.5',
+      invoke: vi.fn(async () => ({
+        content: 'ok',
+        provider: 'codex',
+        model: 'gpt-5.5'
+      }))
+    }
+    const execution: ExecutionCapability = {
+      mode: 'workspace-shell',
+      run: vi.fn(async () => ({
+        ok: true,
+        exitCode: 0,
+        stdout: '',
+        stderr: '',
+        commandResults: []
+      }))
+    }
+
+    const runner = new TurnMaintenanceRunner(
+      gateway,
+      { resolve: vi.fn(async () => inference) },
+      { resolve: vi.fn(async () => execution) }
+    )
+
+    await expect(runner.run({
+      projectRoot: 'C:/repo',
+      stoaSessionId: 'session_1',
+      providerSessionId: 'provider-session-1',
+      turnId: 'turn_noop',
+      evidenceRefs: [evidenceRef()]
+    })).resolves.toEqual({
+      jobId: 'job_turn_noop_noop'
+    })
+
+    expect(inference.invoke).not.toHaveBeenCalled()
     expect(execution.run).not.toHaveBeenCalled()
   })
 
