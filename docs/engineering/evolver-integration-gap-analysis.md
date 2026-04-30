@@ -1,5 +1,12 @@
 # Evolver 集成 Gap 分析报告
 
+> **⚠️ DEPRECATED — Historical Research Artifact**
+>
+> This document describes investigation done before the Stoa x Evolver hard boundary cleanup (2026-04-30).
+> The `host-bridge` / `publish-context` / CLI JSON protocol approach described herein is **deprecated**.
+> Stoa now uses a thin `EvolverEngineAdapter` that does not bridge to patched upstream surfaces.
+> See `research/2026-04-30-evolver-upstream-hardcoding-inventory.md` for the current boundary state.
+
 > 生成日期: 2026-04-27
 > 范围: Stoa Direct Memory 管线 vs Evolver 完整能力面的差距分析
 

@@ -6,6 +6,8 @@ mode: context-gathering
 sources: 8
 ---
 
+> **Status: DEPRECATED.** This document describes investigation done before the Stoa x Evolver hard boundary cleanup (2026-04-30). The `host-bridge` / `publish-context` / `uv-pip capsule` / `src/stoa/*` surfaces described here are no longer part of Stoa's integration. See `research/2026-04-30-evolver-upstream-hardcoding-inventory.md` for the current boundary state.
+
 ## Context Report: Distill Trigger And Recall Failure
 
 ### Why This Was Gathered
