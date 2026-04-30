@@ -1,3 +1,5 @@
+import { access } from 'node:fs/promises'
+import { constants } from 'node:fs'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -33,5 +35,37 @@ describe('bundled Evolver resolver', () => {
     await writeFile(join(sourceRepoRoot, 'package.json'), JSON.stringify({ name: 'evolver' }) + '\n', 'utf8')
 
     await expect(resolveBundledEvolverRepoRoot(appCwd)).resolves.toBe(sourceRepoRoot)
+  })
+})
+
+describe('bundled Evolver clean upstream boundary', () => {
+  test('resolved submodule tree must not contain src/stoa/ patched directory', async () => {
+    const repoRoot = await resolveBundledEvolverRepoRoot()
+    const stoaPath = join(repoRoot, 'src', 'stoa')
+
+    let stoaExists: boolean
+    try {
+      await access(stoaPath, constants.F_OK)
+      stoaExists = true
+    } catch {
+      stoaExists = false
+    }
+
+    expect(stoaExists).toBe(false)
+  })
+
+  test('resolved submodule tree must not contain test/stoa patched directory', async () => {
+    const repoRoot = await resolveBundledEvolverRepoRoot()
+    const stoaTestPath = join(repoRoot, 'test', 'stoa')
+
+    let exists: boolean
+    try {
+      await access(stoaTestPath, constants.F_OK)
+      exists = true
+    } catch {
+      exists = false
+    }
+
+    expect(exists).toBe(false)
   })
 })
