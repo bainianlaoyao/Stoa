@@ -1,503 +1,1132 @@
+import { existsSync, readFileSync } from 'node:fs'
+import { cp, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { spawn, spawnSync } from 'node:child_process'
-import { existsSync } from 'node:fs'
-import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { randomUUID } from 'node:crypto'
+import { basename, dirname, join } from 'node:path'
 import { ProjectSessionManager } from '../src/core/project-session-manager'
-import { createMemoryRuntimeHost } from '../src/core/memory/runtime-host'
-import { RuntimeStateStore } from '../src/core/memory/runtime-state-store'
-import { detectProvider, detectShell } from '../src/core/settings-detector'
+import { wrapCommandForShell } from '../src/core/shell-command'
 import { SessionEventBridge } from '../src/main/session-event-bridge'
 import { createClaudeCodeProvider } from '../src/extensions/providers/claude-code-provider'
-import { DEFAULT_SETTINGS, type ProviderCommand, type ProviderCommandContext } from '../src/shared/project-session'
-import type { TurnMaintenancePhaseEvent } from '../src/core/memory/turn-maintenance-runner'
+import type {
+  MemoryNotificationEvent,
+  ProviderCommand,
+  ProviderCommandContext,
+  SessionStatePatchEvent,
+  SessionSummary
+} from '../src/shared/project-session'
+import type { ObservationEvent } from '../src/shared/observability'
 
-const HIDDEN_VERIFY_COMMAND =
-  'npx vitest run src/core/memory/runtime-host.test.ts src/core/memory/turn-maintenance-runner.test.ts src/main/session-event-bridge.test.ts'
+const HEADLESS_TIMEOUT_MS = 4 * 60 * 1000
+const EXPERIMENT_ALLOWED_TOOLS = 'Bash,Read,Write,Edit,MultiEdit,Glob,LS'
+const REPO_ROOT = resolveRepoRoot(process.cwd())
+const EXPERIMENT_TEMP_ROOT = process.env.STOA_EXPERIMENT_TEMP_ROOT?.trim() || join(REPO_ROOT, '.tmp')
+const EXPERIMENT_SYSTEM_ENV_KEYS = [
+  'COMSPEC',
+  'PATH',
+  'PATHEXT',
+  'PROGRAMDATA',
+  'PROGRAMFILES',
+  'PROGRAMFILES(X86)',
+  'SYSTEMDRIVE',
+  'SYSTEMROOT',
+  'WINDIR'
+] as const
+const EXPERIMENT_ALLOWED_ENV_KEYS = [
+  'ANTHROPIC_API_KEY',
+  'ANTHROPIC_AUTH_TOKEN',
+  'ANTHROPIC_BASE_URL',
+  'CLAUDE_API_KEY',
+  'API_TIMEOUT_MS',
+  'CLAUDE_CODE_USE_BEDROCK',
+  'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC',
+  'HTTPS_PROXY',
+  'HTTP_PROXY',
+  'NO_PROXY',
+  'https_proxy',
+  'http_proxy',
+  'no_proxy'
+] as const
 
-const HIDDEN_RULE_DESCRIPTION =
-  'Before making any changes to the memory runtime, always run the targeted verification suite first to catch regressions in the memory subsystem.'
+const DEFAULT_HEADLESS_TOOL_POLICY = {
+  flag: '--allowedTools',
+  value: EXPERIMENT_ALLOWED_TOOLS
+} as const
 
-const SESSION1_ANSWER_FILE = '.memory-runtime-verify-command.txt'
-const SESSION2_ANSWER_FILE = '.memory-runtime-verify-command.session2.txt'
-const HEADLESS_TIMEOUT_MS = 15 * 60 * 1000
-const JOB_TIMEOUT_MS = 5 * 60 * 1000
-const SEALED_TURN_TIMEOUT_MS = 30 * 1000
-
-type ScenarioLabel = 'memory-off' | 'memory-on'
-
-interface PhaseEventRecord {
-  phase: string
-  status: string
-  jobId: string
-  turnId: string
-  error?: string
+type HeadlessToolPolicy = {
+  flag: '--allowedTools' | '--disallowedTools'
+  value: string
 }
 
-interface ChainState {
-  turnsSealed: number
-  turnIds: string[]
-  jobsCompleted: number
-  jobIds: string[]
-  processTurnTriggered: boolean
-  phasesObserved: PhaseEventRecord[]
-  chainStoppedAt: string
+type DecisionChoice = 'A' | 'B' | 'unknown'
+
+interface RunScoring {
+  choice: DecisionChoice
+  reason: string | null
+  resultText: string
+  modifiedFiles: string[]
+  transcriptObserved: boolean
+  transcriptToolNames: string[]
+  transcriptBashCommands: string[]
+  transcriptTouchedPaths: string[]
+  summary: string[]
 }
 
-interface ScenarioResult {
-  label: ScenarioLabel
-  memoryEnabled: boolean
-  repoRoot: string
-  artifactsDir: string
-  commands: {
-    session1Answer: string
-    session2Answer: string
-  }
-  assertions: {
-    session1CapturedRule: boolean
-    session2RecalledRule: boolean
-  }
-  chainState: {
-    session1: ChainState | null
-    session2: ChainState | null
-  }
-  invocations: InvocationRecord[]
-  notes: {
-    hiddenRule: string
-    hiddenCommand: string
-    prompts: {
-      session1: string
-      session2: string
-    }
-    debugLogs: string[]
-  }
-}
-
-interface InvocationRecord {
-  index: number
+interface RunReport {
   label: string
   sessionId: string
-  providerSessionId: string
+  externalSessionId: string
+  prompt: string
+  inputTokens: number | null
   command: string
   args: string[]
-  resultSessionId: string | null
   stdoutPreview: string
-  outputFilePath: string
-  outputValue: string
+  stderrPreview: string
+  debugFilePath: string
+  notifications: MemoryNotificationEvent[]
+  events: SessionStatePatchEvent[]
+  scoring: RunScoring
+  failed?: boolean
+  failureReason?: string
 }
 
-let lastBaseDir: string | null = null
-let lastOutputFilePath: string | null = null
-
-async function main(): Promise<void> {
-  const baseDir = await mkdtemp(join(tmpdir(), 'stoa-memory-verify-'))
-  lastBaseDir = baseDir
-  const providerPath = process.env.CLAUDE_CLI_PATH?.trim() || undefined
-
-  const memoryOff = await runScenario({
-    label: 'memory-off',
-    baseDir,
-    providerPath
-  })
-  const memoryOn = await runScenario({
-    label: 'memory-on',
-    baseDir,
-    providerPath
-  })
-
-  const session2RecallMatch = checkAnswerMatch(memoryOn.commands.session2Answer)
-  const reportPath = join(baseDir, 'experiment-report.json')
-  const report = {
-    ok: session2RecallMatch && memoryOn.assertions.session2RecalledRule,
-    baseDir,
-    reportPath,
-    experimentTopic: 'Memory runtime pre-change verification command preference',
-    hiddenRule: HIDDEN_RULE_DESCRIPTION,
-    hiddenCommand: HIDDEN_VERIFY_COMMAND,
-    verdict: {
-      memoryOnSession2Recall: memoryOn.assertions.session2RecalledRule,
-      memoryOffSession2Recall: memoryOff.assertions.session2RecalledRule,
-      session2RecallMatch
-    },
-    chainState: {
-      memoryOn: {
-        session1: formatChainState(memoryOn.chainState.session1),
-        session2: formatChainState(memoryOn.chainState.session2)
-      },
-      memoryOff: {
-        session1: formatChainState(memoryOff.chainState.session1),
-        session2: formatChainState(memoryOff.chainState.session2)
-      }
-    },
-    scenarios: [memoryOff, memoryOn]
-  }
-  await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8')
-  console.log(JSON.stringify(report, null, 2))
+interface MemoryEntrySummary {
+  status: string | null
+  score: number | null
+  signals: string[]
+  note: string | null
 }
 
-function formatChainState(chain: ChainState | null): string {
-  if (!chain) {
-    return 'no-chain (memory-off)'
-  }
-  return [
-    `turnsSealed=${chain.turnsSealed}`,
-    `jobsCompleted=${chain.jobsCompleted}`,
-    `processTurnTriggered=${chain.processTurnTriggered}`,
-    `phasesObserved=${chain.phasesObserved.length}`,
-    `chainStoppedAt=${chain.chainStoppedAt}`
-  ].join(' | ')
+interface ScenarioReport {
+  workspaceDir: string
+  memoryGraphPath: string
+  runs: RunReport[]
+  memoryGraphEntries: unknown[]
+  latestMemoryEntry: MemoryEntrySummary | null
+  probeSentinel?: string
 }
 
-function checkAnswerMatch(answer: string): boolean {
-  const normalized = answer.trim().toLowerCase()
-  if (!normalized) {
-    return false
-  }
-  return normalized.includes('runtime-host.test.ts')
-    && normalized.includes('turn-maintenance-runner.test.ts')
-    && normalized.includes('session-event-bridge.test.ts')
-    && normalized.includes('npx vitest run')
-}
-
-async function runScenario(input: {
-  label: ScenarioLabel
+interface ExperimentReport {
+  generatedAt: string
+  claudePath: string
   baseDir: string
-  providerPath?: string
-}): Promise<ScenarioResult> {
-  const scenarioDir = join(input.baseDir, input.label)
-  const repoRoot = join(scenarioDir, 'project')
-  const artifactsDir = join(scenarioDir, 'artifacts')
-  const globalStatePath = join(scenarioDir, 'global.json')
-  const memoryEnabled = input.label === 'memory-on'
-  const debugLogs = [
-    join(artifactsDir, 'claude-session1-rule.debug.log'),
-    join(artifactsDir, 'claude-session2-recall.debug.log')
-  ]
-  const phaseEvents: PhaseEventRecord[] = []
+  control: ScenarioReport
+  incidentHandoff: ScenarioReport
+  visibilityProbe: ScenarioReport
+  verdict: {
+    controlChoice: DecisionChoice
+    incidentChoice: DecisionChoice
+    controlRunSucceeded: boolean
+    incidentFixRunSucceeded: boolean
+    incidentTriageRunSucceeded: boolean
+    memoryGenerated: boolean
+    recallDelivered: boolean
+    visibilityProbeRunSucceeded: boolean
+    visibilityProbeRecallDelivered: boolean
+    visibilityProbeObservedSentinel: boolean
+    visibilityProbeBehaviorValid: boolean
+    controlPrefersDefaultHardening: boolean
+    incidentAvoidsRepeatPattern: boolean
+    controlBehaviorValid: boolean
+    incidentFixBehaviorValid: boolean
+    incidentTriageBehaviorValid: boolean
+    overallAligned: boolean
+  }
+}
 
-  await mkdir(repoRoot, { recursive: true })
-  await mkdir(artifactsDir, { recursive: true })
-  await seedExperimentRepo(repoRoot)
+interface ScenarioInput {
+  baseDir: string
+  claudePath: string
+  templateDir: string
+}
 
-  runChecked('git', ['init'], repoRoot)
-  runChecked('git', ['config', 'user.name', 'Stoa Test'], repoRoot)
-  runChecked('git', ['config', 'user.email', 'stoa@example.com'], repoRoot)
-  runChecked('git', ['add', '.'], repoRoot)
-  runChecked('git', ['commit', '-m', 'init'], repoRoot)
+interface ExperimentRuntime {
+  manager: ProjectSessionManager
+  bridge: SessionEventBridge
+  project: Awaited<ReturnType<ProjectSessionManager['createProject']>>
+  session: SessionSummary
+  target: ReturnType<typeof toProviderTarget>
+  context: ProviderCommandContext
+  workspaceDir: string
+  events: SessionStatePatchEvent[]
+  notifications: MemoryNotificationEvent[]
+  observations: ObservationEvent[]
+}
 
+export async function main(): Promise<void> {
+  const claudePath = resolveClaudeExecutable()
+  await mkdir(EXPERIMENT_TEMP_ROOT, { recursive: true })
+  const baseDir = await mkdtemp(join(EXPERIMENT_TEMP_ROOT, 'stoa-evolver-exp-'))
+  const templateDir = join(baseDir, 'sample-repo-template')
+  await seedExperimentRepoTemplate(templateDir)
+
+  const control = await runControlScenario({
+    baseDir,
+    claudePath,
+    templateDir
+  })
+  const incidentHandoff = await runIncidentHandoffScenario({
+    baseDir,
+    claudePath,
+    templateDir
+  })
+  const visibilityProbe = await runVisibilityProbeScenario({
+    baseDir,
+    claudePath,
+    templateDir
+  })
+
+  const controlChoice = control.runs[0]?.scoring.choice ?? 'unknown'
+  const incidentChoice = incidentHandoff.runs[1]?.scoring.choice ?? 'unknown'
+  const controlRunSucceeded = didRunSucceed(control.runs[0])
+  const incidentFixRunSucceeded = didRunSucceed(incidentHandoff.runs[0])
+  const incidentTriageRunSucceeded = didRunSucceed(incidentHandoff.runs[1])
+  const memoryGenerated = incidentHandoff.memoryGraphEntries.length > 0
+  const recallDelivered = hasRecallNotification(incidentHandoff.runs[1])
+  const visibilityProbeRunSucceeded = didRunSucceed(visibilityProbe.runs[0])
+  const visibilityProbeRecallDelivered = hasRecallNotification(visibilityProbe.runs[0])
+  const visibilityProbeObservedSentinel = didObserveSentinel(
+    visibilityProbe.runs[0],
+    visibilityProbe.probeSentinel ?? ''
+  )
+  const visibilityProbeBehaviorValid = isReadOnlyRun(visibilityProbe.runs[0])
+  const controlPrefersDefaultHardening = controlChoice === 'A'
+  const incidentAvoidsRepeatPattern = incidentChoice === 'B'
+  const controlBehaviorValid = isReadOnlyRun(control.runs[0])
+  const incidentFixBehaviorValid = onlyModifiedFiles(incidentHandoff.runs[0], ['src/billingLookup.ts'])
+  const incidentTriageBehaviorValid = isReadOnlyRun(incidentHandoff.runs[1])
+
+  const report: ExperimentReport = {
+    generatedAt: new Date().toISOString(),
+    claudePath,
+    baseDir,
+    control,
+    incidentHandoff,
+    visibilityProbe,
+    verdict: {
+      controlChoice,
+      incidentChoice,
+      controlRunSucceeded,
+      incidentFixRunSucceeded,
+      incidentTriageRunSucceeded,
+      memoryGenerated,
+      recallDelivered,
+      visibilityProbeRunSucceeded,
+      visibilityProbeRecallDelivered,
+      visibilityProbeObservedSentinel,
+      visibilityProbeBehaviorValid,
+      controlPrefersDefaultHardening,
+      incidentAvoidsRepeatPattern,
+      controlBehaviorValid,
+      incidentFixBehaviorValid,
+      incidentTriageBehaviorValid,
+      overallAligned:
+        controlRunSucceeded
+        && incidentFixRunSucceeded
+        && incidentTriageRunSucceeded
+        && controlPrefersDefaultHardening
+        && incidentAvoidsRepeatPattern
+        && memoryGenerated
+        && recallDelivered
+        && visibilityProbeRunSucceeded
+        && visibilityProbeRecallDelivered
+        && visibilityProbeObservedSentinel
+        && visibilityProbeBehaviorValid
+        && controlBehaviorValid
+        && incidentFixBehaviorValid
+        && incidentTriageBehaviorValid
+    }
+  }
+
+  const reportPath = join(baseDir, 'experiment-report.json')
+  await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8')
+  console.log(JSON.stringify({
+    reportPath,
+    baseDir,
+    control: summarizeScenario(control),
+    incidentHandoff: summarizeScenario(incidentHandoff),
+    visibilityProbe: summarizeScenario(visibilityProbe),
+    verdict: report.verdict
+  }, null, 2))
+}
+
+async function runControlScenario(input: ScenarioInput): Promise<ScenarioReport> {
+  const workspaceDir = join(input.baseDir, 'control')
+  const memoryGraphPath = join(input.baseDir, 'control-memory-graph.jsonl')
+  await cloneTemplateRepo(input.templateDir, workspaceDir)
+  await writeFile(memoryGraphPath, '', 'utf8')
+
+  const triageRun = await runSingleSession({
+    label: 'control-decision',
+    experimentBaseDir: input.baseDir,
+    workspaceDir,
+    memoryGraphPath,
+    prompt: buildFailedPatternTriagePrompt(),
+    claudePath: input.claudePath
+  })
+
+  const entries = await readJsonl(memoryGraphPath)
+  return {
+    workspaceDir,
+    memoryGraphPath,
+    runs: [triageRun],
+    memoryGraphEntries: entries,
+    latestMemoryEntry: summarizeLatestMemoryEntry(entries)
+  }
+}
+
+async function runIncidentHandoffScenario(input: ScenarioInput): Promise<ScenarioReport> {
+  const memoryGraphPath = join(input.baseDir, 'incident-memory-graph.jsonl')
+  await writeFile(memoryGraphPath, '', 'utf8')
+
+  const session1WorkspaceDir = join(input.baseDir, 'incident-session1')
+  await cloneTemplateRepo(input.templateDir, session1WorkspaceDir)
+  const session1Run = await runSingleSession({
+    label: 'session1-change',
+    experimentBaseDir: input.baseDir,
+    workspaceDir: session1WorkspaceDir,
+    memoryGraphPath,
+    prompt: buildIncidentFixPrompt(),
+    claudePath: input.claudePath
+  })
+
+  const session2WorkspaceDir = join(input.baseDir, 'incident-session2')
+  await cloneTemplateRepo(input.templateDir, session2WorkspaceDir)
+  const session2Run = await runSingleSession({
+    label: 'session2-decision',
+    experimentBaseDir: input.baseDir,
+    workspaceDir: session2WorkspaceDir,
+    memoryGraphPath,
+    prompt: buildFailedPatternTriagePrompt(),
+    claudePath: input.claudePath
+  })
+
+  const entries = await readJsonl(memoryGraphPath)
+  return {
+    workspaceDir: session2WorkspaceDir,
+    memoryGraphPath,
+    runs: [session1Run, session2Run],
+    memoryGraphEntries: entries,
+    latestMemoryEntry: summarizeLatestMemoryEntry(entries)
+  }
+}
+
+async function runVisibilityProbeScenario(input: ScenarioInput): Promise<ScenarioReport> {
+  const workspaceDir = join(input.baseDir, 'visibility-probe')
+  const memoryGraphPath = join(input.baseDir, 'visibility-probe-memory-graph.jsonl')
+  const sentinel = buildVisibilityProbeSentinel(input.baseDir)
+  await cloneTemplateRepo(input.templateDir, workspaceDir)
+  await seedVisibilityProbeMemory(memoryGraphPath, sentinel)
+
+  const probeRun = await runSingleSession({
+    label: 'visibility-probe',
+    experimentBaseDir: input.baseDir,
+    workspaceDir,
+    memoryGraphPath,
+    prompt: buildSessionStartVisibilityProbePrompt(),
+    claudePath: input.claudePath,
+    toolPolicy: {
+      flag: '--disallowedTools',
+      value: EXPERIMENT_ALLOWED_TOOLS
+    }
+  })
+
+  const entries = await readJsonl(memoryGraphPath)
+  return {
+    workspaceDir,
+    memoryGraphPath,
+    runs: [probeRun],
+    memoryGraphEntries: entries,
+    latestMemoryEntry: summarizeLatestMemoryEntry(entries),
+    probeSentinel: sentinel
+  }
+}
+
+async function runSingleSession(input: {
+  label: string
+  experimentBaseDir: string
+  workspaceDir: string
+  memoryGraphPath: string
+  prompt: string
+  claudePath: string
+  toolPolicy?: HeadlessToolPolicy
+}): Promise<RunReport> {
+  const claudeConfigDir = await createIsolatedClaudeConfigDir(
+    join(input.experimentBaseDir, `${input.label}-claude-config`)
+  )
+  const runtime = await createExperimentRuntime({
+    workspaceDir: input.workspaceDir,
+    statePath: join(input.workspaceDir, '.stoa-state.json')
+  })
+
+  try {
+    return await runTurn({
+      label: input.label,
+      runtime,
+      prompt: input.prompt,
+      memoryGraphPath: input.memoryGraphPath,
+      claudePath: input.claudePath,
+      claudeConfigDir,
+      debugFilePath: join(input.workspaceDir, `${input.label}.debug.log`),
+      toolPolicy: input.toolPolicy ?? DEFAULT_HEADLESS_TOOL_POLICY
+    })
+  } catch (error) {
+    return await buildFailedRunReport({
+      label: input.label,
+      runtime,
+      prompt: input.prompt,
+      debugFilePath: join(input.workspaceDir, `${input.label}.debug.log`),
+      error
+    })
+  } finally {
+    await runtime.bridge.stop()
+  }
+}
+
+async function createExperimentRuntime(input: {
+  workspaceDir: string
+  statePath: string
+}): Promise<ExperimentRuntime> {
   const manager = await ProjectSessionManager.create({
     webhookPort: null,
-    globalStatePath
+    globalStatePath: input.statePath
   })
   const project = await manager.createProject({
-    path: repoRoot,
-    name: `memory-verify-${input.label}`,
+    path: input.workspaceDir,
+    name: basename(input.workspaceDir),
     defaultSessionType: 'claude-code'
   })
-
-  const memoryRuntimeHost = memoryEnabled
-    ? await createMemoryRuntimeHost({
-      settings: {
-        ...DEFAULT_SETTINGS,
-        evolverInferenceProvider: 'claude-code',
-        evolverExecutionMode: 'workspace-shell',
-        providers: input.providerPath ? { 'claude-code': input.providerPath } : {}
-      },
-      cwd: process.cwd(),
-      detectShell,
-      detectProvider,
-      onTurnPhaseEvent: (event: TurnMaintenancePhaseEvent) => {
-        phaseEvents.push({
-          phase: event.phase,
-          status: event.status,
-          jobId: event.jobId,
-          turnId: event.turnId,
-          error: event.error
-        })
-      }
-    })
-    : null
-
-  if (memoryEnabled && (
-    memoryRuntimeHost?.availability !== 'full'
-    || !memoryRuntimeHost.turnMaintenanceRunner
-  )) {
-    throw new Error(
-      `Memory runtime host is unavailable for ${input.label}: ${memoryRuntimeHost?.diagnostics.join(' | ') ?? 'unknown'}`
-    )
-  }
-
+  const session = await manager.createSession({
+    projectId: project.id,
+    type: 'claude-code',
+    title: basename(input.workspaceDir)
+  })
+  const events: SessionStatePatchEvent[] = []
+  const notifications: MemoryNotificationEvent[] = []
+  const observations: ObservationEvent[] = []
   const bridge = new SessionEventBridge(
     manager,
     {
       applyProviderStatePatch: async (patch) => {
+        events.push(patch)
         await manager.applySessionStatePatch(patch)
       }
     },
-    undefined,
-    memoryEnabled && memoryRuntimeHost?.turnMaintenanceRunner
-      ? {
-        turnMaintenanceRunner: memoryRuntimeHost.turnMaintenanceRunner
+    {
+      ingest: (event) => {
+        observations.push(event)
+        return true
       }
-      : {}
+    },
+    {
+      onMemoryNotification: (event) => {
+        notifications.push(event)
+      }
+    }
   )
+  const webhookPort = await bridge.start()
+  const sessionSecret = bridge.issueSessionSecret(session.id)
+  const target = toProviderTarget(project.id, input.workspaceDir, session)
+  const context = createProviderContext(webhookPort, sessionSecret)
 
-  const provider = createClaudeCodeProvider()
-  const invocations: InvocationRecord[] = []
-  const runtimeStateStore = new RuntimeStateStore(repoRoot)
-
-  const session1OutputPath = join(repoRoot, SESSION1_ANSWER_FILE)
-  const session2OutputPath = join(repoRoot, SESSION2_ANSWER_FILE)
-  const session1Prompt = buildSession1Prompt(session1OutputPath)
-  const session2Prompt = buildSession2Prompt(session2OutputPath)
-
-  try {
-    const webhookPort = await bridge.start()
-
-    const session1 = await manager.createSession({
-      projectId: project.id,
-      type: 'claude-code',
-      title: `${input.label} Session 1`
-    })
-    const session1Secret = bridge.issueSessionSecret(session1.id)
-    const session1Context = createProviderContext(webhookPort, session1Secret, input.providerPath)
-    const session1Target = toProviderTarget(project.id, repoRoot, session1)
-
-    await provider.installSidecar(session1Target, session1Context)
-
-    const session1Key = sessionKey(project.id, session1.id)
-
-    const ruleResult = await invokeClaudeHeadless(
-      await provider.buildStartCommand(session1Target, session1Context),
-      session1Prompt,
-      debugLogs[0]
-    )
-    const session1Answer = await readOutputFile(session1OutputPath)
-    lastOutputFilePath = session1OutputPath
-    if (session1Answer !== HIDDEN_VERIFY_COMMAND) {
-      throw new Error(
-        `Session 1 did not capture the hidden verify command exactly.\nExpected: ${HIDDEN_VERIFY_COMMAND}\nActual: ${session1Answer}\nStdout: ${ruleResult.stdout}`
-      )
-    }
-    invocations.push(buildInvocationRecord(1, 'session1:rule', session1, ruleResult.command, ruleResult, session1OutputPath, session1Answer))
-
-    const session1PhasesSnapshot = [...phaseEvents]
-    const session1Chain = memoryEnabled
-      ? await collectChainState(runtimeStateStore, session1Key, session1PhasesSnapshot, 1)
-      : null
-
-    if (memoryEnabled) {
-      await waitForCompletedJobs(runtimeStateStore, session1Key, 1)
-    }
-
-    const session2 = await manager.createSession({
-      projectId: project.id,
-      type: 'claude-code',
-      title: `${input.label} Session 2`
-    })
-    const session2Secret = bridge.issueSessionSecret(session2.id)
-    const session2Context = createProviderContext(webhookPort, session2Secret, input.providerPath)
-    const session2Target = toProviderTarget(project.id, repoRoot, session2)
-
-    await provider.installSidecar(session2Target, session2Context)
-
-    const session2Key = sessionKey(project.id, session2.id)
-
-    const recallResult = await invokeClaudeHeadless(
-      await provider.buildStartCommand(session2Target, session2Context),
-      session2Prompt,
-      debugLogs[1]
-    )
-    const session2Answer = await readOutputFile(session2OutputPath)
-    lastOutputFilePath = session2OutputPath
-    const session2Recalled = checkAnswerMatch(session2Answer)
-    invocations.push(buildInvocationRecord(2, 'session2:recall', session2, recallResult.command, recallResult, session2OutputPath, session2Answer))
-
-    const session2PhasesSnapshot = phaseEvents.slice(session1PhasesSnapshot.length)
-    const session2Chain = memoryEnabled
-      ? await collectChainState(runtimeStateStore, session2Key, session2PhasesSnapshot, 1)
-      : null
-
-    return {
-      label: input.label,
-      memoryEnabled,
-      repoRoot,
-      artifactsDir,
-      commands: {
-        session1Answer,
-        session2Answer
-      },
-      assertions: {
-        session1CapturedRule: session1Answer === HIDDEN_VERIFY_COMMAND,
-        session2RecalledRule: session2Recalled
-      },
-      chainState: {
-        session1: session1Chain,
-        session2: session2Chain
-      },
-      invocations,
-      notes: {
-        hiddenRule: HIDDEN_RULE_DESCRIPTION,
-        hiddenCommand: HIDDEN_VERIFY_COMMAND,
-        prompts: {
-          session1: session1Prompt,
-          session2: session2Prompt
-        },
-        debugLogs
-      }
-    }
-  } finally {
-    await bridge.stop()
+  return {
+    manager,
+    bridge,
+    project,
+    session,
+    target,
+    context,
+    workspaceDir: input.workspaceDir,
+    events,
+    notifications,
+    observations
   }
 }
 
-async function collectChainState(
-  store: RuntimeStateStore,
-  key: string,
-  phases: PhaseEventRecord[],
-  expectedTurnCount: number
-): Promise<ChainState> {
-  const turns = await waitForSealedTurns(store, key, expectedTurnCount)
-  const jobs = await store.listJobsForSession(key)
-  const doneJobs = jobs.filter(job => job.state === 'done')
-  const processTurnTriggered = jobs.length > 0
+async function runTurn(input: {
+  label: string
+  runtime: ExperimentRuntime
+  prompt: string
+  memoryGraphPath: string
+  claudePath: string
+  claudeConfigDir: string
+  debugFilePath: string
+  toolPolicy: HeadlessToolPolicy
+}): Promise<RunReport> {
+  const provider = createClaudeCodeProvider()
+  await provider.installSidecar(input.runtime.target, input.runtime.context)
+  const command = await provider.buildStartCommand(input.runtime.target, {
+    ...input.runtime.context,
+    providerPath: input.claudePath
+  })
 
-  const relevantPhases = phases.filter(event =>
-    turns.some(turn => turn.turnId === event.turnId)
+  const result = await runClaudeHeadless(
+    command,
+    input.prompt,
+    input.debugFilePath,
+    buildExperimentEnv(input.memoryGraphPath, input.claudeConfigDir, command.env),
+    input.toolPolicy
   )
+  const scoring = await scoreRun(input.runtime, result.stdout)
 
-  let chainStoppedAt = 'end'
-  if (relevantPhases.length === 0 && processTurnTriggered) {
-    chainStoppedAt = 'processTurn-noop (all phases null — gateway is no-op)'
-  } else if (relevantPhases.length > 0) {
-    const lastPhase = relevantPhases[relevantPhases.length - 1]
-    chainStoppedAt = lastPhase.status === 'failed'
-      ? `phase-${lastPhase.phase}-failed`
-      : `phase-${lastPhase.phase}-completed`
+  return {
+    label: input.label,
+    sessionId: input.runtime.session.id,
+    externalSessionId: input.runtime.session.externalSessionId ?? '',
+    prompt: input.prompt,
+    inputTokens: parseInputTokens(result.stdout),
+    command: result.command.command,
+    args: result.command.args,
+    stdoutPreview: trim(result.stdout, 3000),
+    stderrPreview: trim(result.stderr, 1200),
+    debugFilePath: input.debugFilePath,
+    notifications: [...input.runtime.notifications],
+    events: [...input.runtime.events],
+    scoring
+  }
+}
+
+async function buildFailedRunReport(input: {
+  label: string
+  runtime: ExperimentRuntime
+  prompt: string
+  debugFilePath: string
+  error: unknown
+}): Promise<RunReport> {
+  const scoring = await scoreRun(input.runtime, '')
+  const failureReason = input.error instanceof Error ? input.error.message : String(input.error)
+  return {
+    label: input.label,
+    sessionId: input.runtime.session.id,
+    externalSessionId: input.runtime.session.externalSessionId ?? '',
+    prompt: input.prompt,
+    inputTokens: null,
+    command: '',
+    args: [],
+    stdoutPreview: '',
+    stderrPreview: trim(failureReason, 1200),
+    debugFilePath: input.debugFilePath,
+    notifications: [...input.runtime.notifications],
+    events: [...input.runtime.events],
+    scoring,
+    failed: true,
+    failureReason
+  }
+}
+
+function buildExperimentEnv(
+  memoryGraphPath: string,
+  claudeConfigDir: string,
+  providerEnv: Record<string, string | undefined>
+): Record<string, string> {
+  const isolatedHomeEnv = buildIsolatedHomeEnvironment(claudeConfigDir)
+  const env = {
+    ...pickAllowedEnvironment(process.env),
+    ...pickAllowedEnvironment(providerEnv),
+    ...pickStoaEnvironment(providerEnv),
+    ...isolatedHomeEnv,
+    MEMORY_GRAPH_PATH: memoryGraphPath,
+    CLAUDE_CONFIG_DIR: claudeConfigDir
+  }
+  return Object.fromEntries(
+    Object.entries(env).filter(([, value]) => typeof value === 'string' && value.length > 0)
+  )
+}
+
+function buildIsolatedHomeEnvironment(claudeConfigDir: string): Record<string, string> {
+  const homeDir = join(claudeConfigDir, 'home')
+  if (process.platform === 'win32') {
+    const driveMatch = homeDir.match(/^[A-Za-z]:/)
+    const homeDrive = driveMatch?.[0] ?? ''
+    const homePath = homeDrive ? homeDir.slice(homeDrive.length) : homeDir
+    const roamingDir = join(homeDir, 'AppData', 'Roaming')
+    const localDir = join(homeDir, 'AppData', 'Local')
+    const tempDir = join(localDir, 'Temp')
+    return {
+      HOME: homeDir,
+      USERPROFILE: homeDir,
+      HOMEDRIVE: homeDrive,
+      HOMEPATH: homePath,
+      APPDATA: roamingDir,
+      LOCALAPPDATA: localDir,
+      TEMP: tempDir,
+      TMP: tempDir
+    }
+  }
+
+  const tempDir = join(homeDir, 'tmp')
+  return {
+    HOME: homeDir,
+    XDG_CONFIG_HOME: join(homeDir, '.config'),
+    XDG_CACHE_HOME: join(homeDir, '.cache'),
+    XDG_STATE_HOME: join(homeDir, '.local', 'state'),
+    TMPDIR: tempDir
+  }
+}
+
+function pickAllowedEnvironment(source: Record<string, string | undefined>): Record<string, string> {
+  const allowedKeys = new Set<string>([
+    ...EXPERIMENT_SYSTEM_ENV_KEYS,
+    ...EXPERIMENT_ALLOWED_ENV_KEYS
+  ])
+  return Object.fromEntries(
+    Object.entries(source).filter(([key, value]) => allowedKeys.has(key.toUpperCase()) && typeof value === 'string' && value.length > 0)
+  ) as Record<string, string>
+}
+
+function pickStoaEnvironment(source: Record<string, string | undefined>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(source).filter(([key, value]) => key.startsWith('STOA_') && typeof value === 'string' && value.length > 0)
+  ) as Record<string, string>
+}
+
+async function scoreRun(runtime: ExperimentRuntime, stdout: string): Promise<RunScoring> {
+  const transcript = await readClaudeTranscript(resolveTranscriptPath(runtime))
+  const resultText = parseClaudeResultText(stdout)
+  const choice = parseChoice(resultText)
+  const reason = parseReason(resultText)
+  const modifiedFiles = await listModifiedFiles(runtime.workspaceDir)
+  return {
+    choice,
+    reason,
+    resultText,
+    modifiedFiles,
+    transcriptObserved: transcript.observed,
+    transcriptToolNames: transcript.toolNames,
+    transcriptBashCommands: transcript.bashCommands,
+    transcriptTouchedPaths: transcript.touchedPaths,
+    summary: [
+      `choice=${choice}`,
+      `reason=${reason ?? '(none)'}`,
+      `transcriptObserved=${transcript.observed}`,
+      `tools=${transcript.toolNames.join(', ') || '(none)'}`,
+      `bash=${transcript.bashCommands.join(' || ') || '(none)'}`,
+      `touched=${transcript.touchedPaths.join(', ') || '(none)'}`,
+      `modified=${modifiedFiles.join(', ') || '(none)'}`
+    ]
+  }
+}
+
+function resolveTranscriptPath(runtime: ExperimentRuntime): string | null {
+  for (const observation of [...runtime.observations].reverse()) {
+    if (observation.sessionId !== runtime.session.id) {
+      continue
+    }
+    const evidence = isRecord(observation.payload.evidence) ? observation.payload.evidence : null
+    const transcriptPath = evidence && typeof evidence.transcriptPath === 'string'
+      ? evidence.transcriptPath
+      : null
+    if (transcriptPath) {
+      return transcriptPath
+    }
+  }
+  return null
+}
+
+function isReadOnlyRun(run: RunReport | undefined): boolean {
+  if (!run) {
+    return false
+  }
+  return run.scoring.transcriptObserved
+    && run.scoring.modifiedFiles.length === 0
+    && !usesEditingTools(run)
+    && !hasPotentiallyMutatingBashCommands(run)
+}
+
+function onlyModifiedFiles(run: RunReport | undefined, expectedFiles: string[]): boolean {
+  if (!run) {
+    return false
+  }
+  const actual = normalizeFileList(run.scoring.modifiedFiles)
+  const expected = normalizeFileList(expectedFiles)
+  const touched = normalizeFileList(run.scoring.transcriptTouchedPaths)
+  if (!run.scoring.transcriptObserved || actual.length !== expected.length) {
+    return false
+  }
+  return actual.every((value, index) => value === expected[index])
+    && touched.every((value) => expected.some((allowed) => value === allowed || value.endsWith(`/${allowed}`)))
+    && !hasPotentiallyMutatingBashCommands(run)
+}
+
+function normalizeFileList(paths: string[]): string[] {
+  return [...new Set(paths.map((value) => value.replace(/\\/g, '/').trim()).filter(Boolean))].sort()
+}
+
+function usesEditingTools(run: RunReport): boolean {
+  return run.scoring.transcriptToolNames.some((tool) => {
+    return tool === 'Write' || tool === 'Edit' || tool === 'MultiEdit'
+  })
+}
+
+function hasPotentiallyMutatingBashCommands(run: RunReport): boolean {
+  return run.scoring.transcriptBashCommands.some((command) => {
+    const normalized = normalizeWhitespace(command).toLowerCase()
+    return /(^|[^\w])(rm|mv|cp|touch|mkdir|rmdir|del|copy|move)(\s|$)/.test(normalized)
+      || /(^|[^\w])(sed|perl)\s+-i(\s|$)/.test(normalized)
+      || /\|\s*tee(\s|$)/.test(normalized)
+      || /(^|[^\w])(git\s+apply|git\s+checkout|git\s+restore)(\s|$)/.test(normalized)
+      || /(^|[^\w])(set-content|add-content|out-file|new-item)\b/.test(normalized)
+      || /(^|[^\w])(echo|printf)\b.*(>>?|\|\s*tee)/.test(normalized)
+      || normalized.includes(' > ')
+      || normalized.includes(' >> ')
+    })
+}
+
+function didRunSucceed(run: RunReport | undefined): boolean {
+  return Boolean(run && !run.failed)
+}
+
+function didObserveSentinel(run: RunReport | undefined, sentinel: string): boolean {
+  if (!run || !sentinel) {
+    return false
+  }
+  return parseStartupMemoryEcho(run.scoring.resultText) === sentinel
+}
+
+async function readClaudeTranscript(transcriptPath: string | null): Promise<{
+  observed: boolean
+  toolNames: string[]
+  bashCommands: string[]
+  touchedPaths: string[]
+}> {
+  if (!transcriptPath) {
+    return {
+      observed: false,
+      toolNames: [],
+      bashCommands: [],
+      touchedPaths: []
+    }
+  }
+  const content = await readFile(transcriptPath, 'utf8').catch(() => '')
+  if (!content.trim()) {
+    return {
+      observed: false,
+      toolNames: [],
+      bashCommands: [],
+      touchedPaths: []
+    }
+  }
+
+  const toolNames: string[] = []
+  const bashCommands: string[] = []
+  const touchedPaths: string[] = []
+  for (const line of content.split(/\r?\n/)) {
+    const trimmed = line.trim()
+    if (!trimmed) {
+      continue
+    }
+    const parsed = parseJsonObject(trimmed)
+    if (!parsed || !isRecord(parsed.message)) {
+      continue
+    }
+    const contentItems = Array.isArray(parsed.message.content) ? parsed.message.content : []
+    for (const item of contentItems) {
+      if (!isRecord(item) || item.type !== 'tool_use') {
+        continue
+      }
+      const name = typeof item.name === 'string' ? item.name : ''
+      if (!name) {
+        continue
+      }
+      toolNames.push(name)
+      if (name === 'Bash') {
+        const commandText = extractCommandText(item.input)
+        if (commandText) {
+          bashCommands.push(normalizeWhitespace(commandText))
+        }
+      }
+      touchedPaths.push(...extractTouchedPaths(name, item.input))
+    }
   }
 
   return {
-    turnsSealed: turns.length,
-    turnIds: turns.map(turn => turn.turnId),
-    jobsCompleted: doneJobs.length,
-    jobIds: jobs.map(job => job.jobId),
-    processTurnTriggered,
-    phasesObserved: relevantPhases,
-    chainStoppedAt
+    observed: true,
+    toolNames: [...new Set(toolNames)],
+    bashCommands: [...new Set(bashCommands)],
+    touchedPaths: [...new Set(touchedPaths.map((value) => value.replace(/\\/g, '/').trim()).filter(Boolean))]
   }
 }
 
-async function seedExperimentRepo(repoRoot: string): Promise<void> {
-  await writeFile(
-    join(repoRoot, 'package.json'),
-    `${JSON.stringify({
-      name: 'memory-verify-experiment',
-      version: '0.1.0',
-      description: 'Memory runtime verification experiment probe',
-      scripts: { test: 'vitest run' },
-      devDependencies: { vitest: '^3.0.0' }
-    }, null, 2)}\n`,
-    'utf8'
-  )
+function parseClaudeResultText(stdout: string): string {
+  const parsed = parseJsonObject(stdout)
+  const result = parsed?.result
+  return typeof result === 'string' ? result : ''
+}
 
-  await writeFile(
-    join(repoRoot, 'vitest.config.ts'),
-    [
-      'import { defineConfig } from "vitest/config";',
-      'export default defineConfig({ test: { include: ["src/**/*.test.ts"] } });',
-      ''
-    ].join('\n'),
-    'utf8'
-  )
+function parseChoice(resultText: string): DecisionChoice {
+  const match = resultText.match(/(?:Choice|选择)\s*[:：]\s*([AB])/i)
+  if (match?.[1] === 'A' || match?.[1] === 'B') {
+    return match[1]
+  }
+  if (/继续|继续做|quick hardening|minimal hardening|small one-file patch|one-file hardening|快速修补|继续硬化/i.test(resultText)
+    && !/暂停|避免重复|stop repeating|avoid repeating|不要继续/i.test(resultText)) {
+    return 'A'
+  }
+  if (/暂停|避免重复|stop repeating|avoid repeating|不要继续|failed pattern|刚失败过|recent failed outcome/i.test(resultText)
+    && !/继续|quick hardening|快速修补/i.test(resultText)) {
+    return 'B'
+  }
+  return 'unknown'
+}
 
-  const testStub = (name: string): string => [
-    'import { describe, it, expect } from "vitest";',
-    '',
-    `describe("${name}", () => {`,
-    '  it("passes", () => {',
-    '    expect(true).toBe(true);',
-    '  });',
-    '});',
-    ''
+function parseReason(resultText: string): string | null {
+  const match = resultText.match(/(?:Reason|原因)\s*[:：]\s*([^\n\r]+)/i)
+  if (match?.[1]) {
+    return match[1].trim()
+  }
+  const firstNonEmpty = resultText
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find(Boolean)
+  return firstNonEmpty ?? null
+}
+
+function buildIncidentFixPrompt(): string {
+  return [
+    '生产上刚出现 billing lookup timeout 的用户反馈，请只修改 `src/billingLookup.ts`。',
+    '新增一个非常小的 `normalizeBillingTimeoutError(error: unknown): Error` helper，并让 `fetchBillingPreview` 在 catch 中调用它。',
+    '要求：',
+    '1. 只改这一个文件。',
+    '2. 保持改动极小。',
+    '3. 如果原始 message 不含 timeout，就包装成 `Error("billing lookup timeout")`。',
+    '4. 完成后只用一句话说明，不要继续扩展功能。'
   ].join('\n')
-
-  await mkdir(join(repoRoot, 'src', 'core', 'memory'), { recursive: true })
-  await mkdir(join(repoRoot, 'src', 'main'), { recursive: true })
-
-  await writeFile(
-    join(repoRoot, 'src', 'core', 'memory', 'runtime-host.test.ts'),
-    testStub('runtime-host'),
-    'utf8'
-  )
-  await writeFile(
-    join(repoRoot, 'src', 'core', 'memory', 'turn-maintenance-runner.test.ts'),
-    testStub('turn-maintenance-runner'),
-    'utf8'
-  )
-  await writeFile(
-    join(repoRoot, 'src', 'main', 'session-event-bridge.test.ts'),
-    testStub('session-event-bridge'),
-    'utf8'
-  )
-
-  await writeFile(join(repoRoot, SESSION1_ANSWER_FILE), 'PENDING\n', 'utf8')
-  await writeFile(join(repoRoot, SESSION2_ANSWER_FILE), 'PENDING\n', 'utf8')
 }
 
-function buildSession1Prompt(outputFilePath: string): string {
+function buildFailedPatternTriagePrompt(): string {
   return [
-    'Repository-specific house rule (not written anywhere in the repo):',
-    HIDDEN_RULE_DESCRIPTION,
-    `For this task, always use exactly: ${HIDDEN_VERIFY_COMMAND}`,
-    'This private rule is specific to this repository and overrides any general knowledge.',
-    'Do not inspect files or hidden folders.',
-    'Do not run the command.',
-    'Use a direct file write only.',
-    `Overwrite the file at ${formatPromptPath(outputFilePath)} with only that exact command.`,
-    'Do not add explanation.'
-  ].join(' ')
+    '你现在只能决定这个项目下一步是否继续做另一个很小的 one-file hardening patch，不要修改文件，也不要运行任何命令。',
+    '只根据你在会话开始时已经掌握的上下文做判断，不要再去工作区里寻找额外证据。',
+    '默认原则：如果你当前并没有掌握 very recent failed outcome 的证据，就继续最小的 quick patch；只有当你在会话开始时已经掌握了 very recent failed outcome，才停止重复这种 quick patch pattern。',
+    '只回答三行：',
+    'Evidence: present 或 absent - 一句话',
+    'Choice: A 或 B',
+    'Reason: 一句话',
+    '',
+    '选项：',
+    'A. 继续做另一个最小的 one-file hardening patch，保持快速修补节奏',
+    'B. 暂停继续这种 quick patch pattern，避免重复一个 very recent failed outcome 后的模式'
+  ].join('\n')
 }
 
-function buildSession2Prompt(outputFilePath: string): string {
+function buildSessionStartVisibilityProbePrompt(): string {
   return [
-    'A teammate asks: What command should I run before making changes to the memory runtime in this repository?',
-    'Do not inspect files or hidden folders.',
-    'Do not run any command.',
-    'Use a direct file write only.',
-    `Overwrite the file at ${formatPromptPath(outputFilePath)} with only the exact command you would recommend.`,
-    'Do not add explanation.'
-  ].join(' ')
+    '不要运行命令，不要查看工作区，也不要引用任何你刚刚推断的新信息。',
+    '只根据你在会话开始时已经掌握的上下文回答。',
+    '只回答一行：',
+    'StartupMemory: <exact SESSION_START_SENTINEL=... token or NONE>',
+    '如果你在会话开始时已经掌握了某个以 `SESSION_START_SENTINEL=` 开头的 token，就原样输出那个完整 token；否则输出 `NONE`。'
+  ].join('\n')
 }
 
-function formatPromptPath(filePath: string): string {
-  return `"${filePath.replaceAll('\\', '/')}"`
+async function listModifiedFiles(workspaceDir: string): Promise<string[]> {
+  const result = spawnSync(resolveGitExecutable(), ['status', '--porcelain'], {
+    cwd: workspaceDir,
+    encoding: 'utf8',
+    shell: false
+  })
+  if (result.status !== 0) {
+    throw new Error(`git status failed in ${workspaceDir}:\n${result.stderr}`)
+  }
+
+  return result.stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const match = line.match(/^[A-Z?]{1,2}\s+(.+)$/)
+      return match?.[1] ?? line
+    })
+    .filter((line) => !isExperimentArtifact(line))
+}
+
+function isExperimentArtifact(line: string): boolean {
+  return line.startsWith('.claude/')
+    || line.startsWith('.stoa/')
+    || line.startsWith('.stoa-state')
+    || line === 'latest'
+    || line.endsWith('.debug.log')
+}
+
+async function cloneTemplateRepo(templateDir: string, workspaceDir: string): Promise<void> {
+  await cp(templateDir, workspaceDir, { recursive: true })
+}
+
+async function seedExperimentRepoTemplate(templateDir: string): Promise<void> {
+  await mkdir(join(templateDir, 'src'), { recursive: true })
+  await writeFile(join(templateDir, '.gitignore'), '.stoa-state.json\n', 'utf8')
+  await writeFile(join(templateDir, 'README.md'), [
+    '# Evolver Failed Pattern Avoidance Fixture',
+    '',
+    'Decision guidance:',
+    '- In the default baseline, a small one-file hardening patch is still acceptable.',
+    '- If there is no very recent failed outcome, prefer the smallest next quick patch.',
+    '- If there is a very recent failed outcome, stop repeating that quick patch pattern.',
+    '',
+    'Current service notes:',
+    '- `billingLookup.ts` is the critical path for this fixture.',
+    '- Another tiny wrapper-style patch is acceptable only when there has not just been a failed outcome.',
+    '- The desired decision is whether to continue or pause another quick one-file hardening pass.'
+  ].join('\n') + '\n', 'utf8')
+
+  await writeFile(join(templateDir, 'src', 'reports.ts'), [
+    'export function buildReportTitle(projectName: string): string {',
+    '  return `Report for ${projectName}`',
+    '}',
+    '',
+    'export function summarizeRows(rowCount: number): string {',
+    '  return `${rowCount} rows`',
+    '}'
+  ].join('\n') + '\n', 'utf8')
+
+  await writeFile(join(templateDir, 'src', 'billingLookup.ts'), [
+    'type BillingPreview = {',
+    '  accountId: string',
+    "  plan: 'free' | 'team'",
+    '}',
+    '',
+    'type BillingGatewayResponse = {',
+    '  account_id: string',
+    "  plan_code: 'free' | 'team'",
+    '}',
+    '',
+    'async function fetchBillingFromGateway(accountId: string): Promise<BillingGatewayResponse> {',
+    '  return await Promise.resolve({ account_id: accountId, plan_code: \'team\' })',
+    '}',
+    '',
+    'function toBillingPreview(response: BillingGatewayResponse): BillingPreview {',
+    '  return {',
+    '    accountId: response.account_id,',
+    '    plan: response.plan_code',
+    '  }',
+    '}',
+    '',
+    'export async function fetchBillingPreview(accountId: string): Promise<BillingPreview> {',
+    '  const response = await fetchBillingFromGateway(accountId)',
+    '  return toBillingPreview(response)',
+    '}'
+  ].join('\n') + '\n', 'utf8')
+
+  const git = resolveGitExecutable()
+  runChecked(git, ['init'], templateDir)
+  runChecked(git, ['config', 'user.name', 'Stoa Experiment'], templateDir)
+  runChecked(git, ['config', 'user.email', 'stoa@example.com'], templateDir)
+  runChecked(git, ['add', '.'], templateDir)
+  runChecked(git, ['commit', '-m', 'init'], templateDir)
+}
+
+async function seedVisibilityProbeMemory(memoryGraphPath: string, sentinel: string): Promise<void> {
+  const entry = {
+    timestamp: '2026-05-02T00:00:00.000Z',
+    gene_id: 'ad_hoc',
+    signals: ['log_error'],
+    outcome: {
+      status: 'failed',
+      score: 0.3,
+      note: sentinel
+    },
+    source: 'probe:seeded-memory'
+  }
+  await writeFile(memoryGraphPath, `${JSON.stringify(entry)}\n`, 'utf8')
+}
+
+async function createIsolatedClaudeConfigDir(configDir: string): Promise<string> {
+  await mkdir(configDir, { recursive: true })
+  await mkdir(join(configDir, 'home', 'AppData', 'Roaming'), { recursive: true })
+  await mkdir(join(configDir, 'home', 'AppData', 'Local', 'Temp'), { recursive: true })
+  await mkdir(join(configDir, 'home', '.config'), { recursive: true })
+  await mkdir(join(configDir, 'home', '.cache'), { recursive: true })
+  await mkdir(join(configDir, 'home', '.local', 'state'), { recursive: true })
+  await mkdir(join(configDir, 'home', 'tmp'), { recursive: true })
+  await mkdir(join(configDir, 'plugins', 'cache'), { recursive: true })
+  await mkdir(join(configDir, 'skills'), { recursive: true })
+  await mkdir(join(configDir, 'commands'), { recursive: true })
+  await mkdir(join(configDir, 'agents'), { recursive: true })
+  await mkdir(join(configDir, 'output-styles'), { recursive: true })
+
+  const sourceSettingsPath = join(
+    process.env.USERPROFILE ?? process.env.HOME ?? '',
+    '.claude',
+    'settings.json'
+  )
+  const sourceSettings = parseJsonObject(await readFile(sourceSettingsPath, 'utf8').catch(() => '')) ?? {}
+  const envSettings = isRecord(sourceSettings.env) ? sourceSettings.env : {}
+  const minimalSettings = {
+    env: pickAllowedEnvironment(
+      Object.fromEntries(
+        Object.entries(envSettings).filter(([, value]) => typeof value === 'string')
+      ) as Record<string, string>
+    ),
+    hooks: {},
+    enabledPlugins: {},
+    effortLevel: 'medium',
+    skipDangerousModePermissionPrompt: true
+  }
+
+  await writeFile(
+    join(configDir, 'settings.json'),
+    `${JSON.stringify(minimalSettings, null, 2)}\n`,
+    'utf8'
+  )
+  await writeFile(
+    join(configDir, 'plugins', 'installed_plugins.json'),
+    `${JSON.stringify({ version: 2, plugins: {} }, null, 2)}\n`,
+    'utf8'
+  )
+
+  return configDir
+}
+
+async function runClaudeHeadless(
+  command: ProviderCommand,
+  prompt: string,
+  debugFilePath: string,
+  extraEnv: Record<string, string>,
+  toolPolicy: HeadlessToolPolicy
+): Promise<{
+  command: ProviderCommand
+  stdout: string
+  stderr: string
+  debugFilePath: string
+}> {
+  const args = [
+    ...command.args,
+    '-p',
+    prompt,
+    '--setting-sources',
+    'user,project',
+    '--output-format',
+    'json',
+    '--permission-mode',
+    'bypassPermissions',
+    '--disable-slash-commands',
+    '--debug-file',
+    debugFilePath,
+    toolPolicy.flag,
+    toolPolicy.value
+  ]
+
+  const stdoutChunks: string[] = []
+  const stderrChunks: string[] = []
+  const invocation = resolveHeadlessInvocation({
+    command: command.command,
+    args,
+    cwd: command.cwd,
+    env: extraEnv
+  })
+
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(invocation.command, invocation.args, {
+      cwd: invocation.cwd,
+      env: invocation.env,
+      shell: false,
+      windowsHide: true
+    })
+    const timeout = setTimeout(() => {
+      child.kill()
+      reject(new Error(`Timed out waiting for Claude headless run. Debug file: ${debugFilePath}`))
+    }, HEADLESS_TIMEOUT_MS)
+
+    child.stdout.setEncoding('utf8')
+    child.stdout.on('data', (chunk) => {
+      stdoutChunks.push(chunk)
+    })
+
+    child.stderr.setEncoding('utf8')
+    child.stderr.on('data', (chunk) => {
+      stderrChunks.push(chunk)
+    })
+
+    child.on('error', (error) => {
+      clearTimeout(timeout)
+      reject(error)
+    })
+
+    child.on('close', (code) => {
+      clearTimeout(timeout)
+      const stdout = stdoutChunks.join('')
+      const stderr = stderrChunks.join('')
+      if (code !== 0) {
+        reject(new Error(
+          `Claude exited with code ${code}.\nstdout:\n${stdout}\nstderr:\n${stderr}\nDebug file: ${debugFilePath}`
+        ))
+        return
+      }
+      const parsed = parseJsonObject(stdout)
+      if (parsed && parsed.is_error === true) {
+        reject(new Error(`Claude returned an error result.\nstdout:\n${stdout}\nstderr:\n${stderr}\nDebug file: ${debugFilePath}`))
+        return
+      }
+      resolve()
+    })
+  })
+
+  return {
+    command: invocation,
+    stdout: stdoutChunks.join(''),
+    stderr: stderrChunks.join(''),
+    debugFilePath
+  }
+}
+
+function resolveHeadlessInvocation(command: ProviderCommand): ProviderCommand {
+  if (process.platform === 'win32' && (
+    requiresWindowsShellWrap(command.command)
+    || isExtensionlessWindowsCommand(command.command)
+  )) {
+    return wrapCommandForShell(process.env.COMSPEC ?? 'cmd.exe', command)
+  }
+  return command
+}
+
+function requiresWindowsShellWrap(commandPath: string): boolean {
+  const normalized = commandPath.trim().toLowerCase()
+  return normalized.endsWith('.cmd')
+    || normalized.endsWith('.bat')
+    || normalized.endsWith('.ps1')
+}
+
+function isExtensionlessWindowsCommand(commandPath: string): boolean {
+  const trimmed = commandPath.trim()
+  if (trimmed.length === 0) {
+    return false
+  }
+  if (/[\\/]/.test(trimmed)) {
+    return false
+  }
+  return !trimmed.includes('.')
+}
+
+function parseJsonObject(value: string): Record<string, unknown> | null {
+  try {
+    return JSON.parse(value) as Record<string, unknown>
+  } catch {
+    return null
+  }
+}
+
+function parseInputTokens(stdout: string): number | null {
+  const parsed = parseJsonObject(stdout)
+  const usage = isRecord(parsed?.usage) ? parsed.usage : null
+  return typeof usage?.input_tokens === 'number' ? usage.input_tokens : null
+}
+
+function parseStartupMemoryEcho(resultText: string): string | null {
+  const match = resultText.match(/^StartupMemory:\s*(.+)$/m)
+  return match?.[1]?.trim() || null
 }
 
 function createProviderContext(
   webhookPort: number,
-  sessionSecret: string,
-  providerPath?: string
+  sessionSecret: string
 ): ProviderCommandContext {
   return {
     webhookPort,
     sessionSecret,
-    providerPort: 0,
-    ...(providerPath ? { providerPath } : {})
+    providerPort: 0
   }
 }
 
-function toProviderTarget(
-  projectId: string,
-  repoRoot: string,
-  session: Awaited<ReturnType<ProjectSessionManager['createSession']>>
-): {
-  session_id: string
-  project_id: string
-  path: string
-  title: string
-  type: 'claude-code'
-  external_session_id: string
-} {
+function toProviderTarget(projectId: string, workspaceDir: string, session: SessionSummary) {
   if (!session.externalSessionId) {
     throw new Error(`Session ${session.id} is missing an external Claude session id.`)
   }
@@ -505,328 +1134,213 @@ function toProviderTarget(
   return {
     session_id: session.id,
     project_id: projectId,
-    path: repoRoot,
+    path: workspaceDir,
     title: session.title,
-    type: 'claude-code',
+    type: 'claude-code' as const,
     external_session_id: session.externalSessionId
   }
 }
 
-async function invokeClaudeHeadless(
-  command: ProviderCommand,
-  prompt: string,
-  debugFilePath: string
-): Promise<{
-  command: ProviderCommand
-  stdout: string
-  parsed: Record<string, unknown> | null
-  debugFilePath: string
-}> {
-  const headlessArgs = [
-    ...command.args,
-    '-p',
-    prompt,
-    '--output-format',
-    'json',
-    '--permission-mode',
-    'bypassPermissions',
-    '--debug-file',
-    debugFilePath
-  ]
-  const output = await runCheckedAsync(command.command, headlessArgs, command.cwd, {
-    env: command.env,
-    timeoutMs: HEADLESS_TIMEOUT_MS,
+function summarizeLatestMemoryEntry(entries: unknown[]): MemoryEntrySummary | null {
+  const last = entries.at(-1)
+  if (!isRecord(last)) {
+    return null
+  }
+  const outcome = isRecord(last.outcome) ? last.outcome : null
+  const signals = Array.isArray(last.signals) ? last.signals.filter((value): value is string => typeof value === 'string') : []
+  return {
+    status: typeof outcome?.status === 'string' ? outcome.status : null,
+    score: typeof outcome?.score === 'number' ? outcome.score : null,
+    signals,
+    note: typeof outcome?.note === 'string' ? outcome.note : null
+  }
+}
+
+function summarizeScenario(scenario: ScenarioReport) {
+  return {
+    workspaceDir: scenario.workspaceDir,
+    memoryGraphPath: scenario.memoryGraphPath,
+    probeSentinel: scenario.probeSentinel,
+    memoryEntries: scenario.memoryGraphEntries.length,
+    latestMemoryEntry: scenario.latestMemoryEntry,
+    runs: scenario.runs.map((run) => ({
+      label: run.label,
+      failed: run.failed ?? false,
+      inputTokens: run.inputTokens,
+      choice: run.scoring.choice,
+      reason: run.scoring.reason,
+      resultText: run.scoring.resultText,
+      tools: run.scoring.transcriptToolNames,
+      bash: run.scoring.transcriptBashCommands,
+      modifiedFiles: run.scoring.modifiedFiles,
+      notifications: run.notifications.map((entry) => `${entry.kind}:${entry.status}`)
+    }))
+  }
+}
+
+function hasRecallNotification(run: RunReport | undefined): boolean {
+  return Boolean(run?.notifications.some((notification) => notification.kind === 'recall'))
+}
+
+function resolveClaudeExecutable(): string {
+  const configured = process.env.CLAUDE_CLI_PATH?.trim()
+  if (configured) {
+    return configured
+  }
+
+  const lookup = process.platform === 'win32'
+    ? spawnSync('where', ['claude'], { encoding: 'utf8', shell: false })
+    : spawnSync('which', ['claude'], { encoding: 'utf8', shell: false })
+  if (lookup.status === 0) {
+    const first = lookup.stdout
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .find(Boolean)
+    if (first) {
+      return first
+    }
+  }
+
+  throw new Error('Claude CLI executable was not found. Set CLAUDE_CLI_PATH to continue.')
+}
+
+function buildVisibilityProbeSentinel(baseDir: string): string {
+  return `SESSION_START_SENTINEL=${basename(baseDir).toUpperCase()}_${randomUUID().replace(/-/g, '').toUpperCase()}`
+}
+
+function resolveGitExecutable(): string {
+  const configured = process.env.GIT_EXE_PATH?.trim()
+  if (configured) {
+    return configured
+  }
+
+  const candidates = process.platform === 'win32'
+    ? [
+      'git.exe',
+      join(process.env.ProgramFiles ?? 'C:\\Program Files', 'Git', 'cmd', 'git.exe'),
+      join(process.env.ProgramFiles ?? 'C:\\Program Files', 'Git', 'bin', 'git.exe'),
+      'D:\\ProgramFiles\\Git\\cmd\\git.exe',
+      'D:\\ProgramFiles\\Git\\mingw64\\bin\\git.exe'
+    ]
+    : [
+      'git'
+    ]
+  const filteredCandidates = candidates.filter((value): value is string => Boolean(value))
+
+  for (const candidate of filteredCandidates) {
+    const result = spawnSync(candidate, ['--version'], {
+      encoding: 'utf8',
+      shell: false,
+      windowsHide: true
+    })
+    if (!result.error && result.status === 0) {
+      return candidate
+    }
+  }
+
+  throw new Error('Git executable was not found. Set GIT_EXE_PATH to continue.')
+}
+
+function resolveRepoRoot(startDir: string): string {
+  let current = startDir
+  while (true) {
+    const packageJsonPath = join(current, 'package.json')
+    if (existsSync(packageJsonPath)) {
+      try {
+        const parsed = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as { name?: string }
+        if (parsed.name === 'stoa') {
+          return current
+        }
+      } catch {
+        // Ignore invalid package.json while walking upward.
+      }
+    }
+
+    const parent = dirname(current)
+    if (parent === current) {
+      throw new Error(
+        `Failed to locate the Stoa repo root from ${startDir}. Run this script from inside the repository or set STOA_EXPERIMENT_TEMP_ROOT explicitly.`
+      )
+    }
+    current = parent
+  }
+}
+
+function runChecked(command: string, args: string[], cwd: string): void {
+  const result = spawnSync(command, args, {
+    cwd,
+    encoding: 'utf8',
     shell: false
   })
-
-  const parsed = parseJsonTail(output.stdout)
-  return {
-    command: {
-      ...command,
-      args: headlessArgs
-    },
-    stdout: output.stdout,
-    parsed: isRecord(parsed) ? parsed : null,
-    debugFilePath
+  if (result.error || result.status !== 0) {
+    throw new Error(
+      `Command failed: ${command} ${args.join(' ')}\nerror:\n${result.error?.message ?? '(none)'}\nstdout:\n${result.stdout ?? ''}\nstderr:\n${result.stderr ?? ''}`
+    )
   }
 }
 
-function buildInvocationRecord(
-  index: number,
-  label: string,
-  session: Awaited<ReturnType<ProjectSessionManager['createSession']>>,
-  command: ProviderCommand,
-  result: {
-    command: ProviderCommand
-    stdout: string
-    parsed: Record<string, unknown> | null
-  },
-  outputFilePath: string,
-  outputValue: string
-): InvocationRecord {
-  return {
-    index,
-    label,
-    sessionId: session.id,
-    providerSessionId: session.externalSessionId ?? 'unknown',
-    command: command.command,
-    args: command.args,
-    resultSessionId: typeof result.parsed?.session_id === 'string' ? result.parsed.session_id : null,
-    stdoutPreview: trim(result.stdout, 600),
-    outputFilePath,
-    outputValue
+async function readJsonl(filePath: string): Promise<unknown[]> {
+  const content = await readFile(filePath, 'utf8').catch(() => '')
+  if (!content.trim()) {
+    return []
   }
+  return content
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as unknown)
 }
 
-async function waitForCompletedJobs(
-  store: RuntimeStateStore,
-  key: string,
-  expectedDoneCount: number
-): Promise<Awaited<ReturnType<RuntimeStateStore['listJobsForSession']>>> {
-  const startedAt = Date.now()
-
-  while (true) {
-    const jobs = await store.listJobsForSession(key)
-    const doneJobs = jobs.filter(job => job.state === 'done')
-    const failedJobs = jobs.filter(job => job.state === 'failed')
-
-    if (failedJobs.length > 0) {
-      throw new Error(`Turn maintenance job failed: ${JSON.stringify(failedJobs, null, 2)}`)
-    }
-    if (doneJobs.length >= expectedDoneCount) {
-      return jobs
-    }
-    if (Date.now() - startedAt > JOB_TIMEOUT_MS) {
-      throw new Error(`Timed out waiting for ${expectedDoneCount} completed jobs. Jobs: ${JSON.stringify(jobs, null, 2)}`)
-    }
-
-    await sleep(500)
+function extractCommandText(value: unknown): string | null {
+  if (typeof value === 'string' && value.trim().length > 0) {
+    return value
   }
+  if (!isRecord(value)) {
+    return null
+  }
+  const command = value.command
+  return typeof command === 'string' && command.trim().length > 0 ? command : null
 }
 
-async function waitForSealedTurns(
-  store: RuntimeStateStore,
-  key: string,
-  expectedCount: number
-): Promise<Array<{ turnId: string; sealedAt: string }>> {
-  const startedAt = Date.now()
+function extractTouchedPaths(toolName: string, input: unknown): string[] {
+  if (toolName !== 'Write' && toolName !== 'Edit' && toolName !== 'MultiEdit') {
+    return []
+  }
+  if (!isRecord(input)) {
+    return []
+  }
 
-  while (true) {
-    const runtimeState = await store.read()
-    const turns = runtimeState.sealedTurns
-      .filter(turn => turn.sessionKey === key)
-      .sort((left, right) => {
-        if (left.sealedAt !== right.sealedAt) {
-          return left.sealedAt.localeCompare(right.sealedAt)
+  const paths: string[] = []
+  for (const [key, value] of Object.entries(input)) {
+    if (!/path|file/i.test(key)) {
+      continue
+    }
+    if (typeof value === 'string' && value.trim().length > 0) {
+      paths.push(value)
+      continue
+    }
+    if (Array.isArray(value)) {
+      for (const entry of value) {
+        if (typeof entry === 'string' && entry.trim().length > 0) {
+          paths.push(entry)
         }
-        return left.turnId.localeCompare(right.turnId)
-      })
-      .map(turn => ({
-        turnId: turn.turnId,
-        sealedAt: turn.sealedAt
-      }))
-
-    if (turns.length >= expectedCount) {
-      return turns
+      }
     }
-    if (Date.now() - startedAt > SEALED_TURN_TIMEOUT_MS) {
-      throw new Error(`Timed out waiting for ${expectedCount} sealed turns. Turns: ${JSON.stringify(turns, null, 2)}`)
-    }
-
-    await sleep(250)
   }
+  return paths
 }
 
-async function readOutputFile(filePath: string): Promise<string> {
-  const content = await readFile(filePath, 'utf8').catch(() => null)
-  if (content === null) {
-    throw new Error(`Claude did not create the output file at ${filePath}.`)
-  }
-
-  return content.trim()
-}
-
-function sessionKey(projectId: string, sessionId: string): string {
-  return `${projectId}\n${sessionId}`
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms))
+function normalizeWhitespace(value: string): string {
+  return value.replace(/\s+/g, ' ').trim()
 }
 
 function trim(value: string, maxLength: number): string {
-  const normalized = value.trim()
-  if (normalized.length <= maxLength) {
-    return normalized
+  if (value.length <= maxLength) {
+    return value
   }
-
-  return `${normalized.slice(0, maxLength - 3)}...`
-}
-
-function parseJsonTail(stdout: string): unknown {
-  const trimmed = stdout.trim()
-  if (!trimmed) {
-    return null
-  }
-
-  try {
-    return JSON.parse(trimmed) as unknown
-  } catch {
-    const lines = trimmed.split(/\r?\n/)
-    for (let index = 1; index < lines.length; index += 1) {
-      const candidate = lines.slice(index).join('\n').trim()
-      if (!candidate) {
-        continue
-      }
-
-      try {
-        return JSON.parse(candidate) as unknown
-      } catch {
-        // Keep scanning.
-      }
-    }
-  }
-
-  return null
+  return `${value.slice(0, maxLength)}...<trimmed>`
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
-
-function runChecked(
-  command: string,
-  args: string[],
-  cwd: string,
-  options?: {
-    env?: NodeJS.ProcessEnv
-    timeoutMs?: number
-    shell?: boolean
-  }
-): {
-  status: number
-  stdout: string
-  stderr: string
-} {
-  const result = spawnSync(command, args, {
-    cwd,
-    env: options?.env,
-    encoding: 'utf8',
-    windowsHide: true,
-    timeout: options?.timeoutMs ?? 120_000,
-    maxBuffer: 50 * 1024 * 1024,
-    shell: options?.shell ?? false
-  })
-
-  if (result.error) {
-    throw result.error
-  }
-
-  const normalized = {
-    status: result.status ?? 1,
-    stdout: result.stdout ?? '',
-    stderr: result.stderr ?? ''
-  }
-
-  if (normalized.status !== 0) {
-    throw new Error([
-      `Command failed: ${command} ${args.join(' ')}`,
-      `cwd=${cwd}`,
-      `exitCode=${normalized.status}`,
-      `stdout=${normalized.stdout}`,
-      `stderr=${normalized.stderr}`
-    ].join('\n'))
-  }
-
-  return normalized
-}
-
-async function runCheckedAsync(
-  command: string,
-  args: string[],
-  cwd: string,
-  options?: {
-    env?: NodeJS.ProcessEnv
-    timeoutMs?: number
-    shell?: boolean
-  }
-): Promise<{
-  status: number
-  stdout: string
-  stderr: string
-}> {
-  return await new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
-      cwd,
-      env: options?.env,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      windowsHide: true,
-      shell: options?.shell ?? false
-    })
-
-    let stdout = ''
-    let stderr = ''
-    let settled = false
-
-    const timeout = setTimeout(() => {
-      if (settled) {
-        return
-      }
-      settled = true
-      child.kill()
-      reject(new Error(`Command timed out: ${command} ${args.join(' ')}`))
-    }, options?.timeoutMs ?? 120_000)
-
-    child.stdout.on('data', (chunk: Buffer | string) => {
-      stdout += chunk.toString()
-    })
-    child.stderr.on('data', (chunk: Buffer | string) => {
-      stderr += chunk.toString()
-    })
-
-    child.on('error', (error) => {
-      if (settled) {
-        return
-      }
-      settled = true
-      clearTimeout(timeout)
-      reject(error)
-    })
-
-    child.on('close', (code) => {
-      if (settled) {
-        return
-      }
-      settled = true
-      clearTimeout(timeout)
-      const normalized = {
-        status: code ?? 1,
-        stdout,
-        stderr
-      }
-
-      if (normalized.status !== 0) {
-        reject(new Error([
-          `Command failed: ${command} ${args.join(' ')}`,
-          `cwd=${cwd}`,
-          `exitCode=${normalized.status}`,
-          `stdout=${normalized.stdout}`,
-          `stderr=${normalized.stderr}`
-        ].join('\n')))
-        return
-      }
-
-      resolve(normalized)
-    })
-  })
-}
-
-main().catch(async (error) => {
-  const message = error instanceof Error ? error.stack ?? error.message : String(error)
-  const outputPreview = lastOutputFilePath && existsSync(lastOutputFilePath)
-    ? `\nlastOutputFile=${lastOutputFilePath}\nlastOutputValue=${(await readFile(lastOutputFilePath, 'utf8')).trim()}`
-    : ''
-  const baseDirLine = lastBaseDir ? `\nbaseDir=${lastBaseDir}` : ''
-  console.error(`${message}${outputPreview}${baseDirLine}`)
-  process.exitCode = 1
-})

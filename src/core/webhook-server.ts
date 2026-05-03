@@ -1,6 +1,11 @@
 import express, { type Express } from 'express'
 import type { AddressInfo } from 'node:net'
-import type { CanonicalSessionEvent } from '@shared/project-session'
+import type {
+  CanonicalSessionEvent,
+  MemoryNotificationEvent,
+  MemoryNotificationKind,
+  MemoryNotificationStatus
+} from '@shared/project-session'
 import { adaptClaudeCodeHook, adaptCodexHook, InvalidHookEvidenceError } from './hook-event-adapter'
 
 const WEBHOOK_DEBUG = process.env.VIBECODING_E2E === '1'
@@ -50,6 +55,14 @@ function isNonEmptyString(value: unknown): value is string {
 
 export interface LocalWebhookServerOptions {
   onEvent?: (event: CanonicalSessionEvent) => Promise<unknown> | unknown
+  onMemoryNotification?: (notification: {
+    sessionId: string
+    projectId: string
+    kind: MemoryNotificationKind
+    status: MemoryNotificationStatus
+    title: string
+    message: string
+  }) => Promise<unknown> | unknown
   getSessionSecret?: (sessionId: string) => string | null
   port?: number
 }
@@ -188,6 +201,25 @@ function isMemoryRuntimeEvidence(value: unknown): boolean {
   return true
 }
 
+function isMemoryNotificationPayload(value: unknown): value is Pick<
+  MemoryNotificationEvent,
+  'kind' | 'status' | 'title' | 'message'
+> {
+  if (typeof value !== 'object' || value === null) {
+    return false
+  }
+
+  const notification = value as Record<string, unknown>
+  return (
+    typeof notification.kind === 'string'
+    && ['recall', 'solidify', 'distill'].includes(notification.kind)
+    && typeof notification.status === 'string'
+    && ['success', 'info', 'error'].includes(notification.status)
+    && isNonEmptyString(notification.title)
+    && isNonEmptyString(notification.message)
+  )
+}
+
 export function createLocalWebhookServer(options: LocalWebhookServerOptions = {}): LocalWebhookServer {
   const app = express()
   app.use(express.json())
@@ -266,6 +298,42 @@ export function createLocalWebhookServer(options: LocalWebhookServerOptions = {}
     }
 
     const result = await options.onEvent?.(event)
+    if (result === undefined || result === null) {
+      response.status(202).json({ accepted: true })
+      return
+    }
+
+    response.status(200).json(result)
+  })
+
+  app.post('/memory-notifications', async (request, response) => {
+    const sessionId = request.header('x-stoa-session-id')
+    const projectId = request.header('x-stoa-project-id')
+
+    if (!sessionId || !projectId) {
+      response.status(400).json({ accepted: false, reason: 'invalid_hook_context' })
+      return
+    }
+
+    const expectedSecret = options.getSessionSecret?.(sessionId) ?? null
+    if (!expectedSecret || request.header('x-stoa-secret') !== expectedSecret) {
+      response.status(401).json({ accepted: false, reason: 'invalid_secret' })
+      return
+    }
+
+    if (!isMemoryNotificationPayload(request.body)) {
+      response.status(400).json({ accepted: false, reason: 'invalid_memory_notification' })
+      return
+    }
+
+    const result = await options.onMemoryNotification?.({
+      sessionId,
+      projectId,
+      kind: request.body.kind,
+      status: request.body.status,
+      title: request.body.title,
+      message: request.body.message
+    })
     if (result === undefined || result === null) {
       response.status(202).json({ accepted: true })
       return

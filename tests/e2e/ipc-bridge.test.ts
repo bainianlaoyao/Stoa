@@ -21,9 +21,14 @@ import type {
 
 class FakeIpcBus {
   private handlers = new Map<string, (...args: any[]) => Promise<any>>()
+  private listeners = new Map<string, (...args: any[]) => void>()
 
   handle(channel: string, handler: (...args: any[]) => Promise<any>): void {
     this.handlers.set(channel, handler)
+  }
+
+  on(channel: string, listener: (...args: any[]) => void): void {
+    this.listeners.set(channel, listener)
   }
 
   async invoke(channel: string, ...args: any[]): Promise<any> {
@@ -32,8 +37,18 @@ class FakeIpcBus {
     return handler(undefined, ...args) // first arg is event, pass undefined
   }
 
+  send(channel: string, ...args: any[]): void {
+    const listener = this.listeners.get(channel)
+    if (!listener) return
+    listener(undefined, ...args)
+  }
+
   hasHandler(channel: string): boolean {
     return this.handlers.has(channel)
+  }
+
+  hasListener(channel: string): boolean {
+    return this.listeners.has(channel)
   }
 
   getRegisteredChannels(): string[] {
@@ -53,8 +68,12 @@ const RENDERER_API_INVOKE_CHANNELS = [
   IPC_CHANNELS.observabilityGetApp,
   IPC_CHANNELS.observabilityListSessionEvents,
   IPC_CHANNELS.sessionTerminalReplay,
-  IPC_CHANNELS.sessionInput,
   IPC_CHANNELS.sessionResize
+] as const
+
+const RENDERER_API_SEND_CHANNELS = [
+  IPC_CHANNELS.sessionInput,
+  IPC_CHANNELS.sessionBinaryInput
 ] as const
 
 const defaultPresenceSnapshot: SessionPresenceSnapshot = {
@@ -129,6 +148,7 @@ const defaultObservationEvent: ObservationEvent = {
 
 function createPreloadApi(bus: FakeIpcBus): RendererApi {
   return {
+    windowsBuildNumber: undefined,
     getBootstrapState: () => bus.invoke(IPC_CHANNELS.projectBootstrap),
     createProject: (request: CreateProjectRequest) => bus.invoke(IPC_CHANNELS.projectCreate, request),
     createSession: (request: CreateSessionRequest) => bus.invoke(IPC_CHANNELS.sessionCreate, request),
@@ -141,7 +161,8 @@ function createPreloadApi(bus: FakeIpcBus): RendererApi {
     listSessionObservationEvents: (sessionId: string, options: ObservationEventListOptions) =>
       bus.invoke(IPC_CHANNELS.observabilityListSessionEvents, sessionId, options),
     getTerminalReplay: (sessionId: string) => bus.invoke(IPC_CHANNELS.sessionTerminalReplay, sessionId),
-    sendSessionInput: (sessionId: string, data: string) => bus.invoke(IPC_CHANNELS.sessionInput, sessionId, data),
+    sendSessionInput: (sessionId: string, data: string) => { bus.send(IPC_CHANNELS.sessionInput, sessionId, data) },
+    sendSessionBinaryInput: (sessionId: string, data: Uint8Array) => { bus.send(IPC_CHANNELS.sessionBinaryInput, sessionId, data) },
     sendSessionResize: (sessionId: string, cols: number, rows: number) => bus.invoke(IPC_CHANNELS.sessionResize, sessionId, cols, rows),
     onTerminalData: () => () => {},
     onMemoryNotification: () => () => {},
@@ -201,7 +222,11 @@ async function registerMainHandlers(
     return `[replay:${sessionId}]`
   })
 
-  bus.handle(IPC_CHANNELS.sessionInput, async () => {
+  bus.on(IPC_CHANNELS.sessionInput, () => {
+    return
+  })
+
+  bus.on(IPC_CHANNELS.sessionBinaryInput, () => {
     return
   })
 
@@ -222,6 +247,16 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
 
       for (const channel of RENDERER_API_INVOKE_CHANNELS) {
         expect(bus.hasHandler(channel)).toBe(true)
+      }
+    })
+
+    test('all send RendererApi channels are registered in ipcMain', async () => {
+      const bus = new FakeIpcBus()
+      const globalStatePath = await createTestGlobalStatePath()
+      await registerMainHandlers(bus, globalStatePath)
+
+      for (const channel of RENDERER_API_SEND_CHANNELS) {
+        expect(bus.hasListener(channel)).toBe(true)
       }
     })
 
@@ -250,6 +285,7 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
       expect(IPC_CHANNELS.observabilityListSessionEvents).toBe('observability:list-session-events')
       expect(IPC_CHANNELS.sessionTerminalReplay).toBe('session:terminal-replay')
       expect(IPC_CHANNELS.sessionInput).toBe('session:input')
+      expect(IPC_CHANNELS.sessionBinaryInput).toBe('session:binary-input')
       expect(IPC_CHANNELS.sessionResize).toBe('session:resize')
       expect(IPC_CHANNELS.terminalData).toBe('terminal:data')
     })
@@ -393,7 +429,8 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
       bus.handle(IPC_CHANNELS.observabilityGetApp, async () => defaultAppObservability)
       bus.handle(IPC_CHANNELS.observabilityListSessionEvents, async () => ({ events: [], nextCursor: null }))
       bus.handle(IPC_CHANNELS.sessionTerminalReplay, async () => '')
-      bus.handle(IPC_CHANNELS.sessionInput, async () => { return })
+      bus.on(IPC_CHANNELS.sessionInput, () => { return })
+      bus.on(IPC_CHANNELS.sessionBinaryInput, () => { return })
       bus.handle(IPC_CHANNELS.sessionResize, async () => { return })
 
       api = createPreloadApi(bus)
@@ -500,6 +537,7 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
         listSessionObservationEvents: IPC_CHANNELS.observabilityListSessionEvents,
         getTerminalReplay: IPC_CHANNELS.sessionTerminalReplay,
         sendSessionInput: IPC_CHANNELS.sessionInput,
+        sendSessionBinaryInput: IPC_CHANNELS.sessionBinaryInput,
         sendSessionResize: IPC_CHANNELS.sessionResize,
         onTerminalData: IPC_CHANNELS.terminalData,
         onMemoryNotification: IPC_CHANNELS.memoryNotification,
@@ -509,11 +547,11 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
       }
 
       const methods = Object.keys(apiMethodToChannel)
-      expect(methods).toHaveLength(18)
+      expect(methods).toHaveLength(19)
 
       const channelValues = Object.values(apiMethodToChannel)
       const uniqueChannels = new Set(channelValues)
-      expect(uniqueChannels.size).toBe(18)
+      expect(uniqueChannels.size).toBe(19)
 
       for (const channel of channelValues) {
         expect(typeof channel).toBe('string')
@@ -547,7 +585,16 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
       await registerMainHandlers(bus, globalStatePath)
       const api = createPreloadApi(bus)
 
-      await expect(api.sendSessionInput('session-1', 'ls\n')).resolves.toBeUndefined()
+      expect(() => api.sendSessionInput('session-1', 'ls\n')).not.toThrow()
+    })
+
+    test('sendSessionBinaryInput does not throw', async () => {
+      const bus = new FakeIpcBus()
+      const globalStatePath = await createTestGlobalStatePath()
+      await registerMainHandlers(bus, globalStatePath)
+      const api = createPreloadApi(bus)
+
+      expect(() => api.sendSessionBinaryInput('session-1', Uint8Array.from([0x1b, 0x5b, 0x4d]))).not.toThrow()
     })
 
     test('sendSessionResize does not throw', async () => {

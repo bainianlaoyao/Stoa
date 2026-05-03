@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
-import { exec } from 'node:child_process'
+import { exec, spawnSync } from 'node:child_process'
 import { createServer } from 'node:http'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createClaudeCodeProvider } from './claude-code-provider'
@@ -138,7 +138,7 @@ describe('claude-code provider', () => {
     expect(command.env.STOA_WEBHOOK_PORT).toBe('43127')
   })
 
-  test('installSidecar writes shared Claude hooks config with env-driven headers', async () => {
+  test('installSidecar writes Claude hooks config that wraps upstream Evolver commands and preserves Stoa HTTP hooks', async () => {
     const workspaceDir = await mkdtemp(join(tmpdir(), 'stoa-claude-sidecar-'))
     try {
       const provider = createClaudeCodeProvider()
@@ -156,7 +156,7 @@ describe('claude-code provider', () => {
         providerPort: 43128
       })
 
-      const content = await readFile(join(workspaceDir, '.claude', 'settings.local.json'), 'utf8')
+      const content = await readFile(join(workspaceDir, '.claude', 'settings.json'), 'utf8')
       const settings = JSON.parse(content) as { hooks: Record<string, unknown> }
       expect(content).toContain('http://127.0.0.1:43127/hooks/claude-code')
       expect(content).toContain('x-stoa-session-id')
@@ -175,8 +175,15 @@ describe('claude-code provider', () => {
       ])
       const sessionStartCommand = readSessionStartHookCommand(content)
       expect(sessionStartCommand).toContain(process.platform === 'win32'
-        ? 'stoa-hook-session-start.cmd'
-        : 'stoa-hook-session-start.cjs')
+        ? 'stoa-evolver-hook-bridge.cmd'
+        : 'stoa-evolver-hook-bridge.sh')
+      expect(sessionStartCommand).toContain('$CLAUDE_PROJECT_DIR/.claude/hooks/')
+      expect(sessionStartCommand).toContain('SessionStart')
+      expect(readWrappedUpstreamCommand(sessionStartCommand)).toContain('evolver-session-start.cjs')
+      expect(readWrappedRepoRoot(sessionStartCommand)).toContain(join('research', 'upstreams', 'evolver'))
+      expect(readWrappedUpstreamCommand(readHookCommand(content, 'PostToolUse'))).toContain('evolver-signal-detect.cjs')
+      expect(readWrappedUpstreamCommand(readHookCommand(content, 'Stop'))).toContain('evolver-session-end.cjs')
+      expect(readWrappedUpstreamCommand(readHookCommand(content, 'StopFailure'))).toContain('evolver-session-end.cjs')
       if (process.platform === 'win32') {
         expect(sessionStartCommand.startsWith('"')).toBe(true)
       }
@@ -192,9 +199,6 @@ describe('claude-code provider', () => {
           'x-stoa-secret': '${STOA_SESSION_SECRET}'
         }
       })
-      expect(content).not.toContain('stoa-evolver-session-start.cjs')
-      expect(content).not.toContain('stoa-evolver-session-end.cjs')
-      expect(content).not.toContain('stoa-evolver-signal-detect.cjs')
       expect(content).not.toContain('session_claude_env')
       expect(content).not.toContain('secret-env')
     } finally {
@@ -202,7 +206,7 @@ describe('claude-code provider', () => {
     }
   })
 
-  test('installSidecar writes only the SessionStart Claude-local bridge scripts', async () => {
+  test('installSidecar writes the shared wrapper plus the real upstream Evolver hook scripts', async () => {
     const workspaceDir = await mkdtemp(join(tmpdir(), 'stoa-claude-hook-wrapper-'))
     try {
       const provider = createClaudeCodeProvider()
@@ -220,29 +224,42 @@ describe('claude-code provider', () => {
         providerPort: 43128
       })
 
-      const startWrapper = await readFile(join(workspaceDir, '.claude', 'hooks', 'stoa-hook-session-start.cjs'), 'utf8')
+      const startWrapper = await readFile(join(workspaceDir, '.claude', 'hooks', 'stoa-evolver-hook-bridge.cjs'), 'utf8')
+      expect(startWrapper).toContain("return process.env.CLAUDE_PROJECT_DIR || process.cwd()")
+      expect(startWrapper).toContain("const hookEventName = process.argv[2]")
+      expect(startWrapper).toContain("const encodedUpstreamCommand = process.argv[3]")
+      expect(startWrapper).toContain("const encodedRepoRoot = process.argv[4]")
       expect(startWrapper).toContain('/hooks/claude-code')
-      expect(startWrapper).toContain('hook_event_name: "SessionStart"')
+      expect(startWrapper).toContain('/memory-notifications')
       if (process.platform === 'win32') {
-        const launcher = await readFile(join(workspaceDir, '.claude', 'hooks', 'stoa-hook-session-start.cmd'), 'utf8')
+        const launcher = await readFile(join(workspaceDir, '.claude', 'hooks', 'stoa-evolver-hook-bridge.cmd'), 'utf8')
         expect(launcher).toContain(process.execPath)
         expect(launcher).toContain('ELECTRON_RUN_AS_NODE')
+        const nodeShim = await readFile(join(workspaceDir, '.claude', 'hooks', 'node.cmd'), 'utf8')
+        expect(nodeShim).toContain(process.execPath)
+        expect(nodeShim).toContain('ELECTRON_RUN_AS_NODE')
+      } else {
+        const launcher = await readFile(join(workspaceDir, '.claude', 'hooks', 'stoa-evolver-hook-bridge.sh'), 'utf8')
+        expect(launcher).toContain(process.execPath)
+        expect(launcher).toContain('ELECTRON_RUN_AS_NODE')
+        const nodeShim = await readFile(join(workspaceDir, '.claude', 'hooks', 'node'), 'utf8')
+        expect(nodeShim).toContain(process.execPath)
+        expect(nodeShim).toContain('ELECTRON_RUN_AS_NODE')
       }
-      await expect(readFile(join(workspaceDir, '.claude', 'hooks', 'stoa-hook-user-prompt-submit.cjs'), 'utf8')).rejects.toThrow()
-      await expect(readFile(join(workspaceDir, '.claude', 'hooks', 'stoa-hook-user-prompt-submit.cmd'), 'utf8')).rejects.toThrow()
-      await expect(readFile(join(workspaceDir, '.claude', 'hooks', 'stoa-evolver-session-end.cjs'), 'utf8')).rejects.toThrow()
-      await expect(readFile(join(workspaceDir, '.claude', 'hooks', 'stoa-evolver-signal-detect.cjs'), 'utf8')).rejects.toThrow()
+      await expect(readFile(join(workspaceDir, '.claude', 'hooks', 'evolver-session-start.cjs'), 'utf8')).resolves.toEqual(expect.any(String))
+      await expect(readFile(join(workspaceDir, '.claude', 'hooks', 'evolver-signal-detect.cjs'), 'utf8')).resolves.toEqual(expect.any(String))
+      await expect(readFile(join(workspaceDir, '.claude', 'hooks', 'evolver-session-end.cjs'), 'utf8')).resolves.toEqual(expect.any(String))
     } finally {
       await rm(workspaceDir, { recursive: true, force: true })
     }
   })
 
-  test('generated Claude session-start bridge prints webhook JSON responses', async () => {
+  test('generated Claude SessionStart wrapper returns real upstream recall output and also notifies Stoa', async () => {
     const workspaceDir = await mkdtemp(join(tmpdir(), 'stoa-claude-hook-run-'))
     const received: Array<Record<string, unknown>> = []
-    const server = await createHookResponseServer('session_claude_evolver_run', 'secret-env', received, {
-      agent_message: 'Use uv instead of pip for Python package management.',
-      additionalContext: 'Use uv instead of pip for Python package management.'
+    const memoryNotifications: Array<Record<string, unknown>> = []
+    const server = await createHookResponseServer('session_claude_evolver_run', 'secret-env', received, memoryNotifications, {
+      accepted: true
     })
     try {
       const provider = createClaudeCodeProvider()
@@ -260,21 +277,251 @@ describe('claude-code provider', () => {
         providerPort: 43128
       })
 
+      const memoryGraphPath = join(workspaceDir, 'memory-graph.jsonl')
+      await writeFile(
+        memoryGraphPath,
+        `${JSON.stringify({
+          timestamp: '2026-04-30T00:00:00.000Z',
+          signals: ['test_failure'],
+          outcome: {
+            status: 'failed',
+            score: 0.3,
+            note: 'Use uv instead of pip for Python package management.'
+          }
+        })}\n`,
+        'utf8'
+      )
+
       const stdout = await runSessionStartHookFromSettings(workspaceDir, {
         ...process.env,
+        MEMORY_GRAPH_PATH: memoryGraphPath,
+        PATH: '',
         STOA_SESSION_ID: 'session_claude_evolver_run',
         STOA_PROJECT_ID: 'project_alpha',
         STOA_SESSION_SECRET: 'secret-env',
         STOA_WEBHOOK_PORT: String(server.port)
       })
 
-      const parsed = JSON.parse(stdout) as { agent_message?: string; additionalContext?: string }
-      expect(parsed.agent_message).toContain('Use uv instead of pip')
-      expect(parsed.additionalContext).toContain('Use uv instead of pip')
+      const parsedOutput = parseHookJsonOutput(stdout)
+      expect(parsedOutput).toMatchObject({
+        hookSpecificOutput: {
+          hookEventName: 'SessionStart',
+          additionalContext: expect.stringContaining('Use uv instead of pip')
+        }
+      })
       expect(received).toHaveLength(1)
       expect(received[0]).toMatchObject({
         hook_event_name: 'SessionStart'
       })
+      expect(memoryNotifications).toContainEqual(expect.objectContaining({
+        kind: 'recall',
+        status: 'success',
+        title: 'Memory recalled'
+      }))
+    } finally {
+      await server.stop()
+      await rm(workspaceDir, { recursive: true, force: true })
+    }
+  })
+
+  test('generated Claude PostToolUse wrapper returns real upstream signal output and also notifies Stoa', async () => {
+    const workspaceDir = await mkdtemp(join(tmpdir(), 'stoa-claude-post-tool-'))
+    const received: Array<Record<string, unknown>> = []
+    const memoryNotifications: Array<Record<string, unknown>> = []
+    const server = await createHookResponseServer('session_claude_post_tool', 'secret-env', received, memoryNotifications, {
+      accepted: true
+    })
+    try {
+      const provider = createClaudeCodeProvider()
+
+      await provider.installSidecar({
+        session_id: 'session_claude_post_tool',
+        project_id: 'project_alpha',
+        path: workspaceDir,
+        title: 'Claude Alpha',
+        type: 'claude-code',
+        external_session_id: 'external-post-tool'
+      }, {
+        webhookPort: server.port,
+        sessionSecret: 'secret-env',
+        providerPort: 43128
+      })
+
+      const stdout = await runHookFromSettings('PostToolUse', workspaceDir, {
+        ...process.env,
+        STOA_SESSION_ID: 'session_claude_post_tool',
+        STOA_PROJECT_ID: 'project_alpha',
+        STOA_SESSION_SECRET: 'secret-env',
+        STOA_WEBHOOK_PORT: String(server.port)
+      }, {
+        tool_name: 'Write',
+        path: join(workspaceDir, 'note.txt'),
+        content: 'error: test failed'
+      })
+
+      const parsedOutput = parseHookJsonOutput(stdout)
+      expect(parsedOutput).toMatchObject({
+        hookSpecificOutput: {
+          hookEventName: 'PostToolUse',
+          additionalContext: expect.stringContaining('test_failure')
+        }
+      })
+      expect(received).toHaveLength(1)
+      expect(received[0]).toMatchObject({
+        hook_event_name: 'PostToolUse',
+        tool_name: 'Write'
+      })
+      expect(memoryNotifications).toHaveLength(0)
+    } finally {
+      await server.stop()
+      await rm(workspaceDir, { recursive: true, force: true })
+    }
+  })
+
+  test('generated Claude Stop wrapper records real git diff signals through the wrapped upstream shell', async () => {
+    const workspaceDir = await mkdtemp(join(tmpdir(), 'stoa-claude-stop-hook-'))
+    const received: Array<Record<string, unknown>> = []
+    const memoryNotifications: Array<Record<string, unknown>> = []
+    const server = await createHookResponseServer('session_claude_stop_hook', 'secret-env', received, memoryNotifications, {
+      accepted: true
+    })
+    try {
+      await writeFile(join(workspaceDir, 'memory-note.md'), 'baseline\n', 'utf8')
+      runChecked('git', ['init'], workspaceDir)
+      runChecked('git', ['config', 'user.name', 'Stoa Test'], workspaceDir)
+      runChecked('git', ['config', 'user.email', 'stoa@example.com'], workspaceDir)
+      runChecked('git', ['add', '.'], workspaceDir)
+      runChecked('git', ['commit', '-m', 'init'], workspaceDir)
+      await writeFile(join(workspaceDir, 'memory-note.md'), 'test failed: use uv instead of pip for Python package management.\n', 'utf8')
+
+      const provider = createClaudeCodeProvider()
+      await provider.installSidecar({
+        session_id: 'session_claude_stop_hook',
+        project_id: 'project_alpha',
+        path: workspaceDir,
+        title: 'Claude Alpha',
+        type: 'claude-code',
+        external_session_id: 'external-stop-hook'
+      }, {
+        webhookPort: server.port,
+        sessionSecret: 'secret-env',
+        providerPort: 43128
+      })
+
+      const memoryGraphPath = join(workspaceDir, 'memory-graph.jsonl')
+      await writeFile(memoryGraphPath, '', 'utf8')
+      const stdout = await runHookFromSettings('Stop', workspaceDir, {
+        ...process.env,
+        MEMORY_GRAPH_PATH: memoryGraphPath,
+        STOA_SESSION_ID: 'session_claude_stop_hook',
+        STOA_PROJECT_ID: 'project_alpha',
+        STOA_SESSION_SECRET: 'secret-env',
+        STOA_WEBHOOK_PORT: String(server.port)
+      }, {})
+
+      const entries = (await readFile(memoryGraphPath, 'utf8'))
+        .trim()
+        .split(/\r?\n/)
+        .filter(Boolean)
+        .map((line) => JSON.parse(line) as { signals?: string[]; outcome?: { status?: string } })
+
+      expect(stdout).toContain('Signals: [log_error, test_failure]')
+      expect(entries.at(-1)).toMatchObject({
+        signals: ['log_error', 'test_failure'],
+        outcome: {
+          status: 'failed'
+        }
+      })
+      expect(received).toHaveLength(1)
+      expect(received[0]).toMatchObject({
+        hook_event_name: 'Stop'
+      })
+      expect(memoryNotifications).toContainEqual(expect.objectContaining({
+        kind: 'solidify',
+        status: 'success'
+      }))
+    } finally {
+      await server.stop()
+      await rm(workspaceDir, { recursive: true, force: true })
+    }
+  }, 15000)
+
+  test('generated Claude hooks still execute inside type-module workspaces', async () => {
+    const workspaceDir = await mkdtemp(join(tmpdir(), 'stoa-claude-type-module-'))
+    const received: Array<Record<string, unknown>> = []
+    const memoryNotifications: Array<Record<string, unknown>> = []
+    const server = await createHookResponseServer('session_claude_type_module', 'secret-env', received, memoryNotifications, {
+      accepted: true
+    })
+    try {
+      await writeFile(join(workspaceDir, 'package.json'), JSON.stringify({
+        name: 'type-module-hook-fixture',
+        private: true,
+        type: 'module'
+      }, null, 2) + '\n', 'utf8')
+
+      const provider = createClaudeCodeProvider()
+      await provider.installSidecar({
+        session_id: 'session_claude_type_module',
+        project_id: 'project_alpha',
+        path: workspaceDir,
+        title: 'Claude Alpha',
+        type: 'claude-code',
+        external_session_id: 'external-type-module'
+      }, {
+        webhookPort: server.port,
+        sessionSecret: 'secret-env',
+        providerPort: 43128
+      })
+
+      const settingsJson = await readFile(join(workspaceDir, '.claude', 'settings.json'), 'utf8')
+      expect(readWrappedUpstreamCommand(readHookCommand(settingsJson, 'SessionStart'))).toContain('evolver-session-start.cjs')
+      expect(readWrappedUpstreamCommand(readHookCommand(settingsJson, 'PostToolUse'))).toContain('evolver-signal-detect.cjs')
+      expect(readWrappedUpstreamCommand(readHookCommand(settingsJson, 'Stop'))).toContain('evolver-session-end.cjs')
+      await expect(readFile(join(workspaceDir, '.claude', 'hooks', 'evolver-session-start.cjs'), 'utf8')).resolves.toEqual(expect.any(String))
+      await expect(readFile(join(workspaceDir, '.claude', 'hooks', 'evolver-signal-detect.cjs'), 'utf8')).resolves.toEqual(expect.any(String))
+      await expect(readFile(join(workspaceDir, '.claude', 'hooks', 'evolver-session-end.cjs'), 'utf8')).resolves.toEqual(expect.any(String))
+
+      const memoryGraphPath = join(workspaceDir, 'memory-graph.jsonl')
+      await writeFile(
+        memoryGraphPath,
+        `${JSON.stringify({
+          timestamp: '2026-04-30T00:00:00.000Z',
+          signals: ['test_failure'],
+          outcome: {
+            status: 'failed',
+            score: 0.3,
+            note: 'Recall survives type-module workspaces.'
+          }
+        })}\n`,
+        'utf8'
+      )
+
+      const stdout = await runSessionStartHookFromSettings(workspaceDir, {
+        ...process.env,
+        MEMORY_GRAPH_PATH: memoryGraphPath,
+        PATH: '',
+        STOA_SESSION_ID: 'session_claude_type_module',
+        STOA_PROJECT_ID: 'project_alpha',
+        STOA_SESSION_SECRET: 'secret-env',
+        STOA_WEBHOOK_PORT: String(server.port)
+      })
+
+      const parsedOutput = parseHookJsonOutput(stdout)
+      expect(parsedOutput).toMatchObject({
+        hookSpecificOutput: {
+          hookEventName: 'SessionStart',
+          additionalContext: expect.stringContaining('Recall survives type-module workspaces.')
+        }
+      })
+      expect(received).toHaveLength(1)
+      expect(received[0]).toMatchObject({
+        hook_event_name: 'SessionStart'
+      })
+      expect(memoryNotifications).toContainEqual(expect.objectContaining({
+        kind: 'recall',
+        status: 'success'
+      }))
     } finally {
       await server.stop()
       await rm(workspaceDir, { recursive: true, force: true })
@@ -283,15 +530,49 @@ describe('claude-code provider', () => {
 
 })
 
-function readSessionStartHookCommand(settingsJson: string): string {
+function runChecked(command: string, args: string[], cwd: string): void {
+  const result = spawnSync(command, args, {
+    cwd,
+    encoding: 'utf8',
+    shell: false
+  })
+  if (result.status !== 0) {
+    throw new Error(`Command failed: ${command} ${args.join(' ')}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`)
+  }
+}
+
+function readHookCommand(settingsJson: string, eventName: string): string {
   const settings = JSON.parse(settingsJson) as {
     hooks?: Record<string, Array<{ hooks?: Array<{ command?: string }> }>>
   }
-  const command = settings.hooks?.SessionStart?.[0]?.hooks?.[0]?.command
+  const command = settings.hooks?.[eventName]?.[0]?.hooks?.[0]?.command
   if (!command) {
-    throw new Error('SessionStart hook command is missing.')
+    throw new Error(`${eventName} hook command is missing.`)
   }
   return command
+}
+
+function readSessionStartHookCommand(settingsJson: string): string {
+  return readHookCommand(settingsJson, 'SessionStart')
+}
+
+function readWrappedUpstreamCommand(command: string): string {
+  const encoded = readWrappedEncodedArgument(command, 2)
+  return Buffer.from(encoded, 'base64').toString('utf8')
+}
+
+function readWrappedRepoRoot(command: string): string {
+  const encoded = readWrappedEncodedArgument(command, 3)
+  return Buffer.from(encoded, 'base64').toString('utf8')
+}
+
+function readWrappedEncodedArgument(command: string, quotedIndex: number): string {
+  const matches = [...command.matchAll(/"([^"]+)"/g)]
+  const encoded = matches[quotedIndex]?.[1]
+  if (!encoded) {
+    throw new Error(`Unable to decode wrapped upstream command from: ${command}`)
+  }
+  return encoded
 }
 
 function readHttpHook(settingsJson: string, eventName: string): {
@@ -318,13 +599,26 @@ function readHttpHook(settingsJson: string, eventName: string): {
   }
 }
 
+function parseHookJsonOutput(stdout: string): Record<string, unknown> {
+  return JSON.parse(stdout) as Record<string, unknown>
+}
+
 async function runSessionStartHookFromSettings(
   workspaceDir: string,
   env: NodeJS.ProcessEnv
 ): Promise<string> {
-  const settingsJson = await readFile(join(workspaceDir, '.claude', 'settings.local.json'), 'utf8')
-  const command = readSessionStartHookCommand(settingsJson)
-  return await runHookCommand(command, workspaceDir, env)
+  return await runHookFromSettings('SessionStart', workspaceDir, env)
+}
+
+async function runHookFromSettings(
+  eventName: string,
+  workspaceDir: string,
+  env: NodeJS.ProcessEnv,
+  stdinPayload?: Record<string, unknown>
+): Promise<string> {
+  const settingsJson = await readFile(join(workspaceDir, '.claude', 'settings.json'), 'utf8')
+  const command = readHookCommand(settingsJson, eventName)
+  return await runHookCommand(command, workspaceDir, env, stdinPayload)
 }
 
 async function runHookCommand(
@@ -333,12 +627,16 @@ async function runHookCommand(
   env: NodeJS.ProcessEnv,
   stdinPayload?: Record<string, unknown>
 ): Promise<string> {
+  const expandedCommand = command.replaceAll('$CLAUDE_PROJECT_DIR', workspaceDir.replace(/\\/g, '/'))
   return await new Promise<string>((resolve, reject) => {
     exec(
-      command,
+      expandedCommand,
       {
         cwd: workspaceDir,
-        env,
+        env: {
+          ...env,
+          CLAUDE_PROJECT_DIR: workspaceDir.replace(/\\/g, '/')
+        },
         windowsHide: true
       },
       (error, stdout, stderr) => {
@@ -356,13 +654,14 @@ async function createHookResponseServer(
   expectedSessionId: string,
   expectedSecret: string,
   received: Array<Record<string, unknown>>,
+  memoryNotifications: Array<Record<string, unknown>>,
   responsePayload: Record<string, unknown>
 ): Promise<{
   port: number
   stop: () => Promise<void>
 }> {
   const server = createServer((request, response) => {
-    if (request.method !== 'POST' || request.url !== '/hooks/claude-code') {
+    if (request.method !== 'POST' || (request.url !== '/hooks/claude-code' && request.url !== '/memory-notifications')) {
       response.statusCode = 404
       response.end()
       return
@@ -381,7 +680,12 @@ async function createHookResponseServer(
     request.setEncoding('utf8')
     request.on('data', chunk => { body += chunk })
     request.on('end', () => {
-      received.push(JSON.parse(body) as Record<string, unknown>)
+      const parsed = JSON.parse(body) as Record<string, unknown>
+      if (request.url === '/memory-notifications') {
+        memoryNotifications.push(parsed)
+      } else {
+        received.push(parsed)
+      }
       response.statusCode = 200
       response.setHeader('content-type', 'application/json')
       response.end(JSON.stringify(responsePayload))

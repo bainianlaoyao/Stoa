@@ -20,8 +20,7 @@ export function adaptClaudeCodeHook(
     return null
   }
 
-  const toolName = stringField(body.tool_name)
-  const patch = mapClaudeHookToPatch(hookEventName, toolName)
+  const patch = mapClaudeHookToPatch(hookEventName)
   if (!patch) {
     return null
   }
@@ -73,15 +72,11 @@ export function adaptCodexHook(
   }
 
   const evidence = buildCodexHookEvidence(body, hookEventName)
-  const turnId = evidence.turnId
-  const externalSessionId =
-    evidence.providerSessionId
-    ?? requiredOptionalStringField(body, 'thread_id', 'codex')
-    ?? requiredOptionalStringField(body, 'thread-id', 'codex')
+  const externalSessionId = evidence.providerSessionId
 
   return {
     event_version: 1,
-    event_id: turnId ?? randomUUID(),
+    event_id: randomUUID(),
     event_type: `codex.${hookEventName}`,
     timestamp: new Date().toISOString(),
     session_id: context.sessionId,
@@ -120,6 +115,7 @@ function buildClaudeHookEvidence(
     promptText: requiredOptionalStringField(body, 'prompt', 'claude-code'),
     toolName: requiredOptionalStringField(body, 'tool_name', 'claude-code'),
     toolUseId: requiredOptionalStringField(body, 'tool_use_id', 'claude-code'),
+    toolInput: isRecord(body.tool_input) ? body.tool_input : undefined,
     cwd: requiredOptionalStringField(body, 'cwd', 'claude-code'),
     model: requiredOptionalStringField(body, 'model', 'claude-code')
   })
@@ -143,12 +139,13 @@ function buildCodexHookEvidence(
     promptText: requiredOptionalStringField(body, 'prompt', 'codex'),
     toolName: requiredOptionalStringField(body, 'tool_name', 'codex'),
     toolUseId: requiredOptionalStringField(body, 'tool_use_id', 'codex'),
+    toolInput: isRecord(body.tool_input) ? body.tool_input : undefined,
     cwd: requiredOptionalStringField(body, 'cwd', 'codex'),
     model: requiredOptionalStringField(body, 'model', 'codex')
   })
 }
 
-function mapClaudeHookToPatch(hookEventName: string, toolName: string | null): {
+function mapClaudeHookToPatch(hookEventName: string): {
   intent: NonNullable<CanonicalSessionEvent['payload']['intent']>
   agentState: NonNullable<CanonicalSessionEvent['payload']['agentState']>
   hasUnseenCompletion?: boolean
@@ -160,12 +157,9 @@ function mapClaudeHookToPatch(hookEventName: string, toolName: string | null): {
     case 'UserPromptSubmit':
       return { intent: 'agent.turn_started', agentState: 'working' }
     case 'PreToolUse':
-      if (toolName === 'AskUserQuestion') {
-        return { intent: 'agent.permission_requested', agentState: 'blocked', blockingReason: 'elicitation' }
-      }
       return { intent: 'agent.tool_started', agentState: 'working' }
     case 'PostToolUse':
-      return { intent: 'agent.tool_started', agentState: 'working' }
+      return { intent: 'agent.tool_completed', agentState: 'working' }
     case 'PermissionRequest':
       return { intent: 'agent.permission_requested', agentState: 'blocked', blockingReason: 'permission' }
     case 'Stop':
@@ -184,11 +178,13 @@ function mapCodexHookToPatch(hookEventName: string): {
 } | null {
   switch (hookEventName) {
     case 'SessionStart':
+      return { intent: 'runtime.alive', agentState: 'idle' }
     case 'UserPromptSubmit':
       return { intent: 'agent.turn_started', agentState: 'working' }
     case 'PreToolUse':
-    case 'PostToolUse':
       return { intent: 'agent.tool_started', agentState: 'working' }
+    case 'PostToolUse':
+      return { intent: 'agent.tool_completed', agentState: 'working' }
     case 'Stop':
       return { intent: 'agent.turn_completed', agentState: 'idle', hasUnseenCompletion: true }
     default:
@@ -238,4 +234,8 @@ function compactEvidence(evidence: MemoryRuntimeEvidence): MemoryRuntimeEvidence
   return Object.fromEntries(
     Object.entries(evidence).filter(([, value]) => value !== undefined)
   ) as MemoryRuntimeEvidence
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }

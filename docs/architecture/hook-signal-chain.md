@@ -58,15 +58,14 @@ So the broken link is upstream of the reducer and renderer:
 
 `PTY write()` → `provider TUI accepts the input as a real submit`
  
-Current Stoa mitigation for this boundary is intentionally narrow:
+Current Stoa handling for this boundary is intentionally narrow:
 
 - keep the hook, reducer, and UI state pipeline unchanged
-- normalize Codex plain-text multi-character input at the main-process ingress before PTY write
-- split plain-text chunks into an ordered character stream
-- keep control sequences containing `ESC` raw and unsplit
-- treat explicit user interrupt control input (`Ctrl+C` / ETX) for agent providers as a local `agent.turn_interrupted` state patch, because Codex does not reliably emit a `Stop` hook when a user cancels the current turn
+- keep terminal ingress raw
+- preserve text input and binary input without splitting, throttling, or protocol rewriting
+- treat explicit user interrupt control input (`Ctrl+C` / ETX) for agent providers as a local `agent.turn_interrupted` state patch, while still writing ETX to the PTY unchanged
 
-This is an ingress workaround, not terminal-output inference. Real session state still comes from provider-emitted hooks except for explicit user-owned cancellation input, which is authoritative because the user action originated in Stoa.
+This is not terminal-output inference. Real session state still comes from provider-emitted hooks except for explicit user-owned cancellation input, which is authoritative because the user action originated in Stoa.
 
 ---
 
@@ -97,7 +96,7 @@ adaptCodexHook(body, context)     [hook-event-adapter.ts:49-89]
 
 **Events emitted**: SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Stop
 
-**Important runtime caveat**: this chain only runs once Codex itself decides a turn has started. On Windows, driving the interactive Codex TUI through `node-pty.write(...)` can leave text sitting in the draft input without actually submitting the turn. In that failure mode, none of the hook events above fire, so downstream session state stays at runtime-only `alive/unknown`. Stoa now improves this boundary by normalizing Codex plain-text input before PTY write, but it still does not infer state from terminal text or mutate hook payloads.
+**Important runtime caveat**: this chain only runs once Codex itself decides a turn has started. On Windows, driving the interactive Codex TUI through `node-pty.write(...)` can leave text sitting in the draft input without actually submitting the turn. In that failure mode, none of the hook events above fire, so downstream session state stays at runtime-only `alive/unknown`. Stoa does not try to repair this by mutating terminal input.
 
 ### 2. Codex — Notify (turn-granularity)
 
@@ -378,10 +377,7 @@ This distinction matters because the current green tests only verify sidecar exe
   - inside the Electron app
   - in a standalone Windows `node-pty` reproduction outside Electron
 - So the immediate fault is not renderer phase derivation, state reduction, or webhook parsing.
-- Any future architecture doc must separate:
-  - provider ingress reliability
-  - structured event parsing
-  - session state reduction
+- The terminal layer remains raw and does not attempt protocol repair.
 
 ### Unread Fields in Codex Hook Payloads
 

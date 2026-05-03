@@ -68,6 +68,7 @@ function createStoaMock(overrides?: Partial<typeof window.stoa>): typeof window.
     archiveSession: vi.fn().mockResolvedValue(undefined),
     restoreSession: vi.fn().mockResolvedValue(undefined),
     sendSessionInput: vi.fn().mockResolvedValue(undefined),
+    sendSessionBinaryInput: vi.fn().mockResolvedValue(undefined),
     sendSessionResize: vi.fn().mockResolvedValue(undefined),
     onTerminalData: vi.fn().mockReturnValue(() => {}),
     onMemoryNotification: vi.fn().mockReturnValue(() => {}),

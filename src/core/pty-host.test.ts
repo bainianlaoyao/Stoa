@@ -78,7 +78,7 @@ describe('PtyHost', () => {
           name: 'xterm-256color',
           cols: 120,
           rows: 30,
-          env: { PATH: '/usr/bin', COLORTERM: 'truecolor', TERM_PROGRAM: 'xterm.js' },
+          env: { PATH: '/usr/bin', TERM: 'xterm-256color', COLORTERM: 'truecolor', TERM_PROGRAM: 'xterm.js' },
         }
       )
     })
@@ -179,6 +179,22 @@ describe('PtyHost', () => {
 
       host.write('rt-1', 'data')
       expect(mockTerm.write).not.toHaveBeenCalled()
+    })
+
+    test('writeBinary forwards Uint8Array as a Buffer', () => {
+      host.start('rt-1', defaultCommand, vi.fn(), vi.fn())
+      const mockTerm = lastTerminal()
+
+      host.writeBinary('rt-1', Uint8Array.from([0x1b, 0x5b, 0x4d]))
+
+      expect(mockTerm.write).toHaveBeenCalledWith(Buffer.from([0x1b, 0x5b, 0x4d]))
+    })
+
+    test('writeBinary does nothing for unknown runtimeId', () => {
+      host.start('rt-1', defaultCommand, vi.fn(), vi.fn())
+
+      expect(() => host.writeBinary('unknown', Uint8Array.from([0x01]))).not.toThrow()
+      expect(lastTerminal().write).not.toHaveBeenCalledWith(Buffer.from([0x01]))
     })
   })
 

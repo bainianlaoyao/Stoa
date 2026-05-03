@@ -12,9 +12,14 @@ export class PtyHost {
     const terminal = pty.spawn(command.command, command.args, {
       cwd: command.cwd,
       name: 'xterm-256color',
-      cols: 120,
-      rows: 30,
-      env: { ...command.env, COLORTERM: 'truecolor', TERM_PROGRAM: 'xterm.js' }
+      cols: command.initialCols ?? 120,
+      rows: command.initialRows ?? 30,
+      env: {
+        ...command.env,
+        TERM: command.env?.TERM ?? 'xterm-256color',
+        COLORTERM: command.env?.COLORTERM ?? 'truecolor',
+        TERM_PROGRAM: 'xterm.js'
+      }
     })
 
     terminal.onData(onData)
@@ -29,6 +34,20 @@ export class PtyHost {
 
   write(workspaceId: string, data: string): void {
     this.sessions.get(workspaceId)?.write(data)
+  }
+
+  writeBinary(workspaceId: string, data: Uint8Array | Buffer | string): void {
+    const terminal = this.sessions.get(workspaceId)
+    if (!terminal) {
+      return
+    }
+
+    if (typeof data === 'string') {
+      terminal.write(Buffer.from(data, 'binary'))
+      return
+    }
+
+    terminal.write(Buffer.from(data))
   }
 
   resize(workspaceId: string, cols: number, rows: number): void {

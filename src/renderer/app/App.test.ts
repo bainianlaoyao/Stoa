@@ -128,6 +128,7 @@ async function flush(): Promise<void> {
 
 function setupStoa(overrides?: Partial<typeof window.stoa>) {
   window.stoa = {
+    windowsBuildNumber: undefined,
     getBootstrapState: vi.fn().mockResolvedValue({ ...mockBootstrapState, projects: [], sessions: [] }),
     createProject: vi.fn().mockResolvedValue({ ...mockCreatedProject }),
     deleteProject: vi.fn().mockResolvedValue(undefined),
@@ -140,7 +141,8 @@ function setupStoa(overrides?: Partial<typeof window.stoa>) {
     listArchivedSessions: vi.fn().mockResolvedValue([]),
 
     getTerminalReplay: vi.fn().mockResolvedValue(''),
-    sendSessionInput: vi.fn().mockResolvedValue(undefined),
+    sendSessionInput: vi.fn(),
+    sendSessionBinaryInput: vi.fn(),
     sendSessionResize: vi.fn().mockResolvedValue(undefined),
     onTerminalData: vi.fn().mockReturnValue(() => {}),
     onMemoryNotification: vi.fn().mockReturnValue(() => {}),

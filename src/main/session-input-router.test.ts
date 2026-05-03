@@ -11,10 +11,13 @@ describe('SessionInputRouter', () => {
         }
       },
       {
-        write(sessionId, data) {
+        write(sessionId: string, data: string) {
           writes.push({ sessionId, data })
+        },
+        writeBinary() {
+          throw new Error('binary path not expected in text test')
         }
-      }
+      } as never
     )
 
     await router.send('shell-1', 'echo ok\r')
@@ -22,157 +25,139 @@ describe('SessionInputRouter', () => {
     expect(writes).toEqual([{ sessionId: 'shell-1', data: 'echo ok\r' }])
   })
 
-  test('splits codex plain-text chunks into ordered frames', async () => {
-    let now = 0
-    const writes: string[] = []
-    const sleeps: number[] = []
-
+  test('passes codex plain-text input through as a single frame', async () => {
+    const writes: Array<{ sessionId: string; data: string }> = []
     const router = new SessionInputRouter(
+      { getSessionType: () => 'codex' },
       {
-        getSessionType() {
-          return 'codex'
+        write(sessionId: string, data: string) {
+          writes.push({ sessionId, data })
+        },
+        writeBinary() {
+          throw new Error('binary path not expected in text test')
         }
-      },
-      {
-        write(_sessionId, data) {
-          writes.push(data)
-        }
-      },
-      {
-        codexPlainInputMinIntervalMs: 35,
-        codexSubmitInputMinIntervalMs: 120,
-        nowMs: () => now,
-        sleep: async (ms) => {
-          sleeps.push(ms)
-          now += ms
-        }
-      }
+      } as never
     )
 
     await router.send('codex-1', 'OK\r')
 
-    expect(writes).toEqual(['O', 'K', '\r'])
-    expect(sleeps).toEqual([35, 120])
+    expect(writes).toEqual([{ sessionId: 'codex-1', data: 'OK\r' }])
   })
 
-  test('does not split codex control sequences containing escape', async () => {
-    const writes: string[] = []
+  test('passes multiline codex paste through as a single frame', async () => {
+    const writes: Array<{ sessionId: string; data: string }> = []
     const router = new SessionInputRouter(
       { getSessionType: () => 'codex' },
       {
-        write(_sessionId, data) {
-          writes.push(data)
+        write(sessionId: string, data: string) {
+          writes.push({ sessionId, data })
+        },
+        writeBinary() {
+          throw new Error('binary path not expected in text test')
         }
-      }
+      } as never
     )
 
-    await router.send('codex-1', '\u001b[A')
+    await router.send('codex-1', 'line1\rline2\rline3')
 
-    expect(writes).toEqual(['\u001b[A'])
+    expect(writes).toEqual([{ sessionId: 'codex-1', data: 'line1\rline2\rline3' }])
   })
 
-  test('applies minimum spacing across separate codex sends', async () => {
-    let now = 0
-    const writes: string[] = []
-    const sleeps: number[] = []
-
+  test('passes bracketed paste sequences through unchanged', async () => {
+    const writes: Array<{ sessionId: string; data: string }> = []
     const router = new SessionInputRouter(
       { getSessionType: () => 'codex' },
       {
-        write(_sessionId, data) {
-          writes.push(data)
+        write(sessionId: string, data: string) {
+          writes.push({ sessionId, data })
+        },
+        writeBinary() {
+          throw new Error('binary path not expected in text test')
         }
-      },
-      {
-        codexPlainInputMinIntervalMs: 35,
-        codexSubmitInputMinIntervalMs: 120,
-        nowMs: () => now,
-        sleep: async (ms) => {
-          sleeps.push(ms)
-          now += ms
-        }
-      }
+      } as never
     )
 
-    await router.send('codex-1', 'A')
-    await router.send('codex-1', 'B')
+    const pasteFrame = '\u001b[200~line1\rline2\u001b[201~'
+    await router.send('codex-1', pasteFrame)
 
-    expect(writes).toEqual(['A', 'B'])
-    expect(sleeps).toEqual([35])
+    expect(writes).toEqual([{ sessionId: 'codex-1', data: pasteFrame }])
   })
 
-  test('resetSession cancels queued stale codex frames', async () => {
-    let releaseSleep: (() => void) | undefined
+  test('resetSession prevents queued stale writes after a transport stall', async () => {
+    let releaseWrite: (() => void) | undefined
     const writes: string[] = []
 
     const router = new SessionInputRouter(
       { getSessionType: () => 'codex' },
       {
-        write(_sessionId, data) {
+        write(_sessionId: string, data: string) {
           writes.push(data)
-        }
-      },
-      {
-        codexPlainInputMinIntervalMs: 35,
-        nowMs: () => 0,
-        sleep: () =>
-          new Promise<void>((resolve) => {
-            releaseSleep = resolve
+          return new Promise<void>((resolve) => {
+            releaseWrite = resolve
           })
-      }
+        },
+        writeBinary() {
+          throw new Error('binary path not expected in text test')
+        }
+      } as never
     )
 
-    const pending = router.send('codex-1', 'AB')
+    const pendingFirst = router.send('codex-1', 'first')
     await Promise.resolve()
-    await Promise.resolve()
-    expect(writes).toEqual(['A'])
 
+    const pendingSecond = router.send('codex-1', 'second')
     router.resetSession('codex-1')
-    if (releaseSleep) {
-      releaseSleep()
-    }
-    await pending
+    releaseWrite?.()
+    await pendingFirst
+    await pendingSecond
 
-    expect(writes).toEqual(['A'])
+    expect(writes).toEqual(['first'])
   })
 
-  test('codex interrupt input cancels queued draft frames and reports user interruption immediately', async () => {
-    let releaseSleep: (() => void) | undefined
+  test('ctrl+c writes through unchanged and reports interruption for agent sessions', async () => {
     const writes: string[] = []
     const interruptions: Array<{ sessionId: string; sessionType: string }> = []
 
     const router = new SessionInputRouter(
       { getSessionType: () => 'codex' },
       {
-        write(_sessionId, data) {
+        write(_sessionId: string, data: string) {
           writes.push(data)
+        },
+        writeBinary() {
+          throw new Error('binary path not expected in text test')
         }
-      },
+      } as never,
       {
-        codexPlainInputMinIntervalMs: 35,
-        nowMs: () => 0,
-        sleep: () =>
-          new Promise<void>((resolve) => {
-            releaseSleep = resolve
-          }),
         onUserInterrupt(sessionId, sessionType) {
           interruptions.push({ sessionId, sessionType })
         }
       }
     )
 
-    const pending = router.send('codex-1', 'AB')
-    await Promise.resolve()
-    await Promise.resolve()
-    expect(writes).toEqual(['A'])
-
     await router.send('codex-1', '\u0003')
-    if (releaseSleep) {
-      releaseSleep()
-    }
-    await pending
 
-    expect(writes).toEqual(['A', '\u0003'])
+    expect(writes).toEqual(['\u0003'])
     expect(interruptions).toEqual([{ sessionId: 'codex-1', sessionType: 'codex' }])
+  })
+
+  test('sendBinary forwards binary input through the binary transport', async () => {
+    const writes: Uint8Array[] = []
+    const router = new SessionInputRouter(
+      { getSessionType: () => 'codex' },
+      {
+        write() {
+          throw new Error('text path not expected in binary test')
+        },
+        writeBinary(_sessionId: string, data: Uint8Array) {
+          writes.push(data)
+        }
+      } as never
+    )
+
+    const payload = Uint8Array.from([0x1b, 0x5b, 0x4d])
+    await router.sendBinary('codex-1', payload)
+
+    expect(writes).toEqual([payload])
   })
 })

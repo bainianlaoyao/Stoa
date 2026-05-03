@@ -1,15 +1,19 @@
 import { defineConfig } from 'vitest/config'
-import { resolve } from 'node:path'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import vue from '@vitejs/plugin-vue'
+
+const rootDir = dirname(fileURLToPath(import.meta.url))
 
 export default defineConfig({
   plugins: [vue()],
   resolve: {
+    preserveSymlinks: true,
     alias: {
-      '@renderer': resolve(__dirname, 'src/renderer'),
-      '@core': resolve(__dirname, 'src/core'),
-      '@shared': resolve(__dirname, 'src/shared'),
-      '@extensions': resolve(__dirname, 'src/extensions')
+      '@renderer': resolve(rootDir, 'src/renderer'),
+      '@core': resolve(rootDir, 'src/core'),
+      '@shared': resolve(rootDir, 'src/shared'),
+      '@extensions': resolve(rootDir, 'src/extensions')
     }
   },
   test: {
@@ -19,6 +23,7 @@ export default defineConfig({
     exclude: [
       '**/node_modules/**',
       '**/.git/**',
+      '**/.tmp/**',
       '**/.worktrees/**',
       '**/dist/**',
       '**/release/**',

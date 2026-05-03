@@ -214,7 +214,7 @@ describe('hook event adapter', () => {
     })
   })
 
-  test('adapts Claude PostToolUse hook into tool started canonical event', () => {
+  test('adapts Claude PostToolUse hook into tool completed canonical event', () => {
     const event = adaptClaudeCodeHook(
       {
         hook_event_name: 'PostToolUse',
@@ -233,7 +233,7 @@ describe('hook event adapter', () => {
       project_id: 'project_internal_3',
       source: 'provider-adapter',
       payload: {
-        intent: 'agent.tool_started',
+        intent: 'agent.tool_completed',
         agentState: 'working',
         summary: 'PostToolUse'
       },
@@ -245,7 +245,7 @@ describe('hook event adapter', () => {
     })
   })
 
-  test('adapts Claude PreToolUse with AskUserQuestion tool into permission requested with elicitation blocking reason', () => {
+  test('adapts Claude PreToolUse with AskUserQuestion tool without elevating tool name into lifecycle semantics', () => {
     const event = adaptClaudeCodeHook(
       {
         hook_event_name: 'PreToolUse',
@@ -263,11 +263,13 @@ describe('hook event adapter', () => {
       project_id: 'project_elicitation_1',
       source: 'provider-adapter',
       payload: {
-        intent: 'agent.permission_requested',
-        agentState: 'blocked',
+        intent: 'agent.tool_started',
+        agentState: 'working',
         summary: 'PreToolUse',
-        toolName: 'AskUserQuestion',
-        blockingReason: 'elicitation'
+        toolName: 'AskUserQuestion'
+      },
+      evidence: {
+        toolName: 'AskUserQuestion'
       }
     })
   })
@@ -276,7 +278,7 @@ describe('hook event adapter', () => {
 describe('codex hook adapter', () => {
   const codexContext = { sessionId: 'codex_session_1', projectId: 'codex_project_1' }
 
-  test('adapts Codex SessionStart hook into turn started state patch event', () => {
+  test('adapts Codex SessionStart hook into runtime alive state patch event', () => {
     const event = adaptCodexHook(
       {
         hook_event_name: 'SessionStart',
@@ -291,14 +293,13 @@ describe('codex hook adapter', () => {
 
     expect(event).toMatchObject({
       event_version: 1,
-      event_id: 'turn_1',
       event_type: 'codex.SessionStart',
       session_id: 'codex_session_1',
       project_id: 'codex_project_1',
       source: 'provider-adapter',
       payload: {
-        intent: 'agent.turn_started',
-        agentState: 'working',
+        intent: 'runtime.alive',
+        agentState: 'idle',
         summary: 'SessionStart',
         externalSessionId: 'codex-session-1'
       },
@@ -316,6 +317,7 @@ describe('codex hook adapter', () => {
         model: 'gpt-4o'
       }
     })
+    expect(event?.event_id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-/)
   })
 
   test('adapts Codex UserPromptSubmit hook into turn started state patch event', () => {
@@ -331,7 +333,6 @@ describe('codex hook adapter', () => {
 
     expect(event).toMatchObject({
       event_version: 1,
-      event_id: 'turn_2',
       event_type: 'codex.UserPromptSubmit',
       session_id: 'codex_session_1',
       project_id: 'codex_project_1',
@@ -353,6 +354,7 @@ describe('codex hook adapter', () => {
         promptText: 'Add the missing state transition.'
       }
     })
+    expect(event?.event_id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-/)
   })
 
   test('adapts Codex PreToolUse hook into tool started state patch event with toolName and toolUseId', () => {
@@ -370,7 +372,6 @@ describe('codex hook adapter', () => {
 
     expect(event).toMatchObject({
       event_version: 1,
-      event_id: 'turn_3',
       event_type: 'codex.PreToolUse',
       session_id: 'codex_session_1',
       project_id: 'codex_project_1',
@@ -394,9 +395,10 @@ describe('codex hook adapter', () => {
         cwd: '/repo/codex'
       }
     })
+    expect(event?.event_id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-/)
   })
 
-  test('adapts Codex PostToolUse hook into tool started state patch event with toolName and toolUseId', () => {
+  test('adapts Codex PostToolUse hook into tool completed state patch event with toolName and toolUseId', () => {
     const event = adaptCodexHook(
       {
         hook_event_name: 'PostToolUse',
@@ -411,13 +413,12 @@ describe('codex hook adapter', () => {
 
     expect(event).toMatchObject({
       event_version: 1,
-      event_id: 'turn_4',
       event_type: 'codex.PostToolUse',
       session_id: 'codex_session_1',
       project_id: 'codex_project_1',
       source: 'provider-adapter',
       payload: {
-        intent: 'agent.tool_started',
+        intent: 'agent.tool_completed',
         agentState: 'working',
         summary: 'PostToolUse'
       },
@@ -435,6 +436,7 @@ describe('codex hook adapter', () => {
         model: 'o3'
       }
     })
+    expect(event?.event_id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-/)
   })
 
   test('adapts Codex Stop hook into turn completed state patch event', () => {
@@ -450,7 +452,6 @@ describe('codex hook adapter', () => {
 
     expect(event).toMatchObject({
       event_version: 1,
-      event_id: 'turn_5',
       event_type: 'codex.Stop',
       session_id: 'codex_session_1',
       project_id: 'codex_project_1',
@@ -473,6 +474,7 @@ describe('codex hook adapter', () => {
         lastAssistantMessage: 'Implementation complete.'
       }
     })
+    expect(event?.event_id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-/)
   })
 
   test('normalizes documented nullable Codex hook fields to absence', () => {
@@ -545,5 +547,26 @@ describe('codex hook adapter', () => {
     expect(event).not.toBeNull()
     expect(event!.event_id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-/)
     expect(event!.event_type).toBe('codex.SessionStart')
+  })
+
+  test('does not treat legacy thread_id as external session id', () => {
+    const event = adaptCodexHook(
+      {
+        hook_event_name: 'SessionStart',
+        thread_id: 'legacy-thread-1'
+      },
+      codexContext
+    )
+
+    expect(event).toMatchObject({
+      event_type: 'codex.SessionStart',
+      payload: {
+        intent: 'runtime.alive',
+        agentState: 'idle',
+        summary: 'SessionStart'
+      }
+    })
+    expect(event?.payload).not.toHaveProperty('externalSessionId')
+    expect(event?.evidence).not.toHaveProperty('providerSessionId')
   })
 })

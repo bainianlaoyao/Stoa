@@ -6,7 +6,6 @@ import { Unicode11Addon } from '@xterm/addon-unicode11'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { Terminal } from '@xterm/xterm'
-import type { IDisposable } from '@xterm/xterm'
 
 declare global {
   interface Navigator {
@@ -149,7 +148,8 @@ export function createTerminalRuntime(
   openExternal: ExternalLinkOpener = defaultOpenExternal,
   enableWebgl = canUseWebgl(),
   fontSize = 14,
-  fontFamily?: string
+  fontFamily?: string,
+  windowsBuildNumber?: number
 ): XtermRuntime {
   const terminal = new Terminal({
     fontFamily: fontFamily || resolveTerminalFontFamily(),
@@ -163,7 +163,7 @@ export function createTerminalRuntime(
     cursorStyle: 'block',
     cursorInactiveStyle: 'outline',
 
-    scrollback: 100_000,
+    scrollback: 10_000,
     scrollOnUserInput: true,
     scrollOnEraseInDisplay: true,
     smoothScrollDuration: 0,
@@ -181,7 +181,9 @@ export function createTerminalRuntime(
     disableStdin: false,
     theme: resolveTerminalTheme(),
     allowProposedApi: true,
-    windowsPty: platform === 'win32' ? { backend: 'conpty' } : undefined,
+    windowsPty: platform === 'win32'
+      ? { backend: 'conpty', ...(windowsBuildNumber != null ? { buildNumber: windowsBuildNumber } : {}) }
+      : undefined,
   })
 
   const fitAddon = new FitAddon()
@@ -227,54 +229,5 @@ export function createTerminalRuntime(
     webLinksAddon,
     webglAddon,
     searchAddon
-  }
-}
-
-/**
- * Install parser hooks that keep the terminal on the normal screen buffer
- * and prevent scrollback from being cleared. Used for TUI providers (e.g.
- * OpenCode) that enable alternate screen via DECSET 1049 and clear
- * scrollback via ED3, both of which break scroll-up in xterm.js.
- *
- * Returns an IDisposable whose `.dispose()` removes all hooks.
- */
-export function installScrollbackGuard(terminal: Terminal): IDisposable {
-  const ALT_SCREEN_MODES = new Set([47, 1047, 1049])
-
-  function isAltScreenParam(params: (number | number[])[]): boolean {
-    return params.some(p =>
-      typeof p === 'number'
-        ? ALT_SCREEN_MODES.has(p)
-        : p.some(v => ALT_SCREEN_MODES.has(v))
-    )
-  }
-
-  // Layer A: block DECSET ?{47,1047,1049}h — prevents switch to alternate buffer
-  const blockDecset = terminal.parser.registerCsiHandler(
-    { prefix: '?', final: 'h' },
-    params => isAltScreenParam(params)
-  )
-
-  // Layer A': block DECRST ?{47,1047,1049}l — prevents restore from alternate buffer
-  const blockDecrst = terminal.parser.registerCsiHandler(
-    { prefix: '?', final: 'l' },
-    params => isAltScreenParam(params)
-  )
-
-  // Layer B: block ED3 (CSI 3J) — prevents scrollback clear on normal buffer
-  const blockEd3 = terminal.parser.registerCsiHandler(
-    { final: 'J' },
-    params => {
-      const first = params[0]
-      return typeof first === 'number' && first === 3
-    }
-  )
-
-  return {
-    dispose() {
-      blockDecset.dispose()
-      blockDecrst.dispose()
-      blockEd3.dispose()
-    }
   }
 }

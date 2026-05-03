@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.node.json",
+  "compilerOptions": {
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "tsBuildInfoFile": "./.tmp/tsconfig.experiment-runner.tsbuildinfo"
+  },
+  "include": [
+    "scripts/run-real-first-round-experiment.ts",
+    "scripts/run-real-first-round-experiment-entry.ts",
+    "src/main/**/*.ts",
+    "src/core/**/*.ts",
+    "src/extensions/providers/**/*.ts",
+    "src/shared/**/*.ts"
+  ]
+}

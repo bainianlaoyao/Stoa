@@ -65,7 +65,8 @@ function createRendererApiWithPresence(
     downloadUpdate: async () => idleUpdateState(),
     quitAndInstallUpdate: async () => {},
     dismissUpdate: async () => {},
-    onUpdateState: () => noop
+    onUpdateState: () => noop,
+    sendSessionBinaryInput: async () => {},
   }
 }
 

@@ -1,8 +1,9 @@
 import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
-const root = resolve(__dirname, '../..')
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 
 function readSrc(relPath: string): string {
   return readFileSync(resolve(root, relPath), 'utf-8')
@@ -158,7 +159,7 @@ describe('E2E: Main Process Config Guard', () => {
   })
 
   describe('IPC handler registration completeness', () => {
-    it('every RendererApi method has a corresponding ipcMain.handle registration', () => {
+    it('every invoke RendererApi method has a corresponding ipcMain.handle registration', () => {
       const rendererApiMethods = extractRendererApiMethods(projectSessionSource)
       const channelToConstant = new Map<string, string>([
         ['getBootstrapState', 'projectBootstrap'],
@@ -174,7 +175,6 @@ describe('E2E: Main Process Config Guard', () => {
         ['getAppObservability', 'observabilityGetApp'],
         ['listSessionObservationEvents', 'observabilityListSessionEvents'],
         ['getTerminalReplay', 'sessionTerminalReplay'],
-        ['sendSessionInput', 'sessionInput'],
         ['sendSessionResize', 'sessionResize'],
         ['archiveSession', 'sessionArchive'],
         ['restoreSession', 'sessionRestore'],
@@ -202,6 +202,23 @@ describe('E2E: Main Process Config Guard', () => {
         expect(
           mainSource,
           `Missing ipcMain.handle(IPC_CHANNELS.${constantName}) for method "${method}"`
+        ).toMatch(pattern)
+      }
+    })
+
+    it('send-only RendererApi methods have a corresponding ipcMain.on registration', () => {
+      const sendMethods = new Map<string, string>([
+        ['sendSessionInput', 'sessionInput'],
+        ['sendSessionBinaryInput', 'sessionBinaryInput']
+      ])
+
+      for (const [method, constantName] of sendMethods) {
+        const pattern = new RegExp(
+          `ipcMain\\.on\\(\\s*IPC_CHANNELS\\.${constantName}\\b`
+        )
+        expect(
+          mainSource,
+          `Missing ipcMain.on(IPC_CHANNELS.${constantName}) for send-only method "${method}"`
         ).toMatch(pattern)
       }
     })
@@ -279,7 +296,6 @@ describe('E2E: Main Process Config Guard', () => {
         'getAppObservability',
         'listSessionObservationEvents',
         'getTerminalReplay',
-        'sendSessionInput',
         'sendSessionResize',
         'getSettings',
         'setSetting',
@@ -316,6 +332,21 @@ describe('E2E: Main Process Config Guard', () => {
       ).toHaveLength(knownInvokeMethods.length)
     })
 
+    it('preload api object implements send-only RendererApi methods', () => {
+      const knownSendMethods = ['sendSessionInput', 'sendSessionBinaryInput']
+
+      for (const method of knownSendMethods) {
+        expect(
+          preloadSource,
+          `Preload is missing send method "${method}"`
+        ).toMatch(new RegExp(`${method}\\s*\\(.*\\)\\s*\\{`))
+        expect(
+          preloadSource,
+          `Send method "${method}" should use ipcRenderer.send`
+        ).toMatch(new RegExp(`ipcRenderer\\.send\\(\\s*IPC_CHANNELS\\.\\w+`))
+      }
+    })
+
     it('preload uses correct channel name for each method', () => {
       const invocations = extractPreloadChannelInvokes(preloadSource)
       const constants = extractChannelConstants(channelsSource)
@@ -336,7 +367,6 @@ describe('E2E: Main Process Config Guard', () => {
       expect(invMap.get('getAppObservability')).toBe('observability:get-app-observability')
       expect(invMap.get('listSessionObservationEvents')).toBe('observability:list-session-events')
       expect(invMap.get('getTerminalReplay')).toBe('session:terminal-replay')
-      expect(invMap.get('sendSessionInput')).toBe('session:input')
       expect(invMap.get('sendSessionResize')).toBe('session:resize')
       expect(invMap.get('getSettings')).toBe('settings:get')
       expect(invMap.get('setSetting')).toBe('settings:set')
@@ -353,6 +383,11 @@ describe('E2E: Main Process Config Guard', () => {
       expect(invMap.get('downloadUpdate')).toBe('update:download')
       expect(invMap.get('quitAndInstallUpdate')).toBe('update:quit-and-install')
       expect(invMap.get('dismissUpdate')).toBe('update:dismiss')
+    })
+
+    it('preload send-only methods use correct channel names', () => {
+      expect(preloadSource).toMatch(/sendSessionInput[\s\S]*ipcRenderer\.send\(\s*IPC_CHANNELS\.sessionInput/)
+      expect(preloadSource).toMatch(/sendSessionBinaryInput[\s\S]*ipcRenderer\.send\(\s*IPC_CHANNELS\.sessionBinaryInput/)
     })
 
     it('window.stoa type declaration exists in shared/index.d.ts', () => {
@@ -372,6 +407,7 @@ describe('E2E: Main Process Config Guard', () => {
       expect(constants.get('updateState')).toBe('update:state')
       expect(constants.get('workspaceOpen')).toBe('workspace:open')
       expect(constants.get('memoryNotification')).toBe('memory:notification')
+      expect(constants.get('sessionBinaryInput')).toBe('session:binary-input')
     })
   })
 

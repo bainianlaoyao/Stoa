@@ -113,17 +113,16 @@ export function reduceSessionState(
       markAgentWorkingIfRuntimeAlive(session, next)
       break
     case 'agent.tool_started':
-      if (session.agentState !== 'blocked') {
-        markAgentWorkingIfRuntimeAlive(session, next)
-      }
+      markAgentWorkingIfRuntimeAlive(session, next)
       break
     case 'agent.tool_completed':
       markAgentWorkingIfRuntimeAlive(session, next)
       break
     case 'agent.turn_completed':
-      if (session.agentState === 'unknown' || session.agentState === 'working') {
+      if (session.agentState === 'unknown' || session.agentState === 'working' || session.agentState === 'blocked') {
         next.agentState = 'idle'
         next.hasUnseenCompletion = true
+        next.blockingReason = null
       }
       break
     case 'agent.turn_interrupted':

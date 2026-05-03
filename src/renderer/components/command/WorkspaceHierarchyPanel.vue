@@ -282,7 +282,7 @@ onBeforeUnmount(() => {
 
 <template>
   <aside class="min-h-0 overflow-y-auto rounded-[var(--radius-sm)] bg-surface" data-testid="workspace-hierarchy-panel" aria-label="Workspace hierarchy">
-    <div class="min-h-0 overflow-auto p-2.5 grid gap-3 align-content-start" data-testid="route-body">
+    <div class="min-h-0 overflow-auto px-2.5 pt-2.5 pb-10 grid gap-3 align-content-start" data-testid="route-body">
       <div class="grid gap-1" data-testid="route-actions">
         <button class="route-action flex items-center justify-between gap-2 px-2.5 py-2 rounded-[var(--radius-sm)] bg-surface-solid text-text-strong cursor-pointer transition-all duration-200 hover:bg-black-faint focus-visible:bg-black-faint focus-visible:outline-none" type="button" data-testid="workspace.new-project" @click="showNewProject = true">
           <span class="text-xs font-semibold tracking-[0.05em]">{{ t('workspace.newProject') }}</span>

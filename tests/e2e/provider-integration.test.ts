@@ -282,7 +282,7 @@ describe('E2E: Provider Integration', () => {
       const command = await provider.buildStartCommand(target, context)
 
       expect(command.command).toBe('codex')
-      expect(command.args).toEqual(['--no-alt-screen'])
+      expect(command.args).toEqual([])
     })
 
     test('buildResumeCommand resumes by external session id', async () => {
@@ -292,7 +292,7 @@ describe('E2E: Provider Integration', () => {
 
       const command = await provider.buildResumeCommand(target, '019c75d6-5db6-7c21-8d2f-f0602da4f64d', context)
 
-      expect(command.args).toEqual(['--no-alt-screen', 'resume', '019c75d6-5db6-7c21-8d2f-f0602da4f64d'])
+      expect(command.args).toEqual(['resume', '019c75d6-5db6-7c21-8d2f-f0602da4f64d'])
     })
 
     test('buildFallbackResumeCommand falls back to resume --last when external session id is unavailable', async () => {
@@ -302,7 +302,7 @@ describe('E2E: Provider Integration', () => {
 
       const command = await provider.buildFallbackResumeCommand?.(target, context)
 
-      expect(command?.args).toEqual(['--no-alt-screen', 'resume', '--last'])
+      expect(command?.args).toEqual(['resume', '--last'])
     })
 
     test('supportsStructuredEvents() returns true', () => {
@@ -454,7 +454,7 @@ describe('E2E: Provider Integration', () => {
 
       await provider.installSidecar(target, createContext({ webhookPort: 43127, sessionSecret: 'secret-claude' }))
 
-      const content = await readFile(join(workspaceDir, '.claude', 'settings.local.json'), 'utf8')
+      const content = await readFile(join(workspaceDir, '.claude', 'settings.json'), 'utf8')
       const settings = JSON.parse(content) as { hooks: Record<string, unknown> }
       expect(content).toContain('http://127.0.0.1:43127/hooks/claude-code')
       expect(content).toContain('x-stoa-session-id')
@@ -472,14 +472,12 @@ describe('E2E: Provider Integration', () => {
         'StopFailure',
         'UserPromptSubmit'
       ])
-      expect(content).toContain('stoa-hook-session-start.cmd')
-      await expect(stat(join(workspaceDir, '.claude', 'hooks', 'stoa-hook-session-start.cjs'))).resolves.toMatchObject({ isFile: expect.any(Function) })
-      await expect(stat(join(workspaceDir, '.claude', 'hooks', 'stoa-hook-session-start.cmd'))).resolves.toMatchObject({ isFile: expect.any(Function) })
+      expect(content).toContain('stoa-evolver-hook-bridge.cmd')
+      await expect(stat(join(workspaceDir, '.claude', 'hooks', 'stoa-evolver-hook-bridge.cjs'))).resolves.toMatchObject({ isFile: expect.any(Function) })
+      await expect(stat(join(workspaceDir, '.claude', 'hooks', 'stoa-evolver-hook-bridge.cmd'))).resolves.toMatchObject({ isFile: expect.any(Function) })
       await expect(stat(join(workspaceDir, '.claude', 'hooks', 'stoa-hook-user-prompt-submit.cjs'))).rejects.toThrow()
-      expect(content).not.toContain('stoa-evolver-signal-detect.cjs')
-      expect(content).not.toContain('stoa-evolver-session-end.cjs')
-      await expect(stat(join(workspaceDir, '.claude', 'hooks', 'stoa-evolver-signal-detect.cjs'))).rejects.toThrow()
-      await expect(stat(join(workspaceDir, '.claude', 'hooks', 'stoa-evolver-session-end.cjs'))).rejects.toThrow()
+      await expect(stat(join(workspaceDir, '.claude', 'hooks', 'evolver-signal-detect.cjs'))).resolves.toMatchObject({ isFile: expect.any(Function) })
+      await expect(stat(join(workspaceDir, '.claude', 'hooks', 'evolver-session-end.cjs'))).resolves.toMatchObject({ isFile: expect.any(Function) })
       expect(content).not.toContain('secret-claude')
       expect(content).not.toContain(target.session_id)
       expect(parsedClaudeHttpHook(content, 'UserPromptSubmit')).toMatchObject({
@@ -833,7 +831,7 @@ describe('E2E: Provider Integration', () => {
       expect(acceptedEvents).toHaveLength(1)
       const event = acceptedEvents[0]!
       expect(event.event_type).toBe('codex.PreToolUse')
-      expect(event.event_id).toBe('turn-001')
+      expect(event.event_id).toEqual(expect.any(String))
       expect(event.session_id).toBe('session_flow_001')
       expect(event.project_id).toBe('project_flow_001')
       expect(event.source).toBe('provider-adapter')
@@ -979,13 +977,13 @@ describe('E2E: Provider Integration', () => {
       expect(triggerEvents).toHaveLength(1)
       expect(triggerEvents[0]).toMatchObject({
         event_type: 'codex.SessionStart',
-        event_id: 'turn-start-001',
+        event_id: expect.any(String),
         session_id: 'trigger-sess-1',
         project_id: 'trigger-proj-1',
         source: 'provider-adapter',
         payload: {
-          intent: 'agent.turn_started',
-          agentState: 'working',
+          intent: 'runtime.alive',
+          agentState: 'idle',
           summary: 'SessionStart',
           externalSessionId: 'codex-uuid-start'
         },
@@ -1028,7 +1026,7 @@ describe('E2E: Provider Integration', () => {
       expect(triggerEvents).toHaveLength(1)
       expect(triggerEvents[0]).toMatchObject({
         event_type: 'codex.PreToolUse',
-        event_id: 'turn-tool-001',
+        event_id: expect.any(String),
         session_id: 'trigger-sess-2',
         payload: {
           intent: 'agent.tool_started',

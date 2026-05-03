@@ -1,13 +1,13 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
-import { sessionRestoreBehavior } from '../behavior/session.behavior.ts'
+import { sessionRestoreBehavior } from '../behavior/session.behavior'
 import {
   generateClaudeLifecyclePlaywrightSkeleton,
   generatePlaywrightSkeleton,
   generateWorkspaceQuickAccessPlaywrightSkeleton
-} from './generate-playwright.ts'
-import { sessionRestoreJourney } from '../journeys/session-restore.journey.ts'
-import { archiveTopology } from '../topology/archive.topology.ts'
+} from './generate-playwright'
+import { sessionRestoreJourney } from '../journeys/session-restore.journey'
+import { archiveTopology } from '../topology/archive.topology'
 
 const outputPath = resolve('tests/generated/playwright/session-restore.generated.spec.ts')
 const generated = generatePlaywrightSkeleton({

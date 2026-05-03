@@ -210,6 +210,8 @@ export interface CreateSessionRequest {
   type: SessionType
   title: string
   externalSessionId?: string | null
+  initialCols?: number
+  initialRows?: number
 }
 
 export interface TerminalDataChunk {
@@ -243,6 +245,7 @@ export interface MemoryNotificationEvent {
 }
 
 export interface RendererApi {
+  windowsBuildNumber: number | undefined
   getBootstrapState: () => Promise<BootstrapState>
   createProject: (request: CreateProjectRequest) => Promise<ProjectSummary>
   deleteProject: (projectId: string) => Promise<void>
@@ -252,7 +255,8 @@ export interface RendererApi {
   setActiveSession: (sessionId: string) => Promise<void>
   archiveSession: (sessionId: string) => Promise<void>
   getTerminalReplay: (sessionId: string) => Promise<string>
-  sendSessionInput: (sessionId: string, data: string) => Promise<void>
+  sendSessionInput: (sessionId: string, data: string) => void
+  sendSessionBinaryInput: (sessionId: string, data: Uint8Array) => void
   sendSessionResize: (sessionId: string, cols: number, rows: number) => Promise<void>
   onTerminalData: (callback: (chunk: TerminalDataChunk) => void) => () => void
   onMemoryNotification: (callback: (event: MemoryNotificationEvent) => void) => () => void
@@ -316,4 +320,6 @@ export interface ProviderCommand {
   args: string[]
   cwd: string
   env: Record<string, string>
+  initialCols?: number
+  initialRows?: number
 }

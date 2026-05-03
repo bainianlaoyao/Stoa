@@ -19,14 +19,8 @@ vi.mock('@xterm/xterm', () => {
     rows = 24
     writes: string[] = []
     unicode = { activeVersion: '6' }
-    registeredCsiHandlers: unknown[] = []
-
-    parser = {
-      registerCsiHandler: (id: unknown, callback: (params: (number | number[])[]) => boolean) => {
-        this.registeredCsiHandlers.push({ id, callback })
-        return { dispose: () => {} }
-      },
-    }
+    dataHandlers: Array<(data: string) => void> = []
+    binaryHandlers: Array<(data: string) => void> = []
 
     constructor(options: Record<string, unknown> = {}) {
       this.options = options
@@ -40,6 +34,11 @@ vi.mock('@xterm/xterm', () => {
       callback?.()
     }
     onData(cb: (data: string) => void) {
+      this.dataHandlers.push(cb)
+      return { dispose: () => {} }
+    }
+    onBinary(cb: (data: string) => void) {
+      this.binaryHandlers.push(cb)
       return { dispose: () => {} }
     }
     loadAddon() {}
@@ -109,8 +108,10 @@ function createMockApi() {
   }
 
   return {
+    windowsBuildNumber: undefined,
     getTerminalReplay: vi.fn().mockResolvedValue(''),
     sendSessionInput: vi.fn(),
+    sendSessionBinaryInput: vi.fn(),
     sendSessionResize: vi.fn(),
     onTerminalData: vi.fn((cb: (chunk: { sessionId: string; data: string }) => void) => {
       callbacks.terminalData.push(cb)
@@ -265,6 +266,26 @@ describe('TerminalViewport', () => {
 
     expect(mockApi.onTerminalData).toHaveBeenCalled()
     expect(mockApi.onSessionPresenceChanged).toHaveBeenCalled()
+  })
+
+  test('forwards xterm binary input through sendSessionBinaryInput with byte preservation', async () => {
+    const { default: TerminalViewport } = await import('./TerminalViewport.vue')
+    mount(TerminalViewport, {
+      props: { project: baseProject, session: baseSession },
+    })
+    await flushTerminal()
+
+    const { Terminal } = await import('@xterm/xterm')
+    const instance = (Terminal as unknown as {
+      instances: Array<{ binaryHandlers: Array<(data: string) => void> }>
+    }).instances.at(-1)
+
+    instance?.binaryHandlers[0]?.('\u001b[M')
+
+    expect(mockApi.sendSessionBinaryInput).toHaveBeenCalledWith(
+      'session_op_1',
+      Uint8Array.from([0x1b, 0x5b, 0x4d])
+    )
   })
 
   test('replays the latest terminal backlog before consuming live chunks', async () => {
@@ -600,31 +621,10 @@ describe('TerminalViewport', () => {
     expect(instance?.options.fontSize).toBe(18)
   })
 
-  test('installs scrollback guard for codex sessions so TUI output keeps scrollback history', async () => {
-    const codexSession = sessionSummary({
-      id: 'session_codex_1',
-      type: 'codex',
-      title: 'Codex',
-      recoveryMode: 'resume-external',
-      externalSessionId: 'codex-ext-1',
-    })
+  test('does not install parser-level scrollback guards for codex sessions', async () => {
+    const source = readFileSync(terminalViewportPath, 'utf8')
 
-    const { default: TerminalViewport } = await import('./TerminalViewport.vue')
-    mount(TerminalViewport, {
-      props: { project: baseProject, session: codexSession },
-    })
-    await flushTerminal()
-
-    const { Terminal } = await import('@xterm/xterm')
-    const instance = (Terminal as unknown as {
-      instances: Array<{ registeredCsiHandlers: Array<{ id: unknown }> }>
-    }).instances.at(-1)
-
-    expect(instance?.registeredCsiHandlers.map(handler => handler.id)).toEqual([
-      { prefix: '?', final: 'h' },
-      { prefix: '?', final: 'l' },
-      { final: 'J' },
-    ])
+    expect(source).not.toContain('installScrollbackGuard')
   })
 
   test('uses terminal subtheme tokens instead of repeated rgba literals in component styles', () => {

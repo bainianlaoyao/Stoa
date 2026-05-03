@@ -18,6 +18,7 @@ let pinia: ReturnType<typeof createPinia>
 
 function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
   return {
+    windowsBuildNumber: undefined,
     getBootstrapState: vi.fn().mockResolvedValue({ activeProjectId: null, activeSessionId: null, terminalWebhookPort: 0, projects: [], sessions: [] }),
     createProject: vi.fn().mockResolvedValue(null),
     deleteProject: vi.fn().mockResolvedValue(undefined),
@@ -30,7 +31,8 @@ function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
     setActiveProject: vi.fn().mockResolvedValue(undefined),
     setActiveSession: vi.fn().mockResolvedValue(undefined),
     getTerminalReplay: vi.fn().mockResolvedValue(''),
-    sendSessionInput: vi.fn().mockResolvedValue(undefined),
+    sendSessionInput: vi.fn(),
+    sendSessionBinaryInput: vi.fn(),
     sendSessionResize: vi.fn().mockResolvedValue(undefined),
     onTerminalData: vi.fn().mockReturnValue(() => {}),
     onMemoryNotification: vi.fn().mockReturnValue(() => {}),

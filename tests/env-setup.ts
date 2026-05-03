@@ -1,7 +1,8 @@
 import { existsSync, readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-const envTestPath = resolve(__dirname, '..', '.env.test')
+const envTestPath = resolve(dirname(fileURLToPath(import.meta.url)), '..', '.env.test')
 if (existsSync(envTestPath)) {
   for (const line of readFileSync(envTestPath, 'utf8').split(/\r?\n/)) {
     const trimmed = line.trim()

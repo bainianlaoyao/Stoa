@@ -60,6 +60,7 @@ export interface ObservedEvent {
   inputMessages?: string[]
   toolName?: string
   toolUseId?: string
+  toolInput?: Record<string, unknown>
   cwd?: string
   model?: string
 }
@@ -103,18 +104,6 @@ export interface RuntimeJobRecord {
 export interface RuntimeState {
   sealedTurns: SealedTurnRecord[]
   jobs: RuntimeJobRecord[]
-}
-
-export interface DeliverySourceRef {
-  ref: string
-  reason: string
-  score?: number | null
-}
-
-export interface DeliveryEnvelope {
-  content: string
-  sourceRefs: DeliverySourceRef[]
-  selectionPolicy: string
 }
 
 export interface ProcessTurnResult {

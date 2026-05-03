@@ -20,6 +20,7 @@ function createPreloadApi(bus: FakeIpcPushBus): RendererApi {
     setActiveSession: (sessionId) => bus.invoke(IPC_CHANNELS.sessionSetActive, sessionId),
     getTerminalReplay: (sessionId) => bus.invoke(IPC_CHANNELS.sessionTerminalReplay, sessionId),
     sendSessionInput: (sessionId, data) => bus.invoke(IPC_CHANNELS.sessionInput, sessionId, data),
+    sendSessionBinaryInput: (sessionId, data) => bus.invoke(IPC_CHANNELS.sessionBinaryInput, sessionId, data),
     sendSessionResize: (sessionId, cols, rows) => bus.invoke(IPC_CHANNELS.sessionResize, sessionId, cols, rows),
     onTerminalData(callback) {
       const handler = (_event: undefined, chunk: TerminalDataChunk) => callback(chunk)

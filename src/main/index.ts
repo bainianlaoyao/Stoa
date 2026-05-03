@@ -7,8 +7,6 @@ import { dirname, join } from 'node:path'
 import { autoUpdater } from 'electron-updater'
 import { IPC_CHANNELS } from '@core/ipc-channels'
 import { getConsumerContextPath } from '@core/memory/delivery-paths'
-import { createMemoryRuntimeHost } from '@core/memory/runtime-host'
-import type { TurnMaintenancePhaseEvent } from '@core/memory/turn-maintenance-runner'
 import { InMemoryObservationStore } from '@core/observation-store'
 import type { ListObservationEventsOptions } from '@core/observation-store'
 import { ObservabilityService } from '@core/observability-service'
@@ -278,31 +276,8 @@ async function execShellCommand(
   })
 }
 
-function parseJsonTail(stdout: string): unknown {
-  const trimmed = stdout.trim()
-  if (!trimmed) {
-    throw new Error('Expected JSON output but command stdout was empty.')
-  }
-
-  try {
-    return JSON.parse(trimmed) as unknown
-  } catch {
-    const lines = trimmed.split(/\r?\n/)
-    for (let index = 1; index < lines.length; index += 1) {
-      const candidate = lines.slice(index).join('\n').trim()
-      if (!candidate) {
-        continue
-      }
-
-      try {
-        return JSON.parse(candidate) as unknown
-      } catch {
-        // Keep scanning.
-      }
-    }
-  }
-
-  throw new Error(`Expected JSON output but could not parse stdout:\n${stdout}`)
+function expandClaudeProjectDir(command: string, projectDir: string): string {
+  return command.replaceAll('$CLAUDE_PROJECT_DIR', projectDir.replace(/\\/g, '/'))
 }
 
 async function waitForValue<T>(
@@ -386,44 +361,6 @@ function pushMemoryNotification(notification: MemoryNotificationEvent): void {
   const win = mainWindow
   if (win && !win.isDestroyed()) {
     win.webContents.send(IPC_CHANNELS.memoryNotification, notification)
-  }
-}
-
-function toMemoryNotification(event: TurnMaintenancePhaseEvent): MemoryNotificationEvent {
-  const titleByPhase = {
-    solidify: event.status === 'started'
-      ? 'Memory solidifying'
-      : event.status === 'completed'
-        ? 'Memory solidified'
-        : 'Solidify failed',
-    distill: event.status === 'started'
-      ? 'Memory distilling'
-      : event.status === 'completed'
-        ? 'Memory distilled'
-        : 'Distill failed'
-  } as const
-  const messageByPhase = {
-    solidify: event.status === 'started'
-      ? 'Turn validation is running now.'
-      : event.status === 'completed'
-        ? 'Turn validation completed and results were stored.'
-        : (event.error ?? 'Evolver solidify phase failed.'),
-    distill: event.status === 'started'
-      ? 'Turn lessons are being distilled into Evolver memory.'
-      : event.status === 'completed'
-        ? 'Turn lessons were distilled into Evolver memory.'
-        : (event.error ?? 'Evolver distill phase failed.')
-  } as const
-
-  return {
-    id: `${event.jobId}:${event.phase}:${event.status}`,
-    projectId: '',
-    sessionId: event.stoaSessionId,
-    kind: event.phase,
-    status: event.status === 'started' ? 'info' : event.status === 'completed' ? 'success' : 'error',
-    title: titleByPhase[event.phase],
-    message: messageByPhase[event.phase],
-    createdAt: new Date().toISOString()
   }
 }
 
@@ -534,6 +471,9 @@ app.whenReady().then(async () => {
     {
       write(sessionId, data) {
         ptyHost?.write(sessionId, data)
+      },
+      writeBinary(sessionId, data) {
+        ptyHost?.writeBinary(sessionId, data)
       }
     },
     {
@@ -551,30 +491,7 @@ app.whenReady().then(async () => {
     },
     observabilityService
   )
-  const memoryRuntimeHost = await createMemoryRuntimeHost({
-    settings: {
-      getSettings() {
-        return projectSessionManager!.getSettings()
-      }
-    },
-    cwd: process.cwd(),
-    detectShell,
-    detectProvider,
-    onTurnPhaseEvent(event) {
-      const session = projectSessionManager?.snapshot().sessions.find((candidate) => candidate.id === event.stoaSessionId)
-      pushMemoryNotification({
-        ...toMemoryNotification(event),
-        projectId: session?.projectId ?? ''
-      })
-    }
-  })
-
-  for (const diagnostic of memoryRuntimeHost.diagnostics) {
-    console.warn(`[main] ${diagnostic}`)
-  }
-
   sessionEventBridge = new SessionEventBridge(projectSessionManager, runtimeController, observabilityService, {
-    turnMaintenanceRunner: memoryRuntimeHost.turnMaintenanceRunner,
     onMemoryNotification: pushMemoryNotification
   })
   updateService = new UpdateService({
@@ -776,7 +693,7 @@ app.whenReady().then(async () => {
         providerPort: 0
       })
 
-      const hookSettings = JSON.parse(await readFile(join(packagedSmokeProjectDir, '.claude', 'settings.local.json'), 'utf8')) as {
+      const hookSettings = JSON.parse(await readFile(join(packagedSmokeProjectDir, '.claude', 'settings.json'), 'utf8')) as {
         hooks?: Record<string, Array<{ hooks?: Array<{ command?: string }> }>>
       }
       const sessionStartCommand = hookSettings.hooks?.SessionStart?.[0]?.hooks?.[0]?.command
@@ -785,26 +702,15 @@ app.whenReady().then(async () => {
       }
 
       const sessionStartOutput = await execShellCommand(
-        sessionStartCommand,
+        expandClaudeProjectDir(sessionStartCommand, packagedSmokeProjectDir),
         packagedSmokeProjectDir,
         {
           ...process.env,
+          CLAUDE_PROJECT_DIR: packagedSmokeProjectDir.replace(/\\/g, '/'),
           EVOLVER_SESSION_START_DEDUP: '0'
         }
       )
-      const sessionStartPayload = parseJsonTail(sessionStartOutput) as {
-        agent_message?: string
-        additionalContext?: string
-        hookSpecificOutput?: {
-          additionalContext?: string
-        }
-      }
-      const injectedMemoryText = [
-        sessionStartPayload.agent_message ?? '',
-        sessionStartPayload.additionalContext ?? '',
-        sessionStartPayload.hookSpecificOutput?.additionalContext ?? ''
-      ].join('\n')
-      if (!injectedMemoryText.includes('Packaged smoke memory context is available')) {
+      if (!sessionStartOutput.includes('Packaged smoke memory context is available')) {
         throw new Error(`Packaged smoke Claude SessionStart hook did not surface the published memory.\nOutput: ${sessionStartOutput}`)
       }
       await recordPackagedSmoke('claude-session-start-verified', {
@@ -931,7 +837,7 @@ app.whenReady().then(async () => {
     return runtimeController?.getTerminalReplay(sessionId) ?? ''
   })
 
-  ipcMain.handle(IPC_CHANNELS.sessionInput, async (_event, sessionId: string, data: string) => {
+  ipcMain.on(IPC_CHANNELS.sessionInput, (_event, sessionId: string, data: string) => {
     if (INPUT_DEBUG) {
       console.log('[input-debug] sessionInput', {
         sessionId,
@@ -939,7 +845,11 @@ app.whenReady().then(async () => {
         codes: [...data].map((char) => char.charCodeAt(0))
       })
     }
-    await sessionInputRouter?.send(sessionId, data)
+    void sessionInputRouter?.send(sessionId, data)
+  })
+
+  ipcMain.on(IPC_CHANNELS.sessionBinaryInput, (_event, sessionId: string, data: Uint8Array) => {
+    void sessionInputRouter?.sendBinary(sessionId, data)
   })
 
   ipcMain.handle(IPC_CHANNELS.sessionResize, async (_event, sessionId: string, cols: number, rows: number) => {

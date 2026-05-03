@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import { release } from 'os'
 import { IPC_CHANNELS } from '@core/ipc-channels'
 import type {
   AppSettings,
@@ -29,7 +30,12 @@ interface PreloadDocument {
 
 declare const document: PreloadDocument
 
+const windowsBuildNumber = process.platform === 'win32'
+  ? (parseInt(release().split('.').pop() ?? '0', 10) || undefined)
+  : undefined
+
 const api: RendererApi = {
+  windowsBuildNumber,
   async getBootstrapState() {
     return ipcRenderer.invoke(IPC_CHANNELS.projectBootstrap)
   },
@@ -54,8 +60,11 @@ const api: RendererApi = {
   async getTerminalReplay(sessionId) {
     return ipcRenderer.invoke(IPC_CHANNELS.sessionTerminalReplay, sessionId) as Promise<string>
   },
-  async sendSessionInput(sessionId, data) {
-    return ipcRenderer.invoke(IPC_CHANNELS.sessionInput, sessionId, data)
+  sendSessionInput(sessionId, data) {
+    ipcRenderer.send(IPC_CHANNELS.sessionInput, sessionId, data)
+  },
+  sendSessionBinaryInput(sessionId, data) {
+    ipcRenderer.send(IPC_CHANNELS.sessionBinaryInput, sessionId, data)
   },
   async sendSessionResize(sessionId, cols, rows) {
     return ipcRenderer.invoke(IPC_CHANNELS.sessionResize, sessionId, cols, rows)

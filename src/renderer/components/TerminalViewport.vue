@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { watch, onMounted, onBeforeUnmount, nextTick, useTemplateRef } from 'vue'
 import '@xterm/xterm/css/xterm.css'
-import { createTerminalRuntime, installScrollbackGuard } from '@renderer/terminal/xterm-runtime'
+import { createTerminalRuntime } from '@renderer/terminal/xterm-runtime'
 import { useSettingsStore } from '@renderer/stores/settings'
 import { useI18n } from 'vue-i18n'
 import WorkspaceQuickActions from './command/WorkspaceQuickActions.vue'
 import type { FitAddon } from '@xterm/addon-fit'
-import type { IDisposable, Terminal } from '@xterm/xterm'
+import type { Terminal } from '@xterm/xterm'
 import type { OpenWorkspaceRequest, ProjectSummary, SessionSummary, TerminalDataChunk } from '@shared/project-session'
 
 const props = defineProps<{
@@ -28,7 +28,7 @@ let resizeObserver: ResizeObserver | null = null
 let unsubscribeData: (() => void) | null = null
 let unsubscribeEvents: (() => void) | null = null
 let dataDisposable: { dispose(): void } | null = null
-let scrollbackGuard: IDisposable | null = null
+let binaryDisposable: { dispose(): void } | null = null
 let pendingFitResolve: (() => void) | null = null
 let resizeDebounceTimer: ReturnType<typeof setTimeout> | null = null
 let mountVersion = 0
@@ -42,8 +42,8 @@ function disposeTerminal() {
   pendingFitResolve = null
   dataDisposable?.dispose()
   dataDisposable = null
-  scrollbackGuard?.dispose()
-  scrollbackGuard = null
+  binaryDisposable?.dispose()
+  binaryDisposable = null
   unsubscribeData?.()
   unsubscribeData = null
   unsubscribeEvents?.()
@@ -104,20 +104,13 @@ function setupTerminal() {
     undefined,
     undefined,
     settingsStore.terminalFontSize,
-    settingsStore.terminalFontFamily
+    settingsStore.terminalFontFamily,
+    stoa.windowsBuildNumber
   )
   terminal = localTerminal
   fitAddon = localFitAddon
   localTerminal.open(terminalContainer.value)
   localTerminal.focus()
-
-  if (
-    props.session.type === 'opencode'
-    || props.session.type === 'codex'
-    || props.session.type === 'claude-code'
-  ) {
-    scrollbackGuard = installScrollbackGuard(localTerminal)
-  }
 
   const isActiveMount = () => mountVersion === localMountVersion && terminal === localTerminal
   const enqueueWrite = (data: string) => {
@@ -185,6 +178,9 @@ function setupTerminal() {
   dataDisposable = localTerminal.onData((data) => {
     stoa.sendSessionInput(sessionId, data)
   })
+  binaryDisposable = localTerminal.onBinary((data) => {
+    stoa.sendSessionBinaryInput(sessionId, Uint8Array.from(data, (char) => char.charCodeAt(0) & 0xff))
+  })
 
   resizeObserver = new ResizeObserver(() => {
     if (!isActiveMount()) return
@@ -192,20 +188,11 @@ function setupTerminal() {
     if (resizeDebounceTimer !== null) {
       clearTimeout(resizeDebounceTimer)
     }
-    resizeDebounceTimer = setTimeout(() => {
+      resizeDebounceTimer = setTimeout(() => {
       if (!isActiveMount()) return
       resizeDebounceTimer = null
 
-      const prevBufferLength = localTerminal.buffer.active.length
-      const snapshot = localSerializeAddon.serialize()
-
       localFitAddon.fit()
-
-      const newBufferLength = localTerminal.buffer.active.length
-      if (newBufferLength < prevBufferLength) {
-        localTerminal.clear()
-        localTerminal.write(snapshot)
-      }
 
       const { cols, rows } = localTerminal
       stoa.sendSessionResize(sessionId, cols, rows)

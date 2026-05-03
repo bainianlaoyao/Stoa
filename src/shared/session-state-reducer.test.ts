@@ -188,6 +188,22 @@ describe('session state reducer', () => {
     })
   })
 
+  it('turn completed clears blocked permission state and marks completion', () => {
+    const next = reduceSessionState(
+      session({ agentState: 'blocked', blockingReason: 'permission', hasUnseenCompletion: false }),
+      patch({ intent: 'agent.turn_completed' }),
+      NOW
+    )
+
+    expect(next).toMatchObject({
+      agentState: 'idle',
+      hasUnseenCompletion: true,
+      blockingReason: null,
+      lastStateSequence: 2,
+      updatedAt: NOW
+    })
+  })
+
   it('completion seen clears unseen completion without changing agent idle', () => {
     const next = reduceSessionState(
       session({ agentState: 'idle', hasUnseenCompletion: true }),
@@ -248,7 +264,7 @@ describe('session state reducer', () => {
     }
   })
 
-  it('blocked cannot be cleared by ordinary stale tool started', () => {
+  it('tool started clears blocked permission state when real work resumes', () => {
     const next = reduceSessionState(
       session({ agentState: 'blocked', blockingReason: 'permission', hasUnseenCompletion: true }),
       patch({ intent: 'agent.tool_started' }),
@@ -256,9 +272,25 @@ describe('session state reducer', () => {
     )
 
     expect(next).toMatchObject({
-      agentState: 'blocked',
-      blockingReason: 'permission',
-      hasUnseenCompletion: true,
+      agentState: 'working',
+      blockingReason: null,
+      hasUnseenCompletion: false,
+      lastStateSequence: 2,
+      updatedAt: NOW
+    })
+  })
+
+  it('tool completed also clears blocked permission state once work resumes', () => {
+    const next = reduceSessionState(
+      session({ agentState: 'blocked', blockingReason: 'permission', hasUnseenCompletion: true }),
+      patch({ intent: 'agent.tool_completed' }),
+      NOW
+    )
+
+    expect(next).toMatchObject({
+      agentState: 'working',
+      blockingReason: null,
+      hasUnseenCompletion: false,
       lastStateSequence: 2,
       updatedAt: NOW
     })

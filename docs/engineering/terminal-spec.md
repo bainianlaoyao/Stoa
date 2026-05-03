@@ -1,120 +1,87 @@
 # Terminal Specification
 
-The terminal is the primary surface of this application. It must deliver a native shell experience with zero visual or functional compromise.
+The terminal is the primary surface of this application. It must behave like a raw PTY viewport.
 
 ## xterm.js Configuration
 
-All terminal instances must use the following configuration. No deviation without explicit user approval.
-
-### Required Options
+All terminal instances use the same core configuration.
 
 ```typescript
 new Terminal({
-  fontFamily: "'JetBrains Mono', 'Cascadia Code', Consolas, monospace",
-  fontSize: 13,
-  lineHeight: 1.0,          // 1.0 only. TUI apps (opencode, vim) need pixel-perfect row alignment.
-  cursorBlink: true,
-  allowProposedApi: true,
+  lineHeight: 1,
   scrollback: 10_000,
-  convertEol: true,
-  windowsMode: true,        // Required for Windows conpty compatibility.
+  convertEol: false,
+  disableStdin: false,
+  customGlyphs: true,
+  cursorBlink: true,
+  cursorStyle: 'block',
+  cursorInactiveStyle: 'outline',
+  rightClickSelectsWord: platform !== 'darwin',
+  altClickMovesCursor: true,
+  allowProposedApi: true,
+  windowsPty: platform === 'win32'
+    ? { backend: 'conpty', buildNumber: windowsBuildNumber }
+    : undefined,
 })
 ```
 
-### Required Addons (load in this order)
+## Addons
 
-1. **Unicode11Addon** — Unicode 11.0 character width table. Ensures CJK, emoji, and box-drawing characters have correct column widths.
-2. **WebLinksAddon** — Clickable URLs that open in the system browser.
-3. **FitAddon** — Auto-fit terminal to container dimensions.
-4. **WebglAddon** — WebGL renderer. Primary renderer for pixel-accurate character alignment. Must wrap in try/catch with silent fallback to canvas.
+Loaded addons:
 
-```typescript
-terminal.loadAddon(new Unicode11Addon())
-terminal.loadAddon(new WebLinksAddon())
+1. `FitAddon`
+2. `Unicode11Addon`
+3. `WebLinksAddon`
+4. `ClipboardAddon`
+5. `SearchAddon`
+6. `SerializeAddon`
+7. optional `WebglAddon`
 
-fitAddon = new FitAddon()
-terminal.loadAddon(fitAddon)
-terminal.open(container)
+## Required Rules
 
-try {
-  const webglAddon = new WebglAddon()
-  webglAddon.onContextLoss(() => { webglAddon.dispose() })
-  terminal.loadAddon(webglAddon)
-} catch { /* fallback to canvas */ }
-```
-
-### Forbidden Patterns
-
-| Forbidden | Reason |
-|---|---|
-| `lineHeight > 1.0` | Breaks box-drawing character alignment (gaps between ┌─┐│) |
-| `fontFamily: "var(--css-variable)"` | CSS variables may not resolve in Canvas/WebGL context |
-| `screenReaderMode: true` in production | Forces DOM renderer, inferior to WebGL for TUI |
-| Hardcoded `#hex` colors in theme | Must use CSS custom properties (`var(--terminal-bg)`) |
-| Native scrollbar visible | Must hide via `scrollbar-width: none` + `::-webkit-scrollbar { display: none }` |
-
-### Font Loading
-
-Terminal initialization must wait for web fonts to finish loading. Otherwise xterm measures character widths with the fallback font, causing permanent misalignment.
-
-```typescript
-await (document.fonts?.ready ?? Promise.resolve())
-```
+- Preserve raw text input.
+- Preserve raw binary input.
+- Do not install parser-level ANSI interception in the default path.
+- Do not split or throttle paste/input frames.
+- Keep `lineHeight` at `1`.
+- Keep `scrollback` at `10_000`.
+- Use CSS custom properties for theme colors.
+- Resolve font family from the design token / settings source.
 
 ## PTY Configuration
 
-### Terminal Type
+- `name: 'xterm-256color'`
+- `TERM` defaults to `xterm-256color`
+- `COLORTERM` defaults to `truecolor`
+- `TERM_PROGRAM` is `xterm.js`
+- PTY start size defaults to `120x30`
 
-```
-TERM=xterm-256color
-```
+## Input Contract
 
-This is set via `node-pty`'s `name` option. `xterm-256color` enables:
+- `onData` -> `sendSessionInput` -> `session:input`
+- `onBinary` -> `sendSessionBinaryInput` -> `session:binary-input`
+- `Ctrl+C` is written raw and also marks the agent interrupt path
 
-- 256 color support (required by opencode TUI)
-- Mouse protocol (click, drag, scroll)
-- Focus event reporting
-- Bracketed paste mode
+## Output Contract
 
-**Never use `xterm-color`** — it only supports 16 colors and lacks mouse protocol terminfo.
+- `pty.onData` is forwarded to xterm unchanged
+- replay/backlog is a backend concern, not a terminal protocol concern
 
-### Environment Isolation
+## Forbidden Patterns
 
-The PTY environment must strip inherited `OPENCODE_*` variables from `process.env` to prevent the spawned process from accidentally connecting to a parent opencode instance.
+- `registerCsiHandler` in the default terminal path
+- frame splitting / throttling / per-character injection
+- default `--no-alt-screen`
+- scrollback-guard style ANSI swallowing
+- hardcoded theme hex values
 
-Blocklist: `OPENCODE`, `OPENCODE_CLIENT`, `OPENCODE_PID`, `OPENCODE_PROCESS_ROLE`, `OPENCODE_RUN_ID`, `OPENCODE_SERVER_PASSWORD`, `OPENCODE_SERVER_USERNAME`.
+## Verification
 
-## Rendering Rules
+The terminal contract is valid only if:
 
-### Running State (session status === 'running')
-
-The terminal must fill the entire viewport. No header, no status bar, no messages, no padding, no border.
-
-```
-┌──────────────────────────┐
-│                          │
-│     xterm.js surface     │
-│     (edge-to-edge)       │
-│                          │
-└──────────────────────────┘
-```
-
-### Non-Running States (exited, error, starting, etc.)
-
-Show a semantic overlay with session details, lifecycle copy, and metadata. This is informational only — no terminal surface.
-
-## Accessibility
-
-### Semantic Structure
-
-- Terminal surface: `role="region" aria-label="Terminal surface"`
-- Empty state: `role="region" aria-label="Terminal empty state"`
-- Non-running overlay: `role="region" aria-label="Session details"`
-- Session metadata: `dl[aria-label="Session metadata"]`
-- Each overlay must have `aria-describedby` linking to its summary paragraph
-
-### E2E Debug Hook
-
-In e2e test mode (`?e2e=1`), the terminal exposes `window.__VIBECODING_TERMINAL_DEBUG__` with:
-- `getActiveBufferText()` — full buffer content
-- `getViewportText()` — visible viewport content
+- raw text passes through unchanged
+- raw binary passes through unchanged
+- Codex paste is not throttled
+- bracketed paste stays intact
+- `session:binary-input` is wired end-to-end
+- `PtyHost.writeBinary()` exists and is used
