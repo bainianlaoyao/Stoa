@@ -46,6 +46,7 @@ describe('WorkspaceQuickActions', () => {
 
     expect(wrapper.find('[data-testid="workspace.open-ide"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="workspace.open-file-manager"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="workspace.copy-selection"]').exists()).toBe(false)
   })
 
   it('emits an IDE workspace open request for the active session', async () => {
@@ -102,5 +103,17 @@ describe('WorkspaceQuickActions', () => {
     expect(wrapper.emitted('openWorkspace')).toEqual([
       [{ sessionId: 'session_1', target: 'file-manager' }]
     ])
+  })
+
+  it('renders a copy button that emits copySelection when clicked', async () => {
+    const wrapper = mount(WorkspaceQuickActions, {
+      props: { project, session }
+    })
+
+    const copyButton = wrapper.get('[data-testid="workspace.copy-selection"]')
+    expect(copyButton.attributes('aria-label')).toBe('Copy selection to clipboard')
+
+    await copyButton.trigger('click')
+    expect(wrapper.emitted('copySelection')).toHaveLength(1)
   })
 })

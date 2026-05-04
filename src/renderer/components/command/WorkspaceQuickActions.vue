@@ -11,6 +11,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   openWorkspace: [request: OpenWorkspaceRequest]
+  copySelection: []
 }>()
 
 const { t } = useI18n()
@@ -30,6 +31,27 @@ function emitOpenWorkspace(target: OpenWorkspaceRequest['target']): void {
 
 <template>
   <div v-if="canOpenWorkspace" class="workspace-quick-actions" data-testid="workspace.quick-actions">
+    <button
+      type="button"
+      class="workspace-quick-actions__button"
+      data-testid="workspace.copy-selection"
+      :aria-label="t('terminal.quickActions.copySelectionAria')"
+      @click="emit('copySelection')"
+    >
+      <svg
+        class="workspace-quick-actions__icon"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.8"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <rect x="9" y="9" width="13" height="13" rx="2" />
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+      </svg>
+    </button>
     <button
       type="button"
       class="workspace-quick-actions__button"

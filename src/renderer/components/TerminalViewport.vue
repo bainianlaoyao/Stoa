@@ -18,6 +18,13 @@ const emit = defineEmits<{
   openWorkspace: [request: OpenWorkspaceRequest]
 }>()
 
+function copyTerminalSelection(): void {
+  if (!terminal) return
+  const selection = terminal.getSelection()
+  if (!selection) return
+  navigator.clipboard.writeText(selection)
+}
+
 const terminalContainer = useTemplateRef<HTMLDivElement>('terminalContainer')
 const settingsStore = useSettingsStore()
 const { t } = useI18n()
@@ -276,6 +283,7 @@ onBeforeUnmount(disposeTerminal)
           :project="project"
           :session="session"
           @open-workspace="emit('openWorkspace', $event)"
+          @copy-selection="copyTerminalSelection"
         />
         <div class="terminal-viewport__shell" data-testid="terminal-shell">
           <div class="terminal-viewport__xterm-mount" ref="terminalContainer" data-testid="terminal-xterm-mount" />

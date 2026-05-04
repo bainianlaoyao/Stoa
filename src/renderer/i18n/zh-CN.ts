@@ -191,7 +191,8 @@ export default {
     activeSession: '\u6D3B\u52A8\u4F1A\u8BDD',
     quickActions: {
       openIdeAria: '\u5728 VS Code \u4E2D\u6253\u5F00\u5DE5\u4F5C\u533A',
-      openFileManagerAria: '\u5728\u6587\u4EF6\u6D4F\u89C8\u5668\u4E2D\u663E\u793A\u5DE5\u4F5C\u533A'
+      openFileManagerAria: '\u5728\u6587\u4EF6\u6D4F\u89C8\u5668\u4E2D\u663E\u793A\u5DE5\u4F5C\u533A',
+      copySelectionAria: '\u590D\u5236\u9009\u4E2D\u5185\u5BB9\u5230\u526A\u8D34\u677F'
     }
   },
 

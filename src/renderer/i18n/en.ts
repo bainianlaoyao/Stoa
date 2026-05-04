@@ -191,7 +191,8 @@ export default {
     activeSession: 'Active session',
     quickActions: {
       openIdeAria: 'Open workspace in VS Code',
-      openFileManagerAria: 'Reveal workspace in file browser'
+      openFileManagerAria: 'Reveal workspace in file browser',
+      copySelectionAria: 'Copy selection to clipboard'
     }
   },
 
