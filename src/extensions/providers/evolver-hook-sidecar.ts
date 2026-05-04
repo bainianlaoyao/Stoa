@@ -3,6 +3,7 @@ import { chmod, mkdir, readdir, rename, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import { resolveBundledEvolverRepoRoot } from '@core/memory/bundled-evolver'
+import { buildEvolverProjectEnv, resolveEvolverProjectPaths } from '@shared/evolver-project-paths'
 
 interface ClaudeCommandHook {
   type: 'command'
@@ -61,6 +62,7 @@ const UPSTREAM_HOOK_SCRIPT_NAMES = [
 export async function installClaudeEvolverHooks(options: InstallClaudeEvolverHooksOptions): Promise<void> {
   const repoRoot = options.repoRoot ?? await resolveBundledEvolverRepoRoot(process.cwd())
   const windowsHookShell = resolveWindowsUpstreamHookShell()
+  const projectEnv = createClaudeHookProjectEnv(options.projectRoot, repoRoot)
   const claudeDir = join(options.projectRoot, '.claude')
   const hooksDir = join(options.projectRoot, CLAUDE_HOOKS_DIR)
   await mkdir(claudeDir, { recursive: true })
@@ -69,11 +71,7 @@ export async function installClaudeEvolverHooks(options: InstallClaudeEvolverHoo
   const upstreamSettings = loadClaudeHookSettings(repoRoot)
   await copyClaudeHookScripts(hooksDir, repoRoot)
   await writeClaudeWrapperScripts(hooksDir)
-  const wrappedHooks = wrapClaudeHookSettings(upstreamSettings, repoRoot, windowsHookShell)
-
-  if (!wrappedHooks.StopFailure && wrappedHooks.Stop) {
-    wrappedHooks.StopFailure = cloneHookMatchers(wrappedHooks.Stop)
-  }
+  const wrappedHooks = wrapClaudeHookSettings(upstreamSettings, repoRoot, projectEnv, windowsHookShell)
 
   const settings: ClaudeHookSettings = {
     hooks: {
@@ -135,6 +133,7 @@ async function rewriteUpstreamHookExtensions(hooksDir: string): Promise<void> {
 function wrapClaudeHookSettings(
   settings: ClaudeHookSettings,
   repoRoot: string,
+  projectEnv: Record<string, string>,
   windowsHookShell: string | null
 ): ClaudeHookSettings['hooks'] {
   return Object.fromEntries(
@@ -151,7 +150,7 @@ function wrapClaudeHookSettings(
 
               return {
                 ...hook,
-                command: buildClaudeWrapperCommand(eventName, hook.command, repoRoot, windowsHookShell)
+                command: buildClaudeWrapperCommand(eventName, hook.command, repoRoot, projectEnv, windowsHookShell)
               }
             })
           }
@@ -165,18 +164,20 @@ function buildClaudeWrapperCommand(
   hookEventName: string,
   upstreamCommand: string,
   repoRoot: string,
+  projectEnv: Record<string, string>,
   windowsHookShell: string | null
 ): string {
   const normalizedUpstreamCommand = normalizeUpstreamCommand(upstreamCommand)
   const encodedUpstreamCommand = Buffer.from(normalizedUpstreamCommand, 'utf8').toString('base64')
   const encodedRepoRoot = Buffer.from(repoRoot, 'utf8').toString('base64')
+  const encodedProjectEnv = Buffer.from(JSON.stringify(projectEnv), 'utf8').toString('base64')
   const encodedHookShell = Buffer.from(windowsHookShell ?? '', 'utf8').toString('base64')
   const wrapperPath = '$CLAUDE_PROJECT_DIR/.claude/hooks/'
   if (process.platform === 'win32') {
-    return `"${wrapperPath}${STOA_CLAUDE_WRAPPER_WINDOWS_LAUNCHER}" "${hookEventName}" "${encodedUpstreamCommand}" "${encodedRepoRoot}" "${encodedHookShell}"`
+    return `"${wrapperPath}${STOA_CLAUDE_WRAPPER_WINDOWS_LAUNCHER}" "${hookEventName}" "${encodedUpstreamCommand}" "${encodedRepoRoot}" "${encodedProjectEnv}" "${encodedHookShell}"`
   }
 
-  return `"${wrapperPath}${STOA_CLAUDE_WRAPPER_UNIX_LAUNCHER}" "${hookEventName}" "${encodedUpstreamCommand}" "${encodedRepoRoot}" "${encodedHookShell}"`
+  return `"${wrapperPath}${STOA_CLAUDE_WRAPPER_UNIX_LAUNCHER}" "${hookEventName}" "${encodedUpstreamCommand}" "${encodedRepoRoot}" "${encodedProjectEnv}" "${encodedHookShell}"`
 }
 
 function normalizeUpstreamCommand(command: string): string {
@@ -210,6 +211,21 @@ function resolveWindowsUpstreamHookShell(): string | null {
     .find(Boolean)
 
   return candidate ?? null
+}
+
+function createClaudeHookProjectEnv(projectRoot: string, repoRoot: string): Record<string, string> {
+  const projectPaths = resolveEvolverProjectPaths(projectRoot, repoRoot)
+  const env = buildEvolverProjectEnv(projectPaths, {})
+
+  return {
+    EVOLVER_ROOT: env.EVOLVER_ROOT ?? repoRoot,
+    EVOLVER_REPO_ROOT: env.EVOLVER_REPO_ROOT ?? projectRoot,
+    MEMORY_DIR: env.MEMORY_DIR ?? projectPaths.memoryDir,
+    EVOLUTION_DIR: env.EVOLUTION_DIR ?? projectPaths.evolutionDir,
+    GEP_ASSETS_DIR: env.GEP_ASSETS_DIR ?? projectPaths.gepAssetsDir,
+    MEMORY_GRAPH_PATH: env.MEMORY_GRAPH_PATH ?? projectPaths.memoryGraphPath,
+    EVOLVER_QUIET_PARENT_GIT: env.EVOLVER_QUIET_PARENT_GIT ?? '1'
+  }
 }
 
 function createStoaHttpHook(webhookPort: number, matcher?: string): StoaHttpHookMatcher {
@@ -301,6 +317,23 @@ function buildClaudeWrapperScriptSource(): string {
     "  return Buffer.from(encodedRepoRoot, 'base64').toString('utf8')",
     '}',
     '',
+    'function parseJson(text) {',
+    '  if (!text) {',
+    '    return null',
+    '  }',
+    '  try {',
+    '    return JSON.parse(text)',
+    '  } catch {',
+    '    return null',
+    '  }',
+    '}',
+    '',
+    'function decodeProjectEnv(encodedProjectEnv) {',
+    "  const decoded = Buffer.from(encodedProjectEnv || '', 'base64').toString('utf8')",
+    '  const parsed = parseJson(decoded)',
+    '  return parsed && typeof parsed === "object" ? parsed : {}',
+    '}',
+    '',
     'function decodeHookShell(encodedHookShell) {',
     "  return Buffer.from(encodedHookShell || '', 'base64').toString('utf8')",
     '}',
@@ -340,11 +373,13 @@ function buildClaudeWrapperScriptSource(): string {
     '  return candidate || null',
     '}',
     '',
-    'function buildUpstreamEnv(evolverRoot, encodedHookShell) {',
+    'function buildUpstreamEnv(evolverRoot, encodedProjectEnv, encodedHookShell) {',
     '  const existingPath = process.env.PATH || process.env.Path || ""',
     '  const nextPath = prependPathEntry(__dirname, existingPath)',
+    '  const projectEnv = decodeProjectEnv(encodedProjectEnv)',
     '  const windowsHookShell = resolveWindowsHookShell(encodedHookShell)',
     '  return {',
+    '    ...projectEnv,',
     '    ...process.env,',
     '    EVOLVER_ROOT: evolverRoot,',
     '    PATH: nextPath,',
@@ -354,17 +389,6 @@ function buildClaudeWrapperScriptSource(): string {
     '      COMSPEC: windowsHookShell,',
     '      SHELL: windowsHookShell',
     '    } : {})',
-    '  }',
-    '}',
-    '',
-    'function parseJson(text) {',
-    '  if (!text) {',
-    '    return null',
-    '  }',
-    '  try {',
-    '    return JSON.parse(text)',
-    '  } catch {',
-    '    return null',
     '  }',
     '}',
     '',
@@ -418,42 +442,14 @@ function buildClaudeWrapperScriptSource(): string {
     '  return null',
     '}',
     '',
-    'function buildMemoryNotification(hookEventName, parsedOutput, payload) {',
+    'function buildMemoryNotification(hookEventName, parsedOutput) {',
     '  const message = getUpstreamMessage(parsedOutput)',
-    '  if (hookEventName === "SessionStart") {',
-    '    if (!message) {',
-    '      return null',
-    '    }',
+    '  if (hookEventName === "SessionStart" && message) {',
     '    return {',
     "      kind: 'recall',",
     "      status: 'success',",
     "      title: 'Memory recalled',",
     "      message: 'Evolver recalled recent memory for this session.'",
-    '    }',
-    '  }',
-    '  if (hookEventName === "Stop") {',
-    '    if (!message) {',
-    '      return null',
-    '    }',
-    '    return {',
-    "      kind: 'solidify',",
-    "      status: 'success',",
-    "      title: 'Memory solidified',",
-    '      message',
-    '    }',
-    '  }',
-    '  if (hookEventName === "StopFailure") {',
-    '    const errorMessage = typeof payload.error === "string" && payload.error.trim()',
-    '      ? payload.error.trim()',
-    '      : message',
-    '    if (!errorMessage) {',
-    '      return null',
-    '    }',
-    '    return {',
-    "      kind: 'solidify',",
-    "      status: 'error',",
-    "      title: 'Solidify failed',",
-    '      message: errorMessage',
     '    }',
     '  }',
     '  return null',
@@ -472,13 +468,13 @@ function buildClaudeWrapperScriptSource(): string {
     '  return upstreamOutput',
     '}',
     '',
-    'async function runUpstreamHook(command, payloadText, evolverRoot, encodedHookShell) {',
+    'async function runUpstreamHook(command, payloadText, evolverRoot, encodedProjectEnv, encodedHookShell) {',
     '  return await new Promise((resolve) => {',
     '    const projectRoot = getProjectRoot()',
     '    const invocation = resolveUpstreamInvocation(command, projectRoot)',
     '    const child = spawn(invocation.command, invocation.args, {',
     '      cwd: projectRoot,',
-    '      env: buildUpstreamEnv(evolverRoot, encodedHookShell),',
+    '      env: buildUpstreamEnv(evolverRoot, encodedProjectEnv, encodedHookShell),',
     "      stdio: ['pipe', 'pipe', 'pipe'],",
     '      shell: invocation.shell,',
     '      windowsHide: true',
@@ -539,7 +535,8 @@ function buildClaudeWrapperScriptSource(): string {
     '  const hookEventName = process.argv[2]',
     '  const encodedUpstreamCommand = process.argv[3]',
     '  const encodedRepoRoot = process.argv[4]',
-    '  const encodedHookShell = process.argv[5] || ""',
+    '  const encodedProjectEnv = process.argv[5] || ""',
+    '  const encodedHookShell = process.argv[6] || ""',
     '  if (!hookEventName || !encodedUpstreamCommand || !encodedRepoRoot) {',
     '    return',
     '  }',
@@ -548,13 +545,13 @@ function buildClaudeWrapperScriptSource(): string {
     '  const payloadText = JSON.stringify(payload)',
     '  const upstreamCommand = decodeUpstreamCommand(encodedUpstreamCommand)',
     '  const evolverRoot = decodeRepoRoot(encodedRepoRoot)',
-    '  const upstreamOutput = await runUpstreamHook(upstreamCommand, payloadText, evolverRoot, encodedHookShell)',
+    '  const upstreamOutput = await runUpstreamHook(upstreamCommand, payloadText, evolverRoot, encodedProjectEnv, encodedHookShell)',
     '  const parsedOutput = parseJson(upstreamOutput)',
     '  const claudeOutput = buildClaudeHookOutput(hookEventName, parsedOutput, upstreamOutput)',
     '  await notifyStoa(payload)',
-    '  await notifyMemoryRuntime(buildMemoryNotification(hookEventName, parsedOutput, payload))',
+    '  await notifyMemoryRuntime(buildMemoryNotification(hookEventName, parsedOutput))',
     '  if (claudeOutput) {',
-      '    process.stdout.write(claudeOutput)',
+    '    process.stdout.write(claudeOutput)',
     '  }',
     '}',
     '',
@@ -599,13 +596,6 @@ function buildUnixUpstreamNodeShimSource(): string {
     `exec "${process.execPath}" "$@"`,
     ''
   ].join('\n')
-}
-
-function cloneHookMatchers(matchers: ClaudeHookMatcher[]): ClaudeHookMatcher[] {
-  return matchers.map((matcher) => ({
-    ...matcher,
-    hooks: matcher.hooks.map((hook) => ({ ...hook }))
-  }))
 }
 
 function isClaudeHookSettings(value: unknown): value is ClaudeHookSettings {

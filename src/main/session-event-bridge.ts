@@ -1,12 +1,14 @@
 import { randomUUID } from 'node:crypto'
+import { RuntimeStateStore } from '@core/memory/runtime-state-store'
 import { SessionEvidenceStore } from '@core/memory/session-evidence-store'
+import { TurnMaintenancePhaseError, TurnMaintenanceRunner } from '@core/memory/turn-maintenance-runner'
 import { createTranscriptSnapshot } from '@core/memory/transcript-snapshot'
 import { createLocalWebhookServer } from '@core/webhook-server'
 import type { ProjectSessionManager } from '@core/project-session-manager'
 import type {
   CanonicalSessionEvent,
   MemoryNotificationEvent,
-  SessionStatePatchEvent,
+  SessionStatePatchEvent
 } from '@shared/project-session'
 import type { EvidenceRef } from '@shared/memory-runtime'
 import type { ObservationCategory, ObservationEvent, ObservationRetention, ObservationSeverity } from '@shared/observability'
@@ -21,6 +23,14 @@ interface ObservabilityIngester {
 
 interface EvidenceStoreLike {
   persist: SessionEvidenceStore['persist']
+  sealTurn?: SessionEvidenceStore['sealTurn']
+  listEvidenceRefsForTurn?: SessionEvidenceStore['listEvidenceRefsForTurn']
+}
+
+interface RuntimeStateStoreLike {
+  recordSealedTurn: RuntimeStateStore['recordSealedTurn']
+  upsertJob: RuntimeStateStore['upsertJob']
+  replaceJob: RuntimeStateStore['replaceJob']
 }
 
 interface SessionEventBridgeOptions {
@@ -28,16 +38,22 @@ interface SessionEventBridgeOptions {
   evidenceStore?: EvidenceStoreLike
   transcriptSnapshotter?: (event: CanonicalSessionEvent) => Promise<Awaited<ReturnType<typeof createTranscriptSnapshot>>>
   onMemoryNotification?: (event: MemoryNotificationEvent) => void
+  turnMaintenanceRunner?: TurnMaintenanceRunner
+  createRuntimeStateStore?: (projectPath: string) => RuntimeStateStoreLike
 }
 
 export class SessionEventBridge {
   private readonly sessionSecrets = new Map<string, string>()
   private readonly providerPatchSequences = new Map<string, number>()
   private readonly sessionEventQueues = new Map<string, Promise<null>>()
+  private readonly turnEvidenceIds = new Map<string, Set<string>>()
+  private readonly activeTurnIds = new Map<string, string>()
   private readonly nowIso: () => string
   private readonly evidenceStore: EvidenceStoreLike
   private readonly transcriptSnapshotter: (event: CanonicalSessionEvent) => Promise<Awaited<ReturnType<typeof createTranscriptSnapshot>>>
   private readonly onMemoryNotification?: (event: MemoryNotificationEvent) => void
+  private readonly turnMaintenanceRunner?: TurnMaintenanceRunner
+  private readonly createRuntimeStateStore: (projectPath: string) => RuntimeStateStoreLike
   private server: ReturnType<typeof createLocalWebhookServer> | null = null
   private port: number | null = null
 
@@ -50,10 +66,16 @@ export class SessionEventBridge {
     this.nowIso = options.nowIso ?? (() => new Date().toISOString())
     const defaultEvidenceStore = new SessionEvidenceStore()
     this.evidenceStore = {
-      persist: options.evidenceStore?.persist ?? defaultEvidenceStore.persist.bind(defaultEvidenceStore)
+      persist: options.evidenceStore?.persist ?? defaultEvidenceStore.persist.bind(defaultEvidenceStore),
+      sealTurn: options.evidenceStore?.sealTurn ?? defaultEvidenceStore.sealTurn.bind(defaultEvidenceStore),
+      listEvidenceRefsForTurn:
+        options.evidenceStore?.listEvidenceRefsForTurn
+        ?? defaultEvidenceStore.listEvidenceRefsForTurn.bind(defaultEvidenceStore)
     }
     this.transcriptSnapshotter = options.transcriptSnapshotter ?? createTranscriptSnapshot
     this.onMemoryNotification = options.onMemoryNotification
+    this.turnMaintenanceRunner = options.turnMaintenanceRunner
+    this.createRuntimeStateStore = options.createRuntimeStateStore ?? ((projectPath) => new RuntimeStateStore(projectPath))
   }
 
   async start(): Promise<number> {
@@ -95,9 +117,13 @@ export class SessionEventBridge {
     const next = previous
       .catch(() => null)
       .then(async () => {
-        await this.persistEvidenceIfPresent(event)
-        this.observability?.ingest(this.toObservationEvent(event))
-        await this.controller.applyProviderStatePatch(this.toSessionStatePatch(event))
+        const normalized = this.attachResolvedTurnId(event)
+        const evidenceRef = await this.persistEvidenceIfPresent(normalized)
+        this.trackTurnEvidence(normalized, evidenceRef)
+        this.observability?.ingest(this.toObservationEvent(normalized))
+        await this.controller.applyProviderStatePatch(this.toSessionStatePatch(normalized))
+        await this.handleLifecycle(normalized, evidenceRef)
+
         return null
       })
 
@@ -110,6 +136,36 @@ export class SessionEventBridge {
     next.then(cleanup, cleanup)
 
     return await next
+  }
+
+  private attachResolvedTurnId(event: CanonicalSessionEvent): CanonicalSessionEvent {
+    if (!event.evidence || event.evidence.turnId || event.evidence.rawSource.provider !== 'claude-code') {
+      return event
+    }
+
+    const hookEventName = event.evidence.hookEventName
+    if (!hookEventName || hookEventName === 'SessionStart') {
+      return event
+    }
+
+    const sessionTurnId = this.activeTurnIds.get(event.session_id)
+    let turnId = sessionTurnId ?? null
+
+    if (hookEventName === 'UserPromptSubmit') {
+      turnId = randomUUID()
+      this.activeTurnIds.set(event.session_id, turnId)
+    } else if (!turnId) {
+      turnId = randomUUID()
+      this.activeTurnIds.set(event.session_id, turnId)
+    }
+
+    return {
+      ...event,
+      evidence: {
+        ...event.evidence,
+        turnId
+      }
+    }
   }
 
   private toObservationEvent(event: CanonicalSessionEvent): ObservationEvent {
@@ -221,6 +277,182 @@ export class SessionEventBridge {
     }
   }
 
+  private trackTurnEvidence(event: CanonicalSessionEvent, evidenceRef: EvidenceRef | null): void {
+    if (!evidenceRef?.turnId) {
+      return
+    }
+
+    const turnKey = this.formatTurnKey(event.project_id, event.session_id, evidenceRef.turnId)
+    const existing = this.turnEvidenceIds.get(turnKey) ?? new Set<string>()
+    existing.add(evidenceRef.evidenceId)
+    this.turnEvidenceIds.set(turnKey, existing)
+  }
+
+  private async handleLifecycle(
+    event: CanonicalSessionEvent,
+    evidenceRef: EvidenceRef | null
+  ): Promise<void> {
+    if (!event.evidence) {
+      return
+    }
+
+    const hookEventName = event.evidence.hookEventName
+    if (hookEventName !== 'Stop') {
+      return
+    }
+
+    const projectPath = this.resolveProjectPath(event)
+    if (!projectPath) {
+      return
+    }
+
+    await this.finalizeTurn(projectPath, event, evidenceRef)
+    this.activeTurnIds.delete(event.session_id)
+  }
+
+  private async finalizeTurn(
+    projectPath: string,
+    event: CanonicalSessionEvent,
+    evidenceRef: EvidenceRef | null
+  ): Promise<void> {
+    const turnId = evidenceRef?.turnId ?? event.evidence?.turnId ?? null
+    if (!turnId) {
+      return
+    }
+
+    const turnKey = this.formatTurnKey(event.project_id, event.session_id, turnId)
+    const evidenceIds = Array.from(this.turnEvidenceIds.get(turnKey) ?? new Set<string>())
+    if (evidenceRef) {
+      evidenceIds.push(evidenceRef.evidenceId)
+    }
+    const uniqueEvidenceIds = Array.from(new Set(evidenceIds))
+    if (uniqueEvidenceIds.length === 0) {
+      return
+    }
+
+    await this.evidenceStore.sealTurn?.(
+      projectPath,
+      event.session_id,
+      turnId,
+      uniqueEvidenceIds
+    )
+
+    const sessionKey = this.formatSessionKey(event.project_id, event.session_id)
+    const runtimeStateStore = this.createRuntimeStateStore(projectPath)
+    await runtimeStateStore.recordSealedTurn({
+      sessionKey,
+      projectId: event.project_id,
+      stoaSessionId: event.session_id,
+      turnId,
+      evidenceIds: uniqueEvidenceIds,
+      sealedAt: event.timestamp
+    })
+
+    this.turnEvidenceIds.delete(turnKey)
+
+    const evidenceRefs = await this.evidenceStore.listEvidenceRefsForTurn?.(
+      projectPath,
+      event.session_id,
+      turnId
+    ) ?? []
+
+    if (!this.turnMaintenanceRunner) {
+      return
+    }
+
+    const queuedJobId = `job_${turnId}`
+    await runtimeStateStore.upsertJob({
+      jobId: queuedJobId,
+      sessionKey,
+      turnId,
+      state: 'queued',
+      updatedAt: this.nowIso()
+    })
+
+    void this.runTurnMaintenanceJob({
+      projectId: event.project_id,
+      projectPath,
+      stoaSessionId: event.session_id,
+      providerSessionId: event.evidence?.providerSessionId ?? undefined,
+      turnId,
+      sessionKey,
+      queuedJobId,
+      evidenceRefs
+    })
+  }
+
+  private async runTurnMaintenanceJob(input: {
+    projectId: string
+    projectPath: string
+    stoaSessionId: string
+    providerSessionId?: string
+    turnId: string
+    sessionKey: string
+    queuedJobId: string
+    evidenceRefs: EvidenceRef[]
+  }): Promise<void> {
+    if (!this.turnMaintenanceRunner) {
+      return
+    }
+
+    const runtimeStateStore = this.createRuntimeStateStore(input.projectPath)
+    const updateJob = async (record: {
+      jobId: string
+      sessionKey: string
+      turnId: string
+      state: 'queued' | 'running' | 'done' | 'failed'
+      error?: string
+      updatedAt: string
+    }, previousJobId?: string) => {
+      if (previousJobId && previousJobId !== record.jobId) {
+        await runtimeStateStore.replaceJob(previousJobId, record)
+        return
+      }
+      await runtimeStateStore.upsertJob(record)
+    }
+
+    await updateJob({
+      jobId: input.queuedJobId,
+      sessionKey: input.sessionKey,
+      turnId: input.turnId,
+      state: 'running',
+      updatedAt: this.nowIso()
+    })
+
+    try {
+      const result = await this.turnMaintenanceRunner.run({
+        projectId: input.projectId,
+        projectRoot: input.projectPath,
+        stoaSessionId: input.stoaSessionId,
+        providerSessionId: input.providerSessionId,
+        turnId: input.turnId,
+        evidenceRefs: input.evidenceRefs
+      })
+
+      await updateJob({
+        jobId: result.jobId || input.queuedJobId,
+        sessionKey: input.sessionKey,
+        turnId: input.turnId,
+        state: 'done',
+        updatedAt: this.nowIso()
+      }, input.queuedJobId)
+    } catch (error) {
+      const failedJobId = error instanceof TurnMaintenancePhaseError ? error.jobId : input.queuedJobId
+      await updateJob({
+        jobId: failedJobId,
+        sessionKey: input.sessionKey,
+        turnId: input.turnId,
+        state: 'failed',
+        error: error instanceof Error ? error.message : String(error),
+        updatedAt: this.nowIso()
+      }, input.queuedJobId)
+      console.error(
+        `[session-event-bridge] turn maintenance failed for session ${input.stoaSessionId} turn ${input.turnId}:`,
+        error
+      )
+    }
+  }
+
   private resolveProjectPath(event: CanonicalSessionEvent): string | null {
     const snapshot = this.manager.snapshot()
     const session = snapshot.sessions.find(candidate => candidate.id === event.session_id)
@@ -228,6 +460,14 @@ export class SessionEventBridge {
     const project = snapshot.projects.find(candidate => candidate.id === resolvedProjectId)
 
     return project?.path ?? null
+  }
+
+  private formatSessionKey(projectId: string, sessionId: string): string {
+    return `${projectId}\n${sessionId}`
+  }
+
+  private formatTurnKey(projectId: string, sessionId: string, turnId: string): string {
+    return `${projectId}\n${sessionId}\n${turnId}`
   }
 
   issueSessionSecret(sessionId: string): string {
@@ -246,6 +486,8 @@ export class SessionEventBridge {
     this.sessionSecrets.clear()
     this.providerPatchSequences.clear()
     this.sessionEventQueues.clear()
+    this.turnEvidenceIds.clear()
+    this.activeTurnIds.clear()
     this.port = null
     await this.manager.setTerminalWebhookPort(null)
   }

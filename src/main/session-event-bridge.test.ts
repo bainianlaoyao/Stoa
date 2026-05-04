@@ -6,6 +6,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 import { InMemoryObservationStore } from '@core/observation-store'
 import { ObservabilityService } from '@core/observability-service'
 import { ProjectSessionManager } from '@core/project-session-manager'
+import { TurnMaintenanceRunner } from '@core/memory/turn-maintenance-runner'
 import type { CanonicalSessionEvent, SessionStatePatchEvent } from '@shared/project-session'
 import type { MemoryNotificationEvent } from '@shared/project-session'
 import type { ObservationEvent } from '@shared/observability'
@@ -349,9 +350,10 @@ describe('SessionEventBridge', () => {
     const session = await manager.createSession({
       projectId: project.id,
       type: 'claude-code',
-      title: 'Claude Session'
+      title: 'Claude Session',
+      externalSessionId: 'claude-external-maintenance-1'
     })
-    await manager.markRuntimeAlive(session.id, session.externalSessionId)
+    await manager.markRuntimeAlive(session.id, 'claude-external-maintenance-1')
 
     const bridge = new SessionEventBridge(manager, {
       applyProviderStatePatch: async () => {}
@@ -1363,6 +1365,176 @@ describe('SessionEventBridge', () => {
 
     expect(response.statusCode).toBe(202)
     expect(response.body).toEqual(JSON.stringify({ accepted: true }))
+  })
+
+  test('Stop seals turn evidence and dispatches turn maintenance through the runner', async () => {
+    const stateDir = await createTestTempDir('session-event-bridge-runner-state-')
+    const workspaceDir = await createTestTempDir('session-event-bridge-runner-workspace-')
+    tempDirs.push(stateDir, workspaceDir)
+
+    const manager = await ProjectSessionManager.create({
+      webhookPort: null,
+      globalStatePath: join(stateDir, 'global.json')
+    })
+    const project = await manager.createProject({
+      name: 'P1',
+      path: workspaceDir,
+      defaultSessionType: 'claude-code'
+    })
+    const session = await manager.createSession({
+      projectId: project.id,
+      type: 'claude-code',
+      title: 'Claude Session'
+    })
+    await manager.markRuntimeAlive(session.id, session.externalSessionId)
+
+    const evidenceRef = {
+      evidenceId: 'evt_stop_maintained',
+      projectId: project.id,
+      stoaSessionId: session.id,
+      providerSessionId: 'claude-external-maintenance-1',
+      turnId: 'turn_stop_maintained',
+      eventId: 'evt_stop_maintained',
+      eventType: 'claude-code.Stop',
+      evidenceKey: 'claude-code:external:turn_stop_maintained',
+      kind: 'turn-slice' as const,
+      metadataPath: join(workspaceDir, '.stoa', 'memory', 'evidence', session.id, 'evt_stop_maintained', 'metadata.json'),
+      path: join(workspaceDir, '.stoa', 'memory', 'evidence', session.id, 'evt_stop_maintained', 'turn-slice.json'),
+      createdAt: '2026-04-29T00:00:00.000Z',
+      toolName: null
+    }
+
+    let finishJob!: () => void
+    const completedJob = new Promise<void>((resolve) => {
+      finishJob = resolve
+    })
+
+    const runtimeStateStore = {
+      recordSealedTurn: vi.fn(async () => {}),
+      upsertJob: vi.fn(async (record: {
+        jobId: string
+        sessionKey: string
+        turnId: string
+        state: 'queued' | 'running' | 'done' | 'failed'
+        error?: string
+        updatedAt: string
+      }) => {
+        if (record.state === 'done') {
+          finishJob()
+        }
+      }),
+      replaceJob: vi.fn(async (_previousJobId: string, record: {
+        jobId: string
+        sessionKey: string
+        turnId: string
+        state: 'queued' | 'running' | 'done' | 'failed'
+        error?: string
+        updatedAt: string
+      }) => {
+        if (record.state === 'done') {
+          finishJob()
+        }
+      })
+    }
+
+    const runner = new TurnMaintenanceRunner(
+      {
+        repoRoot: workspaceDir,
+        stageTurn: async (input) => ({ jobId: `job_${input.turnId}` }),
+        solidify: async () => {},
+        prepareDistill: async () => ({ kind: 'none' }),
+        completeDistill: async () => {}
+      },
+      {
+        resolve: async () => ({
+          invoke: async () => ({ content: 'unused' })
+        })
+      }
+    )
+    const runSpy = vi.spyOn(runner, 'run').mockResolvedValue({
+      jobId: 'job_turn_stop_maintained'
+    })
+
+    const sealTurn = vi.fn(async () => {})
+    const listEvidenceRefsForTurn = vi.fn(async () => [evidenceRef])
+    const bridge = new SessionEventBridge(manager, {
+      applyProviderStatePatch: async () => {}
+    }, undefined, {
+      nowIso: () => '2026-05-01T00:00:00.000Z',
+      evidenceStore: {
+        persist: async () => ({
+          eventDirectoryPath: join(workspaceDir, '.stoa', 'memory', 'evidence', session.id, 'evt_stop_maintained'),
+          metadataPath: evidenceRef.metadataPath,
+          snapshotPath: evidenceRef.path,
+          evidenceKey: evidenceRef.evidenceKey,
+          evidenceRef
+        }),
+        sealTurn,
+        listEvidenceRefsForTurn
+      },
+      transcriptSnapshotter: async () => ({
+        kind: 'turn-slice',
+        fileName: 'turn-slice.json',
+        content: Buffer.from('{"summary":"stop"}', 'utf8')
+      }),
+      turnMaintenanceRunner: runner,
+      createRuntimeStateStore: () => runtimeStateStore
+    })
+    bridges.push(bridge)
+
+    const port = await bridge.start()
+    const secret = bridge.issueSessionSecret(session.id)
+    const response = await postClaudeHook(
+      port,
+      {
+        hook_event_name: 'Stop',
+        session_id: 'claude-external-maintenance-1',
+        transcript_path: join(workspaceDir, 'missing-transcript.jsonl')
+      },
+      {
+        'x-stoa-secret': secret,
+        'x-stoa-session-id': session.id,
+        'x-stoa-project-id': project.id
+      }
+    )
+
+    expect(response.statusCode).toBe(202)
+    await completedJob
+
+    expect(sealTurn).toHaveBeenCalledWith(
+      workspaceDir,
+      session.id,
+      'turn_stop_maintained',
+      ['evt_stop_maintained']
+    )
+    expect(listEvidenceRefsForTurn).toHaveBeenCalledWith(
+      workspaceDir,
+      session.id,
+      'turn_stop_maintained'
+    )
+    expect(runtimeStateStore.recordSealedTurn).toHaveBeenCalledWith({
+      sessionKey: `${project.id}\n${session.id}`,
+      projectId: project.id,
+      stoaSessionId: session.id,
+      turnId: 'turn_stop_maintained',
+      evidenceIds: ['evt_stop_maintained'],
+      sealedAt: expect.any(String)
+    })
+    expect(runSpy).toHaveBeenCalledWith({
+      projectId: project.id,
+      projectRoot: workspaceDir,
+      stoaSessionId: session.id,
+      providerSessionId: 'claude-external-maintenance-1',
+      turnId: 'turn_stop_maintained',
+      evidenceRefs: [evidenceRef]
+    })
+    expect(runtimeStateStore.upsertJob).toHaveBeenCalledWith({
+      jobId: 'job_turn_stop_maintained',
+      sessionKey: `${project.id}\n${session.id}`,
+      turnId: 'turn_stop_maintained',
+      state: 'done',
+      updatedAt: '2026-05-01T00:00:00.000Z'
+    })
   })
 
   test('main shutdown path awaits bridge stop before re-triggering quit', () => {

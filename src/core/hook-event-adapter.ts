@@ -28,9 +28,7 @@ export function adaptClaudeCodeHook(
   const model = stringField(body.model)
   const snippet = stringField(body.last_assistant_message) ?? stringField(body.assistant_message) ?? stringField(body.summary)
   const evidence = buildClaudeHookEvidence(body, hookEventName)
-  const error = hookEventName === 'StopFailure'
-    ? stringField(body.stop_hook_active) ?? stringField(body.error_details) ?? stringField(body.error) ?? 'api_error'
-    : stringField(body.error_details) ?? stringField(body.error)
+  const error = stringField(body.error_details) ?? stringField(body.error)
   const externalSessionId = evidence.providerSessionId
 
   return {
@@ -164,8 +162,6 @@ function mapClaudeHookToPatch(hookEventName: string): {
       return { intent: 'agent.permission_requested', agentState: 'blocked', blockingReason: 'permission' }
     case 'Stop':
       return { intent: 'agent.turn_completed', agentState: 'idle', hasUnseenCompletion: true }
-    case 'StopFailure':
-      return { intent: 'agent.turn_failed', agentState: 'error' }
     default:
       return null
   }

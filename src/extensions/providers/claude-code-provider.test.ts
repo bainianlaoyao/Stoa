@@ -170,10 +170,10 @@ describe('claude-code provider', () => {
         'PostToolUse',
         'SessionStart',
         'Stop',
-        'StopFailure',
         'UserPromptSubmit'
       ])
       const sessionStartCommand = readSessionStartHookCommand(content)
+      const projectEnv = readWrappedProjectEnv(sessionStartCommand)
       expect(sessionStartCommand).toContain(process.platform === 'win32'
         ? 'stoa-evolver-hook-bridge.cmd'
         : 'stoa-evolver-hook-bridge.sh')
@@ -181,9 +181,14 @@ describe('claude-code provider', () => {
       expect(sessionStartCommand).toContain('SessionStart')
       expect(readWrappedUpstreamCommand(sessionStartCommand)).toContain('evolver-session-start.cjs')
       expect(readWrappedRepoRoot(sessionStartCommand)).toContain(join('research', 'upstreams', 'evolver'))
+      expect(projectEnv).toMatchObject({
+        EVOLVER_ROOT: expect.stringContaining(join('research', 'upstreams', 'evolver')),
+        EVOLVER_REPO_ROOT: workspaceDir,
+        EVOLVER_QUIET_PARENT_GIT: '1'
+      })
+      expect(projectEnv.MEMORY_GRAPH_PATH).toContain(join('.stoa', 'memory', 'evolver', 'evolution', 'memory_graph.jsonl'))
       expect(readWrappedUpstreamCommand(readHookCommand(content, 'PostToolUse'))).toContain('evolver-signal-detect.cjs')
       expect(readWrappedUpstreamCommand(readHookCommand(content, 'Stop'))).toContain('evolver-session-end.cjs')
-      expect(readWrappedUpstreamCommand(readHookCommand(content, 'StopFailure'))).toContain('evolver-session-end.cjs')
       if (process.platform === 'win32') {
         expect(sessionStartCommand.startsWith('"')).toBe(true)
       }
@@ -436,10 +441,7 @@ describe('claude-code provider', () => {
       expect(received[0]).toMatchObject({
         hook_event_name: 'Stop'
       })
-      expect(memoryNotifications).toContainEqual(expect.objectContaining({
-        kind: 'solidify',
-        status: 'success'
-      }))
+      expect(memoryNotifications).toHaveLength(0)
     } finally {
       await server.stop()
       await rm(workspaceDir, { recursive: true, force: true })
@@ -564,6 +566,11 @@ function readWrappedUpstreamCommand(command: string): string {
 function readWrappedRepoRoot(command: string): string {
   const encoded = readWrappedEncodedArgument(command, 3)
   return Buffer.from(encoded, 'base64').toString('utf8')
+}
+
+function readWrappedProjectEnv(command: string): Record<string, string> {
+  const encoded = readWrappedEncodedArgument(command, 4)
+  return JSON.parse(Buffer.from(encoded, 'base64').toString('utf8')) as Record<string, string>
 }
 
 function readWrappedEncodedArgument(command: string, quotedIndex: number): string {

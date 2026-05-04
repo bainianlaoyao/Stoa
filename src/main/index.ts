@@ -1,12 +1,15 @@
 import { BrowserWindow, Menu, dialog, app, ipcMain, shell } from 'electron'
 import { spawn } from 'node:child_process'
 import { exec as execChildProcess } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { autoUpdater } from 'electron-updater'
 import { IPC_CHANNELS } from '@core/ipc-channels'
 import { getConsumerContextPath } from '@core/memory/delivery-paths'
+import { createMemoryRuntimeHost } from '@core/memory/runtime-host'
+import type { TurnMaintenancePhaseEvent } from '@core/memory/turn-maintenance-runner'
 import { InMemoryObservationStore } from '@core/observation-store'
 import type { ListObservationEventsOptions } from '@core/observation-store'
 import { ObservabilityService } from '@core/observability-service'
@@ -364,6 +367,84 @@ function pushMemoryNotification(notification: MemoryNotificationEvent): void {
   }
 }
 
+function createTurnMaintenanceNotification(event: TurnMaintenancePhaseEvent): MemoryNotificationEvent {
+  if (event.phase === 'solidify') {
+    if (event.status === 'started') {
+      return {
+        id: randomUUID(),
+        projectId: event.projectId,
+        sessionId: event.stoaSessionId,
+        kind: 'solidify',
+        status: 'info',
+        title: 'Memory solidifying',
+        message: 'Evolver is solidifying turn memory.',
+        createdAt: new Date().toISOString()
+      }
+    }
+
+    if (event.status === 'completed') {
+      return {
+        id: randomUUID(),
+        projectId: event.projectId,
+        sessionId: event.stoaSessionId,
+        kind: 'solidify',
+        status: 'success',
+        title: 'Memory solidified',
+        message: 'Turn memory was solidified by Evolver.',
+        createdAt: new Date().toISOString()
+      }
+    }
+
+    return {
+      id: randomUUID(),
+      projectId: event.projectId,
+      sessionId: event.stoaSessionId,
+      kind: 'solidify',
+      status: 'error',
+      title: 'Solidify failed',
+      message: event.error?.trim() || 'Evolver solidify phase failed.',
+      createdAt: new Date().toISOString()
+    }
+  }
+
+  if (event.status === 'started') {
+    return {
+      id: randomUUID(),
+      projectId: event.projectId,
+      sessionId: event.stoaSessionId,
+      kind: 'distill',
+      status: 'info',
+      title: 'Memory distilling',
+      message: 'Evolver is distilling turn lessons.',
+      createdAt: new Date().toISOString()
+    }
+  }
+
+  if (event.status === 'completed') {
+    return {
+      id: randomUUID(),
+      projectId: event.projectId,
+      sessionId: event.stoaSessionId,
+      kind: 'distill',
+      status: 'success',
+      title: 'Memory distilled',
+      message: 'Turn lessons were distilled into Evolver memory.',
+      createdAt: new Date().toISOString()
+    }
+  }
+
+  return {
+    id: randomUUID(),
+    projectId: event.projectId,
+    sessionId: event.stoaSessionId,
+    kind: 'distill',
+    status: 'error',
+    title: 'Distill failed',
+    message: event.error?.trim() || 'Evolver distill phase failed.',
+    createdAt: new Date().toISOString()
+  }
+}
+
 function pushObservabilitySnapshotsForSession(sessionId: string): void {
   if (!mainWindow || mainWindow.isDestroyed() || !projectSessionManager || !observabilityService) {
     return
@@ -491,8 +572,22 @@ app.whenReady().then(async () => {
     },
     observabilityService
   )
+  const memoryRuntimeHost = await createMemoryRuntimeHost({
+    settings: projectSessionManager,
+    detectShell,
+    detectProvider,
+    onTurnPhaseEvent: (event) => {
+      pushMemoryNotification(createTurnMaintenanceNotification(event))
+    }
+  })
+  if (memoryRuntimeHost.diagnostics.length > 0) {
+    for (const diagnostic of memoryRuntimeHost.diagnostics) {
+      console.warn(`[memory-runtime] ${diagnostic}`)
+    }
+  }
   sessionEventBridge = new SessionEventBridge(projectSessionManager, runtimeController, observabilityService, {
-    onMemoryNotification: pushMemoryNotification
+    onMemoryNotification: pushMemoryNotification,
+    turnMaintenanceRunner: memoryRuntimeHost.turnMaintenanceRunner
   })
   updateService = new UpdateService({
     app,

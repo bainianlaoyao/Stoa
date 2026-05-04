@@ -469,7 +469,6 @@ describe('E2E: Provider Integration', () => {
         'PostToolUse',
         'SessionStart',
         'Stop',
-        'StopFailure',
         'UserPromptSubmit'
       ])
       expect(content).toContain('stoa-evolver-hook-bridge.cmd')

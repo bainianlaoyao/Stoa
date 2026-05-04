@@ -189,31 +189,6 @@ describe('hook event adapter', () => {
     })
   })
 
-  test('adapts Claude StopFailure hook into error canonical event with error detail', () => {
-    const event = adaptClaudeCodeHook(
-      {
-        hook_event_name: 'StopFailure'
-      },
-      {
-        sessionId: 'session_internal_4',
-        projectId: 'project_internal_4'
-      }
-    )
-
-    expect(event).toMatchObject({
-      event_type: 'claude-code.StopFailure',
-      session_id: 'session_internal_4',
-      project_id: 'project_internal_4',
-      source: 'provider-adapter',
-      payload: {
-        intent: 'agent.turn_failed',
-        agentState: 'error',
-        summary: 'StopFailure',
-        error: 'api_error'
-      }
-    })
-  })
-
   test('adapts Claude PostToolUse hook into tool completed canonical event', () => {
     const event = adaptClaudeCodeHook(
       {
