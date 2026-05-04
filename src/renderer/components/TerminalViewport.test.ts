@@ -14,6 +14,7 @@ const terminalViewportPath = resolve(dirname(fileURLToPath(import.meta.url)), 'T
 vi.mock('@xterm/xterm', () => {
   class Terminal {
     static instances: Terminal[] = []
+    static failOpen = false
     options: Record<string, unknown>
     cols = 80
     rows = 24
@@ -27,7 +28,11 @@ vi.mock('@xterm/xterm', () => {
       Terminal.instances.push(this)
     }
 
-    open() {}
+    open() {
+      if (Terminal.failOpen) {
+        throw new Error('xterm open failed')
+      }
+    }
     focus() {}
     write(data: string, callback?: () => void) {
       this.writes.push(data)
@@ -183,6 +188,7 @@ describe('TerminalViewport', () => {
     mockApi = createMockApi()
     const { Terminal } = await import('@xterm/xterm')
     ;(Terminal as unknown as { instances: unknown[] }).instances.length = 0
+    ;(Terminal as unknown as { failOpen: boolean }).failOpen = false
     Object.defineProperty(window, 'stoa', {
       value: mockApi,
       configurable: true,
@@ -619,6 +625,24 @@ describe('TerminalViewport', () => {
     const { Terminal } = await import('@xterm/xterm')
     const instance = (Terminal as unknown as { instances: Array<{ options: Record<string, unknown> }> }).instances.at(-1)
     expect(instance?.options.fontSize).toBe(18)
+  })
+
+  test('swallows xterm setup failures without leaving an unhandled rejection', async () => {
+    const { Terminal } = await import('@xterm/xterm')
+    ;(Terminal as unknown as { failOpen: boolean }).failOpen = true
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    try {
+      const { default: TerminalViewport } = await import('./TerminalViewport.vue')
+      mount(TerminalViewport, {
+        props: { project: baseProject, session: baseSession },
+      })
+      await flushTerminal()
+
+      expect(errorSpy).toHaveBeenCalledWith('[terminal] Failed to initialize xterm viewport:', expect.any(Error))
+    } finally {
+      errorSpy.mockRestore()
+    }
   })
 
   test('does not install parser-level scrollback guards for codex sessions', async () => {

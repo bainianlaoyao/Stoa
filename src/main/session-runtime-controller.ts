@@ -134,11 +134,164 @@ export class SessionRuntimeController implements SessionRuntimeManager {
 }
 
 const MAX_TERMINAL_BACKLOG_CHARS = 250_000
+const ANSI_ESCAPE_CODE = 0x1b
+const ANSI_BELL_CODE = 0x07
+const ANSI_CSI_8BIT_CODE = 0x9b
+const ANSI_DCS_8BIT_CODE = 0x90
+const ANSI_OSC_8BIT_CODE = 0x9d
+const ANSI_SOS_8BIT_CODE = 0x98
+const ANSI_PM_8BIT_CODE = 0x9e
+const ANSI_APC_8BIT_CODE = 0x9f
+const ANSI_ST_8BIT_CODE = 0x9c
+
+type AnsiStringMode = 'osc' | 'dcs' | 'sos' | 'pm' | 'apc'
+type AnsiParserMode = 'ground' | 'escape' | 'escape-intermediate' | 'csi' | AnsiStringMode | 'string-escape'
 
 function trimBacklog(backlog: string): string {
   if (backlog.length <= MAX_TERMINAL_BACKLOG_CHARS) {
     return backlog
   }
 
-  return backlog.slice(-MAX_TERMINAL_BACKLOG_CHARS)
+  return backlog.slice(findSafeBacklogTrimStart(backlog))
+}
+
+function findSafeBacklogTrimStart(backlog: string): number {
+  const desiredStart = backlog.length - MAX_TERMINAL_BACKLOG_CHARS
+  let mode: AnsiParserMode = 'ground'
+  let pendingStringMode: AnsiStringMode | null = null
+  let trimInsideSequence = false
+
+  for (let index = 0; index < backlog.length; index += 1) {
+    if (index === desiredStart && mode !== 'ground') {
+      trimInsideSequence = true
+    }
+
+    const code = backlog.charCodeAt(index)
+
+    switch (mode) {
+      case 'ground':
+        mode = enterAnsiMode(code)
+        break
+      case 'escape':
+        mode = continueEscapeMode(code)
+        break
+      case 'escape-intermediate':
+        mode = continueEscapeIntermediateMode(code)
+        break
+      case 'csi':
+        if (isCsiFinalByte(code)) {
+          mode = 'ground'
+        }
+        break
+      case 'osc':
+      case 'dcs':
+      case 'sos':
+      case 'pm':
+      case 'apc':
+        if (isAnsiStringTerminator(mode, code)) {
+          mode = 'ground'
+          break
+        }
+
+        if (code === ANSI_ESCAPE_CODE) {
+          pendingStringMode = mode
+          mode = 'string-escape'
+        }
+        break
+      case 'string-escape':
+        if (code === 0x5c) {
+          mode = 'ground'
+          pendingStringMode = null
+          break
+        }
+
+        mode = pendingStringMode ?? 'ground'
+        pendingStringMode = null
+        break
+    }
+
+    if (trimInsideSequence && mode === 'ground') {
+      return index + 1
+    }
+  }
+
+  return trimInsideSequence ? backlog.length : desiredStart
+}
+
+function enterAnsiMode(code: number): AnsiParserMode {
+  if (code === ANSI_ESCAPE_CODE) {
+    return 'escape'
+  }
+
+  switch (code) {
+    case ANSI_CSI_8BIT_CODE:
+      return 'csi'
+    case ANSI_DCS_8BIT_CODE:
+      return 'dcs'
+    case ANSI_OSC_8BIT_CODE:
+      return 'osc'
+    case ANSI_SOS_8BIT_CODE:
+      return 'sos'
+    case ANSI_PM_8BIT_CODE:
+      return 'pm'
+    case ANSI_APC_8BIT_CODE:
+      return 'apc'
+    default:
+      return 'ground'
+  }
+}
+
+function continueEscapeMode(code: number): AnsiParserMode {
+  switch (code) {
+    case 0x5b:
+      return 'csi'
+    case 0x5d:
+      return 'osc'
+    case 0x50:
+      return 'dcs'
+    case 0x58:
+      return 'sos'
+    case 0x5e:
+      return 'pm'
+    case 0x5f:
+      return 'apc'
+    default:
+      if (isEscapeIntermediateByte(code)) {
+        return 'escape-intermediate'
+      }
+
+      return 'ground'
+  }
+}
+
+function continueEscapeIntermediateMode(code: number): AnsiParserMode {
+  if (isEscapeIntermediateByte(code)) {
+    return 'escape-intermediate'
+  }
+
+  if (isEscapeFinalByte(code)) {
+    return 'ground'
+  }
+
+  return 'ground'
+}
+
+function isCsiFinalByte(code: number): boolean {
+  return code >= 0x40 && code <= 0x7e
+}
+
+function isEscapeIntermediateByte(code: number): boolean {
+  return code >= 0x20 && code <= 0x2f
+}
+
+function isEscapeFinalByte(code: number): boolean {
+  return code >= 0x30 && code <= 0x7e
+}
+
+function isAnsiStringTerminator(mode: AnsiStringMode, code: number): boolean {
+  if (code === ANSI_ST_8BIT_CODE) {
+    return true
+  }
+
+  return mode === 'osc' && code === ANSI_BELL_CODE
 }

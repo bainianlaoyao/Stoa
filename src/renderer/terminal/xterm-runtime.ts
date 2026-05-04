@@ -170,7 +170,6 @@ export function createTerminalRuntime(
     scrollSensitivity: 1,
     fastScrollSensitivity: 5,
 
-    customGlyphs: true,
     drawBoldTextInBrightColors: true,
     minimumContrastRatio: 4.5,
 

@@ -85,7 +85,12 @@ function scheduleTerminalSetup() {
     await (document.fonts?.load(fontStr) ?? Promise.resolve())
 
     if (props.session) {
-      setupTerminal()
+      try {
+        setupTerminal()
+      } catch (error) {
+        console.error('[terminal] Failed to initialize xterm viewport:', error)
+        disposeTerminal()
+      }
     }
   })
 }

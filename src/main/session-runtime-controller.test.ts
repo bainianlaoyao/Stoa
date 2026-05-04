@@ -393,6 +393,60 @@ describe('SessionRuntimeController', () => {
     await expect(controller.getTerminalReplay('session-op-2')).resolves.toBe('opencode')
   })
 
+  test('getTerminalReplay trims overflow without exposing a partial CSI sequence', async () => {
+    const { window: win } = createMockWindow()
+    const controller = new SessionRuntimeController(manager, () => win)
+    const maxBacklogChars = 250_000
+    const prefix = 'abc'
+    const sequence = '\x1b[31m'
+    const content = 'RED'
+    const overflow = 5
+    const filler = 'z'.repeat(maxBacklogChars + overflow - prefix.length - sequence.length - content.length)
+
+    await controller.appendTerminalData({
+      sessionId: 'session-op-ansi-csi',
+      data: `${prefix}${sequence}${content}${filler}`
+    })
+
+    await expect(controller.getTerminalReplay('session-op-ansi-csi')).resolves.toBe(`${content}${filler}`)
+  })
+
+  test('getTerminalReplay trims overflow without exposing a partial OSC sequence', async () => {
+    const { window: win } = createMockWindow()
+    const controller = new SessionRuntimeController(manager, () => win)
+    const maxBacklogChars = 250_000
+    const prefix = 'abcd'
+    const sequence = '\x1b]0;title\x07'
+    const content = 'ready'
+    const overflow = 7
+    const filler = 'q'.repeat(maxBacklogChars + overflow - prefix.length - sequence.length - content.length)
+
+    await controller.appendTerminalData({
+      sessionId: 'session-op-ansi-osc',
+      data: `${prefix}${sequence}${content}${filler}`
+    })
+
+    await expect(controller.getTerminalReplay('session-op-ansi-osc')).resolves.toBe(`${content}${filler}`)
+  })
+
+  test('getTerminalReplay trims overflow without exposing a partial generic ESC sequence', async () => {
+    const { window: win } = createMockWindow()
+    const controller = new SessionRuntimeController(manager, () => win)
+    const maxBacklogChars = 250_000
+    const prefix = 'head'
+    const sequence = '\x1b(B'
+    const content = 'utf8'
+    const overflow = 5
+    const filler = 'n'.repeat(maxBacklogChars + overflow - prefix.length - sequence.length - content.length)
+
+    await controller.appendTerminalData({
+      sessionId: 'session-op-ansi-esc',
+      data: `${prefix}${sequence}${content}${filler}`
+    })
+
+    await expect(controller.getTerminalReplay('session-op-ansi-esc')).resolves.toBe(`${content}${filler}`)
+  })
+
   test('appendTerminalData is no-op when window is destroyed', async () => {
     const destroyedWin = {
       isDestroyed: () => true,

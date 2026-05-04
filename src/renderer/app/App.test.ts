@@ -197,7 +197,13 @@ function mountApp(pinia: Pinia) {
   return mount(App, {
     global: {
       plugins: [pinia],
-      stubs: { AppShell: false }
+      stubs: {
+        AppShell: false,
+        TerminalViewport: {
+          name: 'TerminalViewport',
+          template: '<div data-testid="terminal-viewport-stub" />'
+        }
+      }
     }
   })
 }
@@ -416,9 +422,9 @@ describe('App (root)', () => {
       const store = useWorkspaceStore(pinia)
 
       expect(window.stoa.getSessionPresence).toHaveBeenCalledWith('session_1')
-      expect(window.stoa.onSessionPresenceChanged).toHaveBeenCalledTimes(2)
+      expect(window.stoa.onSessionPresenceChanged).toHaveBeenCalledOnce()
       expect(store.activeSessionPresence?.sourceSequence).toBe(2)
-      expect(sessionPresenceListeners).toHaveLength(2)
+      expect(sessionPresenceListeners).toHaveLength(1)
 
       for (const sessionPresenceListener of sessionPresenceListeners) {
         sessionPresenceListener(createSessionPresenceSnapshot({
@@ -885,7 +891,7 @@ describe('App (root)', () => {
       wrapper.unmount()
       wrapper = undefined
 
-      expect(unsubscribeSessionPresence).toHaveBeenCalledTimes(2)
+      expect(unsubscribeSessionPresence).toHaveBeenCalledOnce()
       expect(unsubscribeProjectObservability).toHaveBeenCalledOnce()
       expect(unsubscribeAppObservability).toHaveBeenCalledOnce()
     })
