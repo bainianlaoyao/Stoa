@@ -40,6 +40,7 @@ export interface StartSessionRuntimeOptions {
   shellPath?: string | null
   providerPath?: string | null
   claudeDangerouslySkipPermissions?: boolean
+  initialDimensions?: { cols: number; rows: number }
 }
 
 function toProviderTarget(session: StartSessionRuntimeOptions['session']): ProviderRuntimeTarget {
@@ -100,6 +101,11 @@ export async function startSessionRuntime(options: StartSessionRuntimeOptions): 
       ? wrapCommandForShell(options.shellPath, providerCommand)
       : providerCommand
   const activeExternalSessionId = session.externalSessionId
+
+  if (options.initialDimensions) {
+    command.initialCols = options.initialDimensions.cols
+    command.initialRows = options.initialDimensions.rows
+  }
 
   console.log(`[session-runtime] markRuntimeStarting for ${session.id} (command: ${command.command} ${command.args.join(' ')})`)
   await manager.markRuntimeStarting(session.id, `Starting ${session.type}`, activeExternalSessionId)

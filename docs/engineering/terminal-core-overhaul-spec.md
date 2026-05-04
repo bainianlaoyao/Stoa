@@ -57,7 +57,7 @@ The runtime created in [src/renderer/terminal/xterm-runtime.ts](/abs/path/D:/Dat
 - `convertEol: false`
 - `disableStdin: false`
 - `customGlyphs: true`
-- `windowsPty: { backend: 'conpty', buildNumber? }` on Windows
+- `windowsPty: { backend: 'conpty', buildNumber? }` on Windows — this is a compatibility flag, not a statement that xterm.js runs on ConPTY (see Windows ConPTY Clarification below)
 - theme colors from CSS variables
 - font family from CSS variables or settings
 - addons: `FitAddon`, `Unicode11Addon`, `WebLinksAddon`, `ClipboardAddon`, `SearchAddon`, `SerializeAddon`, optional `WebglAddon`
@@ -71,6 +71,7 @@ The PTY host in [src/core/pty-host.ts](/abs/path/D:/Data/DEV/ultra_simple_panel/
 - `name: 'xterm-256color'`
 - `cols: command.initialCols ?? 120`
 - `rows: command.initialRows ?? 30`
+- These defaults are fallbacks only — the PTY is spawned after the renderer reports actual dimensions via `session:resize`
 - `TERM: command.env?.TERM ?? 'xterm-256color'`
 - `COLORTERM: command.env?.COLORTERM ?? 'truecolor'`
 - `TERM_PROGRAM: 'xterm.js'`
@@ -134,6 +135,70 @@ These are intentionally not part of the terminal core anymore:
 The runtime backlog in [src/main/session-runtime-controller.ts](/abs/path/D:/Data/DEV/ultra_simple_panel/src/main/session-runtime-controller.ts) is still a trimmed string buffer capped at `250_000` chars. A chunk ring buffer was discussed during design but is not part of the implemented contract.
 
 No DOM guard is installed in the terminal viewport. The current contract relies on xterm's own event handling plus the existing renderer structure.
+
+## Core Constraint
+
+**Provider hooks and session state events must never mutate the terminal byte stream.**
+
+The hook bridge (`session-event-bridge`, `hook-event-adapter`, `evolver-hook-sidecar`) may:
+- patch session state
+- update status / metadata
+- emit stop / prompt-submitted events
+
+It must never:
+- inject text into the terminal
+- rewrite terminal output based on hook events
+- simulate keyboard input (Enter, Ctrl+C, etc.)
+- affect the PTY input queue
+
+## Windows ConPTY Clarification
+
+`windowsPty: { backend: 'conpty' }` is an xterm.js compatibility flag for ConPTY behavior differences, not a statement that xterm.js itself runs on ConPTY. The accurate description is:
+
+- **Frontend:** xterm.js terminal emulator with Windows ConPTY compatibility options
+- **Backend:** node-pty using ConPTY on Windows
+
+## Architecture Summary
+
+```text
+Renderer Process (Vue 3)
+  TerminalViewport.vue
+    xterm.js frontend
+      - FitAddon / WebGL
+      - Search / Serialize
+      - Unicode11 / Clipboard
+      - onData    → sendSessionInput()
+      - onBinary  → sendSessionBinaryInput()
+      - onResize  → resizeSession()
+
+Preload
+  contextBridge window.stoa
+    - sendSessionInput
+    - sendSessionBinaryInput
+    - resizeSession
+    - onTerminalData
+
+Main Process
+  SessionInputRouter
+    - per-session ordered queue (shared by text + binary)
+    - generation invalidation
+    - Ctrl+C interrupt notification
+    - text input → ptyHost.write()
+    - binary input → ptyHost.writeBinary()
+
+  SessionRuntimeController
+    - pty onData callback
+    - terminal backlog
+    - IPC terminal:data fanout
+
+  PtyHost
+    - node-pty spawn
+    - ConPTY on Windows
+    - write(string)
+    - writeBinary(Buffer)
+    - resize(cols, rows)
+    - kill()
+```
 
 ## Verification Targets
 

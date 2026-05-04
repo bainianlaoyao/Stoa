@@ -54,18 +54,59 @@ Loaded addons:
 - `TERM` defaults to `xterm-256color`
 - `COLORTERM` defaults to `truecolor`
 - `TERM_PROGRAM` is `xterm.js`
-- PTY start size defaults to `120x30`
+- PTY start size defaults to `120x30` (renderer sends actual size via `session:resize` after mount; PTY is not spawned until the renderer reports ready dimensions — see `docs/engineering/terminal-core-overhaul-spec.md`)
+
+## Windows ConPTY Clarification
+
+`windowsPty: { backend: 'conpty', buildNumber? }` is a compatibility flag in xterm.js, not a statement that xterm.js runs on ConPTY. The accurate description is:
+
+- **Frontend:** xterm.js terminal emulator with Windows ConPTY compatibility options
+- **Backend:** node-pty using ConPTY on Windows
 
 ## Input Contract
 
-- `onData` -> `sendSessionInput` -> `session:input`
-- `onBinary` -> `sendSessionBinaryInput` -> `session:binary-input`
-- `Ctrl+C` is written raw and also marks the agent interrupt path
+Text and binary use separate IPC channels but share the same per-session ordered queue in `SessionInputRouter`:
+
+```text
+Text input:
+  xterm.onData(data)
+  → preload sendSessionInput(sessionId, data)
+  → IPC session:input
+  → SessionInputRouter.send(sessionId, data)
+  → PtyHost.write(sessionId, data)
+  → node-pty.write(string)
+
+Binary input:
+  xterm.onBinary(data)
+  → preload sendSessionBinaryInput(sessionId, bytes)
+  → IPC session:binary-input
+  → SessionInputRouter.sendBinary(sessionId, bytes)
+  → PtyHost.writeBinary(sessionId, bytes)
+  → node-pty.write(Buffer)
+```
+
+- Both text and binary enter the same per-session queue — no ordering divergence
+- `Ctrl+C` / ETX is written raw to PTY and also marks the agent interrupt path
 
 ## Output Contract
 
 - `pty.onData` is forwarded to xterm unchanged
 - replay/backlog is a backend concern, not a terminal protocol concern
+
+## Core Constraint
+
+**Provider hooks and session state events must never mutate the terminal byte stream.**
+
+The hook bridge (`session-event-bridge`, `hook-event-adapter`, `evolver-hook-sidecar`) may:
+- patch session state
+- update status / metadata
+- emit stop / prompt-submitted events
+
+The hook bridge must never:
+- inject text into the terminal
+- rewrite terminal output based on hook events
+- simulate Enter / Ctrl+C / other keyboard input
+- affect the PTY input queue
 
 ## Forbidden Patterns
 

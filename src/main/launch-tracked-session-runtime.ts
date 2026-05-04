@@ -24,6 +24,7 @@ interface LaunchTrackedSessionRuntimeOptions {
   ) => Promise<RuntimePaths>
   getProvider?: typeof getProvider
   startRuntime?: typeof startSessionRuntime
+  initialDimensions?: { cols: number; rows: number }
 }
 
 export async function launchTrackedSessionRuntime(options: LaunchTrackedSessionRuntimeOptions): Promise<boolean> {
@@ -61,7 +62,8 @@ export async function launchTrackedSessionRuntime(options: LaunchTrackedSessionR
     manager: options.runtimeController,
     shellPath,
     providerPath,
-    claudeDangerouslySkipPermissions
+    claudeDangerouslySkipPermissions,
+    initialDimensions: options.initialDimensions
   })
 
   return true

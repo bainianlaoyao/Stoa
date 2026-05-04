@@ -564,6 +564,22 @@ app.whenReady().then(async () => {
     }
   )
 
+  const pendingLaunchSessions = new Map<string, {
+    resolve: (dims: { cols: number; rows: number }) => void
+    timer: ReturnType<typeof setTimeout>
+  }>()
+
+  function waitForSessionDimensions(sessionId: string, timeoutMs: number): Promise<{ cols: number; rows: number }> {
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        pendingLaunchSessions.delete(sessionId)
+        console.log(`[pty-dimensions] Timeout waiting for renderer dimensions for ${sessionId}, using defaults`)
+        resolve({ cols: 120, rows: 30 })
+      }, timeoutMs)
+      pendingLaunchSessions.set(sessionId, { resolve, timer })
+    })
+  }
+
   runtimeController = new SessionRuntimeController(
     projectSessionManager,
     () => mainWindow,
@@ -639,7 +655,8 @@ app.whenReady().then(async () => {
 
   async function launchSessionRuntimeWithGuard(
     sessionId: string,
-    source: 'session-create' | 'session-restore' | 'bootstrap-recovery' | 'packaged-smoke'
+    source: 'session-create' | 'session-restore' | 'bootstrap-recovery' | 'packaged-smoke',
+    options?: { awaitDimensions?: boolean }
   ): Promise<boolean> {
     if (!projectSessionManager || !ptyHost || !runtimeController || !sessionEventBridge) {
       console.log(`[${source}] Aborted runtime launch for ${sessionId}: manager=${!!projectSessionManager} pty=${!!ptyHost} ctrl=${!!runtimeController} bridge=${!!sessionEventBridge}`)
@@ -647,6 +664,12 @@ app.whenReady().then(async () => {
     }
 
     try {
+      let initialDimensions: { cols: number; rows: number } | undefined
+      if (options?.awaitDimensions) {
+        initialDimensions = await waitForSessionDimensions(sessionId, 5000)
+        console.log(`[pty-dimensions] Launching ${sessionId} with dimensions ${initialDimensions.cols}x${initialDimensions.rows}`)
+      }
+
       sessionInputRouter?.resetSession(sessionId)
       const launched = await launchTrackedSessionRuntime({
         sessionId,
@@ -655,7 +678,8 @@ app.whenReady().then(async () => {
         ptyHost,
         runtimeController,
         sessionEventBridge,
-        resolveRuntimePaths
+        resolveRuntimePaths,
+        initialDimensions
       })
 
       if (launched) {
@@ -866,7 +890,7 @@ app.whenReady().then(async () => {
       return null
     }
 
-    void launchSessionRuntimeWithGuard(session.id, 'session-create')
+    void launchSessionRuntimeWithGuard(session.id, 'session-create', { awaitDimensions: true })
     return session
   })
 
@@ -948,6 +972,12 @@ app.whenReady().then(async () => {
   })
 
   ipcMain.handle(IPC_CHANNELS.sessionResize, async (_event, sessionId: string, cols: number, rows: number) => {
+    const pending = pendingLaunchSessions.get(sessionId)
+    if (pending) {
+      clearTimeout(pending.timer)
+      pendingLaunchSessions.delete(sessionId)
+      pending.resolve({ cols, rows })
+    }
     ptyHost?.resize(sessionId, cols, rows)
   })
 
