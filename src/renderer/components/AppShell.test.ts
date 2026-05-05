@@ -81,8 +81,7 @@ describe('AppShell', () => {
       onAppObservabilityChanged: vi.fn().mockReturnValue(() => {}),
       getSettings: vi.fn().mockResolvedValue({
         shellPath: '',
-        terminalFontSize: 14,
-        terminalFontFamily: 'JetBrains Mono',
+        terminal: {},
         providers: {},
         workspaceIde: { id: 'vscode', executablePath: '' },
         claudeDangerouslySkipPermissions: false,

@@ -54,8 +54,7 @@ function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
     onAppObservabilityChanged: vi.fn().mockReturnValue(() => {}),
     getSettings: vi.fn().mockResolvedValue({
       shellPath: '',
-      terminalFontSize: 14,
-      terminalFontFamily: 'JetBrains Mono',
+      terminal: {},
       providers: {},
       workspaceIde: { id: 'vscode', executablePath: '' },
       evolverInferenceProvider: 'claude-code',

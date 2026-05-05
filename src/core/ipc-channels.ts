@@ -42,4 +42,5 @@ export const IPC_CHANNELS = {
   windowIsMaximized: 'window:is-maximized',
   windowMaximizeChanged: 'window:maximize-changed',
   debugToggleDevTools: 'debug:toggle-devtools',
+  shellGetScriptsDir: 'shell:get-scripts-dir',
 } as const
