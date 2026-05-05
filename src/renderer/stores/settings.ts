@@ -5,14 +5,13 @@ import type {
   EvolverInferenceProvider,
   WorkspaceIdeSettings
 } from '@shared/project-session'
-import { BUILTIN_FONT_FAMILIES } from '@shared/project-session'
+import { normalizeTerminalSettings, type TerminalSettings } from '@shared/terminal-settings'
 import i18n, { SUPPORTED_LOCALES } from '@renderer/i18n'
 import type { SupportedLocale } from '@renderer/i18n'
 
 export const useSettingsStore = defineStore('settings', () => {
   const shellPath = ref('')
-  const terminalFontSize = ref(14)
-  const terminalFontFamily = ref('JetBrains Mono')
+  const terminal = ref<Partial<TerminalSettings>>({})
   const providers = ref<Record<string, string>>({})
   const workspaceIde = ref<WorkspaceIdeSettings>({ id: 'vscode', executablePath: '' })
   const evolverInferenceProvider = ref<EvolverInferenceProvider>('claude-code')
@@ -25,10 +24,7 @@ export const useSettingsStore = defineStore('settings', () => {
     const settings = await window.stoa.getSettings()
     if (settings) {
       shellPath.value = settings.shellPath
-      terminalFontSize.value = settings.terminalFontSize
-      if (settings.terminalFontFamily) {
-        terminalFontFamily.value = settings.terminalFontFamily
-      }
+      terminal.value = { ...settings.terminal ?? {} }
       providers.value = { ...settings.providers }
       workspaceIde.value = { ...settings.workspaceIde }
       if (settings.evolverInferenceProvider === 'claude-code') {
@@ -52,10 +48,8 @@ export const useSettingsStore = defineStore('settings', () => {
     await window.stoa.setSetting(key, value)
     if (key === 'shellPath' && typeof value === 'string') {
       shellPath.value = value
-    } else if (key === 'terminalFontSize' && typeof value === 'number') {
-      terminalFontSize.value = Math.max(12, Math.min(24, value))
-    } else if (key === 'terminalFontFamily' && typeof value === 'string') {
-      terminalFontFamily.value = BUILTIN_FONT_FAMILIES.includes(value as any) ? value : 'JetBrains Mono'
+    } else if (key === 'terminal' && typeof value === 'object' && value !== null) {
+      terminal.value = { ...(value as Partial<TerminalSettings>) }
     } else if (key === 'providers' && typeof value === 'object' && value !== null) {
       providers.value = { ...(value as Record<string, string>) }
     } else if (key === 'workspaceIde' && isWorkspaceIdeSettings(value)) {
@@ -72,6 +66,10 @@ export const useSettingsStore = defineStore('settings', () => {
     } else if (key === 'locale' && typeof value === 'string') {
       locale.value = value
     }
+  }
+
+  function resolvedTerminalSettings(): TerminalSettings {
+    return normalizeTerminalSettings(terminal.value)
   }
 
   async function detectAndSetShell(): Promise<string | null> {
@@ -122,8 +120,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
   return {
     shellPath,
-    terminalFontSize,
-    terminalFontFamily,
+    terminal,
     providers,
     workspaceIde,
     evolverInferenceProvider,
@@ -131,6 +128,7 @@ export const useSettingsStore = defineStore('settings', () => {
     claudeDangerouslySkipPermissions,
     locale,
     loaded,
+    resolvedTerminalSettings,
     loadSettings, updateSetting, detectAndSetShell, detectAndSetProvider, detectAndSetVscode,
     pickFolder, pickFile, applyLocale
   }

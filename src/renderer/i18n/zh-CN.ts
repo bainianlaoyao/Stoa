@@ -8,6 +8,7 @@ export default {
     navText: '\u6838\u5FC3\u504F\u597D\u8BBE\u7F6E\u548C\u53C2\u8003\u4FE1\u606F\u3002',
     tabs: {
       general: { label: '\u901A\u7528', summary: 'Shell \u8DEF\u5F84\u548C\u7EC8\u7AEF\u5B57\u4F53\u5927\u5C0F\u3002' },
+      terminal: { label: '\u7EC8\u7AEF', summary: '\u5B57\u4F53\u3001\u5149\u6807\u3001\u6EDA\u52A8\u548C\u884C\u4E3A\u8BBE\u7F6E\u3002' },
       providers: { label: '\u63D0\u4F9B\u5546', summary: '\u672C\u5730\u63D0\u4F9B\u5546\u53EF\u6267\u884C\u6587\u4EF6\u8DEF\u5F84\u3002' },
       about: { label: '\u5173\u4E8E', summary: '\u7248\u672C\u3001\u6280\u672F\u6808\u548C\u9879\u76EE\u94FE\u63A5\u3002' }
     }
@@ -60,6 +61,48 @@ export default {
   language: {
     en: 'English',
     'zh-CN': '\u7B80\u4F53\u4E2D\u6587'
+  },
+
+  terminalSettings: {
+    eyebrow: '\u7EC8\u7AEF',
+    title: '\u7EC8\u7AEF\u5916\u89C2\u548C\u884C\u4E3A',
+    description: '\u5FAE\u8C03\u7EC8\u7AEF\u754C\u9762\u7684\u6587\u5B57\u6E32\u67D3\u3001\u5149\u6807\u663E\u793A\u548C\u8F93\u5165\u54CD\u5E94\u3002',
+    typography: {
+      title: '\u5B57\u4F53\u6392\u7248',
+      description: '\u7EC8\u7AEF\u5185\u5BB9\u7684\u5B57\u4F53\u3001\u5B57\u53F7\u3001\u5B57\u91CD\u548C\u95F4\u8DDD\u3002',
+      badge: '\u6587\u5B57',
+      fontFamily: '\u5B57\u4F53\u65CF',
+      fontSize: '\u5B57\u4F53\u5927\u5C0F',
+      fontWeight: '\u5B57\u4F53\u7C97\u7EC6',
+      fontWeightBold: '\u7C97\u4F53\u5B57\u91CD',
+      lineHeight: '\u884C\u9AD8',
+      letterSpacing: '\u5B57\u7B26\u95F4\u8DDD'
+    },
+    cursor: {
+      title: '\u5149\u6807',
+      description: '\u5149\u6807\u5F62\u72B6\u3001\u95EA\u70C1\u548C\u975E\u6D3B\u52A8\u72B6\u6001\u5916\u89C2\u3002',
+      badge: '\u5149\u6807',
+      cursorBlink: '\u5149\u6807\u95EA\u70C1',
+      cursorStyle: '\u5149\u6807\u6837\u5F0F',
+      cursorInactiveStyle: '\u975E\u6D3B\u52A8\u5149\u6807\u6837\u5F0F'
+    },
+    display: {
+      title: '\u6EDA\u52A8\u548C\u663E\u793A',
+      description: '\u6EDA\u52A8\u7F13\u51B2\u3001\u5BF9\u6BD4\u5EA6\u548C GPU \u6E32\u67D3\u3002',
+      badge: '\u663E\u793A',
+      scrollback: '\u6EDA\u52A8\u7F13\u51B2\u884C\u6570',
+      minimumContrastRatio: '\u6700\u5C0F\u5BF9\u6BD4\u5EA6',
+      gpuAcceleration: 'GPU \u52A0\u901F'
+    },
+    behavior: {
+      title: '\u884C\u4E3A',
+      description: '\u9009\u4E2D\u3001\u53F3\u952E\u548C\u5BFC\u822A\u504F\u597D\u8BBE\u7F6E\u3002',
+      badge: '\u8F93\u5165',
+      copyOnSelection: '\u9009\u4E2D\u65F6\u590D\u5236',
+      rightClickBehavior: '\u53F3\u952E\u884C\u4E3A',
+      altClickMovesCursor: 'Alt+\u70B9\u51FB\u79FB\u52A8\u5149\u6807',
+      wordSeparators: '\u5355\u8BCD\u5206\u9694\u7B26'
+    }
   },
 
   providers: {

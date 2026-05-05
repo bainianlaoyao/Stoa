@@ -136,12 +136,9 @@ function normalizeAppSettings(settings?: Partial<AppSettings>): AppSettings {
 
   return {
     shellPath: typeof settings.shellPath === 'string' ? settings.shellPath : defaults.shellPath,
-    terminalFontSize: typeof settings.terminalFontSize === 'number'
-      ? Math.max(12, Math.min(24, settings.terminalFontSize))
-      : defaults.terminalFontSize,
-    terminalFontFamily: typeof settings.terminalFontFamily === 'string'
-      ? settings.terminalFontFamily
-      : defaults.terminalFontFamily,
+    terminal: typeof settings.terminal === 'object' && settings.terminal !== null
+      ? { ...settings.terminal }
+      : defaults.terminal,
     providers: typeof settings.providers === 'object' && settings.providers !== null
       ? { ...settings.providers }
       : defaults.providers,
@@ -474,10 +471,8 @@ export class ProjectSessionManager {
   async setSetting(key: string, value: unknown): Promise<void> {
     if (key === 'shellPath' && typeof value === 'string') {
       this.settings.shellPath = value
-    } else if (key === 'terminalFontSize' && typeof value === 'number') {
-      this.settings.terminalFontSize = Math.max(12, Math.min(24, value))
-    } else if (key === 'terminalFontFamily' && typeof value === 'string') {
-      this.settings.terminalFontFamily = value
+    } else if (key === 'terminal' && typeof value === 'object' && value !== null) {
+      this.settings.terminal = value as Partial<typeof DEFAULT_SETTINGS.terminal>
     } else if (key === 'providers' && typeof value === 'object' && value !== null) {
       this.settings.providers = value as Record<string, string>
     } else if (

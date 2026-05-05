@@ -81,7 +81,8 @@ function scheduleTerminalSetup() {
       return
     }
 
-    const fontStr = `${settingsStore.terminalFontSize}px "${settingsStore.terminalFontFamily}"`
+    const resolved = settingsStore.resolvedTerminalSettings()
+    const fontStr = `${resolved.fontSize}px "${resolved.fontFamily}"`
     await (document.fonts?.load(fontStr) ?? Promise.resolve())
 
     if (props.session) {
@@ -111,18 +112,24 @@ function setupTerminal() {
   const fitSettled = new Promise<void>((resolve) => { localFitResolve = resolve })
   pendingFitResolve = localFitResolve
 
-  const { terminal: localTerminal, fitAddon: localFitAddon, serializeAddon: localSerializeAddon } = createTerminalRuntime(
-    undefined,
-    undefined,
-    undefined,
-    settingsStore.terminalFontSize,
-    settingsStore.terminalFontFamily,
-    stoa.windowsBuildNumber
-  )
+  const { terminal: localTerminal, fitAddon: localFitAddon, serializeAddon: localSerializeAddon, shellIntegrationAddon: localShellIntegration } = createTerminalRuntime({
+    settings: settingsStore.terminal,
+    openExternal: undefined,
+    windowsBuildNumber: stoa.windowsBuildNumber
+  })
   terminal = localTerminal
   fitAddon = localFitAddon
   localTerminal.open(terminalContainer.value)
   localTerminal.focus()
+
+  localShellIntegration.onCwdChanged = (cwd: string) => {
+    if (!isActiveMount()) return
+    console.debug('[terminal] cwd changed:', cwd)
+  }
+  localShellIntegration.onCommandFinished = (event) => {
+    if (!isActiveMount()) return
+    console.debug('[terminal] command finished:', event.commandLine, 'exit:', event.exitCode)
+  }
 
   const isActiveMount = () => mountVersion === localMountVersion && terminal === localTerminal
   const enqueueWrite = (data: string) => {
@@ -262,7 +269,7 @@ function setupTerminal() {
 }
 
 watch(
-  [() => props.session?.id ?? null, () => settingsStore.terminalFontSize, () => settingsStore.terminalFontFamily],
+  [() => props.session?.id ?? null, () => settingsStore.terminal],
   ([sessionId]) => {
     disposeTerminal()
     if (sessionId) {

@@ -90,8 +90,7 @@ function createStoaMock(overrides?: Partial<typeof window.stoa>): typeof window.
     getTerminalReplay: vi.fn().mockResolvedValue(''),
     getSettings: vi.fn().mockResolvedValue({
       shellPath: '',
-      terminalFontSize: 14,
-      terminalFontFamily: 'JetBrains Mono',
+      terminal: {},
       providers: {},
       workspaceIde: { id: 'vscode', executablePath: '' },
       claudeDangerouslySkipPermissions: false,

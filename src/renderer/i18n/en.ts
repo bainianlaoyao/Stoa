@@ -8,6 +8,7 @@ export default {
     navText: 'Core preferences and reference information.',
     tabs: {
       general: { label: 'General', summary: 'Shell path and terminal font size.' },
+      terminal: { label: 'Terminal', summary: 'Typography, cursor, scroll, and behavior.' },
       providers: { label: 'Providers', summary: 'Local provider executable paths.' },
       about: { label: 'About', summary: 'Version, stack, and project links.' }
     }
@@ -59,7 +60,49 @@ export default {
 
   language: {
     en: 'English',
-    'zh-CN': '\u7B80\u4F53\u4E2D\u6587'
+    'zh-CN': '简体中文'
+  },
+
+  terminalSettings: {
+    eyebrow: 'Terminal',
+    title: 'Terminal appearance and behavior',
+    description: 'Fine-tune how terminal surfaces render text, cursors, and respond to input.',
+    typography: {
+      title: 'Typography',
+      description: 'Font face, size, weight, and spacing for terminal content.',
+      badge: 'Text',
+      fontFamily: 'Font family',
+      fontSize: 'Font size',
+      fontWeight: 'Font weight',
+      fontWeightBold: 'Bold font weight',
+      lineHeight: 'Line height',
+      letterSpacing: 'Letter spacing'
+    },
+    cursor: {
+      title: 'Cursor',
+      description: 'Cursor shape, blink, and inactive-state appearance.',
+      badge: 'Cursor',
+      cursorBlink: 'Cursor blink',
+      cursorStyle: 'Cursor style',
+      cursorInactiveStyle: 'Inactive cursor style'
+    },
+    display: {
+      title: 'Scrolling and display',
+      description: 'Scroll buffer size, contrast, and GPU rendering.',
+      badge: 'Display',
+      scrollback: 'Scrollback lines',
+      minimumContrastRatio: 'Minimum contrast ratio',
+      gpuAcceleration: 'GPU acceleration'
+    },
+    behavior: {
+      title: 'Behavior',
+      description: 'Selection, right-click, and navigation preferences.',
+      badge: 'Input',
+      copyOnSelection: 'Copy on selection',
+      rightClickBehavior: 'Right-click behavior',
+      altClickMovesCursor: 'Alt+click moves cursor',
+      wordSeparators: 'Word separators'
+    }
   },
 
   providers: {

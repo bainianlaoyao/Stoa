@@ -104,6 +104,17 @@ vi.mock('@xterm/addon-serialize', () => {
   }
 })
 
+vi.mock('@renderer/terminal/shell-integration-addon', () => {
+  return {
+    ShellIntegrationAddon: class {
+      onCommandStart?: (event: unknown) => void
+      onCommandExecuted?: () => void
+      onCommandFinished?: (event: unknown) => void
+      onCwdChanged?: (cwd: string) => void
+    },
+  }
+})
+
 vi.mock('@xterm/xterm/css/xterm.css', () => ({}))
 
 function createMockApi() {
@@ -612,9 +623,9 @@ describe('TerminalViewport', () => {
     expect(wrapper.find('[data-testid="terminal-status-bar"]').exists()).toBe(false)
   })
 
-  test('uses terminalFontSize from settings store for the xterm instance', async () => {
+  test('uses terminal settings from settings store for the xterm instance', async () => {
     const settingsStore = useSettingsStore()
-    settingsStore.terminalFontSize = 18
+    settingsStore.terminal = { fontSize: 18 }
 
     const { default: TerminalViewport } = await import('./TerminalViewport.vue')
     mount(TerminalViewport, {

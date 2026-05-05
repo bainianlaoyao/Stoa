@@ -84,8 +84,7 @@ describe('ProjectSessionManager', () => {
       projects: [],
       settings: {
         shellPath: 'C:\\WINDOWS\\system32\\cmd.exe',
-        terminalFontSize: 14,
-        terminalFontFamily: 'JetBrains Mono',
+        terminal: {},
         providers: {},
         claudeDangerouslySkipPermissions: true,
         locale: 'en'
@@ -336,7 +335,7 @@ describe('ProjectSessionManager', () => {
 
     const firstPersist = manager.setActiveProject(project2.id)
     await firstWriteStarted
-    const secondPersist = manager.setSetting('terminalFontSize', 16)
+    const secondPersist = manager.setSetting('terminal', { fontSize: 16 })
     allowFirstWriteToFinish?.()
     await Promise.all([firstPersist, secondPersist])
 
@@ -346,10 +345,10 @@ describe('ProjectSessionManager', () => {
 
     const lastGlobalState = writeGlobalState.mock.calls.at(-1)?.[0] as {
       active_project_id: string | null
-      settings?: { terminalFontSize?: number }
+      settings?: { terminal?: { fontSize?: number } }
     }
     expect(lastGlobalState.active_project_id).toBe(project2.id)
-    expect(lastGlobalState.settings?.terminalFontSize).toBe(16)
+    expect(lastGlobalState.settings?.terminal?.fontSize).toBe(16)
 
     vi.doUnmock('@core/state-store')
     vi.resetModules()
@@ -646,7 +645,7 @@ describe('ProjectSessionManager', () => {
     ;(manager as never as { state: { projects: []; activeProjectId: null } }).state.projects = []
     ;(manager as never as { state: { projects: []; activeProjectId: null } }).state.activeProjectId = null
 
-    await manager.setSetting('terminalFontSize', 16)
+    await manager.setSetting('terminal', { fontSize: 16 })
 
     const after = await readFile(globalStatePath, 'utf-8')
     expect(JSON.parse(after).projects).toHaveLength(1)

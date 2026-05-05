@@ -126,8 +126,7 @@ async function resolveInferenceProviderPath(
     const resolved = await resolveProviderExecutablePath(providerId, {
       ...settings,
       locale: 'en',
-      terminalFontSize: 14,
-      terminalFontFamily: 'JetBrains Mono',
+      terminal: {},
       workspaceIde: {
         id: 'vscode',
         executablePath: ''

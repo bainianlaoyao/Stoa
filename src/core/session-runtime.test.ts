@@ -77,7 +77,8 @@ describe('session runtime', () => {
         command: 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe'
       }),
       expect.any(Function),
-      expect.any(Function)
+      expect.any(Function),
+      undefined
     )
   })
 
@@ -127,7 +128,56 @@ describe('session runtime', () => {
         args: []
       }),
       expect.any(Function),
-      expect.any(Function)
+      expect.any(Function),
+      { enabled: true, shellPath: 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe' }
+    )
+  })
+
+  test('shell sessions without shellPath do not get shell integration', async () => {
+    const provider = createProvider({
+      async buildStartCommand(session) {
+        return {
+          command: 'powershell.exe',
+          args: [],
+          cwd: session.path,
+          env: { TEST_ENV: '1' }
+        }
+      }
+    })
+    const start = vi.fn(() => ({ runtimeId: 'session_shell_2' }))
+
+    await startSessionRuntime({
+      session: {
+        id: 'session_shell_2',
+        projectId: 'project_alpha',
+        path: 'D:/demo',
+        title: 'Shell no path',
+        type: 'shell',
+        runtimeState: 'alive',
+        agentState: 'working',
+        externalSessionId: null,
+        sessionSecret: 'secret-1',
+        providerPort: 43128
+      },
+      webhookPort: 43127,
+      provider,
+      ptyHost: { start } as never,
+      manager: {
+        markRuntimeStarting: vi.fn(async () => {}),
+        markRuntimeAlive: vi.fn(async () => {}),
+        markRuntimeExited: vi.fn(async () => {}),
+        markRuntimeFailedToStart: vi.fn(async () => {}),
+        appendTerminalData: vi.fn(async () => {})
+      } as never,
+      shellPath: null
+    })
+
+    expect(start).toHaveBeenCalledWith(
+      'session_shell_2',
+      expect.any(Object),
+      expect.any(Function),
+      expect.any(Function),
+      undefined
     )
   })
 
@@ -179,7 +229,8 @@ describe('session runtime', () => {
           cwd: 'D:/demo'
         }),
       expect.any(Function),
-      expect.any(Function)
+      expect.any(Function),
+      undefined
     )
     expect(markRuntimeAlive).toHaveBeenCalledWith('session_op_1', 'ext-123')
   })
@@ -269,7 +320,8 @@ describe('session runtime', () => {
           cwd: 'D:/demo'
         }),
       expect.any(Function),
-      expect.any(Function)
+      expect.any(Function),
+      undefined
     )
     expect(markRuntimeAlive).toHaveBeenCalledWith('session_op_1', null)
   })
@@ -472,7 +524,8 @@ describe('session runtime', () => {
         command: 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe'
       }),
       expect.any(Function),
-      expect.any(Function)
+      expect.any(Function),
+      undefined
     )
   })
 

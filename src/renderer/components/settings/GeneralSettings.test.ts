@@ -44,8 +44,7 @@ function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
     onAppObservabilityChanged: vi.fn().mockReturnValue(() => {}),
     getSettings: vi.fn().mockResolvedValue({
       shellPath: '',
-      terminalFontSize: 14,
-      terminalFontFamily: 'JetBrains Mono',
+      terminal: {},
       providers: {},
       workspaceIde: { id: 'vscode', executablePath: '' },
       claudeDangerouslySkipPermissions: false,
@@ -223,7 +222,7 @@ describe('GeneralSettings', () => {
     })
   })
 
-  it('changing font size select calls store.updateSetting with terminalFontSize', async () => {
+  it('changing font size select calls store.updateSetting with terminal object containing fontSize', async () => {
     const setSettingMock = vi.fn().mockResolvedValue(undefined)
     setupVibecodingMock({ setSetting: setSettingMock })
 
@@ -244,10 +243,10 @@ describe('GeneralSettings', () => {
     await option18!.trigger('click')
     await nextTick()
 
-    expect(setSettingMock).toHaveBeenCalledWith('terminalFontSize', 18)
+    expect(setSettingMock).toHaveBeenCalledWith('terminal', { fontSize: 18 })
   })
 
-  it('changing font family select calls store.updateSetting with terminalFontFamily', async () => {
+  it('changing font family select calls store.updateSetting with terminal object containing fontFamily', async () => {
     const setSettingMock = vi.fn().mockResolvedValue(undefined)
     setupVibecodingMock({ setSetting: setSettingMock })
 
@@ -268,6 +267,6 @@ describe('GeneralSettings', () => {
     await cascadiaOption!.trigger('click')
     await nextTick()
 
-    expect(setSettingMock).toHaveBeenCalledWith('terminalFontFamily', 'Cascadia Mono')
+    expect(setSettingMock).toHaveBeenCalledWith('terminal', { fontFamily: 'Cascadia Mono' })
   })
 })

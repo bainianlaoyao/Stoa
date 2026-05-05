@@ -6,6 +6,10 @@ import { Unicode11Addon } from '@xterm/addon-unicode11'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { Terminal } from '@xterm/xterm'
+import type { TerminalSettings, RightClickBehavior, GpuAcceleration } from '@shared/terminal-settings'
+import { normalizeTerminalSettings } from '@shared/terminal-settings'
+import type { FontWeight } from '@xterm/xterm'
+import { ShellIntegrationAddon } from './shell-integration-addon'
 
 declare global {
   interface Navigator {
@@ -23,6 +27,7 @@ export interface XtermRuntime {
   webLinksAddon: WebLinksAddon
   webglAddon: WebglAddon | null
   searchAddon: SearchAddon
+  shellIntegrationAddon: ShellIntegrationAddon
 }
 
 export type ExternalLinkOpener = (uri: string) => void
@@ -93,6 +98,18 @@ function canUseWebgl(): boolean {
   return Boolean(canvas.getContext?.('webgl2'))
 }
 
+function mapRightClickBehavior(behavior: RightClickBehavior, platform: string): boolean {
+  if (behavior === 'default') return platform !== 'darwin'
+  if (behavior === 'selectWord') return true
+  return false
+}
+
+function shouldEnableWebgl(policy: GpuAcceleration): boolean {
+  if (policy === 'off') return false
+  if (policy === 'on') return true
+  return canUseWebgl()
+}
+
 function resolveTerminalFontFamily(): string {
   if (typeof document === 'undefined' || typeof window === 'undefined') {
     return FALLBACK_MONO_FONT_FAMILY
@@ -143,45 +160,51 @@ function resolveTerminalTheme() {
   }
 }
 
-export function createTerminalRuntime(
-  platform = detectRuntimePlatform(),
-  openExternal: ExternalLinkOpener = defaultOpenExternal,
-  enableWebgl = canUseWebgl(),
-  fontSize = 14,
-  fontFamily?: string,
+export function createTerminalRuntime(options: {
+  settings?: Partial<TerminalSettings>
+  platform?: string
+  openExternal?: ExternalLinkOpener
   windowsBuildNumber?: number
-): XtermRuntime {
+} = {}): XtermRuntime {
+  const platform = options.platform ?? detectRuntimePlatform()
+  const openExternal = options.openExternal ?? defaultOpenExternal
+  const s = normalizeTerminalSettings(options.settings ?? {})
+
+  const fontFamilyFromSettings = options.settings?.fontFamily
+  const resolvedFontFamily = fontFamilyFromSettings || resolveTerminalFontFamily()
+
   const terminal = new Terminal({
-    fontFamily: fontFamily || resolveTerminalFontFamily(),
-    fontSize,
-    fontWeight: 'normal',
-    fontWeightBold: 'bold',
-    lineHeight: 1,
-    letterSpacing: 0,
+    fontFamily: resolvedFontFamily,
+    fontSize: s.fontSize,
+    fontWeight: s.fontWeight as FontWeight,
+    fontWeightBold: s.fontWeightBold as FontWeight,
+    lineHeight: s.lineHeight,
+    letterSpacing: s.letterSpacing,
 
-    cursorBlink: true,
-    cursorStyle: 'block',
-    cursorInactiveStyle: 'outline',
+    cursorBlink: s.cursorBlink,
+    cursorStyle: s.cursorStyle,
+    cursorInactiveStyle: s.cursorInactiveStyle,
+    cursorWidth: s.cursorWidth,
 
-    scrollback: 10_000,
+    scrollback: s.scrollback,
     scrollOnUserInput: true,
     scrollOnEraseInDisplay: true,
     smoothScrollDuration: 0,
-    scrollSensitivity: 1,
-    fastScrollSensitivity: 5,
+    scrollSensitivity: s.scrollSensitivity,
+    fastScrollSensitivity: s.fastScrollSensitivity,
 
     drawBoldTextInBrightColors: true,
-    minimumContrastRatio: 4.5,
+    minimumContrastRatio: s.minimumContrastRatio,
 
-    rightClickSelectsWord: platform !== 'darwin',
-    altClickMovesCursor: true,
+    rightClickSelectsWord: mapRightClickBehavior(s.rightClickBehavior, platform),
+    altClickMovesCursor: s.altClickMovesCursor,
 
     convertEol: false,
     disableStdin: false,
     theme: resolveTerminalTheme(),
     allowProposedApi: true,
     windowsPty: platform === 'win32'
-      ? { backend: 'conpty', ...(windowsBuildNumber != null ? { buildNumber: windowsBuildNumber } : {}) }
+      ? { backend: 'conpty', ...(options.windowsBuildNumber != null ? { buildNumber: options.windowsBuildNumber } : {}) }
       : undefined,
   })
 
@@ -201,8 +224,11 @@ export function createTerminalRuntime(
   terminal.loadAddon(searchAddon)
   terminal.loadAddon(serializeAddon)
 
+  const shellIntegrationAddon = new ShellIntegrationAddon()
+  terminal.loadAddon(shellIntegrationAddon)
+
   let webglAddon: WebglAddon | null = null
-  if (enableWebgl) {
+  if (shouldEnableWebgl(s.gpuAcceleration)) {
     try {
       const addon = new WebglAddon()
       terminal.loadAddon(addon)
@@ -227,6 +253,7 @@ export function createTerminalRuntime(
     unicode11Addon,
     webLinksAddon,
     webglAddon,
-    searchAddon
+    searchAddon,
+    shellIntegrationAddon
   }
 }

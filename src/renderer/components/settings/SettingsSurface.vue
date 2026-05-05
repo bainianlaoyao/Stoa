@@ -5,6 +5,7 @@ import { TabGroup, TabPanels, TabPanel } from '@headlessui/vue'
 import SettingsTabBar from './SettingsTabBar.vue'
 import type { SettingsTab } from './SettingsTabBar.vue'
 import GeneralSettings from './GeneralSettings.vue'
+import TerminalSettings from './TerminalSettings.vue'
 import ProvidersSettings from './ProvidersSettings.vue'
 import AboutSettings from './AboutSettings.vue'
 
@@ -12,6 +13,7 @@ const { t } = useI18n()
 
 const tabMeta = computed<Array<{ id: SettingsTab; label: string; summary: string }>>(() => [
   { id: 'general', label: t('settings.tabs.general.label'), summary: t('settings.tabs.general.summary') },
+  { id: 'terminal', label: t('settings.tabs.terminal.label'), summary: t('settings.tabs.terminal.summary') },
   { id: 'providers', label: t('settings.tabs.providers.label'), summary: t('settings.tabs.providers.summary') },
   { id: 'about', label: t('settings.tabs.about.label'), summary: t('settings.tabs.about.summary') }
 ])
@@ -20,6 +22,7 @@ const activeTab = ref<SettingsTab>('general')
 
 const tabComponents: Record<SettingsTab, Component> = {
   general: GeneralSettings,
+  terminal: TerminalSettings,
   providers: ProvidersSettings,
   about: AboutSettings
 }
@@ -62,6 +65,9 @@ function onTabSelect(tab: SettingsTab) {
           <TabPanels>
             <TabPanel>
               <GeneralSettings />
+            </TabPanel>
+            <TabPanel>
+              <TerminalSettings />
             </TabPanel>
             <TabPanel>
               <ProvidersSettings />

@@ -34,8 +34,7 @@ function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
     onAppObservabilityChanged: vi.fn().mockReturnValue(() => {}),
     getSettings: vi.fn().mockResolvedValue({
       shellPath: '',
-      terminalFontSize: 14,
-      terminalFontFamily: 'JetBrains Mono',
+      terminal: {},
       providers: {},
       evolverInferenceProvider: 'claude-code',
       evolverExecutionMode: 'workspace-shell',
@@ -110,8 +109,7 @@ describe('useSettingsStore', () => {
     window.stoa = createStoaMock({
       getSettings: vi.fn().mockResolvedValue({
         shellPath: '',
-        terminalFontSize: 14,
-        terminalFontFamily: 'JetBrains Mono',
+        terminal: {},
         providers: {},
         evolverInferenceProvider: 'codex',
         evolverExecutionMode: 'workspace-shell',

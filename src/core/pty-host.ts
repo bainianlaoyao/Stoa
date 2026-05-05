@@ -1,25 +1,55 @@
+import { fileURLToPath } from 'node:url'
+import path from 'node:path'
 import pty, { type IPty } from 'node-pty'
 import type { ProviderCommand } from '@shared/project-session'
+import { detectShellFamily, buildShellIntegrationEnv, generateNonce } from './shell-integration-env'
+
+export interface ShellIntegrationOptions {
+  enabled: boolean
+  shellPath: string
+}
 
 export interface PtySession {
   runtimeId: string
 }
 
+function getShellScriptsDir(): string {
+  const __dirname = path.dirname(fileURLToPath(import.meta.url))
+  return path.resolve(__dirname, 'shell-integration-scripts')
+}
+
 export class PtyHost {
   private readonly sessions = new Map<string, IPty>()
 
-  start(runtimeId: string, command: ProviderCommand, onData: (data: string) => void, onExit: (exitCode: number) => void): PtySession {
-    const terminal = pty.spawn(command.command, command.args, {
+  start(runtimeId: string, command: ProviderCommand, onData: (data: string) => void, onExit: (exitCode: number) => void, shellIntegration?: ShellIntegrationOptions): PtySession {
+    let spawnCommand = command.command
+    let spawnArgs = command.args
+    let spawnEnv: Record<string, string | undefined> = {
+      ...command.env,
+      TERM: command.env?.TERM ?? 'xterm-256color',
+      COLORTERM: command.env?.COLORTERM ?? 'truecolor',
+      TERM_PROGRAM: 'Stoa',
+      TERM_PROGRAM_VERSION: '0.1.1',
+    }
+
+    if (shellIntegration?.enabled && shellIntegration.shellPath) {
+      const family = detectShellFamily(shellIntegration.shellPath)
+      const nonce = generateNonce()
+      const scriptDir = getShellScriptsDir()
+      const integration = buildShellIntegrationEnv(family, shellIntegration.shellPath, nonce, scriptDir)
+      if (integration) {
+        spawnEnv = { ...spawnEnv, ...integration.env }
+        spawnCommand = shellIntegration.shellPath
+        spawnArgs = integration.args
+      }
+    }
+
+    const terminal = pty.spawn(spawnCommand, spawnArgs, {
       cwd: command.cwd,
       name: 'xterm-256color',
       cols: command.initialCols ?? 120,
       rows: command.initialRows ?? 30,
-      env: {
-        ...command.env,
-        TERM: command.env?.TERM ?? 'xterm-256color',
-        COLORTERM: command.env?.COLORTERM ?? 'truecolor',
-        TERM_PROGRAM: 'xterm.js'
-      }
+      env: spawnEnv,
     })
 
     terminal.onData(onData)

@@ -101,7 +101,7 @@ describe('createTerminalRuntime', () => {
   test('enables windowsPty heuristics on Windows and sets convertEol to false', async () => {
     const { createTerminalRuntime } = await import('./xterm-runtime')
 
-    const runtime = createTerminalRuntime('win32', vi.fn(), true)
+    const runtime = createTerminalRuntime({ platform: 'win32', openExternal: vi.fn() })
     const terminal = runtime.terminal as unknown as {
       options: Record<string, unknown>
     }
@@ -113,7 +113,7 @@ describe('createTerminalRuntime', () => {
   test('passes windowsBuildNumber to windowsPty when provided', async () => {
     const { createTerminalRuntime } = await import('./xterm-runtime')
 
-    const runtime = createTerminalRuntime('win32', vi.fn(), true, 14, undefined, 22631)
+    const runtime = createTerminalRuntime({ platform: 'win32', openExternal: vi.fn(), windowsBuildNumber: 22631 })
     const terminal = runtime.terminal as unknown as {
       options: Record<string, unknown>
     }
@@ -124,13 +124,13 @@ describe('createTerminalRuntime', () => {
   test('loads all addons and activates unicode11', async () => {
     const { createTerminalRuntime } = await import('./xterm-runtime')
 
-    const runtime = createTerminalRuntime('linux', vi.fn(), true)
+    const runtime = createTerminalRuntime({ platform: 'linux', openExternal: vi.fn(), settings: { gpuAcceleration: 'on' } })
     const terminal = runtime.terminal as unknown as {
       loadedAddons: unknown[]
       unicode: { activeVersion: string }
     }
 
-    expect(terminal.loadedAddons).toHaveLength(7)
+    expect(terminal.loadedAddons).toHaveLength(8)
     expect(terminal.unicode.activeVersion).toBe('11')
   })
 
@@ -140,7 +140,7 @@ describe('createTerminalRuntime', () => {
 
     const { createTerminalRuntime } = await import('./xterm-runtime')
 
-    const runtime = createTerminalRuntime('darwin', vi.fn(), true)
+    const runtime = createTerminalRuntime({ platform: 'darwin', openExternal: vi.fn(), settings: { gpuAcceleration: 'on' } })
     expect(runtime.terminal).toBeTruthy()
     expect(runtime.webglAddon).toBeNull()
   })
@@ -148,7 +148,7 @@ describe('createTerminalRuntime', () => {
   test('uses the configured terminal font size instead of a hardcoded value', async () => {
     const { createTerminalRuntime } = await import('./xterm-runtime')
 
-    const runtime = createTerminalRuntime('linux', vi.fn(), true, 18)
+    const runtime = createTerminalRuntime({ platform: 'linux', openExternal: vi.fn(), settings: { fontSize: 18 } })
     const terminal = runtime.terminal as unknown as {
       options: Record<string, unknown>
     }
@@ -156,10 +156,10 @@ describe('createTerminalRuntime', () => {
     expect(terminal.options.fontSize).toBe(18)
   })
 
-  test('uses lineHeight 1.0 to keep terminal cells pixel-aligned', async () => {
+  test('uses lineHeight 1.0 by default to keep terminal cells pixel-aligned', async () => {
     const { createTerminalRuntime } = await import('./xterm-runtime')
 
-    const runtime = createTerminalRuntime('linux', vi.fn(), true, 14)
+    const runtime = createTerminalRuntime({ platform: 'linux', openExternal: vi.fn() })
     const terminal = runtime.terminal as unknown as {
       options: Record<string, unknown>
     }
@@ -170,7 +170,7 @@ describe('createTerminalRuntime', () => {
   test('enables allowProposedApi for Unicode11 addon support', async () => {
     const { createTerminalRuntime } = await import('./xterm-runtime')
 
-    const runtime = createTerminalRuntime('linux', vi.fn(), true, 14)
+    const runtime = createTerminalRuntime({ platform: 'linux', openExternal: vi.fn() })
     const terminal = runtime.terminal as unknown as {
       options: Record<string, unknown>
     }
@@ -194,7 +194,7 @@ describe('createTerminalRuntime', () => {
     try {
       const { createTerminalRuntime } = await import('./xterm-runtime')
 
-      const runtime = createTerminalRuntime('linux', vi.fn(), true)
+      const runtime = createTerminalRuntime({ platform: 'linux', openExternal: vi.fn() })
       const terminal = runtime.terminal as unknown as {
         options: Record<string, unknown>
       }
@@ -227,7 +227,7 @@ describe('createTerminalRuntime', () => {
     try {
       const { createTerminalRuntime } = await import('./xterm-runtime')
 
-      const runtime = createTerminalRuntime('linux', vi.fn(), true)
+      const runtime = createTerminalRuntime({ platform: 'linux', openExternal: vi.fn() })
       const terminal = runtime.terminal as unknown as {
         options: { theme: Record<string, unknown> }
       }
@@ -239,10 +239,10 @@ describe('createTerminalRuntime', () => {
     }
   })
 
-  test('uses the explicit fontFamily parameter when provided', async () => {
+  test('uses the explicit fontFamily from settings when provided', async () => {
     const { createTerminalRuntime } = await import('./xterm-runtime')
 
-    const runtime = createTerminalRuntime('linux', vi.fn(), true, 14, 'Cascadia Mono')
+    const runtime = createTerminalRuntime({ platform: 'linux', openExternal: vi.fn(), settings: { fontFamily: 'Cascadia Mono' } })
     const terminal = runtime.terminal as unknown as {
       options: Record<string, unknown>
     }
@@ -254,7 +254,7 @@ describe('createTerminalRuntime', () => {
     const { createTerminalRuntime } = await import('./xterm-runtime')
     const { WebglAddon } = await import('@xterm/addon-webgl')
 
-    createTerminalRuntime('linux', vi.fn(), true)
+    createTerminalRuntime({ platform: 'linux', openExternal: vi.fn(), settings: { gpuAcceleration: 'on' } })
 
     const webgl = (WebglAddon as unknown as { lastInstance: { triggerContextLoss(): void; disposeCount: number } | null }).lastInstance
     expect(webgl).toBeTruthy()
