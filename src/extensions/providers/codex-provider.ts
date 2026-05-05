@@ -1,10 +1,11 @@
 import { createReadStream } from 'node:fs'
-import { mkdir, readdir, stat, writeFile } from 'node:fs/promises'
+import { readdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { createInterface } from 'node:readline'
 import type { CanonicalSessionEvent, ProviderCommand, ProviderCommandContext } from '@shared/project-session'
 import type { ProviderDefinition, ProviderRuntimeTarget } from './index'
+import { installManagedSidecar } from './managed-sidecar-installer'
 
 const DISCOVERY_ATTEMPTS = 20
 const DISCOVERY_DELAY_MS = 500
@@ -39,15 +40,6 @@ function createCommand(target: ProviderRuntimeTarget, context: ProviderCommandCo
 }
 
 async function writeSharedHookSidecar(target: ProviderRuntimeTarget): Promise<void> {
-  const codexDir = join(target.path, '.codex')
-  await mkdir(codexDir, { recursive: true })
-
-  await writeFile(
-    join(codexDir, 'config.toml'),
-    '[features]\ncodex_hooks = true\n',
-    'utf-8'
-  )
-
   const hooksConfig = {
     hooks: {
       SessionStart: [
@@ -74,15 +66,7 @@ async function writeSharedHookSidecar(target: ProviderRuntimeTarget): Promise<vo
       ]
     }
   }
-  await writeFile(
-    join(codexDir, 'hooks.json'),
-    JSON.stringify(hooksConfig, null, 2) + '\n',
-    'utf-8'
-  )
-
-  await writeFile(
-    join(codexDir, 'hook-stoa.mjs'),
-    `import { createInterface } from 'node:readline'
+  const hookSidecarContent = `import { createInterface } from 'node:readline'
 
 const sessionId = process.env.STOA_SESSION_ID
 const projectId = process.env.STOA_PROJECT_ID
@@ -126,9 +110,31 @@ const text = await response.text()
 if (response.ok && text.trim()) {
   process.stdout.write(text.trim())
 }
-`,
-    'utf-8'
-  )
+`
+
+  await installManagedSidecar({
+    rootDir: target.path,
+    manifestRelativePath: '.codex/.stoa-managed-sidecar.json',
+    currentArtifacts: [
+      '.codex/config.toml',
+      '.codex/hooks.json',
+      '.codex/hook-stoa.mjs'
+    ],
+    writes: [
+      {
+        relativePath: '.codex/config.toml',
+        content: '[features]\ncodex_hooks = true\n'
+      },
+      {
+        relativePath: '.codex/hooks.json',
+        content: `${JSON.stringify(hooksConfig, null, 2)}\n`
+      },
+      {
+        relativePath: '.codex/hook-stoa.mjs',
+        content: hookSidecarContent
+      }
+    ]
+  })
 }
 
 function normalizePath(path: string): string {

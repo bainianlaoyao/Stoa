@@ -1,6 +1,6 @@
 import type { CanonicalSessionEvent, ProviderCommand, ProviderCommandContext } from '@shared/project-session'
 import type { ProviderDefinition, ProviderRuntimeTarget } from './index'
-import { installClaudeEvolverHooks } from './evolver-hook-sidecar'
+import { installClaudeHooks } from './claude-hook-sidecar'
 
 function claudeCommand(context: ProviderCommandContext): string {
   const configuredPath = context.providerPath?.trim()
@@ -56,7 +56,7 @@ export function createClaudeCodeProvider(): ProviderDefinition {
       return null
     },
     async installSidecar(target, context) {
-      await installClaudeEvolverHooks({
+      await installClaudeHooks({
         projectRoot: target.path,
         webhookPort: context.webhookPort
       })

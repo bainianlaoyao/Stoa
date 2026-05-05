@@ -434,8 +434,9 @@ describe('E2E: Main Process Config Guard', () => {
       expect(mainSource).toMatch(/webContents\.send\(\s*IPC_CHANNELS\.updateState/)
     })
 
-    it('main process uses webContents.send for memory notifications', () => {
-      expect(mainSource).toMatch(/webContents\.send\(\s*IPC_CHANNELS\.memoryNotification/)
+    it('main process does not wire memory notifications while memory integration is disabled', () => {
+      expect(mainSource).not.toMatch(/webContents\.send\(\s*IPC_CHANNELS\.memoryNotification/)
+      expect(mainSource).toMatch(/captureEvidence\s*:\s*false/)
     })
 
     it('activate path resends the latest update state after recreating the window', () => {

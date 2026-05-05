@@ -84,6 +84,9 @@ describe('opencode provider', () => {
       })
 
       const content = await readFile(join(workspaceDir, '.opencode', 'plugins', 'stoa-status.ts'), 'utf8')
+      const manifest = JSON.parse(await readFile(join(workspaceDir, '.opencode', '.stoa-managed-sidecar.json'), 'utf8')) as {
+        artifactPaths: string[]
+      }
       expect(content).toContain("intent: 'agent.permission_requested'")
       expect(content).toContain("intent: 'agent.permission_resolved'")
       expect(content).toContain("intent: 'agent.turn_completed'")
@@ -98,6 +101,7 @@ describe('opencode provider', () => {
       expect(content).not.toContain('project_id: process.env.STOA_PROJECT_ID')
       expect(content).not.toContain("status = 'running'")
       expect(content).not.toContain("status = 'completed'")
+      expect(manifest.artifactPaths).toEqual([join('.opencode', 'plugins', 'stoa-status.ts')])
     } finally {
       await rm(workspaceDir, { recursive: true, force: true })
     }

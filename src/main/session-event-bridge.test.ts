@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { readFile, rm, writeFile } from 'node:fs/promises'
+import { readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { request } from 'node:http'
 import { join } from 'node:path'
 import { afterEach, describe, expect, test, vi } from 'vitest'
@@ -1287,6 +1287,67 @@ describe('SessionEventBridge', () => {
 
     expect(response.statusCode).toBe(202)
     expect(response.body).toEqual(JSON.stringify({ accepted: true }))
+  })
+
+  test('captureEvidence=false preserves provider state patches without persisting evidence or running maintenance', async () => {
+    const stateDir = await createTestTempDir('session-event-bridge-no-capture-state-')
+    const workspaceDir = await createTestTempDir('session-event-bridge-no-capture-workspace-')
+    tempDirs.push(stateDir, workspaceDir)
+
+    const manager = await ProjectSessionManager.create({
+      webhookPort: null,
+      globalStatePath: join(stateDir, 'global.json')
+    })
+    const project = await manager.createProject({
+      name: 'P1',
+      path: workspaceDir,
+      defaultSessionType: 'claude-code'
+    })
+    const session = await manager.createSession({
+      projectId: project.id,
+      type: 'claude-code',
+      title: 'Claude Session'
+    })
+    await manager.markRuntimeAlive(session.id, session.externalSessionId)
+
+    const applyProviderStatePatch = vi.fn(async () => {})
+    const persist = vi.fn(async () => {
+      throw new Error('persist should not be called when captureEvidence=false')
+    })
+    const run = vi.fn(async () => {
+      throw new Error('turn maintenance should not run when captureEvidence=false')
+    })
+
+    const bridge = new SessionEventBridge(manager, {
+      applyProviderStatePatch
+    }, undefined, {
+      captureEvidence: false,
+      evidenceStore: {
+        persist
+      },
+      turnMaintenanceRunner: {
+        run
+      } as unknown as TurnMaintenanceRunner
+    })
+    bridges.push(bridge)
+
+    const port = await bridge.start()
+    const secret = bridge.issueSessionSecret(session.id)
+    const response = await postClaudeHook(
+      port,
+      { hook_event_name: 'Stop' },
+      {
+        'x-stoa-secret': secret,
+        'x-stoa-session-id': session.id,
+        'x-stoa-project-id': project.id
+      }
+    )
+
+    expect(response.statusCode).toBe(202)
+    expect(persist).not.toHaveBeenCalled()
+    expect(run).not.toHaveBeenCalled()
+    expect(applyProviderStatePatch).toHaveBeenCalledOnce()
+    await expect(stat(join(workspaceDir, '.stoa', 'memory', 'evidence', session.id))).rejects.toThrow()
   })
 
   test('PostToolUse accepts the hook after persisting evidence and applying the provider patch', async () => {

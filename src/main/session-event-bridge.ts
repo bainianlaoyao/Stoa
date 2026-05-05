@@ -40,6 +40,7 @@ interface SessionEventBridgeOptions {
   onMemoryNotification?: (event: MemoryNotificationEvent) => void
   turnMaintenanceRunner?: TurnMaintenanceRunner
   createRuntimeStateStore?: (projectPath: string) => RuntimeStateStoreLike
+  captureEvidence?: boolean
 }
 
 export class SessionEventBridge {
@@ -54,6 +55,7 @@ export class SessionEventBridge {
   private readonly onMemoryNotification?: (event: MemoryNotificationEvent) => void
   private readonly turnMaintenanceRunner?: TurnMaintenanceRunner
   private readonly createRuntimeStateStore: (projectPath: string) => RuntimeStateStoreLike
+  private readonly captureEvidence: boolean
   private server: ReturnType<typeof createLocalWebhookServer> | null = null
   private port: number | null = null
 
@@ -76,6 +78,7 @@ export class SessionEventBridge {
     this.onMemoryNotification = options.onMemoryNotification
     this.turnMaintenanceRunner = options.turnMaintenanceRunner
     this.createRuntimeStateStore = options.createRuntimeStateStore ?? ((projectPath) => new RuntimeStateStore(projectPath))
+    this.captureEvidence = options.captureEvidence !== false
   }
 
   async start(): Promise<number> {
@@ -251,6 +254,10 @@ export class SessionEventBridge {
   }
 
   private async persistEvidenceIfPresent(event: CanonicalSessionEvent): Promise<EvidenceRef | null> {
+    if (!this.captureEvidence) {
+      return null
+    }
+
     if (!event.evidence) {
       return null
     }
@@ -292,6 +299,10 @@ export class SessionEventBridge {
     event: CanonicalSessionEvent,
     evidenceRef: EvidenceRef | null
   ): Promise<void> {
+    if (!this.captureEvidence) {
+      return
+    }
+
     if (!event.evidence) {
       return
     }

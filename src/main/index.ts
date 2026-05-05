@@ -1,15 +1,10 @@
 import { BrowserWindow, Menu, dialog, app, ipcMain, shell } from 'electron'
 import { spawn } from 'node:child_process'
-import { exec as execChildProcess } from 'node:child_process'
-import { randomUUID } from 'node:crypto'
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { autoUpdater } from 'electron-updater'
 import { IPC_CHANNELS } from '@core/ipc-channels'
-import { getConsumerContextPath } from '@core/memory/delivery-paths'
-import { createMemoryRuntimeHost } from '@core/memory/runtime-host'
-import type { TurnMaintenancePhaseEvent } from '@core/memory/turn-maintenance-runner'
 import { InMemoryObservationStore } from '@core/observation-store'
 import type { ListObservationEventsOptions } from '@core/observation-store'
 import { ObservabilityService } from '@core/observability-service'
@@ -25,12 +20,12 @@ import { SessionEventBridge } from './session-event-bridge'
 import { SessionInputRouter } from './session-input-router'
 import { launchTrackedSessionRuntime } from './launch-tracked-session-runtime'
 import { syncObservabilitySessionsFromManager } from './observability-sync'
+import { syncManagedSidecars } from './managed-sidecar-maintenance'
 import { UpdateService } from './update-service'
 import { DEFAULT_SETTINGS } from '@shared/project-session'
 import type {
   CreateProjectRequest,
   CreateSessionRequest,
-  MemoryNotificationEvent,
   OpenWorkspaceRequest
 } from '@shared/project-session'
 import type { UpdateState } from '@shared/update-state'
@@ -254,35 +249,6 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-async function execShellCommand(
-  command: string,
-  cwd: string,
-  env: NodeJS.ProcessEnv
-): Promise<string> {
-  return await new Promise<string>((resolve, reject) => {
-    execChildProcess(
-      command,
-      {
-        cwd,
-        env,
-        windowsHide: true
-      },
-      (error, stdout, stderr) => {
-        if (error) {
-          reject(new Error(stderr || error.message))
-          return
-        }
-
-        resolve(stdout)
-      }
-    )
-  })
-}
-
-function expandClaudeProjectDir(command: string, projectDir: string): string {
-  return command.replaceAll('$CLAUDE_PROJECT_DIR', projectDir.replace(/\\/g, '/'))
-}
-
 async function waitForValue<T>(
   readValue: () => Promise<T | null>,
   description: string,
@@ -357,91 +323,6 @@ function pushUpdateState(state: UpdateState): void {
   const win = mainWindow
   if (win && !win.isDestroyed()) {
     win.webContents.send(IPC_CHANNELS.updateState, state)
-  }
-}
-
-function pushMemoryNotification(notification: MemoryNotificationEvent): void {
-  const win = mainWindow
-  if (win && !win.isDestroyed()) {
-    win.webContents.send(IPC_CHANNELS.memoryNotification, notification)
-  }
-}
-
-function createTurnMaintenanceNotification(event: TurnMaintenancePhaseEvent): MemoryNotificationEvent {
-  if (event.phase === 'solidify') {
-    if (event.status === 'started') {
-      return {
-        id: randomUUID(),
-        projectId: event.projectId,
-        sessionId: event.stoaSessionId,
-        kind: 'solidify',
-        status: 'info',
-        title: 'Memory solidifying',
-        message: 'Evolver is solidifying turn memory.',
-        createdAt: new Date().toISOString()
-      }
-    }
-
-    if (event.status === 'completed') {
-      return {
-        id: randomUUID(),
-        projectId: event.projectId,
-        sessionId: event.stoaSessionId,
-        kind: 'solidify',
-        status: 'success',
-        title: 'Memory solidified',
-        message: 'Turn memory was solidified by Evolver.',
-        createdAt: new Date().toISOString()
-      }
-    }
-
-    return {
-      id: randomUUID(),
-      projectId: event.projectId,
-      sessionId: event.stoaSessionId,
-      kind: 'solidify',
-      status: 'error',
-      title: 'Solidify failed',
-      message: event.error?.trim() || 'Evolver solidify phase failed.',
-      createdAt: new Date().toISOString()
-    }
-  }
-
-  if (event.status === 'started') {
-    return {
-      id: randomUUID(),
-      projectId: event.projectId,
-      sessionId: event.stoaSessionId,
-      kind: 'distill',
-      status: 'info',
-      title: 'Memory distilling',
-      message: 'Evolver is distilling turn lessons.',
-      createdAt: new Date().toISOString()
-    }
-  }
-
-  if (event.status === 'completed') {
-    return {
-      id: randomUUID(),
-      projectId: event.projectId,
-      sessionId: event.stoaSessionId,
-      kind: 'distill',
-      status: 'success',
-      title: 'Memory distilled',
-      message: 'Turn lessons were distilled into Evolver memory.',
-      createdAt: new Date().toISOString()
-    }
-  }
-
-  return {
-    id: randomUUID(),
-    projectId: event.projectId,
-    sessionId: event.stoaSessionId,
-    kind: 'distill',
-    status: 'error',
-    title: 'Distill failed',
-    message: event.error?.trim() || 'Evolver distill phase failed.',
-    createdAt: new Date().toISOString()
   }
 }
 
@@ -588,22 +469,8 @@ app.whenReady().then(async () => {
     },
     observabilityService
   )
-  const memoryRuntimeHost = await createMemoryRuntimeHost({
-    settings: projectSessionManager,
-    detectShell,
-    detectProvider,
-    onTurnPhaseEvent: (event) => {
-      pushMemoryNotification(createTurnMaintenanceNotification(event))
-    }
-  })
-  if (memoryRuntimeHost.diagnostics.length > 0) {
-    for (const diagnostic of memoryRuntimeHost.diagnostics) {
-      console.warn(`[memory-runtime] ${diagnostic}`)
-    }
-  }
   sessionEventBridge = new SessionEventBridge(projectSessionManager, runtimeController, observabilityService, {
-    onMemoryNotification: pushMemoryNotification,
-    turnMaintenanceRunner: memoryRuntimeHost.turnMaintenanceRunner
+    captureEvidence: false
   })
   updateService = new UpdateService({
     app,
@@ -630,6 +497,11 @@ app.whenReady().then(async () => {
     onStateChange: pushUpdateState
   })
   const webhookPort = await sessionEventBridge.start()
+  await syncManagedSidecars({
+    snapshotSource: projectSessionManager,
+    webhookPort,
+    logger: console
+  })
   installMainE2EDebugApi()
 
   async function resolveRuntimePaths(sessionType: CreateSessionRequest['type']): Promise<{
@@ -782,22 +654,6 @@ app.whenReady().then(async () => {
         replayLength: terminalReplay.length
       })
 
-      const publishedContextPath = getConsumerContextPath(packagedSmokeProjectDir, 'claude-code')
-      await mkdir(dirname(publishedContextPath), { recursive: true })
-      await writeFile(
-        publishedContextPath,
-        `${JSON.stringify({
-          timestamp: '2026-04-28T00:00:00.000Z',
-          signals: ['packaged_smoke'],
-          outcome: {
-            status: 'unknown',
-            score: null,
-            note: 'Packaged smoke memory context is available to Claude SessionStart.'
-          }
-        })}\n`,
-        'utf8'
-      )
-
       const claudeProvider = getProvider('claude-code')
       await claudeProvider.installSidecar({
         session_id: 'packaged-smoke-claude',
@@ -813,28 +669,23 @@ app.whenReady().then(async () => {
       })
 
       const hookSettings = JSON.parse(await readFile(join(packagedSmokeProjectDir, '.claude', 'settings.json'), 'utf8')) as {
-        hooks?: Record<string, Array<{ hooks?: Array<{ command?: string }> }>>
+        hooks?: Record<string, Array<{ hooks?: Array<{ type?: string; url?: string; headers?: Record<string, string> }> }>>
       }
-      const sessionStartCommand = hookSettings.hooks?.SessionStart?.[0]?.hooks?.[0]?.command
-      if (!sessionStartCommand) {
-        throw new Error('Packaged smoke Claude SessionStart hook command is missing.')
+      const sessionStartHook = hookSettings.hooks?.SessionStart?.[0]?.hooks?.[0]
+      if (!sessionStartHook) {
+        throw new Error('Packaged smoke Claude SessionStart hook is missing.')
       }
-
-      const sessionStartOutput = await execShellCommand(
-        expandClaudeProjectDir(sessionStartCommand, packagedSmokeProjectDir),
-        packagedSmokeProjectDir,
-        {
-          ...process.env,
-          CLAUDE_PROJECT_DIR: packagedSmokeProjectDir.replace(/\\/g, '/'),
-          EVOLVER_SESSION_START_DEDUP: '0'
-        }
-      )
-      if (!sessionStartOutput.includes('Packaged smoke memory context is available')) {
-        throw new Error(`Packaged smoke Claude SessionStart hook did not surface the published memory.\nOutput: ${sessionStartOutput}`)
+      if (sessionStartHook.type !== 'http') {
+        throw new Error(`Packaged smoke Claude SessionStart hook must be HTTP.\nHook: ${JSON.stringify(sessionStartHook)}`)
       }
-      await recordPackagedSmoke('claude-session-start-verified', {
-        command: sessionStartCommand,
-        publishedContextPath
+      if (sessionStartHook.url !== `http://127.0.0.1:${webhookPort}/hooks/claude-code`) {
+        throw new Error(`Packaged smoke Claude SessionStart hook points to the wrong URL.\nHook: ${JSON.stringify(sessionStartHook)}`)
+      }
+      if (sessionStartHook.headers?.['x-stoa-secret'] !== '${STOA_SESSION_SECRET}') {
+        throw new Error(`Packaged smoke Claude SessionStart hook headers are invalid.\nHook: ${JSON.stringify(sessionStartHook)}`)
+      }
+      await recordPackagedSmoke('claude-session-start-hook-verified', {
+        hook: sessionStartHook
       })
 
       ptyHost.kill(session.id)

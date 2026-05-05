@@ -343,9 +343,11 @@ describe('E2E: Provider Integration', () => {
       const configPath = join(workspaceDir, '.codex', 'config.toml')
       const hooksPath = join(workspaceDir, '.codex', 'hooks.json')
       const hookSidecarPath = join(workspaceDir, '.codex', 'hook-stoa.mjs')
+      const manifestPath = join(workspaceDir, '.codex', '.stoa-managed-sidecar.json')
       await expect(stat(configPath)).resolves.toMatchObject({ isFile: expect.any(Function) })
       await expect(stat(hooksPath)).resolves.toMatchObject({ isFile: expect.any(Function) })
       await expect(stat(hookSidecarPath)).resolves.toMatchObject({ isFile: expect.any(Function) })
+      await expect(stat(manifestPath)).resolves.toMatchObject({ isFile: expect.any(Function) })
       await expect(stat(join(workspaceDir, '.codex', 'notify-stoa.mjs'))).rejects.toThrow()
     })
 
@@ -471,12 +473,13 @@ describe('E2E: Provider Integration', () => {
         'Stop',
         'UserPromptSubmit'
       ])
-      expect(content).toContain('stoa-evolver-hook-bridge.cmd')
-      await expect(stat(join(workspaceDir, '.claude', 'hooks', 'stoa-evolver-hook-bridge.cjs'))).resolves.toMatchObject({ isFile: expect.any(Function) })
-      await expect(stat(join(workspaceDir, '.claude', 'hooks', 'stoa-evolver-hook-bridge.cmd'))).resolves.toMatchObject({ isFile: expect.any(Function) })
+      expect(content).not.toContain('stoa-evolver-hook-bridge')
+      await expect(stat(join(workspaceDir, '.claude', 'hooks', 'stoa-evolver-hook-bridge.cjs'))).rejects.toThrow()
+      await expect(stat(join(workspaceDir, '.claude', 'hooks', 'stoa-evolver-hook-bridge.cmd'))).rejects.toThrow()
       await expect(stat(join(workspaceDir, '.claude', 'hooks', 'stoa-hook-user-prompt-submit.cjs'))).rejects.toThrow()
-      await expect(stat(join(workspaceDir, '.claude', 'hooks', 'evolver-signal-detect.cjs'))).resolves.toMatchObject({ isFile: expect.any(Function) })
-      await expect(stat(join(workspaceDir, '.claude', 'hooks', 'evolver-session-end.cjs'))).resolves.toMatchObject({ isFile: expect.any(Function) })
+      await expect(stat(join(workspaceDir, '.claude', 'hooks', 'evolver-signal-detect.cjs'))).rejects.toThrow()
+      await expect(stat(join(workspaceDir, '.claude', 'hooks', 'evolver-session-end.cjs'))).rejects.toThrow()
+      await expect(stat(join(workspaceDir, '.claude', '.stoa-managed-sidecar.json'))).resolves.toMatchObject({ isFile: expect.any(Function) })
       expect(content).not.toContain('secret-claude')
       expect(content).not.toContain(target.session_id)
       expect(parsedClaudeHttpHook(content, 'UserPromptSubmit')).toMatchObject({
@@ -512,6 +515,9 @@ describe('E2E: Provider Integration', () => {
       const pluginPath = join(workspaceDir, '.opencode', 'plugins', 'stoa-status.ts')
       const fileStat = await stat(pluginPath)
       expect(fileStat.isFile()).toBe(true)
+      await expect(stat(join(workspaceDir, '.opencode', '.stoa-managed-sidecar.json'))).resolves.toMatchObject({
+        isFile: expect.any(Function)
+      })
     })
 
     test('sidecar file contains webhook URL with correct port', async () => {
