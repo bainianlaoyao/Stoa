@@ -171,10 +171,15 @@ export function createTerminalRuntime(options: {
   const s = normalizeTerminalSettings(options.settings ?? {})
 
   const fontFamilyFromSettings = options.settings?.fontFamily
+  const fontFamilyCJKFromSettings = options.settings?.fontFamilyCJK
   const resolvedFontFamily = fontFamilyFromSettings || resolveTerminalFontFamily()
+  const resolvedFontFamilyCJK = fontFamilyCJKFromSettings || ''
+  const fontFamilyStack = resolvedFontFamilyCJK
+    ? `${resolvedFontFamily}, ${resolvedFontFamilyCJK}, monospace`
+    : resolvedFontFamily
 
   const terminal = new Terminal({
-    fontFamily: resolvedFontFamily,
+    fontFamily: fontFamilyStack,
     fontSize: s.fontSize,
     fontWeight: s.fontWeight as FontWeight,
     fontWeightBold: s.fontWeightBold as FontWeight,

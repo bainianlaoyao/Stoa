@@ -46,9 +46,11 @@ export default {
       autoDetect: '\u81EA\u52A8\u68C0\u6D4B'
     },
     typographySection: {
-      title: '\u7EC8\u7AEF\u5B57\u4F53',
-      description: '\u4FDD\u6301\u547D\u4EE4\u8F93\u51FA\u6E05\u6670\u53EF\u8BFB\uFF0C\u540C\u65F6\u7EF4\u6301\u63A7\u5236\u53F0\u7D27\u51D1\u7684\u884C\u8DDD\u3002',
-      badge: '\u7B49\u5BBD UI',
+      title: '\u5B57\u4F53',
+      description: '\u7EC8\u7AEF\u548C\u754C\u9762\u7684\u5B57\u4F53\u65CF\u4E0E\u5927\u5C0F\u3002',
+      badge: '\u5B57\u4F53',
+      fontFamily: '\u5B57\u4F53\u65CF',
+      fontFamilyCJK: '\u4E2D\u6587\u5B57\u4F53',
       fontSize: '\u5B57\u4F53\u5927\u5C0F'
     },
     languageSection: {
@@ -72,6 +74,7 @@ export default {
       description: '\u7EC8\u7AEF\u5185\u5BB9\u7684\u5B57\u4F53\u3001\u5B57\u53F7\u3001\u5B57\u91CD\u548C\u95F4\u8DDD\u3002',
       badge: '\u6587\u5B57',
       fontFamily: '\u5B57\u4F53\u65CF',
+      fontFamilyCJK: '\u4E2D\u6587\u5B57\u4F53',
       fontSize: '\u5B57\u4F53\u5927\u5C0F',
       fontWeight: '\u5B57\u4F53\u7C97\u7EC6',
       fontWeightBold: '\u7C97\u4F53\u5B57\u91CD',

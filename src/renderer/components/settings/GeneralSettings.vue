@@ -14,19 +14,27 @@ const detectedVscode = ref<string | null>(null)
 const detecting = ref(true)
 const detectingVscode = ref(false)
 
-const fontSizeOptions = Array.from({ length: 13 }, (_, i) => ({
-  value: String(i + 12),
-  label: `${i + 12}px`
-}))
+const workspaceIdeOptions = [
+  { value: 'vscode', label: 'VS Code' }
+]
 
 const fontFamilyOptions = [
   { value: 'JetBrains Mono', label: 'JetBrains Mono' },
   { value: 'Cascadia Mono', label: 'Cascadia Mono' }
 ]
 
-const workspaceIdeOptions = [
-  { value: 'vscode', label: 'VS Code' }
+const fontFamilyCJKOptions = [
+  { value: '', label: 'System default' },
+  { value: 'Noto Sans Mono CJK SC', label: 'Noto Sans Mono CJK SC' },
+  { value: 'Sarasa Mono SC', label: 'Sarasa Mono SC' },
+  { value: 'Source Han Mono SC', label: 'Source Han Mono SC' },
+  { value: 'Microsoft YaHei', label: 'Microsoft YaHei' }
 ]
+
+const fontSizeOptions = Array.from({ length: 13 }, (_, i) => ({
+  value: String(i + 12),
+  label: `${i + 12}px`
+}))
 
 const languageOptions = SUPPORTED_LOCALES.map((loc) => ({
   value: loc,
@@ -77,12 +85,29 @@ function handleWorkspaceIdeChange(value: string): void {
   }
 }
 
+function handleFontFamilyChange(value: string): void {
+  void store.updateSetting('terminal', { ...store.terminal, fontFamily: value })
+  applyFontToDocument()
+}
+
+function handleFontFamilyCJKChange(value: string): void {
+  void store.updateSetting('terminal', { ...store.terminal, fontFamilyCJK: value })
+  applyFontToDocument()
+}
+
 function handleFontSizeChange(value: string): void {
   void store.updateSetting('terminal', { ...store.terminal, fontSize: Number(value) })
 }
 
-function handleFontFamilyChange(value: string): void {
-  void store.updateSetting('terminal', { ...store.terminal, fontFamily: value })
+function applyFontToDocument(): void {
+  const resolved = store.resolvedTerminalSettings()
+  const mono = resolved.fontFamily || getComputedStyle(document.documentElement).getPropertyValue('--font-mono').trim() || 'monospace'
+  const cjk = resolved.fontFamilyCJK
+  const stack = cjk ? `${mono}, ${cjk}, monospace` : `${mono}, monospace`
+  document.documentElement.style.setProperty('--font-mono', stack)
+  if (cjk) {
+    document.documentElement.style.setProperty('--font-ui', `'SF Pro Text', 'Segoe UI Variable', 'Segoe UI', Inter, '${cjk}', sans-serif`)
+  }
 }
 
 async function handleLanguageChange(value: string): Promise<void> {
@@ -174,7 +199,7 @@ async function handleLanguageChange(value: string): Promise<void> {
         </div>
       </section>
 
-      <section class="settings-card" aria-label="Terminal font size">
+      <section class="settings-card" aria-label="Typography">
         <div class="settings-card__header">
           <div>
             <h4 class="settings-card__title">{{ t('general.typographySection.title') }}</h4>
@@ -184,12 +209,20 @@ async function handleLanguageChange(value: string): Promise<void> {
         </div>
 
         <GlassFormField
-          :label="t('general.typographySection.title')"
+          :label="t('general.typographySection.fontFamily')"
           type="select"
           :model-value="store.resolvedTerminalSettings().fontFamily"
           :options="fontFamilyOptions"
           data-settings-field="terminalFontFamily"
           @update:model-value="handleFontFamilyChange"
+        />
+        <GlassFormField
+          :label="t('general.typographySection.fontFamilyCJK')"
+          type="select"
+          :model-value="store.resolvedTerminalSettings().fontFamilyCJK"
+          :options="fontFamilyCJKOptions"
+          data-settings-field="terminalFontFamilyCJK"
+          @update:model-value="handleFontFamilyCJKChange"
         />
         <GlassFormField
           :label="t('general.typographySection.fontSize')"

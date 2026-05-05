@@ -15,11 +15,6 @@ const fontSizeOptions = Array.from({ length: 27 }, (_, i) => ({
   label: `${i + 6}px`
 }))
 
-const fontFamilyOptions = [
-  { value: 'JetBrains Mono', label: 'JetBrains Mono' },
-  { value: 'Cascadia Mono', label: 'Cascadia Mono' }
-]
-
 const fontWeightOptions = [
   { value: 'normal', label: 'Normal' },
   { value: 'bold', label: 'Bold' }
@@ -143,14 +138,6 @@ function handleStringChange(key: string, value: string): void {
           <span class="settings-card__badge">{{ t('terminalSettings.typography.badge') }}</span>
         </div>
 
-        <GlassFormField
-          :label="t('terminalSettings.typography.fontFamily')"
-          type="select"
-          :model-value="store.resolvedTerminalSettings().fontFamily"
-          :options="fontFamilyOptions"
-          data-settings-field="terminalFontFamily"
-          @update:model-value="handleStringChange('fontFamily', $event)"
-        />
         <GlassFormField
           :label="t('terminalSettings.typography.fontSize')"
           type="select"

@@ -46,10 +46,12 @@ export default {
       autoDetect: 'Auto-detect'
     },
     typographySection: {
-      title: 'Terminal typography',
-      description: 'Keep command output legible while preserving the tighter console density.',
-      badge: 'Mono UI',
-      fontSize: 'Font Size'
+      title: 'Typography',
+      description: 'Font family and size for both the terminal and interface.',
+      badge: 'Font',
+      fontFamily: 'Font family',
+      fontFamilyCJK: 'CJK font family',
+      fontSize: 'Font size'
     },
     languageSection: {
       title: 'Display language',
@@ -72,6 +74,7 @@ export default {
       description: 'Font face, size, weight, and spacing for terminal content.',
       badge: 'Text',
       fontFamily: 'Font family',
+      fontFamilyCJK: 'CJK font family',
       fontSize: 'Font size',
       fontWeight: 'Font weight',
       fontWeightBold: 'Bold font weight',

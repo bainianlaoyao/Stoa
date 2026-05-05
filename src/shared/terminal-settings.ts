@@ -21,6 +21,7 @@ export type GpuAcceleration = 'auto' | 'on' | 'off';
 export interface TerminalSettings {
   fontSize: number;
   fontFamily: string;
+  fontFamilyCJK: string;
   fontWeight: string | number;
   fontWeightBold: string | number;
   lineHeight: number;
@@ -49,7 +50,8 @@ export interface TerminalSettings {
 
 export const DEFAULT_TERMINAL_SETTINGS: TerminalSettings = {
   fontSize: 14,
-  fontFamily: 'JetBrains Mono',
+  fontFamily: '',
+  fontFamilyCJK: '',
   fontWeight: 'normal',
   fontWeightBold: 'bold',
   lineHeight: 1,

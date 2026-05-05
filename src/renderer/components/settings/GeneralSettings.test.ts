@@ -135,7 +135,7 @@ describe('GeneralSettings', () => {
     expect(wrapper.find('.settings-panel__title').text()).toBe('Shell and terminal defaults')
     expect(wrapper.text()).toContain('Shell executable')
     expect(wrapper.text()).toContain('Workspace quick access')
-    expect(wrapper.text()).toContain('Terminal typography')
+    expect(wrapper.text()).toContain('Typography')
   })
 
   it('renders Browse button', () => {
