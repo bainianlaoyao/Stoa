@@ -16,7 +16,8 @@ interface SessionRuntimePtyHost {
     runtimeId: string,
     command: ProviderCommand,
     onData: (data: string) => void,
-    onExit: (exitCode: number) => void
+    onExit: (exitCode: number) => void,
+    shellIntegration?: { enabled: boolean; shellPath: string }
   ) => { runtimeId: string }
 }
 
@@ -113,6 +114,11 @@ export async function startSessionRuntime(options: StartSessionRuntimeOptions): 
 
   let started: { runtimeId: string }
   let exitObservedDuringStart = false
+
+  const shellIntegration = session.type === 'shell' && options.shellPath
+    ? { enabled: true, shellPath: options.shellPath }
+    : undefined
+
   try {
     started = ptyHost.start(
       session.id,
@@ -128,7 +134,8 @@ export async function startSessionRuntime(options: StartSessionRuntimeOptions): 
           .catch((error) => {
             console.error(`[session-runtime] Failed to mark runtime exit for ${session.id}:`, error)
           })
-      }
+      },
+      shellIntegration
     )
   } catch (error) {
     await manager.markRuntimeFailedToStart(session.id, `${session.type} failed to start: ${error instanceof Error ? error.message : String(error)}`)

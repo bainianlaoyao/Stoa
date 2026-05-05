@@ -78,7 +78,7 @@ describe('PtyHost', () => {
           name: 'xterm-256color',
           cols: 120,
           rows: 30,
-          env: { PATH: '/usr/bin', TERM: 'xterm-256color', COLORTERM: 'truecolor', TERM_PROGRAM: 'xterm.js' },
+          env: { PATH: '/usr/bin', TERM: 'xterm-256color', COLORTERM: 'truecolor', TERM_PROGRAM: 'Stoa', TERM_PROGRAM_VERSION: '0.1.1' },
         }
       )
     })
@@ -309,6 +309,74 @@ describe('PtyHost', () => {
 
     test('handles empty sessions gracefully', () => {
       expect(() => new PtyHost().dispose()).not.toThrow()
+    })
+  })
+
+  describe('shell integration', () => {
+    test('injects shell integration env and overrides command for bash shell', async () => {
+      const { default: pty } = await import('node-pty')
+
+      host.start('rt-shell-1', defaultCommand, vi.fn(), vi.fn(), {
+        enabled: true,
+        shellPath: '/bin/bash',
+      })
+
+      expect(pty.spawn).toHaveBeenCalledWith(
+        '/bin/bash',
+        expect.arrayContaining([expect.stringContaining('bash.sh')]),
+        expect.objectContaining({
+          env: expect.objectContaining({
+            STOA_SHELL_INTEGRATION: '1',
+            STOA_NONCE: expect.any(String),
+            TERM_PROGRAM: 'Stoa',
+            TERM_PROGRAM_VERSION: '0.1.1',
+          }),
+        })
+      )
+    })
+
+    test('injects shell integration env for pwsh', async () => {
+      const { default: pty } = await import('node-pty')
+
+      host.start('rt-shell-2', defaultCommand, vi.fn(), vi.fn(), {
+        enabled: true,
+        shellPath: 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+      })
+
+      expect(pty.spawn).toHaveBeenCalledWith(
+        'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+        expect.arrayContaining(['-NoLogo', '-NoExit', '-Command']),
+        expect.objectContaining({
+          env: expect.objectContaining({
+            STOA_SHELL_INTEGRATION: '1',
+            STOA_NONCE: expect.any(String),
+          }),
+        })
+      )
+    })
+
+    test('does not inject shell integration when options not provided', async () => {
+      const { default: pty } = await import('node-pty')
+
+      host.start('rt-no-si', defaultCommand, vi.fn(), vi.fn())
+
+      const callArgs = (pty.spawn as ReturnType<typeof vi.fn>).mock.calls[0]
+      const env = callArgs[2].env as Record<string, string>
+      expect(env.STOA_SHELL_INTEGRATION).toBeUndefined()
+      expect(env.STOA_NONCE).toBeUndefined()
+    })
+
+    test('does not inject shell integration when enabled is false', async () => {
+      const { default: pty } = await import('node-pty')
+
+      host.start('rt-si-false', defaultCommand, vi.fn(), vi.fn(), {
+        enabled: false,
+        shellPath: '/bin/bash',
+      })
+
+      const callArgs = (pty.spawn as ReturnType<typeof vi.fn>).mock.calls[0]
+      const env = callArgs[2].env as Record<string, string>
+      expect(env.STOA_SHELL_INTEGRATION).toBeUndefined()
     })
   })
 })
