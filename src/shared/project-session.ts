@@ -7,6 +7,7 @@ import type {
 } from './observability'
 import type { MemoryRuntimeEvidence } from './memory-runtime'
 import type { BlockingReason } from '@shared/observability'
+import type { TerminalSettings } from './terminal-settings'
 
 export type SessionType = 'shell' | 'opencode' | 'codex' | 'claude-code'
 export type EvolverInferenceProvider = 'claude-code'
@@ -128,8 +129,7 @@ export interface PersistedSession {
 
 export interface AppSettings {
   shellPath: string
-  terminalFontSize: number
-  terminalFontFamily: string
+  terminal: Partial<TerminalSettings>
   providers: Record<string, string>
   evolverInferenceProvider: EvolverInferenceProvider
   evolverExecutionMode: EvolverExecutionMode
@@ -155,8 +155,7 @@ export const BUILTIN_FONT_FAMILIES = ['JetBrains Mono', 'Cascadia Mono'] as cons
 
 export const DEFAULT_SETTINGS: AppSettings = {
   shellPath: '',
-  terminalFontSize: 14,
-  terminalFontFamily: 'JetBrains Mono',
+  terminal: {},
   providers: {},
   evolverInferenceProvider: 'claude-code',
   evolverExecutionMode: 'workspace-shell',
