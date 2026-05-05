@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
 
-export type SettingsTab = 'general' | 'providers' | 'about'
+export type SettingsTab = 'general' | 'terminal' | 'providers' | 'about'
 
 defineProps<{
   activeTab: SettingsTab
@@ -22,6 +22,15 @@ const tabs: Array<{ id: SettingsTab; label: string; summary: string; iconPaths: 
     iconPaths: [
       'M12 8.25a3.75 3.75 0 1 0 0 7.5a3.75 3.75 0 0 0 0-7.5Z',
       'M19.5 12a7.48 7.48 0 0 0-.11-1.28l1.56-1.22l-1.5-2.6l-1.93.53a7.59 7.59 0 0 0-2.2-1.28L15 4h-3l-.32 2.15a7.59 7.59 0 0 0-2.2 1.28l-1.93-.53l-1.5 2.6l1.56 1.22a7.76 7.76 0 0 0 0 2.56L6.05 14.5l1.5 2.6l1.93-.53c.66.54 1.4.97 2.2 1.28L12 20h3l.32-2.15c.8-.31 1.54-.74 2.2-1.28l1.93.53l1.5-2.6l-1.56-1.22c.07-.42.11-.84.11-1.28Z'
+    ]
+  },
+  {
+    id: 'terminal',
+    label: t('settings.tabs.terminal.label'),
+    summary: t('settings.tabs.terminal.summary'),
+    iconPaths: [
+      'M6.75 7.5l3 2.25-3 2.25m4.5 0h3',
+      'M3.75 5.25h16.5v13.5H3.75z'
     ]
   },
   {

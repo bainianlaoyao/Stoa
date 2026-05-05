@@ -78,11 +78,11 @@ function handleWorkspaceIdeChange(value: string): void {
 }
 
 function handleFontSizeChange(value: string): void {
-  void store.updateSetting('terminalFontSize', Number(value))
+  void store.updateSetting('terminal', { ...store.terminal, fontSize: Number(value) })
 }
 
 function handleFontFamilyChange(value: string): void {
-  void store.updateSetting('terminalFontFamily', value)
+  void store.updateSetting('terminal', { ...store.terminal, fontFamily: value })
 }
 
 async function handleLanguageChange(value: string): Promise<void> {
@@ -186,7 +186,7 @@ async function handleLanguageChange(value: string): Promise<void> {
         <GlassFormField
           :label="t('general.typographySection.title')"
           type="select"
-          :model-value="store.terminalFontFamily"
+          :model-value="store.resolvedTerminalSettings().fontFamily"
           :options="fontFamilyOptions"
           data-settings-field="terminalFontFamily"
           @update:model-value="handleFontFamilyChange"
@@ -194,7 +194,7 @@ async function handleLanguageChange(value: string): Promise<void> {
         <GlassFormField
           :label="t('general.typographySection.fontSize')"
           type="select"
-          :model-value="String(store.terminalFontSize)"
+          :model-value="String(store.resolvedTerminalSettings().fontSize)"
           :options="fontSizeOptions"
           data-settings-field="terminalFontSize"
           @update:model-value="handleFontSizeChange"
