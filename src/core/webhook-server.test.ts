@@ -200,7 +200,7 @@ describe('local webhook server', () => {
       }
     )
 
-    expect(response.statusCode).toBe(202)
+    expect(response.statusCode).toBe(204)
     expect(accepted).toHaveLength(1)
     expect(accepted[0]).toMatchObject({
       event_type: 'claude-code.Stop',
@@ -266,7 +266,7 @@ describe('local webhook server', () => {
         }
       )
 
-      expect(response.statusCode).toBe(202)
+      expect(response.statusCode).toBe(204)
       expect(accepted).toHaveLength(1)
       expect(accepted[0]).toMatchObject({
         event_type: 'codex.SessionStart',
@@ -297,9 +297,8 @@ describe('local webhook server', () => {
         }
       )
 
-      expect(response.statusCode).toBe(202)
-      const parsed = JSON.parse(response.body)
-      expect(parsed.ignored).toBe(true)
+      expect(response.statusCode).toBe(204)
+      expect(response.body).toBe('')
       expect(accepted).toHaveLength(0)
     })
   })

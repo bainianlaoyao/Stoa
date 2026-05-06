@@ -288,7 +288,7 @@ export function createLocalWebhookServer(options: LocalWebhookServerOptions = {}
       throw error
     }
     if (!event) {
-      response.status(202).json({ accepted: true, ignored: true })
+      response.status(204).send()
       return
     }
 
@@ -299,7 +299,7 @@ export function createLocalWebhookServer(options: LocalWebhookServerOptions = {}
 
     const result = await options.onEvent?.(event)
     if (result === undefined || result === null) {
-      response.status(202).json({ accepted: true })
+      response.status(204).send()
       return
     }
 
@@ -402,7 +402,7 @@ export function createLocalWebhookServer(options: LocalWebhookServerOptions = {}
               : null
         })
       }
-      response.status(202).json({ accepted: true, ignored: true })
+      response.status(204).send()
       return
     }
 
@@ -421,7 +421,7 @@ export function createLocalWebhookServer(options: LocalWebhookServerOptions = {}
     }
     const result = await options.onEvent?.(event)
     if (result === undefined || result === null) {
-      response.status(202).json({ accepted: true })
+      response.status(204).send()
       return
     }
 
