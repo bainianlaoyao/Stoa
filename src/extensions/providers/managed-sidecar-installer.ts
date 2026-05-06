@@ -1,4 +1,4 @@
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 
 const MANIFEST_FILE_NAME = '.stoa-managed-sidecar.json'
@@ -54,6 +54,56 @@ export async function installManagedSidecar(plan: ManagedSidecarInstallPlan): Pr
     } satisfies ManagedSidecarManifest, null, 2)}\n`,
     'utf8'
   )
+}
+
+export async function uninstallManagedSidecar(options: {
+  rootDir: string
+  manifestRelativePath?: string
+  legacyArtifacts?: string[]
+}): Promise<void> {
+  const manifestPath = join(options.rootDir, options.manifestRelativePath ?? MANIFEST_FILE_NAME)
+  const previousArtifacts = await readManagedArtifacts(manifestPath)
+  const allArtifacts = new Set<string>([
+    ...previousArtifacts,
+    ...(options.legacyArtifacts ?? [])
+  ])
+
+  await Promise.all(
+    [...allArtifacts].map(async (relativePath) => {
+      await rm(join(options.rootDir, relativePath), { force: true, recursive: true })
+    })
+  )
+
+  await rm(manifestPath, { force: true })
+
+  // Clean up empty parent directories left after artifact removal
+  const manifestRelativeDir = dirname(options.manifestRelativePath ?? MANIFEST_FILE_NAME)
+  const dirPaths = new Set<string>()
+  for (const relativePath of allArtifacts) {
+    const parent = dirname(relativePath)
+    if (parent !== '.' && parent !== '..') {
+      dirPaths.add(parent)
+    }
+    // Also collect grandparent dirs (e.g. '.claude/hooks' → '.claude')
+    const grandparent = dirname(parent)
+    if (grandparent !== '.' && grandparent !== '..' && grandparent !== manifestRelativeDir) {
+      dirPaths.add(grandparent)
+    }
+  }
+  // Also clean manifest parent dir
+  dirPaths.add(manifestRelativeDir)
+
+  for (const dirPath of [...dirPaths].sort().reverse()) {
+    const absoluteDir = join(options.rootDir, dirPath)
+    try {
+      const entries = await readdir(absoluteDir)
+      if (entries.length === 0) {
+        await rm(absoluteDir, { force: true, recursive: true })
+      }
+    } catch {
+      // Directory doesn't exist, ignore
+    }
+  }
 }
 
 async function readManagedArtifacts(manifestPath: string): Promise<string[]> {

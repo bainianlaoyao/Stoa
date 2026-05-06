@@ -13,7 +13,7 @@ import { detectShell, detectProvider, detectVscode } from '@core/settings-detect
 import { openWorkspace } from '@core/workspace-launcher'
 import { resolveRuntimePaths as resolveProviderRuntimePaths } from '@core/provider-path-resolver'
 import { getProvider } from '@extensions/providers'
-import { getProviderDescriptorByProviderId } from '@shared/provider-descriptors'
+import { getProviderDescriptorByProviderId, getProviderDescriptorBySessionType } from '@shared/provider-descriptors'
 import { derivePresencePhase } from '@shared/session-state-reducer'
 import { SessionRuntimeController } from './session-runtime-controller'
 import { SessionEventBridge } from './session-event-bridge'
@@ -723,10 +723,24 @@ app.whenReady().then(async () => {
     if (!projectSessionManager) return
 
     const snapshot = projectSessionManager.snapshot()
+    const project = snapshot.projects.find(p => p.id === projectId)
     const projectSessions = snapshot.sessions.filter(s => s.projectId === projectId)
     for (const session of projectSessions) {
       sessionInputRouter?.resetSession(session.id)
       ptyHost?.kill(session.id)
+    }
+
+    if (project) {
+      const MANAGED_PROVIDER_TYPES = ['claude-code', 'codex', 'opencode'] as const
+      for (const providerType of MANAGED_PROVIDER_TYPES) {
+        try {
+          const providerId = getProviderDescriptorBySessionType(providerType).providerId
+          const provider = getProvider(providerId)
+          await provider.uninstallSidecar?.(project.path)
+        } catch (error) {
+          console.warn(`[project-delete] Failed to uninstall ${providerType} sidecar for ${project.path}:`, error)
+        }
+      }
     }
 
     await projectSessionManager.deleteProject(projectId)
@@ -944,6 +958,25 @@ app.whenReady().then(async () => {
 
   ipcMain.handle(IPC_CHANNELS.updateDismiss, async () => {
     await updateService?.dismiss()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.sidecarUninstall, async (_event, projectId: string) => {
+    if (!projectSessionManager) return
+
+    const snapshot = projectSessionManager.snapshot()
+    const project = snapshot.projects.find(p => p.id === projectId)
+    if (!project) return
+
+    const MANAGED_PROVIDER_TYPES = ['claude-code', 'codex', 'opencode'] as const
+    for (const providerType of MANAGED_PROVIDER_TYPES) {
+      try {
+        const providerId = getProviderDescriptorBySessionType(providerType).providerId
+        const provider = getProvider(providerId)
+        await provider.uninstallSidecar?.(project.path)
+      } catch (error) {
+        console.warn(`[sidecar-uninstall] Failed to uninstall ${providerType} sidecar for ${project.path}:`, error)
+      }
+    }
   })
 
   mainWindow = createMainWindow()

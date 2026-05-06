@@ -1,8 +1,8 @@
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, test } from 'vitest'
-import { installManagedSidecar } from './managed-sidecar-installer'
+import { installManagedSidecar, uninstallManagedSidecar } from './managed-sidecar-installer'
 
 const tempDirs: string[] = []
 
@@ -63,5 +63,79 @@ describe('managed-sidecar-installer', () => {
 
     await expect(stat(join(rootDir, '.codex', 'hook-stoa.mjs'))).rejects.toThrow()
     await expect(stat(join(rootDir, '.codex', '.stoa-managed-sidecar.json'))).rejects.toThrow()
+  })
+
+  test('uninstallManagedSidecar removes all managed artifacts and the manifest', async () => {
+    const rootDir = await createTempDir('stoa-uninstall-')
+
+    await installManagedSidecar({
+      rootDir,
+      manifestRelativePath: '.codex/.stoa-managed-sidecar.json',
+      currentArtifacts: ['.codex/hooks.json', '.codex/hook-stoa.mjs', '.codex/config.toml'],
+      writes: [
+        { relativePath: '.codex/hooks.json', content: '{}' },
+        { relativePath: '.codex/hook-stoa.mjs', content: 'hook' },
+        { relativePath: '.codex/config.toml', content: 'config' }
+      ]
+    })
+
+    await uninstallManagedSidecar({
+      rootDir,
+      manifestRelativePath: '.codex/.stoa-managed-sidecar.json'
+    })
+
+    await expect(stat(join(rootDir, '.codex', 'hooks.json'))).rejects.toThrow()
+    await expect(stat(join(rootDir, '.codex', 'hook-stoa.mjs'))).rejects.toThrow()
+    await expect(stat(join(rootDir, '.codex', 'config.toml'))).rejects.toThrow()
+    await expect(stat(join(rootDir, '.codex', '.stoa-managed-sidecar.json'))).rejects.toThrow()
+  })
+
+  test('uninstallManagedSidecar removes legacy artifacts', async () => {
+    const rootDir = await createTempDir('stoa-uninstall-legacy-')
+    await mkdir(join(rootDir, '.claude', 'hooks'), { recursive: true })
+    await writeFile(join(rootDir, '.claude', 'hooks', 'legacy-file.cjs'), 'legacy', 'utf8')
+    await installManagedSidecar({
+      rootDir,
+      manifestRelativePath: '.claude/.stoa-managed-sidecar.json',
+      currentArtifacts: ['.claude/settings.json'],
+      writes: [{ relativePath: '.claude/settings.json', content: '{}' }]
+    })
+
+    await uninstallManagedSidecar({
+      rootDir,
+      manifestRelativePath: '.claude/.stoa-managed-sidecar.json',
+      legacyArtifacts: ['.claude/hooks/legacy-file.cjs']
+    })
+
+    await expect(stat(join(rootDir, '.claude', 'settings.json'))).rejects.toThrow()
+    await expect(stat(join(rootDir, '.claude', 'hooks', 'legacy-file.cjs'))).rejects.toThrow()
+    await expect(stat(join(rootDir, '.claude', '.stoa-managed-sidecar.json'))).rejects.toThrow()
+  })
+
+  test('uninstallManagedSidecar cleans up empty directories', async () => {
+    const rootDir = await createTempDir('stoa-uninstall-empty-dir-')
+
+    await installManagedSidecar({
+      rootDir,
+      manifestRelativePath: '.codex/.stoa-managed-sidecar.json',
+      currentArtifacts: ['.codex/hooks.json'],
+      writes: [{ relativePath: '.codex/hooks.json', content: '{}' }]
+    })
+
+    await uninstallManagedSidecar({
+      rootDir,
+      manifestRelativePath: '.codex/.stoa-managed-sidecar.json'
+    })
+
+    await expect(stat(join(rootDir, '.codex'))).rejects.toThrow()
+  })
+
+  test('uninstallManagedSidecar is a no-op when no manifest exists', async () => {
+    const rootDir = await createTempDir('stoa-uninstall-noop-')
+
+    await uninstallManagedSidecar({
+      rootDir,
+      manifestRelativePath: '.codex/.stoa-managed-sidecar.json'
+    })
   })
 })

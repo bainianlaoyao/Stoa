@@ -1,7 +1,7 @@
 import { join } from 'node:path'
 import type { CanonicalSessionEvent, ProviderCommand, ProviderCommandContext } from '@shared/project-session'
 import type { ProviderDefinition, ProviderRuntimeTarget } from './index'
-import { installManagedSidecar } from './managed-sidecar-installer'
+import { installManagedSidecar, uninstallManagedSidecar } from './managed-sidecar-installer'
 
 function opencodeCommand(context: ProviderCommandContext): string {
   const configuredPath = context.providerPath?.trim()
@@ -63,6 +63,12 @@ export function createOpenCodeProvider(): ProviderDefinition {
     },
     async installSidecar(target, context) {
       await writeSidecarPlugin(target, context)
+    },
+    async uninstallSidecar(projectPath) {
+      await uninstallManagedSidecar({
+        rootDir: projectPath,
+        manifestRelativePath: '.opencode/.stoa-managed-sidecar.json'
+      })
     }
   }
 }

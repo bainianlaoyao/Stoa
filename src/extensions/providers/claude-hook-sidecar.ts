@@ -1,4 +1,4 @@
-import { installManagedSidecar } from './managed-sidecar-installer'
+import { installManagedSidecar, uninstallManagedSidecar } from './managed-sidecar-installer'
 
 interface ClaudeHttpHook {
   type: 'http'
@@ -66,6 +66,14 @@ export async function installClaudeHooks(options: InstallClaudeHooksOptions): Pr
       relativePath: '.claude/settings.json',
       content: `${JSON.stringify(settings, null, 2)}\n`
     }]
+  })
+}
+
+export async function uninstallClaudeHooks(projectRoot: string): Promise<void> {
+  await uninstallManagedSidecar({
+    rootDir: projectRoot,
+    manifestRelativePath: '.claude/.stoa-managed-sidecar.json',
+    legacyArtifacts: [...LEGACY_ARTIFACTS]
   })
 }
 

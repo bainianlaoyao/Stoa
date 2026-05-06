@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path'
 import { createInterface } from 'node:readline'
 import type { CanonicalSessionEvent, ProviderCommand, ProviderCommandContext } from '@shared/project-session'
 import type { ProviderDefinition, ProviderRuntimeTarget } from './index'
-import { installManagedSidecar } from './managed-sidecar-installer'
+import { installManagedSidecar, uninstallManagedSidecar } from './managed-sidecar-installer'
 
 const DISCOVERY_ATTEMPTS = 20
 const DISCOVERY_DELAY_MS = 500
@@ -261,6 +261,12 @@ export function createCodexProvider(): ProviderDefinition {
     },
     async installSidecar(target) {
       await writeSharedHookSidecar(target)
+    },
+    async uninstallSidecar(projectPath) {
+      await uninstallManagedSidecar({
+        rootDir: projectPath,
+        manifestRelativePath: '.codex/.stoa-managed-sidecar.json'
+      })
     },
     async discoverExternalSessionIdAfterStart(target, context) {
       const sessionRoot = join(codexHome(), 'sessions')

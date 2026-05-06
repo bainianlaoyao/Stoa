@@ -93,6 +93,9 @@ const api: RendererApi = {
   async dismissUpdate() {
     return ipcRenderer.invoke(IPC_CHANNELS.updateDismiss)
   },
+  async uninstallSidecars(projectId: string) {
+    return ipcRenderer.invoke(IPC_CHANNELS.sidecarUninstall, projectId)
+  },
   onTerminalData(callback: (chunk: TerminalDataChunk) => void) {
     const handler = (_event: Electron.IpcRendererEvent, chunk: TerminalDataChunk) => callback(chunk)
     ipcRenderer.on(IPC_CHANNELS.terminalData, handler)

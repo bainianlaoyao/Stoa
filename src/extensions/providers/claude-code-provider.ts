@@ -1,6 +1,6 @@
 import type { CanonicalSessionEvent, ProviderCommand, ProviderCommandContext } from '@shared/project-session'
 import type { ProviderDefinition, ProviderRuntimeTarget } from './index'
-import { installClaudeHooks } from './claude-hook-sidecar'
+import { installClaudeHooks, uninstallClaudeHooks } from './claude-hook-sidecar'
 
 function claudeCommand(context: ProviderCommandContext): string {
   const configuredPath = context.providerPath?.trim()
@@ -60,6 +60,9 @@ export function createClaudeCodeProvider(): ProviderDefinition {
         projectRoot: target.path,
         webhookPort: context.webhookPort
       })
+    },
+    async uninstallSidecar(projectPath) {
+      await uninstallClaudeHooks(projectPath)
     },
     async discoverExternalSessionIdAfterStart(target) {
       return target.external_session_id ?? null

@@ -29,6 +29,7 @@ export interface ProviderDefinition {
   ): Promise<ProviderCommand>
   resolveSessionId(event: CanonicalSessionEvent): string | null
   installSidecar(target: ProviderRuntimeTarget, context: ProviderCommandContext): Promise<void>
+  uninstallSidecar?(projectPath: string): Promise<void>
   discoverExternalSessionIdAfterStart?(
     target: ProviderRuntimeTarget,
     context: ProviderCommandContext

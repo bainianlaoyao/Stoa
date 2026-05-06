@@ -311,6 +311,7 @@ export interface RendererApi {
   downloadUpdate: () => Promise<UpdateState>
   quitAndInstallUpdate: () => Promise<void>
   dismissUpdate: () => Promise<void>
+  uninstallSidecars: (projectId: string) => Promise<void>
   onUpdateState: (callback: (state: UpdateState) => void) => () => void
 }
 

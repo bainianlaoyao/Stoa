@@ -190,7 +190,8 @@ describe('E2E: Main Process Config Guard', () => {
         ['checkForUpdates', 'updateCheck'],
         ['downloadUpdate', 'updateDownload'],
         ['quitAndInstallUpdate', 'updateQuitAndInstall'],
-        ['dismissUpdate', 'updateDismiss']
+        ['dismissUpdate', 'updateDismiss'],
+        ['uninstallSidecars', 'sidecarUninstall']
       ])
 
       for (const method of rendererApiMethods) {
@@ -312,6 +313,7 @@ describe('E2E: Main Process Config Guard', () => {
         'downloadUpdate',
         'quitAndInstallUpdate',
         'dismissUpdate',
+        'uninstallSidecars',
         'minimizeWindow',
         'maximizeWindow',
         'closeWindow',
@@ -383,6 +385,7 @@ describe('E2E: Main Process Config Guard', () => {
       expect(invMap.get('downloadUpdate')).toBe('update:download')
       expect(invMap.get('quitAndInstallUpdate')).toBe('update:quit-and-install')
       expect(invMap.get('dismissUpdate')).toBe('update:dismiss')
+      expect(invMap.get('uninstallSidecars')).toBe('sidecar:uninstall')
     })
 
     it('preload send-only methods use correct channel names', () => {
