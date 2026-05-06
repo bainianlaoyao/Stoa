@@ -67,9 +67,14 @@ type SessionPhase =
 ```ts
 type SessionRuntimeState =
   | 'created'
+  | 'starting'
   | 'alive'
   | 'exited'
   | 'failed_to_start'
+
+type TurnState =
+  | 'idle'
+  | 'running'
 
 type TurnOutcome =
   | 'none'
@@ -99,8 +104,9 @@ type FailureReason =
   | 'unknown'
 
 interface SessionStateCore {
-  phase: SessionPhase
   runtimeState: SessionRuntimeState
+  runtimeExitReason: 'clean' | 'failed' | null
+  turnState: TurnState
   turnEpoch: number
   lastTurnOutcome: TurnOutcome
   blockingReason: BlockingReason | null
@@ -111,7 +117,9 @@ interface SessionStateCore {
 
 语义约束：
 
+- `phase` 只允许派生，不允许作为持久化主 truth 保存
 - `turnEpoch` 在每次新 turn 开始时递增
+- `turnState = running` 表示当前 turn 仍然打开；被 block 时也仍属于该 turn
 - 所有 turn 级事件都必须附着在某个 `turnEpoch` 上
 - `lastTurnOutcome` 在下一轮开始前保持稳定
 - `failureReason` 和 `blockingReason` 只能由明确事件写入，不能靠 phase 反推
@@ -122,15 +130,16 @@ interface SessionStateCore {
 `phase` 必须由内部事实纯派生，优先级如下：
 
 1. `runtimeState = failed_to_start` -> `failure`
-2. `failureReason != null` -> `failure`
-3. `blockingReason != null` -> `blocked`
-4. `hasUnseenCompletion = true` 且 `lastTurnOutcome = completed` -> `complete`
-5. 当前 turn 正在执行 -> `running`
-6. 其他全部 -> `ready`
+2. `runtimeExitReason = failed` -> `failure`
+3. `failureReason != null` -> `failure`
+4. `blockingReason != null` 且 `turnState = running` -> `blocked`
+5. `hasUnseenCompletion = true` 且 `lastTurnOutcome = completed` -> `complete`
+6. `turnState = running` 且 `runtimeState = alive` -> `running`
+7. 其他全部 -> `ready`
 
 补充规则：
 
-- `created`、`alive but idle`、`clean exited`、`interrupted/cancelled after idle` 都折叠成 `ready`
+- `created`、`starting`、`alive but idle`、`clean exited`、`interrupted/cancelled after idle` 都折叠成 `ready`
 - `runtimeState = exited` 且 `failureReason = null` 仍然展示 `ready`
 - `phase=ready` 时是否允许发送输入，必须额外检查 `runtimeState === 'alive'`
 
@@ -139,9 +148,9 @@ interface SessionStateCore {
 ### `ready`
 
 - `ready -> running`
-  条件：新 turn 开始，创建更高 `turnEpoch`
+  条件：新 turn 开始，创建更高 `turnEpoch`，并设置 `turnState=running`
 - `ready -> blocked`
-  条件：收到显式 permission / elicitation / provider wait
+  条件：收到显式 permission / elicitation / provider wait；同时该 turn 保持 `turnState=running`
 - `ready -> complete`
   条件：provider 缺少 turn-start 证据，但收到了更高 epoch 的正常完成事件
 - `ready -> failure`
@@ -163,7 +172,7 @@ interface SessionStateCore {
 ### `blocked`
 
 - `blocked -> running`
-  条件：同一 `turnEpoch` 的显式 unblock 证据
+  条件：同一 `turnEpoch` 的显式 unblock 证据；本质上是清除 `blockingReason`，`turnState` 保持 `running`
 - `blocked -> ready`
   条件：同一 `turnEpoch` denied / cancelled / interrupted
 - `blocked -> failure`
@@ -223,13 +232,15 @@ Claude 文档里的关键事件面：
 - `UserPromptSubmit` -> 新 `turnEpoch`，`running`
 - `PreToolUse` -> `running`
 - `PermissionRequest` -> `blocked`, `blockingReason=permission`
-- `PermissionDenied` -> `ready` 或 `failure`
-  - 默认写 `lastTurnOutcome=cancelled`
-  - 如文档提供 denial cause，则映射 `failureReason=permission_denied`
+- `PermissionDenied`
+  - 只表示 auto mode classifier 拒绝了一次工具调用
+  - 不直接等价于 turn cancelled / ready / failure
+  - 默认作为同一 turn 内的 denial evidence 记录，不单独驱动 phase 跳转
 - `Elicitation` -> `blocked`, `blockingReason=elicitation`
 - `ElicitationResult`
-  - `accept` -> 仅解除 `blockingReason`
-  - `decline/cancel` -> `ready`, `lastTurnOutcome=cancelled`
+  - `accept/decline/cancel` 都只表示用户已经响应，默认清除 `blockingReason`
+  - 若该 turn 仍在继续，则 phase 应回到 `running`
+  - 不能仅因 `decline/cancel` 就推断整个 turn 已取消
 - `Stop` -> `complete`, `lastTurnOutcome=completed`, `hasUnseenCompletion=true`
 - `StopFailure` -> `failure`, 并保留 typed `failureReason`
 - `SessionEnd` -> 只更新 `runtimeState=exited` 或附加终止元数据；UI 仍折叠为 `ready`
@@ -237,6 +248,8 @@ Claude 文档里的关键事件面：
 注意：
 
 - Claude HTTP hooks 不支持 `SessionStart`，不能再把它当成可靠 ingress
+- Claude 当前 hook 面没有“用户手动批准/拒绝 permission dialog”的独立完成事件
+- 因此手动 deny 不能被假设为可直接观测；必须等待后续 continuation、turn terminal event 或本地 user interruption evidence
 - 如果当前是 `blocked`，后续同一 `turnEpoch` 收到 `PreToolUse`，只能在 reducer 内按“显式 continuation 证据”解除 blocked，不能无条件解锁
 
 ### Codex
@@ -256,14 +269,12 @@ Codex 公开 hook 面主要是：
 - 没正确使用 `turn_id`
 - 没接 `PreToolUse`
 - 当前 `PostToolUse` matcher 可疑，可能根本收不到可靠工具事件
-- `PreToolUse` 里的 `permissionDecision = allow | deny | ask` 没落到状态机
+- 把 `PreToolUse` 输出里的 `permissionDecision = allow | deny | ask` 误当成 provider ingress 的风险没有被写清楚
 
 映射规则：
 
 - `UserPromptSubmit` -> 新 `turnEpoch`，`running`
 - `PreToolUse` -> `running`
-- `PreToolUse.permissionDecision = ask` -> `blocked`, `blockingReason=permission`
-- `PreToolUse.permissionDecision = deny` -> `ready`, `lastTurnOutcome=cancelled`, 可选 `failureReason=permission_denied`
 - `PostToolUse` -> 只作为 activity evidence，不直接解除 blocked
 - `Stop` -> `complete`, `lastTurnOutcome=completed`, `hasUnseenCompletion=true`
 
@@ -272,6 +283,8 @@ Codex 公开 hook 面主要是：
 - Codex 没有与 Claude 对应的公共 `StopFailure`
 - 因此 Codex 的失败有一部分只能从 runtime failed exit 推断
 - Codex 必须优先使用文档给出的 `turn_id` 作为 `turnEpoch` 映射依据
+- Codex 文档中的 `permissionDecision = allow | deny | ask` 属于 hook 输出，不是 Stoa 被动接收的 provider event
+- 因此在当前被动 observability 设计下，Codex 的 blocked/deny 并没有可靠 ingress；只有当 Stoa 未来主动参与 hook 决策时，才能把这些输出转换为本地 state intent
 
 ### OpenCode
 
@@ -299,8 +312,9 @@ OpenCode 文档里的关键事件面：
 - `tool.execute.before` 或可靠 `session.status=running` -> `running`
 - `permission.asked` -> `blocked`, `blockingReason=permission`
 - `permission.replied`
+  - 必须先归一化真实 payload；不能假设所有实现都用同一个字段名表达 decision
   - approved/continued -> 解除 blocked，返回 `running`
-  - denied/cancelled -> `ready`, `lastTurnOutcome=cancelled`
+  - denied/cancelled -> 至少解除 blocked；是否直接进入 `ready/failure` 取决于后续是否还有明确 terminal evidence
   - reply 带 error -> `failure`
 - `session.idle` -> `complete`, `lastTurnOutcome=completed`, `hasUnseenCompletion=true`
 - `session.error` -> `failure`, 尽量提取 `failureReason`
@@ -310,17 +324,19 @@ OpenCode 文档里的关键事件面：
 
 在五相位方案下，当前系统真正缺的是这些内部事实，而不是更多 phase：
 
-1. `turnEpoch`
-2. `lastTurnOutcome`
-3. `blockingReason`
-4. `failureReason`
-5. `runtimeState`
-6. `blocked -> running` 的显式 guard
+1. `turnState`
+2. `turnEpoch`
+3. `lastTurnOutcome`
+4. `blockingReason`
+5. `failureReason`
+6. `runtimeState`
+7. `blocked -> running` 的显式 guard
 
 它们分别解决的问题是：
 
 | 缺失项 | 当前错误表现 |
 |---|---|
+| `turnState` | 只有 outcome 和 reason，仍然无法稳定推导 `running` |
 | `turnEpoch` | restart / interrupt 后迟到事件继续污染当前状态 |
 | `lastTurnOutcome` | interrupted/cancelled 被压成普通 ready |
 | `blockingReason` | blocked 无法区分 permission / elicitation / denied |
@@ -337,8 +353,9 @@ interface SessionSummary {
   id: string
   projectId: string
   type: SessionType
-  phase: SessionPhase
   runtimeState: SessionRuntimeState
+  runtimeExitReason: 'clean' | 'failed' | null
+  turnState: TurnState
   turnEpoch: number
   lastTurnOutcome: TurnOutcome
   blockingReason: BlockingReason | null
@@ -385,11 +402,13 @@ type SessionStateIntent =
 
 核心规则：
 
-- 任何新 turn 开始时，`turnEpoch += 1`
+- 任何新 turn 开始时，`turnEpoch += 1`，并设置 `turnState=running`
 - 新 turn 开始会清空上一轮 `blockingReason`、`failureReason`、`hasUnseenCompletion`
-- `turn_completed` 只能作用于当前 `turnEpoch`
-- `turn_interrupted` / `turn_cancelled` 之后，同 epoch 的 `turn_completed` 必须忽略
-- `permission_resolved` 只有在 `blocked` 且 epoch 匹配时才生效
+- `turn_completed` 只能作用于当前 `turnEpoch`，并将 `turnState=idle`
+- `turn_interrupted` / `turn_cancelled` 之后，同 epoch 的 `turn_completed` 必须忽略，并将 `turnState=idle`
+- `turn_failed` 只能作用于当前 `turnEpoch`，并将 `turnState=idle`
+- `permission_requested` 设置 `blockingReason`，但不关闭当前 turn
+- `permission_resolved` 只有在 `blocked` 且 epoch 匹配时才生效，本质上只清除 `blockingReason`
 - `tool_started/tool_completed` 不能单独解除 `blocked`
 - `runtime.exited_clean` 不得覆盖 `complete`
 - `runtime.exited_failed` 总是提升到 `failure`
@@ -409,6 +428,7 @@ type SessionStateIntent =
 - `running -> interrupted -> ready` 后，同 epoch `turn_completed` 被忽略
 - `blocked -> denied -> ready` 后，同 epoch `tool_started` 不会回到 `running`
 - `failure` 后，同 epoch `turn_completed` 被忽略
+- `blockingReason` 清除后，在同 epoch 且 `turnState=running` 时正确回到 `running`
 - `complete` 只有 `completion_seen` 才能回到 `ready`
 - `runtime.exited_clean` 不覆盖 `complete`
 - `runtime.exited_failed` 总是进入 `failure`
@@ -418,9 +438,9 @@ type SessionStateIntent =
 
 - Claude `StopFailure` 提取 typed `failureReason`
 - Claude `Elicitation` 正确落成 `blockingReason=elicitation`
-- Claude `PermissionDenied` 正确落成 cancelled/denied
+- Claude `PermissionDenied` 不会被误当成 turn terminal event
 - Codex 使用 `turn_id` 对齐 `turnEpoch`
-- Codex `PreToolUse.permissionDecision=ask|deny` 正确落成 blocked/cancelled
+- Codex 不把 hook 输出 `permissionDecision=ask|deny` 误当成 provider ingress
 - OpenCode `permission.replied` 正确区分 approve / deny / cancel / error
 - OpenCode `tool.execute.before` 可提供 `running` 证据
 
