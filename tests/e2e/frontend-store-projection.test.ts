@@ -309,7 +309,7 @@ describe('E2E: Frontend Store Projection', () => {
       expect(node!.updatedAt).toBe(project.updatedAt)
     })
 
-    test('hierarchy sessions contain full data (type, runtimeState, agentState, title, summary, recoveryMode)', async () => {
+    test('hierarchy sessions contain full data (type, runtimeState, turnState, title, summary, recoveryMode)', async () => {
       const workspaceDir = await createTestWorkspace('stoa-store-p2a-')
       const globalStatePath = await createTestGlobalStatePath()
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
@@ -326,7 +326,8 @@ describe('E2E: Frontend Store Projection', () => {
       expect(hierarchySession!.id).toBe(shellSession.id)
       expect(hierarchySession!.type).toBe('shell')
       expect(hierarchySession!.runtimeState).toBe('created')
-      expect(hierarchySession!.agentState).toBe('unknown')
+      expect(hierarchySession!.turnState).toBe('idle')
+      expect(hierarchySession!.lastTurnOutcome).toBe('none')
       expect(hierarchySession!.title).toBe('Shell Full')
       expect(hierarchySession!.summary).toBe(shellSession.summary)
       expect(hierarchySession!.recoveryMode).toBe('fresh-shell')
@@ -507,7 +508,8 @@ describe('E2E: Frontend Store Projection', () => {
       expect(store.sessions[0]!.type).toBe('shell')
       expect(store.sessions[0]!.title).toBe('IPC Shell')
       expect(store.sessions[0]!.runtimeState).toBe('created')
-      expect(store.sessions[0]!.agentState).toBe('unknown')
+      expect(store.sessions[0]!.turnState).toBe('idle')
+      expect(store.sessions[0]!.lastTurnOutcome).toBe('none')
       expect(store.sessions[0]!.recoveryMode).toBe('fresh-shell')
     })
 
@@ -797,7 +799,7 @@ describe('E2E: Frontend Store Projection', () => {
       expect(store.activeSession!.id).toBe(session.id)
     })
 
-    test('multiple sessions with same initial runtime and agent state all render correctly in hierarchy', async () => {
+    test('multiple sessions with same initial runtime and turn state all render correctly in hierarchy', async () => {
       const workspaceDir = await createTestWorkspace('stoa-store-p6-')
       const globalStatePath = await createTestGlobalStatePath()
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
@@ -823,7 +825,8 @@ describe('E2E: Frontend Store Projection', () => {
       // All sessions are freshly created and should start from the same base state.
       for (const s of hierarchy[0]!.sessions) {
         expect(s.runtimeState).toBe('created')
-        expect(s.agentState).toBe('unknown')
+        expect(s.turnState).toBe('idle')
+        expect(s.lastTurnOutcome).toBe('none')
       }
     })
   })
@@ -915,7 +918,8 @@ describe('E2E: Frontend Store Projection', () => {
       expect(store.activeSessionPresence).toMatchObject({
         phase: 'ready',
         runtimeState: 'alive',
-        agentState: 'unknown',
+        turnState: 'idle',
+        lastTurnOutcome: 'none',
         hasUnseenCompletion: false
       })
     })
@@ -934,8 +938,7 @@ describe('E2E: Frontend Store Projection', () => {
         intent: 'agent.turn_completed',
         source: 'provider',
         sourceEventType: 'claude-code.Stop',
-        agentState: 'idle',
-        hasUnseenCompletion: true,
+        turnEpoch: 1,
         summary: 'Stop'
       })
 
@@ -960,7 +963,8 @@ describe('E2E: Frontend Store Projection', () => {
 
       expect(store.activeSessionPresence).toMatchObject({
         phase: 'ready',
-        agentState: 'idle',
+        turnState: 'idle',
+        lastTurnOutcome: 'completed',
         hasUnseenCompletion: false
       })
     })

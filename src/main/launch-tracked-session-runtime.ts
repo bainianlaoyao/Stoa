@@ -52,7 +52,7 @@ export async function launchTrackedSessionRuntime(options: LaunchTrackedSessionR
       title: session.title,
       type: session.type,
       runtimeState: session.runtimeState,
-      agentState: session.agentState,
+      turnState: session.turnState,
       externalSessionId: session.externalSessionId,
       sessionSecret
     },

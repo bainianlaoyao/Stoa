@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   sessionPresenceBlockedBehavior,
   sessionPresenceCompleteBehavior,
-  sessionPresenceFailedBehavior,
+  sessionPresenceFailureBehavior,
   sessionPresenceReadyBehavior,
   sessionPresenceRunningBehavior,
   sessionTelemetryBlockedBehavior,
@@ -15,7 +15,7 @@ import { sessionRestoreJourney } from '../journeys/session-restore.journey'
 import { workspaceQuickAccessJourney } from '../journeys/workspace-quick-access.journey'
 import {
   sessionPresenceBlockedJourney,
-  sessionPresenceFailedJourney,
+  sessionPresenceFailureJourney,
   sessionPresenceReadyJourney,
   sessionPresenceRunningJourney,
   sessionTelemetryClaudeLifecycleJourney,
@@ -172,14 +172,14 @@ describe('behavior coverage report', () => {
         sessionPresenceRunningBehavior,
         sessionPresenceCompleteBehavior,
         sessionPresenceBlockedBehavior,
-        sessionPresenceFailedBehavior
+        sessionPresenceFailureBehavior
       ],
       journeys: [
         sessionPresenceReadyJourney,
         sessionPresenceRunningJourney,
         sessionTelemetryClaudeLifecycleJourney,
         sessionPresenceBlockedJourney,
-        sessionPresenceFailedJourney
+        sessionPresenceFailureJourney
       ],
       generatedTests: [
         defineGeneratedTestMeta({
@@ -189,7 +189,7 @@ describe('behavior coverage report', () => {
             'session.presence.running',
             'session.presence.complete',
             'session.presence.blocked',
-            'session.presence.failed'
+            'session.presence.failure'
           ],
           entities: ['session', 'provider-telemetry', 'renderer-status'],
           statesCovered: [
@@ -197,7 +197,7 @@ describe('behavior coverage report', () => {
             'presence.running',
             'presence.blocked',
             'presence.complete',
-            'presence.failed'
+            'presence.failure'
           ],
           interruptionsCovered: [
             'runtime.alive.withoutAgentTelemetry',
@@ -217,7 +217,7 @@ describe('behavior coverage report', () => {
     expect(report.behaviors['session.presence.running']?.maturity).toBe('Verified')
     expect(report.behaviors['session.presence.complete']?.maturity).toBe('Hardened')
     expect(report.behaviors['session.presence.blocked']?.maturity).toBe('Hardened')
-    expect(report.behaviors['session.presence.failed']?.maturity).toBe('Hardened')
-    expect(report.behaviors['session.presence.failed']?.missingObservationLayers).toEqual([])
+    expect(report.behaviors['session.presence.failure']?.maturity).toBe('Hardened')
+    expect(report.behaviors['session.presence.failure']?.missingObservationLayers).toEqual([])
   })
 })

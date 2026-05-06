@@ -126,13 +126,16 @@ function sessionPresenceFixture(patch: Partial<SessionPresenceSnapshot> = {}): S
     modelLabel: 'Sonnet',
     phase: 'running',
     runtimeState: 'alive',
-    agentState: 'working',
+    turnState: 'running',
+    turnEpoch: 1,
+    lastTurnOutcome: 'none',
     hasUnseenCompletion: false,
     runtimeExitCode: null,
     runtimeExitReason: null,
     confidence: 'authoritative',
     health: 'healthy',
     blockingReason: null,
+    failureReason: null,
     lastAssistantSnippet: null,
     lastEventAt: '2026-04-24T07:59:50.000Z',
     lastEvidenceType: null,
@@ -207,12 +210,15 @@ function sessionSummaryFixture(patch: Partial<SessionSummary> = {}): SessionSumm
     projectId: 'project_alpha',
     type: 'opencode',
     runtimeState: 'alive',
-    agentState: 'working',
+    turnState: 'running',
+    turnEpoch: 1,
+    lastTurnOutcome: 'none',
     hasUnseenCompletion: false,
     runtimeExitCode: null,
     runtimeExitReason: null,
     lastStateSequence: 1,
     blockingReason: null,
+    failureReason: null,
     title: 'Deploy',
     summary: 'running',
     recoveryMode: 'resume-external',
@@ -253,12 +259,15 @@ describe('project/session renderer store', () => {
           projectId: 'project_alpha',
           type: 'opencode',
           runtimeState: 'alive',
-          agentState: 'working',
+          turnState: 'running',
+          turnEpoch: 1,
+          lastTurnOutcome: 'none',
           hasUnseenCompletion: false,
           runtimeExitCode: null,
           runtimeExitReason: null,
           lastStateSequence: 0,
           blockingReason: null,
+          failureReason: null,
           title: 'Deploy',
           summary: 'running',
           recoveryMode: 'resume-external',
@@ -319,7 +328,9 @@ describe('project/session renderer store', () => {
           projectId: 'project_beta',
           type: 'opencode',
           runtimeState: 'created',
-          agentState: 'unknown',
+          turnState: 'idle',
+          turnEpoch: 0,
+          lastTurnOutcome: 'none',
           summary: 'waiting',
           title: 'Deploy',
           recoveryMode: 'resume-external',
@@ -431,7 +442,9 @@ describe('project/session renderer store', () => {
             projectId: 'project_alpha',
             type: 'shell',
             runtimeState: 'exited',
-            agentState: 'idle',
+            turnState: 'idle',
+            turnEpoch: 0,
+            lastTurnOutcome: 'none',
             runtimeExitCode: 0,
             runtimeExitReason: 'clean',
             summary: 'done',
@@ -500,7 +513,9 @@ describe('project/session renderer store', () => {
             projectId: 'project_alpha',
             type: 'shell',
             runtimeState: 'exited',
-            agentState: 'idle',
+            turnState: 'idle',
+            turnEpoch: 0,
+            lastTurnOutcome: 'none',
             runtimeExitCode: 0,
             runtimeExitReason: 'clean',
             summary: 'done',
@@ -664,7 +679,7 @@ describe('project/session renderer store', () => {
         sessionId: 'session_claude_1',
         phase: 'blocked',
         runtimeState: 'alive',
-        agentState: 'blocked',
+        turnState: 'running',
         blockingReason: 'permission',
         health: 'healthy',
         sourceSequence: 9
@@ -687,7 +702,7 @@ describe('project/session renderer store', () => {
         id: 'session_claude_1',
         type: 'claude-code',
         runtimeState: 'alive',
-        agentState: 'working',
+        turnState: 'running',
         lastStateSequence: 12,
         title: 'Claude'
       }))
@@ -706,8 +721,8 @@ describe('project/session renderer store', () => {
       const backendPresence = sessionPresenceFixture({
         phase: 'blocked',
         runtimeState: 'alive',
-        agentState: 'blocked',
-        blockingReason: 'resume-confirmation',
+        turnState: 'running',
+        blockingReason: 'permission',
         sourceSequence: 20
       })
 
@@ -724,7 +739,8 @@ describe('project/session renderer store', () => {
         sessions: [sessionSummaryFixture({
           id: 'session_op_1',
           lastStateSequence: 10,
-          agentState: 'idle',
+          turnState: 'idle',
+          lastTurnOutcome: 'completed',
           hasUnseenCompletion: true,
           summary: 'complete'
         })]
@@ -735,7 +751,8 @@ describe('project/session renderer store', () => {
 
       store.updateSession('session_op_1', {
         runtimeState: 'alive',
-        agentState: 'working',
+        turnState: 'running',
+        lastTurnOutcome: 'none',
         hasUnseenCompletion: false,
         blockingReason: null,
         lastStateSequence: 19,
@@ -750,7 +767,7 @@ describe('project/session renderer store', () => {
       const backendPresence = sessionPresenceFixture({
         phase: 'blocked',
         runtimeState: 'alive',
-        agentState: 'blocked',
+        turnState: 'running',
         blockingReason: 'permission',
         sourceSequence: 9
       })
@@ -772,7 +789,7 @@ describe('project/session renderer store', () => {
         sessions: [sessionSummaryFixture({
           id: 'session_op_1',
           lastStateSequence: 8,
-          agentState: 'blocked',
+          turnState: 'running',
           blockingReason: 'permission',
           summary: 'blocked'
         })]
@@ -783,7 +800,8 @@ describe('project/session renderer store', () => {
 
       store.updateSession('session_op_1', {
         runtimeState: 'alive',
-        agentState: 'working',
+        turnState: 'running',
+        lastTurnOutcome: 'none',
         hasUnseenCompletion: false,
         blockingReason: null,
         lastStateSequence: 12,
@@ -795,7 +813,7 @@ describe('project/session renderer store', () => {
       sessionListener?.(sessionPresenceFixture({
         phase: 'running',
         runtimeState: 'alive',
-        agentState: 'working',
+        turnState: 'running',
         blockingReason: null,
         sourceSequence: 12
       }))
@@ -803,7 +821,7 @@ describe('project/session renderer store', () => {
       expect(store.sessionPresenceById.session_op_1).toMatchObject({
         phase: 'running',
         runtimeState: 'alive',
-        agentState: 'working',
+        turnState: 'running',
         blockingReason: null,
         sourceSequence: 12
       })
@@ -813,7 +831,7 @@ describe('project/session renderer store', () => {
       const backendPresence = sessionPresenceFixture({
         phase: 'blocked',
         runtimeState: 'alive',
-        agentState: 'blocked',
+        turnState: 'running',
         blockingReason: 'permission',
         sourceSequence: 12,
         updatedAt: '2026-04-24T08:00:00.000Z'
@@ -832,7 +850,7 @@ describe('project/session renderer store', () => {
         sessions: [sessionSummaryFixture({
           id: 'session_op_1',
           lastStateSequence: 12,
-          agentState: 'blocked',
+          turnState: 'running',
           blockingReason: 'permission',
           summary: 'blocked'
         })]
@@ -843,7 +861,8 @@ describe('project/session renderer store', () => {
 
       store.updateSession('session_op_1', {
         runtimeState: 'alive',
-        agentState: 'working',
+        turnState: 'running',
+        lastTurnOutcome: 'none',
         hasUnseenCompletion: false,
         blockingReason: null,
         lastStateSequence: 12,
@@ -875,7 +894,9 @@ describe('project/session renderer store', () => {
         id: 'session_claude_complete',
         type: 'claude-code',
         runtimeState: 'alive',
-        agentState: 'idle',
+        turnState: 'idle',
+        turnEpoch: 1,
+        lastTurnOutcome: 'completed',
         hasUnseenCompletion: true,
         lastStateSequence: 12,
         title: 'Claude complete'
@@ -895,7 +916,9 @@ describe('project/session renderer store', () => {
         sessionId: 'session_claude_complete',
         phase: 'ready',
         runtimeState: 'alive',
-        agentState: 'idle',
+        turnState: 'idle',
+        turnEpoch: 1,
+        lastTurnOutcome: 'completed',
         hasUnseenCompletion: false,
         sourceSequence: 13
       })
@@ -918,7 +941,9 @@ describe('project/session renderer store', () => {
         id: 'session_claude_1',
         type: 'claude-code',
         runtimeState: 'alive',
-        agentState: 'unknown',
+        turnState: 'idle',
+        turnEpoch: 0,
+        lastTurnOutcome: 'none',
         lastStateSequence: 4,
         title: 'Claude unknown'
       }))
@@ -926,7 +951,7 @@ describe('project/session renderer store', () => {
       expect(store.sessionPresenceById.session_claude_1).toMatchObject({
         phase: 'ready',
         runtimeState: 'alive',
-        agentState: 'unknown',
+        turnState: 'idle',
         sourceSequence: 4
       })
     })
@@ -1182,12 +1207,15 @@ describe('project/session renderer store', () => {
         projectId: 'project_alpha',
         type: 'claude-code',
         runtimeState: 'created',
-        agentState: 'unknown',
+        turnState: 'idle',
+        turnEpoch: 0,
+        lastTurnOutcome: 'none',
         hasUnseenCompletion: false,
         runtimeExitCode: null,
         runtimeExitReason: null,
         lastStateSequence: 0,
         blockingReason: null,
+        failureReason: null,
         title: 'Claude',
         summary: 'Waiting for session to start',
         recoveryMode: 'resume-external',
@@ -1197,11 +1225,13 @@ describe('project/session renderer store', () => {
         lastActivatedAt: 'a',
         archived: false
       })
-      expect(store.sessionPresenceById.session_claude_1?.phase).toBe('preparing')
+      expect(store.sessionPresenceById.session_claude_1?.phase).toBe('ready')
 
       store.updateSession('session_claude_1', {
         runtimeState: 'alive',
-        agentState: 'working',
+        turnState: 'running',
+        turnEpoch: 1,
+        lastTurnOutcome: 'none',
         lastStateSequence: 1,
         summary: 'Session running'
       })

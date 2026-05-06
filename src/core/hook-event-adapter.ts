@@ -40,7 +40,7 @@ export function adaptClaudeCodeHook(
     project_id: context.projectId,
     source: 'provider-adapter',
     payload: {
-      ...patch,
+      ...withSourceTurnId(patch, evidence.turnId),
       summary: hookEventName,
       ...(model ? { model } : {}),
       ...(snippet ? { snippet } : {}),
@@ -81,7 +81,7 @@ export function adaptCodexHook(
     project_id: context.projectId,
     source: 'provider-adapter',
     payload: {
-      ...patch,
+      ...withSourceTurnId(patch, evidence.turnId),
       summary: hookEventName,
       ...(evidence.model ? { model: evidence.model } : {}),
       ...(evidence.toolName ? { toolName: evidence.toolName } : {}),
@@ -143,48 +143,66 @@ function buildCodexHookEvidence(
   })
 }
 
-function mapClaudeHookToPatch(hookEventName: string): {
-  intent: NonNullable<CanonicalSessionEvent['payload']['intent']>
-  agentState: NonNullable<CanonicalSessionEvent['payload']['agentState']>
-  hasUnseenCompletion?: boolean
-  blockingReason?: NonNullable<CanonicalSessionEvent['payload']['blockingReason']>
-} | null {
+type HookPatch = Pick<
+  CanonicalSessionEvent['payload'],
+  'intent' | 'blockingReason' | 'failureReason' | 'sourceTurnId'
+>
+
+function mapClaudeHookToPatch(hookEventName: string): HookPatch | null {
   switch (hookEventName) {
     case 'SessionStart':
-      return { intent: 'runtime.alive', agentState: 'idle' }
+      return { intent: 'runtime.alive' }
     case 'UserPromptSubmit':
-      return { intent: 'agent.turn_started', agentState: 'working' }
+      return { intent: 'agent.turn_started' }
     case 'PreToolUse':
-      return { intent: 'agent.tool_started', agentState: 'working' }
+      return { intent: 'agent.tool_started' }
     case 'PostToolUse':
-      return { intent: 'agent.tool_completed', agentState: 'working' }
+      return { intent: 'agent.tool_completed' }
     case 'PermissionRequest':
-      return { intent: 'agent.permission_requested', agentState: 'blocked', blockingReason: 'permission' }
+      return { intent: 'agent.permission_requested', blockingReason: 'permission' }
+    case 'Elicitation':
+      return { intent: 'agent.permission_requested', blockingReason: 'elicitation' }
+    case 'ElicitationResult':
+      return { intent: 'agent.permission_resolved' }
     case 'Stop':
-      return { intent: 'agent.turn_completed', agentState: 'idle', hasUnseenCompletion: true }
+      return { intent: 'agent.turn_completed' }
+    case 'StopFailure':
+      return { intent: 'agent.turn_failed', failureReason: 'provider_error' }
+    case 'SessionEnd':
+      return { intent: 'runtime.exited_clean' }
     default:
       return null
   }
 }
 
-function mapCodexHookToPatch(hookEventName: string): {
-  intent: NonNullable<CanonicalSessionEvent['payload']['intent']>
-  agentState: NonNullable<CanonicalSessionEvent['payload']['agentState']>
-  hasUnseenCompletion?: boolean
-} | null {
+function mapCodexHookToPatch(hookEventName: string): HookPatch | null {
   switch (hookEventName) {
     case 'SessionStart':
-      return { intent: 'runtime.alive', agentState: 'idle' }
+      return { intent: 'runtime.alive' }
     case 'UserPromptSubmit':
-      return { intent: 'agent.turn_started', agentState: 'working' }
+      return { intent: 'agent.turn_started' }
     case 'PreToolUse':
-      return { intent: 'agent.tool_started', agentState: 'working' }
+      return { intent: 'agent.tool_started' }
     case 'PostToolUse':
-      return { intent: 'agent.tool_completed', agentState: 'working' }
+      return { intent: 'agent.tool_completed' }
     case 'Stop':
-      return { intent: 'agent.turn_completed', agentState: 'idle', hasUnseenCompletion: true }
+      return { intent: 'agent.turn_completed' }
     default:
       return null
+  }
+}
+
+function withSourceTurnId(
+  patch: HookPatch,
+  sourceTurnId: string | undefined
+): HookPatch {
+  if (!sourceTurnId) {
+    return patch
+  }
+
+  return {
+    ...patch,
+    sourceTurnId
   }
 }
 

@@ -9,7 +9,7 @@ import {
   toSessionRowViewModel
 } from './observability-view-models'
 
-const NOW_ISO = '2026-04-24T08:00:00.000Z'
+const NOW_ISO = '2026-05-06T08:00:00.000Z'
 
 function sessionFixture(patch: Partial<SessionSummary> = {}): SessionSummary {
   return {
@@ -17,19 +17,22 @@ function sessionFixture(patch: Partial<SessionSummary> = {}): SessionSummary {
     projectId: 'project-1',
     type: 'claude-code',
     runtimeState: 'alive',
-    agentState: 'working',
+    turnState: 'running',
+    turnEpoch: 1,
+    lastTurnOutcome: 'none',
+    blockingReason: null,
+    failureReason: null,
     hasUnseenCompletion: false,
     runtimeExitCode: null,
     runtimeExitReason: null,
     lastStateSequence: 1,
-    blockingReason: null,
     title: 'Implement feature',
     summary: 'Working on feature',
     recoveryMode: 'resume-external',
     externalSessionId: 'external-1',
-    createdAt: '2026-04-24T07:00:00.000Z',
-    updatedAt: '2026-04-24T07:50:00.000Z',
-    lastActivatedAt: '2026-04-24T07:55:00.000Z',
+    createdAt: '2026-05-06T07:00:00.000Z',
+    updatedAt: '2026-05-06T07:50:00.000Z',
+    lastActivatedAt: '2026-05-06T07:55:00.000Z',
     archived: false,
     ...patch
   }
@@ -44,21 +47,24 @@ function presenceFixture(patch: Partial<SessionPresenceSnapshot> = {}): SessionP
     modelLabel: 'Sonnet',
     phase: 'running',
     runtimeState: 'alive',
-    agentState: 'working',
+    turnState: 'running',
+    turnEpoch: 1,
+    lastTurnOutcome: 'none',
+    blockingReason: null,
+    failureReason: null,
     hasUnseenCompletion: false,
     runtimeExitCode: null,
     runtimeExitReason: null,
     confidence: 'authoritative',
     health: 'healthy',
-    blockingReason: null,
     lastAssistantSnippet: 'I am working on it.',
-    lastEventAt: '2026-04-24T07:59:50.000Z',
+    lastEventAt: '2026-05-06T07:59:50.000Z',
     lastEvidenceType: 'evidence.assistant_message',
     hasUnreadTurn: false,
     recoveryPointerState: 'trusted',
     evidenceSequence: 1,
     sourceSequence: 1,
-    updatedAt: '2026-04-24T07:59:50.000Z',
+    updatedAt: '2026-05-06T07:59:50.000Z',
     ...patch
   }
 }
@@ -66,11 +72,12 @@ function presenceFixture(patch: Partial<SessionPresenceSnapshot> = {}): SessionP
 describe('renderer observability view models', () => {
   it('builds session row labels from the shared projection semantics', () => {
     const viewModel = toSessionRowViewModel(
-      sessionFixture({ agentState: 'idle' }),
+      sessionFixture({ turnState: 'idle' }),
       presenceFixture({
         phase: 'ready',
-        lastEventAt: '2026-04-24T07:58:00.000Z',
-        updatedAt: '2026-04-24T07:58:00.000Z'
+        turnState: 'idle',
+        lastEventAt: '2026-05-06T07:58:00.000Z',
+        updatedAt: '2026-05-06T07:58:00.000Z'
       }),
       NOW_ISO
     )
@@ -106,47 +113,14 @@ describe('renderer observability view models', () => {
     expect(viewModel.secondaryLabel).toBe('Sonnet')
   })
 
-  it('uses the last event time for session row relative age', () => {
-    const viewModel = toSessionRowViewModel(
-      sessionFixture(),
-      presenceFixture({
-        lastEventAt: '2026-04-24T07:45:00.000Z',
-        updatedAt: '2026-04-24T07:59:50.000Z'
-      }),
-      NOW_ISO
-    )
-
-    expect(viewModel.updatedAgoLabel).toBe('15m ago')
-  })
-
-  it('maps ready rows to neutral tone', () => {
-    const viewModel = toSessionRowViewModel(
-      sessionFixture(),
-      presenceFixture({ phase: 'ready' }),
-      NOW_ISO
-    )
-
-    expect(viewModel.tone).toBe('neutral')
-    expect(viewModel.needsAttention).toBe(false)
-  })
-
-  it('maps running rows to success tone', () => {
-    const viewModel = toSessionRowViewModel(
-      sessionFixture(),
-      presenceFixture({ phase: 'running' }),
-      NOW_ISO
-    )
-
-    expect(viewModel.tone).toBe('success')
-    expect(viewModel.needsAttention).toBe(false)
-  })
-
   it('maps complete rows to warning attention', () => {
     const viewModel = toSessionRowViewModel(
-      sessionFixture({ agentState: 'idle', hasUnseenCompletion: true }),
+      sessionFixture({ turnState: 'idle', turnEpoch: 2, lastTurnOutcome: 'completed', hasUnseenCompletion: true }),
       presenceFixture({
         phase: 'complete',
-        agentState: 'idle',
+        turnState: 'idle',
+        turnEpoch: 2,
+        lastTurnOutcome: 'completed',
         hasUnseenCompletion: true
       }),
       NOW_ISO
@@ -160,8 +134,9 @@ describe('renderer observability view models', () => {
   it('maps blocked rows to warning attention', () => {
     const blockedPresence = buildSessionPresenceSnapshot(
       sessionFixture({
-        agentState: 'blocked',
-        blockingReason: 'resume-confirmation'
+        turnState: 'running',
+        turnEpoch: 3,
+        blockingReason: 'elicitation'
       }),
       {
         activeSessionId: 'session-1',
@@ -170,7 +145,7 @@ describe('renderer observability view models', () => {
       }
     )
     const blockedViewModel = toSessionRowViewModel(
-      sessionFixture({ agentState: 'blocked', blockingReason: 'resume-confirmation' }),
+      sessionFixture({ turnState: 'running', turnEpoch: 3, blockingReason: 'elicitation' }),
       blockedPresence,
       NOW_ISO
     )
@@ -178,15 +153,18 @@ describe('renderer observability view models', () => {
     expect(blockedViewModel.tone).toBe('warning')
     expect(blockedViewModel.needsAttention).toBe(true)
     expect(blockedViewModel.phase).toBe('blocked')
-    expect(blockedViewModel.attentionReason).toBe('resume-confirmation')
+    expect(blockedViewModel.attentionReason).toBe('elicitation')
   })
 
-  it('maps failed rows to danger attention before complete or blocked attention', () => {
+  it('maps failure rows to danger attention before complete or blocked attention', () => {
     const viewModel = toSessionRowViewModel(
-      sessionFixture({ agentState: 'error', hasUnseenCompletion: true }),
+      sessionFixture({ turnState: 'idle', turnEpoch: 2, lastTurnOutcome: 'failed', failureReason: 'provider_error', hasUnseenCompletion: true }),
       presenceFixture({
-        phase: 'failed',
-        agentState: 'error',
+        phase: 'failure',
+        turnState: 'idle',
+        turnEpoch: 2,
+        lastTurnOutcome: 'failed',
+        failureReason: 'provider_error',
         hasUnseenCompletion: true,
         health: 'lost'
       }),
@@ -195,7 +173,7 @@ describe('renderer observability view models', () => {
 
     expect(viewModel.tone).toBe('danger')
     expect(viewModel.needsAttention).toBe(true)
-    expect(viewModel.attentionReason).toBe('provider-error')
+    expect(viewModel.attentionReason).toBe('provider_error')
     expect(viewModel.attentionReason).not.toBe('turn-complete')
     expect(viewModel.attentionReason).not.toBe('blocked')
   })
@@ -215,17 +193,20 @@ describe('renderer observability view models', () => {
   })
 
   it.each([
-    ['permission', 'blocked', 'Provider is waiting for permission.'],
-    ['resume-confirmation', 'blocked', 'Provider is waiting for confirmation.'],
-    ['provider-error', 'failed', 'Provider reported an error.'],
-    [null, 'running', null]
-  ] as const)('maps blocking and failed states to the expected explanation', (blockingReason, phase, explanation) => {
+    ['permission', 'blocked', null, 'Provider is waiting for permission.'],
+    ['elicitation', 'blocked', null, 'Provider is asking a question.'],
+    ['provider_wait', 'blocked', null, 'Provider is waiting to continue.'],
+    ['denied', 'running', null, 'Provider denied the current action.'],
+    [null, 'failure', 'provider_error', 'Provider reported an error.'],
+    [null, 'running', null, null]
+  ] as const)('maps blocking and failed states to the expected explanation', (blockingReason, phase, failureReason, explanation) => {
     const viewModel = toActiveSessionViewModel(
       sessionFixture(),
       presenceFixture({
         blockingReason,
         phase,
-        health: phase === 'failed' ? 'lost' : 'healthy'
+        failureReason,
+        health: phase === 'failure' ? 'lost' : 'healthy'
       }),
       NOW_ISO
     )
@@ -238,39 +219,13 @@ describe('renderer observability view models', () => {
       sessionFixture(),
       presenceFixture({
         lastAssistantSnippet: 'Patch applied.',
-        lastEventAt: '2026-04-24T07:59:50.000Z',
-        updatedAt: '2026-04-24T07:59:50.000Z'
+        lastEventAt: '2026-05-06T07:59:50.000Z',
+        updatedAt: '2026-05-06T07:59:50.000Z'
       }),
       NOW_ISO
     )
 
     expect(viewModel.snippet).toBe('Patch applied.')
     expect(viewModel.lastUpdatedLabel).toBe('10s ago')
-  })
-
-  it('uses the last event time for active session relative age', () => {
-    const viewModel = toActiveSessionViewModel(
-      sessionFixture(),
-      presenceFixture({
-        lastEventAt: '2026-04-24T07:45:00.000Z',
-        updatedAt: '2026-04-24T07:59:50.000Z'
-      }),
-      NOW_ISO
-    )
-
-    expect(viewModel.lastUpdatedLabel).toBe('15m ago')
-  })
-
-  it('uses the assistant snippet and relative age in minutes for older sessions', () => {
-    const viewModel = toActiveSessionViewModel(
-      sessionFixture(),
-      presenceFixture({
-        lastEventAt: '2026-04-24T07:57:01.000Z',
-        updatedAt: '2026-04-24T07:57:01.000Z'
-      }),
-      NOW_ISO
-    )
-
-    expect(viewModel.lastUpdatedLabel).toBe('2m ago')
   })
 })

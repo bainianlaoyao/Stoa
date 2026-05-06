@@ -51,12 +51,15 @@ function createHierarchy(): ProjectHierarchyNode[] {
           projectId: 'project_alpha',
           type: 'opencode',
           runtimeState: 'alive',
-          agentState: 'working',
+          turnState: 'running',
+          turnEpoch: 1,
+          lastTurnOutcome: 'none',
           hasUnseenCompletion: false,
           runtimeExitCode: null,
           runtimeExitReason: null,
           lastStateSequence: 1,
           blockingReason: null,
+          failureReason: null,
           title: 'deploy gateway',
           summary: 'running',
           recoveryMode: 'resume-external',
@@ -72,12 +75,15 @@ function createHierarchy(): ProjectHierarchyNode[] {
           projectId: 'project_alpha',
           type: 'claude-code',
           runtimeState: 'alive',
-          agentState: 'idle',
+          turnState: 'idle',
+          turnEpoch: 0,
+          lastTurnOutcome: 'none',
           hasUnseenCompletion: false,
           runtimeExitCode: null,
           runtimeExitReason: null,
           lastStateSequence: 1,
           blockingReason: null,
+          failureReason: null,
           title: 'need confirmation',
           summary: 'awaiting',
           recoveryMode: 'resume-external',
@@ -109,12 +115,15 @@ function createTwoProjectHierarchy(): ProjectHierarchyNode[] {
           projectId: 'project_alpha',
           type: 'opencode',
           runtimeState: 'alive',
-          agentState: 'working',
+          turnState: 'running',
+          turnEpoch: 1,
+          lastTurnOutcome: 'none',
           hasUnseenCompletion: false,
           runtimeExitCode: null,
           runtimeExitReason: null,
           lastStateSequence: 1,
           blockingReason: null,
+          failureReason: null,
           title: 'deploy gateway',
           summary: 'running',
           recoveryMode: 'resume-external',
@@ -141,12 +150,15 @@ function createTwoProjectHierarchy(): ProjectHierarchyNode[] {
           projectId: 'project_beta',
           type: 'shell',
           runtimeState: 'exited',
-          agentState: 'idle',
+          turnState: 'idle',
+          turnEpoch: 0,
+          lastTurnOutcome: 'none',
           hasUnseenCompletion: false,
           runtimeExitCode: 0,
           runtimeExitReason: 'clean',
           lastStateSequence: 1,
           blockingReason: null,
+          failureReason: null,
           title: 'etl run',
           summary: 'done',
           recoveryMode: 'fresh-shell',
@@ -349,8 +361,10 @@ describe('WorkspaceHierarchyPanel', () => {
         buildSessionPresenceSnapshot(
           {
             ...blockedSession,
-            agentState: 'blocked',
-            blockingReason: 'resume-confirmation'
+            turnState: 'running',
+            turnEpoch: 1,
+            lastTurnOutcome: 'none',
+            blockingReason: 'permission'
           },
           {
             activeSessionId: blockedSession.id,
@@ -372,18 +386,18 @@ describe('WorkspaceHierarchyPanel', () => {
       expect(dot?.attributes('data-tone')).toBe('warning')
       expect(dot?.attributes('data-phase')).toBe('blocked')
       expect(dot?.attributes('data-session-status-testid')).toBe('session-status-blocked')
-      expect(dot?.attributes('data-attention-reason')).toBe('resume-confirmation')
+      expect(dot?.attributes('data-attention-reason')).toBe('permission')
     })
 
-    it('renders complete and failed attention phases through data attributes', () => {
+    it('renders complete and failure attention phases through data attributes', () => {
       const wrapper = mountPanel({
         sessionRowViewModels: createSessionRowViewModels({
           session_1: {
-            phase: 'failed',
+            phase: 'failure',
             primaryLabel: 'Failed',
             tone: 'danger',
             needsAttention: true,
-            attentionReason: 'provider-error'
+            attentionReason: 'provider_error'
           },
           session_2: {
             phase: 'complete',
@@ -396,9 +410,9 @@ describe('WorkspaceHierarchyPanel', () => {
       })
 
       const dots = wrapper.findAll('.route-dot')
-      expect(dots[0]?.attributes('data-phase')).toBe('failed')
-      expect(dots[0]?.attributes('data-session-status-testid')).toBe('session-status-failed')
-      expect(dots[0]?.attributes('data-attention-reason')).toBe('provider-error')
+      expect(dots[0]?.attributes('data-phase')).toBe('failure')
+      expect(dots[0]?.attributes('data-session-status-testid')).toBe('session-status-failure')
+      expect(dots[0]?.attributes('data-attention-reason')).toBe('provider_error')
       expect(dots[1]?.attributes('data-phase')).toBe('complete')
       expect(dots[1]?.attributes('data-session-status-testid')).toBe('session-status-complete')
       expect(dots[1]?.attributes('data-attention-reason')).toBe('turn-complete')

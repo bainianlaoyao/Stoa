@@ -63,11 +63,15 @@ function explanationForPresence(presence: SessionPresenceSnapshot): string | nul
     return 'Provider is asking a question.'
   }
 
-  if (presence.blockingReason === 'resume-confirmation') {
-    return 'Provider is waiting for confirmation.'
+  if (presence.blockingReason === 'denied') {
+    return 'Provider denied the current action.'
   }
 
-  if (presence.phase === 'failed') {
+  if (presence.blockingReason === 'provider_wait') {
+    return 'Provider is waiting to continue.'
+  }
+
+  if (presence.phase === 'failure') {
     return 'Provider reported an error.'
   }
 

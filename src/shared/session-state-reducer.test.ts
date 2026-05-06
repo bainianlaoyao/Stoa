@@ -1,8 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import type { SessionStatePatchEvent, SessionSummary } from './project-session'
+import type {
+  FailureReason,
+  SessionStatePatchEvent,
+  SessionSummary,
+  TurnOutcome,
+  TurnState
+} from './project-session'
 import { derivePresencePhase, reduceSessionState } from './session-state-reducer'
 
-const NOW = '2026-04-24T00:00:00.000Z'
+const NOW = '2026-05-06T00:00:00.000Z'
 
 function session(overrides: Partial<SessionSummary> = {}): SessionSummary {
   return {
@@ -10,18 +16,21 @@ function session(overrides: Partial<SessionSummary> = {}): SessionSummary {
     projectId: 'project_1',
     type: 'codex',
     runtimeState: 'alive',
-    agentState: 'idle',
+    turnState: 'idle',
+    turnEpoch: 0,
+    lastTurnOutcome: 'none',
+    blockingReason: null,
+    failureReason: null,
     hasUnseenCompletion: false,
     runtimeExitCode: null,
     runtimeExitReason: null,
     lastStateSequence: 1,
-    blockingReason: null,
     title: 'Session 1',
     summary: 'ready',
     recoveryMode: 'resume-external',
     externalSessionId: null,
-    createdAt: '2026-04-23T00:00:00.000Z',
-    updatedAt: '2026-04-23T00:00:00.000Z',
+    createdAt: '2026-05-05T00:00:00.000Z',
+    updatedAt: '2026-05-05T00:00:00.000Z',
     lastActivatedAt: null,
     archived: false,
     ...overrides
@@ -32,353 +41,525 @@ function patch(overrides: Partial<SessionStatePatchEvent> = {}): SessionStatePat
   return {
     sessionId: 'session_1',
     sequence: 2,
-    occurredAt: '2026-04-24T00:00:00.000Z',
+    occurredAt: NOW,
     intent: 'agent.turn_started',
     source: 'provider',
+    turnEpoch: 1,
+    sourceTurnId: 'provider-turn-1',
     summary: 'event',
     ...overrides
   }
 }
 
+function derive(sessionState: SessionSummary) {
+  return derivePresencePhase({
+    runtimeState: sessionState.runtimeState,
+    turnState: sessionState.turnState,
+    turnEpoch: sessionState.turnEpoch,
+    lastTurnOutcome: sessionState.lastTurnOutcome,
+    blockingReason: sessionState.blockingReason,
+    failureReason: sessionState.failureReason,
+    hasUnseenCompletion: sessionState.hasUnseenCompletion,
+    runtimeExitCode: sessionState.runtimeExitCode,
+    runtimeExitReason: sessionState.runtimeExitReason,
+    provider: sessionState.type
+  })
+}
+
 describe('session state reducer', () => {
-  it('derives preparing for created and starting before stale agent state', () => {
+  it('derives ready from created starting and clean exited states', () => {
+    expect(derive(session({ runtimeState: 'created', turnState: 'running', blockingReason: 'permission' }))).toBe('ready')
+    expect(derive(session({ runtimeState: 'starting', turnState: 'running', blockingReason: 'permission' }))).toBe('ready')
     expect(
-      derivePresencePhase({
-        runtimeState: 'created',
-        agentState: 'working',
-        hasUnseenCompletion: true,
-        runtimeExitCode: null,
-        runtimeExitReason: null,
-        provider: 'codex'
-      })
-    ).toBe('preparing')
-    expect(
-      derivePresencePhase({
-        runtimeState: 'starting',
-        agentState: 'idle',
-        hasUnseenCompletion: true,
-        runtimeExitCode: null,
-        runtimeExitReason: null,
-        provider: 'codex'
-      })
-    ).toBe('preparing')
-  })
-
-  it('derives failed before blocked complete running and ready', () => {
-    for (const input of [
-      {
-        runtimeState: 'failed_to_start' as const,
-        agentState: 'blocked' as const,
-        hasUnseenCompletion: true,
-        runtimeExitCode: null,
-        runtimeExitReason: null
-      },
-      {
-        runtimeState: 'exited' as const,
-        agentState: 'working' as const,
-        hasUnseenCompletion: false,
-        runtimeExitCode: 1,
-        runtimeExitReason: 'failed' as const
-      },
-      {
-        runtimeState: 'alive' as const,
-        agentState: 'error' as const,
-        hasUnseenCompletion: true,
-        runtimeExitCode: null,
-        runtimeExitReason: null
-      }
-    ]) {
-      expect(derivePresencePhase({ ...input, provider: 'codex' })).toBe('failed')
-    }
-  })
-
-  it('derives complete from idle plus unseen completion before clean exited', () => {
-    expect(
-      derivePresencePhase({
+      derive(session({
         runtimeState: 'exited',
-        agentState: 'idle',
-        hasUnseenCompletion: true,
-        runtimeExitCode: 0,
         runtimeExitReason: 'clean',
-        provider: 'codex'
-      })
-    ).toBe('complete')
-  })
-
-  it('derives shell alive unknown as running', () => {
-    expect(
-      derivePresencePhase({
-        runtimeState: 'alive',
-        agentState: 'unknown',
-        hasUnseenCompletion: false,
-        runtimeExitCode: null,
-        runtimeExitReason: null,
-        provider: 'shell'
-      })
-    ).toBe('running')
-  })
-
-  it('derives agent provider alive unknown as ready', () => {
-    expect(
-      derivePresencePhase({
-        runtimeState: 'alive',
-        agentState: 'unknown',
-        hasUnseenCompletion: false,
-        runtimeExitCode: null,
-        runtimeExitReason: null,
-        provider: 'codex'
-      })
+        turnState: 'idle',
+        lastTurnOutcome: 'completed',
+        hasUnseenCompletion: false
+      }))
     ).toBe('ready')
   })
 
-  it('runtime alive never changes agent state to working', () => {
-    const next = reduceSessionState(
-      session({ runtimeState: 'starting', agentState: 'unknown' }),
-      patch({ intent: 'runtime.alive', externalSessionId: 'external_1' }),
+  it('derives running only from alive plus running turn state', () => {
+    expect(derive(session({ runtimeState: 'alive', turnState: 'running', blockingReason: null }))).toBe('running')
+    expect(derive(session({ runtimeState: 'alive', turnState: 'idle', blockingReason: null }))).toBe('ready')
+    expect(derive(session({ runtimeState: 'exited', turnState: 'running', blockingReason: null }))).toBe('ready')
+  })
+
+  it('derives blocked only when blockingReason exists on current running turn', () => {
+    expect(derive(session({ turnState: 'running', turnEpoch: 2, blockingReason: 'permission' }))).toBe('blocked')
+    expect(derive(session({ turnState: 'idle', turnEpoch: 2, blockingReason: 'permission' }))).toBe('ready')
+  })
+
+  it('derives failure before blocked complete running and ready', () => {
+    expect(
+      derive(session({ runtimeState: 'failed_to_start', turnState: 'running', blockingReason: 'permission' }))
+    ).toBe('failure')
+    expect(
+      derive(session({ runtimeState: 'exited', runtimeExitReason: 'failed', turnState: 'running' }))
+    ).toBe('failure')
+    expect(
+      derive(session({ failureReason: 'provider_error', blockingReason: 'permission', hasUnseenCompletion: true }))
+    ).toBe('failure')
+  })
+
+  it('keeps complete until completion_seen and keeps clean exit folded into ready', () => {
+    const complete = session({
+      turnState: 'idle',
+      turnEpoch: 3,
+      lastTurnOutcome: 'completed',
+      hasUnseenCompletion: true
+    })
+
+    expect(derive(complete)).toBe('complete')
+
+    const seen = reduceSessionState(
+      complete,
+      patch({
+        sequence: complete.lastStateSequence + 1,
+        intent: 'agent.completion_seen',
+        source: 'ui',
+        turnEpoch: complete.turnEpoch,
+        summary: 'completion seen'
+      }),
       NOW
     )
 
-    expect(next).toMatchObject({
-      runtimeState: 'alive',
-      agentState: 'unknown',
-      externalSessionId: 'external_1',
-      lastStateSequence: 2,
-      updatedAt: NOW
-    })
+    expect(seen.hasUnseenCompletion).toBe(false)
+    expect(derive(seen)).toBe('ready')
+
+    const exited = reduceSessionState(
+      complete,
+      patch({
+        sequence: complete.lastStateSequence + 1,
+        intent: 'runtime.exited_clean',
+        source: 'runtime',
+        turnEpoch: undefined,
+        sourceTurnId: null,
+        runtimeExitCode: 0,
+        runtimeExitReason: 'clean',
+        summary: 'clean exit'
+      }),
+      NOW
+    )
+
+    expect(derive(exited)).toBe('complete')
   })
 
-  it('runtime starting resets agent unseen blocking and exit metadata', () => {
+  it('runtime starting resets turn block failure and completion metadata', () => {
     const next = reduceSessionState(
       session({
         runtimeState: 'exited',
-        agentState: 'blocked',
+        turnState: 'running',
+        turnEpoch: 9,
+        lastTurnOutcome: 'failed',
+        blockingReason: 'permission',
+        failureReason: 'runtime_crash',
         hasUnseenCompletion: true,
         runtimeExitCode: 42,
-        runtimeExitReason: 'failed',
-        blockingReason: 'permission'
+        runtimeExitReason: 'failed'
       }),
-      patch({ intent: 'runtime.starting' }),
+      patch({
+        intent: 'runtime.starting',
+        source: 'runtime',
+        turnEpoch: undefined,
+        sourceTurnId: null,
+        summary: 'starting'
+      }),
       NOW
     )
 
     expect(next).toMatchObject({
       runtimeState: 'starting',
-      agentState: 'unknown',
+      turnState: 'idle',
+      blockingReason: null,
+      failureReason: null,
       hasUnseenCompletion: false,
       runtimeExitCode: null,
-      runtimeExitReason: null,
-      blockingReason: null,
-      lastStateSequence: 2,
-      updatedAt: NOW
+      runtimeExitReason: null
     })
   })
 
-  it('turn completed sets agent idle and unseen completion', () => {
+  it('turn started opens a new running turn and clears previous outcome state', () => {
     const next = reduceSessionState(
-      session({ agentState: 'working', hasUnseenCompletion: false }),
-      patch({ intent: 'agent.turn_completed' }),
-      NOW
-    )
-
-    expect(next).toMatchObject({
-      agentState: 'idle',
-      hasUnseenCompletion: true,
-      lastStateSequence: 2,
-      updatedAt: NOW
-    })
-  })
-
-  it('turn completed clears blocked permission state and marks completion', () => {
-    const next = reduceSessionState(
-      session({ agentState: 'blocked', blockingReason: 'permission', hasUnseenCompletion: false }),
-      patch({ intent: 'agent.turn_completed' }),
-      NOW
-    )
-
-    expect(next).toMatchObject({
-      agentState: 'idle',
-      hasUnseenCompletion: true,
-      blockingReason: null,
-      lastStateSequence: 2,
-      updatedAt: NOW
-    })
-  })
-
-  it('completion seen clears unseen completion without changing agent idle', () => {
-    const next = reduceSessionState(
-      session({ agentState: 'idle', hasUnseenCompletion: true }),
-      patch({ intent: 'agent.completion_seen', source: 'ui' }),
-      NOW
-    )
-
-    expect(next).toMatchObject({
-      agentState: 'idle',
-      hasUnseenCompletion: false,
-      lastStateSequence: 2,
-      updatedAt: NOW
-    })
-  })
-
-  it('keeps complete visible until completion_seen clears unseen completion', () => {
-    const complete = session({
-      runtimeState: 'alive',
-      agentState: 'idle',
-      hasUnseenCompletion: true
-    })
-
-    expect(derivePresencePhase({
-      runtimeState: complete.runtimeState,
-      agentState: complete.agentState,
-      hasUnseenCompletion: complete.hasUnseenCompletion,
-      runtimeExitCode: complete.runtimeExitCode,
-      runtimeExitReason: complete.runtimeExitReason,
-      provider: complete.type
-    })).toBe('complete')
-
-    const next = reduceSessionState(complete, patch({
-      sequence: complete.lastStateSequence + 1,
-      intent: 'agent.completion_seen',
-      source: 'ui',
-      summary: 'Completion seen'
-    }), '2026-04-26T00:00:00.000Z')
-
-    expect(next.agentState).toBe('idle')
-    expect(next.hasUnseenCompletion).toBe(false)
-  })
-
-  it('turn interrupted moves active agent states back to idle without showing completion', () => {
-    for (const agentState of ['working', 'blocked'] as const) {
-      const next = reduceSessionState(
-        session({ agentState, hasUnseenCompletion: true, blockingReason: 'permission' }),
-        patch({ intent: 'agent.turn_interrupted', source: 'ui' }),
-        NOW
-      )
-
-      expect(next).toMatchObject({
-        agentState: 'idle',
-        hasUnseenCompletion: false,
-        blockingReason: null,
-        lastStateSequence: 2,
-        updatedAt: NOW
-      })
-    }
-  })
-
-  it('tool started clears blocked permission state when real work resumes', () => {
-    const next = reduceSessionState(
-      session({ agentState: 'blocked', blockingReason: 'permission', hasUnseenCompletion: true }),
-      patch({ intent: 'agent.tool_started' }),
-      NOW
-    )
-
-    expect(next).toMatchObject({
-      agentState: 'working',
-      blockingReason: null,
-      hasUnseenCompletion: false,
-      lastStateSequence: 2,
-      updatedAt: NOW
-    })
-  })
-
-  it('tool completed also clears blocked permission state once work resumes', () => {
-    const next = reduceSessionState(
-      session({ agentState: 'blocked', blockingReason: 'permission', hasUnseenCompletion: true }),
-      patch({ intent: 'agent.tool_completed' }),
-      NOW
-    )
-
-    expect(next).toMatchObject({
-      agentState: 'working',
-      blockingReason: null,
-      hasUnseenCompletion: false,
-      lastStateSequence: 2,
-      updatedAt: NOW
-    })
-  })
-
-  it('permission events do not change agent fields when runtime is not alive', () => {
-    const requested = reduceSessionState(
       session({
-        runtimeState: 'exited',
-        agentState: 'idle',
-        blockingReason: null,
-        hasUnseenCompletion: true
-      }),
-      patch({ intent: 'agent.permission_requested', blockingReason: 'permission' }),
-      NOW
-    )
-    const resolved = reduceSessionState(
-      session({
-        runtimeState: 'failed_to_start',
-        agentState: 'blocked',
+        turnState: 'idle',
+        turnEpoch: 4,
+        lastTurnOutcome: 'interrupted',
         blockingReason: 'permission',
+        failureReason: 'unknown',
         hasUnseenCompletion: true
       }),
-      patch({ intent: 'agent.permission_resolved' }),
+      patch({
+        intent: 'agent.turn_started',
+        turnEpoch: 5,
+        summary: 'turn started'
+      }),
       NOW
     )
 
-    expect(requested).toMatchObject({
-      runtimeState: 'exited',
-      agentState: 'idle',
+    expect(next).toMatchObject({
+      turnState: 'running',
+      turnEpoch: 5,
+      lastTurnOutcome: 'none',
       blockingReason: null,
-      hasUnseenCompletion: true,
-      lastStateSequence: 2,
-      updatedAt: NOW
+      failureReason: null,
+      hasUnseenCompletion: false
     })
-    expect(resolved).toMatchObject({
-      runtimeState: 'failed_to_start',
-      agentState: 'blocked',
+    expect(derive(next)).toBe('running')
+  })
+
+  it('does not clear blocked on tool_started or tool_completed alone', () => {
+    const blocked = session({
+      turnState: 'running',
+      turnEpoch: 3,
+      blockingReason: 'permission'
+    })
+
+    const toolStarted = reduceSessionState(
+      blocked,
+      patch({
+        sequence: blocked.lastStateSequence + 1,
+        intent: 'agent.tool_started',
+        turnEpoch: 3,
+        summary: 'tool started'
+      }),
+      NOW
+    )
+
+    const toolCompleted = reduceSessionState(
+      blocked,
+      patch({
+        sequence: blocked.lastStateSequence + 1,
+        intent: 'agent.tool_completed',
+        turnEpoch: 3,
+        summary: 'tool completed'
+      }),
+      NOW
+    )
+
+    expect(toolStarted.blockingReason).toBe('permission')
+    expect(toolCompleted.blockingReason).toBe('permission')
+    expect(derive(toolStarted)).toBe('blocked')
+    expect(derive(toolCompleted)).toBe('blocked')
+  })
+
+  it('uses claude PreToolUse as explicit continuation evidence to clear blocked on the same turn', () => {
+    const blocked = session({
+      type: 'claude-code',
+      turnState: 'running',
+      turnEpoch: 3,
+      blockingReason: 'permission'
+    })
+
+    const resumed = reduceSessionState(
+      blocked,
+      patch({
+        sequence: blocked.lastStateSequence + 1,
+        intent: 'agent.tool_started',
+        sourceEventType: 'claude-code.PreToolUse',
+        turnEpoch: 3,
+        summary: 'PreToolUse'
+      }),
+      NOW
+    )
+
+    expect(resumed.blockingReason).toBe(null)
+    expect(resumed.turnState).toBe('running')
+    expect(derive(resumed)).toBe('running')
+  })
+
+  it('returns to running on explicit permission_resolved for the same blocked turn', () => {
+    const blocked = session({
+      turnState: 'running',
+      turnEpoch: 7,
+      blockingReason: 'permission'
+    })
+
+    const next = reduceSessionState(
+      blocked,
+      patch({
+        sequence: blocked.lastStateSequence + 1,
+        intent: 'agent.permission_resolved',
+        turnEpoch: 7,
+        summary: 'permission resolved'
+      }),
+      NOW
+    )
+
+    expect(next.blockingReason).toBe(null)
+    expect(next.turnState).toBe('running')
+    expect(derive(next)).toBe('running')
+  })
+
+  it('ignores permission resolution from a stale turnEpoch', () => {
+    const blocked = session({
+      turnState: 'running',
+      turnEpoch: 7,
+      blockingReason: 'permission'
+    })
+
+    const next = reduceSessionState(
+      blocked,
+      patch({
+        sequence: blocked.lastStateSequence + 1,
+        intent: 'agent.permission_resolved',
+        turnEpoch: 6,
+        summary: 'stale permission resolved'
+      }),
+      NOW
+    )
+
+    expect(next.blockingReason).toBe('permission')
+    expect(derive(next)).toBe('blocked')
+  })
+
+  it('turn completed marks unseen completion on the current turn only', () => {
+    const next = reduceSessionState(
+      session({
+        turnState: 'running',
+        turnEpoch: 2
+      }),
+      patch({
+        intent: 'agent.turn_completed',
+        turnEpoch: 2,
+        summary: 'turn completed'
+      }),
+      NOW
+    )
+
+    expect(next).toMatchObject({
+      turnState: 'idle',
+      turnEpoch: 2,
+      lastTurnOutcome: 'completed',
+      hasUnseenCompletion: true,
+      blockingReason: null
+    })
+    expect(derive(next)).toBe('complete')
+  })
+
+  it('permission requested can open a blocked turn when provider turn start evidence is missing', () => {
+    const next = reduceSessionState(
+      session({
+        turnState: 'idle',
+        turnEpoch: 2,
+        lastTurnOutcome: 'completed',
+        hasUnseenCompletion: true
+      }),
+      patch({
+        intent: 'agent.permission_requested',
+        turnEpoch: 3,
+        blockingReason: 'permission',
+        summary: 'permission requested'
+      }),
+      NOW
+    )
+
+    expect(next).toMatchObject({
+      turnState: 'running',
+      turnEpoch: 3,
+      lastTurnOutcome: 'none',
       blockingReason: 'permission',
+      failureReason: null,
+      hasUnseenCompletion: false
+    })
+    expect(derive(next)).toBe('blocked')
+  })
+
+  it('tool started can reopen a running turn when prompt-start evidence is missing', () => {
+    const next = reduceSessionState(
+      session({
+        turnState: 'idle',
+        turnEpoch: 2,
+        lastTurnOutcome: 'interrupted'
+      }),
+      patch({
+        intent: 'agent.tool_started',
+        turnEpoch: 3,
+        summary: 'tool started'
+      }),
+      NOW
+    )
+
+    expect(next).toMatchObject({
+      turnState: 'running',
+      turnEpoch: 3,
+      lastTurnOutcome: 'none',
+      blockingReason: null,
+      failureReason: null,
+      hasUnseenCompletion: false
+    })
+    expect(derive(next)).toBe('running')
+  })
+
+  it('direct terminal events can advance from ready when the provider missed turn-start evidence', () => {
+    const completed = reduceSessionState(
+      session({
+        turnState: 'idle',
+        turnEpoch: 3,
+        lastTurnOutcome: 'interrupted'
+      }),
+      patch({
+        intent: 'agent.turn_completed',
+        turnEpoch: 4,
+        summary: 'turn completed'
+      }),
+      NOW
+    )
+
+    expect(completed).toMatchObject({
+      turnState: 'idle',
+      turnEpoch: 4,
+      lastTurnOutcome: 'completed',
       hasUnseenCompletion: true,
-      lastStateSequence: 2,
-      updatedAt: NOW
+      blockingReason: null,
+      failureReason: null
     })
-  })
+    expect(derive(completed)).toBe('complete')
 
-  it('permission resolved can move blocked to working', () => {
-    const next = reduceSessionState(
-      session({ agentState: 'blocked', blockingReason: 'permission' }),
-      patch({ intent: 'agent.permission_resolved' }),
+    const failed = reduceSessionState(
+      session({
+        turnState: 'idle',
+        turnEpoch: 4,
+        lastTurnOutcome: 'completed',
+        hasUnseenCompletion: false
+      }),
+      patch({
+        intent: 'agent.turn_failed',
+        turnEpoch: 5,
+        failureReason: 'provider_error',
+        summary: 'turn failed'
+      }),
       NOW
     )
 
-    expect(next).toMatchObject({
-      agentState: 'working',
-      blockingReason: null,
-      lastStateSequence: 2,
-      updatedAt: NOW
+    expect(failed).toMatchObject({
+      turnState: 'idle',
+      turnEpoch: 5,
+      lastTurnOutcome: 'failed',
+      failureReason: 'provider_error',
+      hasUnseenCompletion: false
     })
+    expect(derive(failed)).toBe('failure')
   })
 
-  it('permission resolved can move blocked to idle from provider target state', () => {
-    const next = reduceSessionState(
-      session({ agentState: 'blocked', blockingReason: 'permission' }),
-      patch({ intent: 'agent.permission_resolved', agentState: 'idle' }),
+  it('preserves interrupted outcomes against late completion events', () => {
+    const interrupted = reduceSessionState(
+      session({
+        turnState: 'running',
+        turnEpoch: 4
+      }),
+      patch({
+        intent: 'agent.turn_interrupted',
+        source: 'ui',
+        turnEpoch: 4,
+        summary: 'interrupted'
+      }),
       NOW
     )
 
-    expect(next).toMatchObject({
-      agentState: 'idle',
-      blockingReason: null,
-      lastStateSequence: 2,
-      updatedAt: NOW
-    })
-  })
+    expect(interrupted.turnState).toBe('idle')
+    expect(interrupted.lastTurnOutcome).toBe('interrupted')
+    expect(derive(interrupted)).toBe('ready')
 
-  it('permission resolved can move blocked to error from provider target state', () => {
-    const next = reduceSessionState(
-      session({ agentState: 'blocked', blockingReason: 'permission' }),
-      patch({ intent: 'agent.permission_resolved', agentState: 'error' }),
+    const lateCompletion = reduceSessionState(
+      interrupted,
+      patch({
+        sequence: interrupted.lastStateSequence + 1,
+        intent: 'agent.turn_completed',
+        turnEpoch: 4,
+        summary: 'late completion'
+      }),
       NOW
     )
 
-    expect(next).toMatchObject({
-      agentState: 'error',
-      blockingReason: null,
-      lastStateSequence: 2,
-      updatedAt: NOW
+    expect(lateCompletion.lastTurnOutcome).toBe('interrupted')
+    expect(lateCompletion.hasUnseenCompletion).toBe(false)
+    expect(derive(lateCompletion)).toBe('ready')
+  })
+
+  it('preserves failed outcomes against late completion events', () => {
+    const failed = reduceSessionState(
+      session({
+        turnState: 'running',
+        turnEpoch: 4
+      }),
+      patch({
+        intent: 'agent.turn_failed',
+        turnEpoch: 4,
+        failureReason: 'provider_error',
+        summary: 'failed'
+      }),
+      NOW
+    )
+
+    expect(failed.turnState).toBe('idle')
+    expect(failed.lastTurnOutcome).toBe('failed')
+    expect(failed.failureReason).toBe('provider_error')
+    expect(derive(failed)).toBe('failure')
+
+    const lateCompletion = reduceSessionState(
+      failed,
+      patch({
+        sequence: failed.lastStateSequence + 1,
+        intent: 'agent.turn_completed',
+        turnEpoch: 4,
+        summary: 'late completion'
+      }),
+      NOW
+    )
+
+    expect(lateCompletion.lastTurnOutcome).toBe('failed')
+    expect(lateCompletion.failureReason).toBe('provider_error')
+    expect(derive(lateCompletion)).toBe('failure')
+  })
+
+  it('ignores old turn events after a newer turn has started', () => {
+    const current = session({
+      turnState: 'running',
+      turnEpoch: 5
     })
+
+    const next = reduceSessionState(
+      current,
+      patch({
+        sequence: current.lastStateSequence + 1,
+        intent: 'agent.turn_completed',
+        turnEpoch: 4,
+        summary: 'old turn completion'
+      }),
+      NOW
+    )
+
+    expect(next.turnState).toBe('running')
+    expect(next.turnEpoch).toBe(5)
+    expect(next.hasUnseenCompletion).toBe(false)
+    expect(derive(next)).toBe('running')
+  })
+
+  it('runtime alive never forces the turn into running', () => {
+    const next = reduceSessionState(
+      session({
+        runtimeState: 'starting',
+        turnState: 'idle',
+        turnEpoch: 0
+      }),
+      patch({
+        intent: 'runtime.alive',
+        source: 'runtime',
+        turnEpoch: undefined,
+        sourceTurnId: null,
+        externalSessionId: 'external_1',
+        summary: 'alive'
+      }),
+      NOW
+    )
+
+    expect(next.runtimeState).toBe('alive')
+    expect(next.turnState).toBe('idle')
+    expect(next.externalSessionId).toBe('external_1')
+    expect(derive(next)).toBe('ready')
   })
 
   it('stale sequence patches are ignored', () => {
@@ -390,19 +571,20 @@ describe('session state reducer', () => {
 
   it('duplicate same-sequence patches do not mutate state twice', () => {
     const first = reduceSessionState(
-      session({ lastStateSequence: 1, agentState: 'working' }),
-      patch({ sequence: 2, intent: 'agent.turn_completed' }),
+      session({ turnState: 'running', turnEpoch: 1, lastStateSequence: 1 }),
+      patch({ sequence: 2, intent: 'agent.turn_completed', turnEpoch: 1 }),
       NOW
     )
     const second = reduceSessionState(
       first,
-      patch({ sequence: 2, intent: 'agent.completion_seen', source: 'ui' }),
-      '2026-04-24T00:01:00.000Z'
+      patch({ sequence: 2, intent: 'agent.completion_seen', source: 'ui', turnEpoch: 1 }),
+      '2026-05-06T00:01:00.000Z'
     )
 
     expect(second).toBe(first)
     expect(second).toMatchObject({
-      agentState: 'idle',
+      turnState: 'idle',
+      lastTurnOutcome: 'completed',
       hasUnseenCompletion: true,
       lastStateSequence: 2,
       updatedAt: NOW

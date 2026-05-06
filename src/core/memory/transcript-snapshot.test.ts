@@ -16,8 +16,8 @@ function createEvent(overrides: Partial<CanonicalSessionEvent> = {}): CanonicalS
     source: 'provider-adapter',
     payload: {
       intent: 'agent.turn_completed',
-      agentState: 'idle',
-      hasUnseenCompletion: true,
+      turnEpoch: 1,
+      sourceTurnId: 'turn-1',
       summary: 'Stop',
       externalSessionId: 'provider-session-1'
     },
@@ -95,8 +95,8 @@ describe('createTranscriptSnapshot', () => {
       summary: 'Stop',
       payload: {
         intent: 'agent.turn_completed',
-        agentState: 'idle',
-        hasUnseenCompletion: true,
+        turnEpoch: 1,
+        sourceTurnId: 'turn-1',
         summary: 'Stop',
         externalSessionId: 'provider-session-1'
       },

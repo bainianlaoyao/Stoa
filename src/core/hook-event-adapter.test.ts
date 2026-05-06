@@ -25,8 +25,6 @@ describe('hook event adapter', () => {
       source: 'provider-adapter',
       payload: {
         intent: 'agent.turn_completed',
-        agentState: 'idle',
-        hasUnseenCompletion: true,
         summary: 'Stop'
       },
       evidence: {
@@ -63,7 +61,6 @@ describe('hook event adapter', () => {
       source: 'provider-adapter',
       payload: {
         intent: 'runtime.alive',
-        agentState: 'idle',
         summary: 'SessionStart',
         externalSessionId: 'claude-external-1'
       },
@@ -98,7 +95,6 @@ describe('hook event adapter', () => {
       project_id: 'project_internal_running',
       payload: {
         intent: 'agent.turn_started',
-        agentState: 'working',
         summary: 'UserPromptSubmit'
       },
       evidence: {
@@ -135,7 +131,6 @@ describe('hook event adapter', () => {
       project_id: 'project_internal_running',
       payload: {
         intent: 'agent.tool_started',
-        agentState: 'working',
         summary: 'PreToolUse'
       },
       evidence: {
@@ -173,7 +168,6 @@ describe('hook event adapter', () => {
       source: 'provider-adapter',
       payload: {
         intent: 'agent.permission_requested',
-        agentState: 'blocked',
         summary: 'PermissionRequest',
         blockingReason: 'permission'
       },
@@ -209,7 +203,6 @@ describe('hook event adapter', () => {
       source: 'provider-adapter',
       payload: {
         intent: 'agent.tool_completed',
-        agentState: 'working',
         summary: 'PostToolUse'
       },
       evidence: {
@@ -239,7 +232,6 @@ describe('hook event adapter', () => {
       source: 'provider-adapter',
       payload: {
         intent: 'agent.tool_started',
-        agentState: 'working',
         summary: 'PreToolUse',
         toolName: 'AskUserQuestion'
       },
@@ -274,7 +266,7 @@ describe('codex hook adapter', () => {
       source: 'provider-adapter',
       payload: {
         intent: 'runtime.alive',
-        agentState: 'idle',
+        sourceTurnId: 'turn_1',
         summary: 'SessionStart',
         externalSessionId: 'codex-session-1'
       },
@@ -314,7 +306,7 @@ describe('codex hook adapter', () => {
       source: 'provider-adapter',
       payload: {
         intent: 'agent.turn_started',
-        agentState: 'working',
+        sourceTurnId: 'turn_2',
         summary: 'UserPromptSubmit'
       },
       evidence: {
@@ -353,7 +345,7 @@ describe('codex hook adapter', () => {
       source: 'provider-adapter',
       payload: {
         intent: 'agent.tool_started',
-        agentState: 'working',
+        sourceTurnId: 'turn_3',
         summary: 'PreToolUse'
       },
       evidence: {
@@ -394,7 +386,7 @@ describe('codex hook adapter', () => {
       source: 'provider-adapter',
       payload: {
         intent: 'agent.tool_completed',
-        agentState: 'working',
+        sourceTurnId: 'turn_4',
         summary: 'PostToolUse'
       },
       evidence: {
@@ -433,8 +425,7 @@ describe('codex hook adapter', () => {
       source: 'provider-adapter',
       payload: {
         intent: 'agent.turn_completed',
-        agentState: 'idle',
-        hasUnseenCompletion: true,
+        sourceTurnId: 'turn_5',
         summary: 'Stop'
       },
       evidence: {
@@ -468,8 +459,7 @@ describe('codex hook adapter', () => {
       event_type: 'codex.Stop',
       payload: {
         intent: 'agent.turn_completed',
-        agentState: 'idle',
-        hasUnseenCompletion: true,
+        sourceTurnId: 'turn-nullable',
         summary: 'Stop',
         externalSessionId: 'codex-session-nullable'
       },
@@ -537,7 +527,6 @@ describe('codex hook adapter', () => {
       event_type: 'codex.SessionStart',
       payload: {
         intent: 'runtime.alive',
-        agentState: 'idle',
         summary: 'SessionStart'
       }
     })

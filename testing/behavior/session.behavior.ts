@@ -114,10 +114,16 @@ export const sessionMemoryNotificationBehavior = defineBehavior({
 export const sessionPresenceReadyBehavior = defineBehavior({
   id: 'session.presence.ready',
   actor: 'system',
-  goal: 'present an alive provider session with unknown or idle agent state as calm ready status',
-  entities: ['project', 'session', 'runtime-state', 'agent-state', 'renderer-status'],
+  goal: 'present an alive provider session with no active work or unread completion as calm ready status',
+  entities: ['project', 'session', 'runtime-state', 'turn-state', 'renderer-status'],
   usageModes: ['active_workflow', 'recovery_workflow'],
-  preconditions: ['session.runtimeState=alive', 'session.agentState in [unknown,idle]', 'session.hasUnseenCompletion=false'],
+  preconditions: [
+    'session.runtimeState=alive',
+    'session.turnState=idle',
+    'session.hasUnseenCompletion=false',
+    'session.blockingReason.absent',
+    'session.failureReason.absent'
+  ],
   action: 'presence.deriveReady',
   expects: [
     'session.presence.phase=ready',
@@ -126,7 +132,7 @@ export const sessionPresenceReadyBehavior = defineBehavior({
     'command.sessionStatusReadyVisible',
     'command.sessionStatusNonAccent'
   ],
-  invalidPreconditions: ['session.runtimeState=created', 'session.runtimeState=starting', 'session.agentState=working'],
+  invalidPreconditions: ['session.runtimeState=created', 'session.runtimeState=starting', 'session.turnState=running'],
   interruptions: ['app.relaunch.duringPresenceSync', 'runtime.alive.withoutAgentTelemetry'],
   recovery: ['readyDoesNotImplyWorking', 'backendPresenceRemainsAuthoritative'],
   observationLayers: ['ui', 'renderer-store', 'main-debug-state', 'persisted-state'],
@@ -138,9 +144,9 @@ export const sessionPresenceRunningBehavior = defineBehavior({
   id: 'session.presence.running',
   actor: 'system',
   goal: 'present active agent work as running without treating it as a high-attention interruption',
-  entities: ['project', 'session', 'runtime-state', 'agent-state', 'renderer-status'],
+  entities: ['project', 'session', 'runtime-state', 'turn-state', 'renderer-status'],
   usageModes: ['active_workflow'],
-  preconditions: ['session.runtimeState=alive', 'session.agentState=working'],
+  preconditions: ['session.runtimeState=alive', 'session.turnState=running', 'session.blockingReason.absent'],
   action: 'presence.deriveRunning',
   expects: [
     'session.presence.phase=running',
@@ -148,7 +154,7 @@ export const sessionPresenceRunningBehavior = defineBehavior({
     'session.presence.active=true',
     'command.sessionStatusRunningVisible'
   ],
-  invalidPreconditions: ['session.runtimeState=starting', 'session.agentState=blocked', 'session.agentState=error'],
+  invalidPreconditions: ['session.runtimeState=starting', 'session.blockingReason.exists', 'session.failureReason.exists'],
   interruptions: ['provider.permissionRequest.duringRunning', 'provider.stopHook.duringRunning', 'user.interruptsAgentTurn'],
   recovery: ['runningDoesNotOverrideBlocked', 'runningDoesNotOverrideFailed', 'userInterruptReturnsReadyWithoutCompletion'],
   observationLayers: ['ui', 'renderer-store', 'main-debug-state', 'persisted-state'],
@@ -160,18 +166,18 @@ export const sessionPresenceCompleteBehavior = defineBehavior({
   id: 'session.presence.complete',
   actor: 'system',
   goal: 'surface an unread agent completion as a UI-only complete phase until the user visits it',
-  entities: ['project', 'session', 'agent-state', 'renderer-status', 'completion'],
+  entities: ['project', 'session', 'turn-state', 'renderer-status', 'completion'],
   usageModes: ['active_workflow'],
-  preconditions: ['session.agentState=idle', 'session.hasUnseenCompletion=true'],
+  preconditions: ['session.turnState=idle', 'session.lastTurnOutcome=completed', 'session.hasUnseenCompletion=true'],
   action: 'presence.deriveComplete',
   expects: [
     'session.presence.phase=complete',
     'session.presence.uiOnly=true',
-    'session.agentState=idle',
+    'session.turnState=idle',
     'session.hasUnseenCompletion=true',
     'command.sessionStatusCompleteVisible'
   ],
-  invalidPreconditions: ['session.agentState=working', 'session.agentState=blocked', 'session.hasUnseenCompletion=false'],
+  invalidPreconditions: ['session.turnState=running', 'session.blockingReason.exists', 'session.hasUnseenCompletion=false'],
   interruptions: ['user.visitsCompletedSession', 'runtime.exitedFailed.afterCompletion'],
   recovery: ['visitedCompletionBecomesReady', 'failedPriorityOverridesComplete'],
   observationLayers: ['ui', 'renderer-store', 'main-debug-state', 'persisted-state'],
@@ -183,9 +189,9 @@ export const sessionPresenceBlockedBehavior = defineBehavior({
   id: 'session.presence.blocked',
   actor: 'system',
   goal: 'surface provider permission or elicitation requests as blocked status requiring user intervention',
-  entities: ['project', 'session', 'agent-state', 'blocking-reason', 'renderer-status'],
+  entities: ['project', 'session', 'turn-state', 'blocking-reason', 'renderer-status'],
   usageModes: ['active_workflow'],
-  preconditions: ['session.runtimeState=alive', 'session.agentState=blocked', 'session.blockingReason.exists'],
+  preconditions: ['session.runtimeState=alive', 'session.turnState=running', 'session.blockingReason.exists'],
   action: 'presence.deriveBlocked',
   expects: [
     'session.presence.phase=blocked',
@@ -193,7 +199,7 @@ export const sessionPresenceBlockedBehavior = defineBehavior({
     'session.presence.requiresUserIntervention=true',
     'command.sessionStatusBlockedVisible'
   ],
-  invalidPreconditions: ['session.runtimeState=starting', 'session.agentState=working', 'session.agentState=idle'],
+  invalidPreconditions: ['session.runtimeState=starting', 'session.turnState=idle', 'session.blockingReason.absent'],
   interruptions: ['provider.permissionResolved', 'runtime.exitedFailed.whileBlocked'],
   recovery: ['resolvedPermissionReturnsRunningOrReady', 'failedPriorityOverridesBlocked'],
   observationLayers: ['ui', 'renderer-store', 'main-debug-state', 'persisted-state'],
@@ -201,22 +207,24 @@ export const sessionPresenceBlockedBehavior = defineBehavior({
   coverageBudget: 'critical'
 })
 
-export const sessionPresenceFailedBehavior = defineBehavior({
-  id: 'session.presence.failed',
+export const sessionPresenceFailureBehavior = defineBehavior({
+  id: 'session.presence.failure',
   actor: 'system',
   goal: 'surface failed runtime or agent outcomes as the highest-priority session status',
-  entities: ['project', 'session', 'runtime-state', 'agent-state', 'renderer-status'],
+  entities: ['project', 'session', 'runtime-state', 'failure-reason', 'renderer-status'],
   usageModes: ['active_workflow', 'recovery_workflow'],
-  preconditions: ['session.runtimeState=failed_to_start OR session.runtimeExitReason=failed OR session.agentState=error'],
-  action: 'presence.deriveFailed',
+  preconditions: [
+    'session.runtimeState=failed_to_start OR session.runtimeExitReason=failed OR session.failureReason.exists'
+  ],
+  action: 'presence.deriveFailure',
   expects: [
-    'session.presence.phase=failed',
+    'session.presence.phase=failure',
     'session.presence.priority=highest',
     'session.presence.overrides=complete',
     'session.presence.overrides=blocked',
-    'command.sessionStatusFailedVisible'
+    'command.sessionStatusFailureVisible'
   ],
-  invalidPreconditions: ['session.runtimeExitReason=clean', 'session.agentState=idle', 'session.agentState=working'],
+  invalidPreconditions: ['session.runtimeExitReason=clean', 'session.failureReason.absent', 'session.blockingReason.exists'],
   interruptions: ['runtime.exitedFailed.afterCompletion', 'runtime.exitedFailed.whileBlocked'],
   recovery: ['failedPriorityRemainsHighest', 'backendPresenceRemainsAuthoritative'],
   observationLayers: ['ui', 'renderer-store', 'main-debug-state', 'persisted-state'],

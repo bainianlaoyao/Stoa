@@ -64,12 +64,15 @@ function toPersistedSession(session: SessionSummary): PersistedSession {
     type: session.type,
     title: session.title,
     runtime_state: session.runtimeState,
-    agent_state: session.agentState,
+    turn_state: session.turnState,
+    turn_epoch: session.turnEpoch,
+    last_turn_outcome: session.lastTurnOutcome,
+    blocking_reason: session.blockingReason,
+    failure_reason: session.failureReason,
     has_unseen_completion: session.hasUnseenCompletion,
     runtime_exit_code: session.runtimeExitCode,
     runtime_exit_reason: session.runtimeExitReason,
     last_state_sequence: session.lastStateSequence,
-    blocking_reason: session.blockingReason,
     last_summary: session.summary,
     external_session_id: session.externalSessionId,
     created_at: session.createdAt,
@@ -86,12 +89,15 @@ function toSessionSummary(session: PersistedSession): SessionSummary {
     projectId: session.project_id,
     type: session.type,
     runtimeState: session.runtime_state,
-    agentState: session.agent_state,
+    turnState: session.turn_state,
+    turnEpoch: session.turn_epoch,
+    lastTurnOutcome: session.last_turn_outcome,
+    blockingReason: session.blocking_reason,
+    failureReason: session.failure_reason,
     hasUnseenCompletion: session.has_unseen_completion,
     runtimeExitCode: session.runtime_exit_code,
     runtimeExitReason: session.runtime_exit_reason,
     lastStateSequence: session.last_state_sequence,
-    blockingReason: session.blocking_reason,
     title: session.title,
     summary: session.last_summary,
     recoveryMode: session.recovery_mode,
@@ -350,7 +356,9 @@ export class ProjectSessionManager {
   }
 
   async markRuntimeFailedToStart(sessionId: string, summary: string): Promise<void> {
-    await this.applyRuntimePatch(sessionId, 'runtime.failed_to_start', summary)
+    await this.applyRuntimePatch(sessionId, 'runtime.failed_to_start', summary, {
+      failureReason: 'failed_to_start'
+    })
   }
 
   async markCompletionSeen(sessionId: string): Promise<void> {
@@ -373,7 +381,7 @@ export class ProjectSessionManager {
     if (!session) return
     this.state.activeSessionId = sessionId
     this.state.activeProjectId = session.projectId
-    if (session.agentState === 'idle' && session.hasUnseenCompletion) {
+    if (session.turnState === 'idle' && session.lastTurnOutcome === 'completed' && session.hasUnseenCompletion) {
       const patch = this.createSessionStatePatch(session, 'agent.completion_seen', 'Completion seen', { source: 'ui' })
       this.applySessionStateReductionToSession(session, patch, new Date().toISOString())
     }
@@ -436,12 +444,15 @@ export class ProjectSessionManager {
       projectId: request.projectId,
       type: request.type,
       runtimeState: 'created',
-      agentState: 'unknown',
+      turnState: 'idle',
+      turnEpoch: 0,
+      lastTurnOutcome: 'none',
+      blockingReason: null,
+      failureReason: null,
       hasUnseenCompletion: false,
       runtimeExitCode: null,
       runtimeExitReason: null,
       lastStateSequence: 0,
-      blockingReason: null,
       title: request.title,
       summary: 'Waiting for session to start',
       recoveryMode: createSessionRecoveryMode(request.type),
@@ -526,7 +537,7 @@ export class ProjectSessionManager {
     for (const project of persistedProjects) {
       const projectSessions = byProject.get(project.project_id) ?? []
       const data: PersistedProjectSessions = {
-        version: 5,
+        version: 6,
         project_id: project.project_id,
         sessions: projectSessions
       }
@@ -554,7 +565,10 @@ export class ProjectSessionManager {
     sessionId: string,
     intent: SessionStateIntent,
     summary: string,
-    options: Partial<Pick<SessionStatePatchEvent, 'externalSessionId' | 'runtimeExitCode' | 'source'>> = {}
+    options: Partial<Pick<
+      SessionStatePatchEvent,
+      'externalSessionId' | 'runtimeExitCode' | 'source' | 'turnEpoch' | 'sourceTurnId' | 'blockingReason' | 'failureReason'
+    >> = {}
   ): Promise<void> {
     const session = this.state.sessions.find(s => s.id === sessionId)
     if (!session) return
@@ -593,14 +607,28 @@ export class ProjectSessionManager {
     session: SessionSummary,
     intent: SessionStateIntent,
     summary: string,
-    options: Partial<Pick<SessionStatePatchEvent, 'externalSessionId' | 'runtimeExitCode' | 'source'>> = {}
+    options: Partial<Pick<
+      SessionStatePatchEvent,
+      'externalSessionId' | 'runtimeExitCode' | 'source' | 'turnEpoch' | 'sourceTurnId' | 'blockingReason' | 'failureReason'
+    >> = {}
   ): SessionStatePatchEvent {
+    const turnEpoch =
+      options.turnEpoch !== undefined
+        ? options.turnEpoch
+        : intent.startsWith('agent.')
+          ? session.turnEpoch
+          : undefined
+
     return {
       sessionId: session.id,
       sequence: session.lastStateSequence + 1,
       occurredAt: new Date().toISOString(),
       intent,
       source: options.source ?? 'runtime',
+      turnEpoch,
+      sourceTurnId: options.sourceTurnId,
+      blockingReason: options.blockingReason,
+      failureReason: options.failureReason,
       summary,
       externalSessionId: options.externalSessionId,
       runtimeExitCode: options.runtimeExitCode
@@ -610,7 +638,7 @@ export class ProjectSessionManager {
 
 function shouldApplyPatchSummary(session: SessionSummary, patch: SessionStatePatchEvent): boolean {
   return patch.intent !== 'runtime.alive'
-    || (session.agentState !== 'blocked' && session.agentState !== 'error')
+    || (session.blockingReason === null && session.failureReason === null)
 }
 
 function isWorkspaceIdeSetting(value: unknown): value is AppSettings['workspaceIde'] {

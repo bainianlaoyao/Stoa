@@ -1,4 +1,10 @@
-import type { SessionAgentState, SessionRuntimeState } from './project-session'
+import type {
+  FailureReason,
+  SessionPhase,
+  SessionRuntimeState,
+  TurnOutcome,
+  TurnState
+} from './project-session'
 
 export type ObservationScope = 'session' | 'project' | 'app'
 export type ObservationCategory = 'lifecycle' | 'presence' | 'evidence' | 'activity' | 'system'
@@ -26,10 +32,10 @@ export interface ObservationEvent {
   payload: Record<string, unknown>
 }
 
-export type SessionPresencePhase = 'preparing' | 'ready' | 'running' | 'complete' | 'blocked' | 'failed' | 'exited'
+export type SessionPresencePhase = SessionPhase
 export type ObservabilityConfidence = 'authoritative' | 'provisional' | 'stale'
 export type ObservabilityHealth = 'healthy' | 'lost'
-export type BlockingReason = 'permission' | 'elicitation' | 'resume-confirmation' | 'provider-error'
+export type BlockingReason = 'permission' | 'elicitation' | 'denied' | 'provider_wait'
 export type RecoveryPointerState = 'trusted' | 'suspect' | 'missing'
 export type ObservabilityTone = 'neutral' | 'accent' | 'success' | 'warning' | 'danger'
 
@@ -38,7 +44,11 @@ export interface SessionRuntimeSnapshot {
   projectId: string
   providerId: string
   runtimeState: SessionRuntimeState
-  agentState: SessionAgentState
+  turnState: TurnState
+  turnEpoch: number
+  lastTurnOutcome: TurnOutcome
+  blockingReason: BlockingReason | null
+  failureReason: FailureReason | null
   hasUnseenCompletion: boolean
   runtimeExitCode: number | null
   runtimeExitReason: 'clean' | 'failed' | null
@@ -58,13 +68,16 @@ export interface SessionPresenceSnapshot {
   modelLabel: string | null
   phase: SessionPresencePhase
   runtimeState: SessionRuntimeState
-  agentState: SessionAgentState
+  turnState: TurnState
+  turnEpoch: number
+  lastTurnOutcome: TurnOutcome
+  blockingReason: BlockingReason | null
+  failureReason: FailureReason | null
   hasUnseenCompletion: boolean
   runtimeExitCode: number | null
   runtimeExitReason: 'clean' | 'failed' | null
   confidence: ObservabilityConfidence
   health: ObservabilityHealth
-  blockingReason: BlockingReason | null
   lastAssistantSnippet: string | null
   lastEventAt: string
   lastEvidenceType: string | null

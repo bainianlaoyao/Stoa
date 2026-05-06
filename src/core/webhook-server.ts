@@ -25,16 +25,31 @@ const VALID_INTENTS = new Set([
   'agent.tool_completed',
   'agent.turn_completed',
   'agent.turn_interrupted',
-  'agent.completion_seen',
   'agent.permission_requested',
   'agent.permission_resolved',
+  'agent.turn_cancelled',
   'agent.turn_failed',
+  'agent.completion_seen',
   'agent.recovered'
 ])
 const VALID_RUNTIME_STATES = new Set(['created', 'starting', 'alive', 'exited', 'failed_to_start'])
-const VALID_AGENT_STATES = new Set(['unknown', 'idle', 'working', 'blocked', 'error'])
 const VALID_RUNTIME_EXIT_REASONS = new Set(['clean', 'failed'])
-const VALID_BLOCKING_REASONS = new Set(['permission', 'elicitation', 'resume-confirmation', 'provider-error'])
+const VALID_BLOCKING_REASONS = new Set(['permission', 'elicitation', 'denied', 'provider_wait'])
+const VALID_FAILURE_REASONS = new Set([
+  'rate_limit',
+  'authentication_failed',
+  'billing_error',
+  'invalid_request',
+  'server_error',
+  'max_output_tokens',
+  'permission_denied',
+  'tool_error',
+  'provider_error',
+  'runtime_crash',
+  'failed_to_start',
+  'unknown'
+])
+const LEGACY_PAYLOAD_FIELDS = ['agentState', 'hasUnseenCompletion'] as const
 const OPTIONAL_STRING_FIELDS = ['model', 'snippet', 'toolName', 'error'] as const
 const OPTIONAL_EVIDENCE_STRING_FIELDS = [
   'hookEventName',
@@ -102,11 +117,7 @@ function isCanonicalSessionEvent(value: unknown): value is CanonicalSessionEvent
     return false
   }
 
-  if (payload.agentState !== undefined && !VALID_AGENT_STATES.has(payload.agentState as string)) {
-    return false
-  }
-
-  if (payload.hasUnseenCompletion !== undefined && typeof payload.hasUnseenCompletion !== 'boolean') {
+  if (payload.turnEpoch !== undefined && typeof payload.turnEpoch !== 'number') {
     return false
   }
 
@@ -134,6 +145,20 @@ function isCanonicalSessionEvent(value: unknown): value is CanonicalSessionEvent
     return false
   }
 
+  if (
+    payload.failureReason !== undefined
+    && payload.failureReason !== null
+    && !VALID_FAILURE_REASONS.has(payload.failureReason as string)
+  ) {
+    return false
+  }
+
+  for (const field of LEGACY_PAYLOAD_FIELDS) {
+    if (payload[field] !== undefined) {
+      return false
+    }
+  }
+
   if (payload.toolUseId !== undefined) {
     return false
   }
@@ -152,11 +177,15 @@ function isCanonicalSessionEvent(value: unknown): value is CanonicalSessionEvent
     return false
   }
 
-  if (event.evidence !== undefined && !isMemoryRuntimeEvidence(event.evidence)) {
+  if (
+    payload.sourceTurnId !== undefined
+    && payload.sourceTurnId !== null
+    && typeof payload.sourceTurnId !== 'string'
+  ) {
     return false
   }
 
-  if (payload.intent === 'agent.permission_resolved' && payload.agentState === 'blocked') {
+  if (event.evidence !== undefined && !isMemoryRuntimeEvidence(event.evidence)) {
     return false
   }
 

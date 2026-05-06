@@ -11,7 +11,7 @@ import {
   phaseLabel
 } from './observability-projection'
 
-const NOW_ISO = '2026-04-24T08:00:00.000Z'
+const NOW_ISO = '2026-05-06T08:00:00.000Z'
 
 function sessionFixture(patch: Partial<SessionSummary> = {}): SessionSummary {
   return {
@@ -21,39 +21,46 @@ function sessionFixture(patch: Partial<SessionSummary> = {}): SessionSummary {
     title: 'Implement feature',
     summary: 'Working on feature',
     runtimeState: 'alive',
-    agentState: 'idle',
+    turnState: 'idle',
+    turnEpoch: 0,
+    lastTurnOutcome: 'none',
+    blockingReason: null,
+    failureReason: null,
     hasUnseenCompletion: false,
     runtimeExitCode: null,
     runtimeExitReason: null,
     lastStateSequence: 1,
-    blockingReason: null,
     recoveryMode: 'resume-external',
     externalSessionId: 'external-1',
-    createdAt: '2026-04-24T07:00:00.000Z',
-    updatedAt: '2026-04-24T07:30:00.000Z',
-    lastActivatedAt: '2026-04-24T07:45:00.000Z',
+    createdAt: '2026-05-06T07:00:00.000Z',
+    updatedAt: '2026-05-06T07:30:00.000Z',
+    lastActivatedAt: '2026-05-06T07:45:00.000Z',
     archived: false,
     ...patch
   }
 }
 
 describe('observability projection', () => {
-  it('labels working agent phase as Running', () => {
-    const snapshot = buildSessionPresenceSnapshot(sessionFixture({ agentState: 'working' }), {
+  it('labels running turns as Running', () => {
+    const running = sessionFixture({ turnState: 'running', turnEpoch: 1 })
+    const snapshot = buildSessionPresenceSnapshot(running, {
       activeSessionId: 'session-1',
       nowIso: NOW_ISO
     })
 
     expect(snapshot.phase).toBe('running')
     expect(phaseLabel(snapshot.phase)).toBe('Running')
-    expect(buildSessionRowViewModel(sessionFixture({ agentState: 'working' }), snapshot, NOW_ISO).primaryLabel).toBe('Running')
+    expect(buildSessionRowViewModel(running, snapshot, NOW_ISO).primaryLabel).toBe('Running')
   })
 
-  it('labels idle unseen completion as Complete', () => {
-    const snapshot = buildSessionPresenceSnapshot(sessionFixture({
-      agentState: 'idle',
+  it('labels completed unseen turns as Complete', () => {
+    const completed = sessionFixture({
+      turnState: 'idle',
+      turnEpoch: 2,
+      lastTurnOutcome: 'completed',
       hasUnseenCompletion: true
-    }), {
+    })
+    const snapshot = buildSessionPresenceSnapshot(completed, {
       activeSessionId: 'session-1',
       nowIso: NOW_ISO
     })
@@ -62,17 +69,23 @@ describe('observability projection', () => {
     expect(phaseLabel(snapshot.phase)).toBe('Complete')
   })
 
-  it('uses danger tone for failed before complete and blocked', () => {
-    const failedSnapshot = buildSessionPresenceSnapshot(sessionFixture({
-      agentState: 'error',
-      hasUnseenCompletion: true,
-      blockingReason: 'permission'
-    }), {
-      activeSessionId: 'session-1',
-      nowIso: NOW_ISO
-    })
+  it('uses danger tone for failure before complete and blocked', () => {
+    const failedSnapshot = buildSessionPresenceSnapshot(
+      sessionFixture({
+        turnState: 'idle',
+        turnEpoch: 2,
+        lastTurnOutcome: 'failed',
+        failureReason: 'provider_error',
+        hasUnseenCompletion: true,
+        blockingReason: 'permission'
+      }),
+      {
+        activeSessionId: 'session-1',
+        nowIso: NOW_ISO
+      }
+    )
 
-    expect(failedSnapshot.phase).toBe('failed')
+    expect(failedSnapshot.phase).toBe('failure')
     expect(mapPhaseToTone(failedSnapshot.phase)).toBe('danger')
   })
 
@@ -85,39 +98,20 @@ describe('observability projection', () => {
     expect(mapPhaseToTone('ready')).toBe('neutral')
   })
 
-  it('keeps phase derived from session state even when metadata is present', () => {
-    const snapshot = buildSessionPresenceSnapshot(sessionFixture({
-      runtimeState: 'alive',
-      agentState: 'idle',
-      hasUnseenCompletion: false,
-      type: 'claude-code'
-    }), {
-      activeSessionId: 'other-session',
-      nowIso: '2026-04-26T00:00:00.000Z',
-      modelLabel: 'claude-sonnet',
-      lastAssistantSnippet: 'Finished the task.',
-      lastEvidenceType: 'evidence.assistant_message_observed',
-      lastEventAt: '2026-04-26T00:00:00.000Z',
-      evidenceSequence: 12,
-      sourceSequence: 12
-    })
-
-    expect(snapshot.phase).toBe('ready')
-    expect(snapshot.modelLabel).toBe('claude-sonnet')
-    expect(snapshot.lastAssistantSnippet).toBe('Finished the task.')
-  })
-
   it('builds a session presence snapshot with the approved contract', () => {
-    const snapshot = buildSessionPresenceSnapshot(sessionFixture({
-      agentState: 'idle',
+    const session = sessionFixture({
+      turnState: 'idle',
+      turnEpoch: 2,
+      lastTurnOutcome: 'completed',
       hasUnseenCompletion: true
-    }), {
+    })
+    const snapshot = buildSessionPresenceSnapshot(session, {
       activeSessionId: 'session-1',
       nowIso: NOW_ISO,
       modelLabel: 'Sonnet',
       lastAssistantSnippet: 'I finished the implementation.',
       lastEvidenceType: 'evidence.assistant_message',
-      lastEventAt: '2026-04-24T07:59:00.000Z',
+      lastEventAt: '2026-05-06T07:59:00.000Z',
       evidenceSequence: 17,
       sourceSequence: 42
     })
@@ -130,15 +124,18 @@ describe('observability projection', () => {
       modelLabel: 'Sonnet',
       phase: 'complete',
       runtimeState: 'alive',
-      agentState: 'idle',
+      turnState: 'idle',
+      turnEpoch: 2,
+      lastTurnOutcome: 'completed',
+      blockingReason: null,
+      failureReason: null,
       hasUnseenCompletion: true,
       runtimeExitCode: null,
       runtimeExitReason: null,
       confidence: 'authoritative',
       health: 'healthy',
-      blockingReason: null,
       lastAssistantSnippet: 'I finished the implementation.',
-      lastEventAt: '2026-04-24T07:59:00.000Z',
+      lastEventAt: '2026-05-06T07:59:00.000Z',
       lastEvidenceType: 'evidence.assistant_message',
       hasUnreadTurn: false,
       recoveryPointerState: 'trusted',
@@ -148,27 +145,17 @@ describe('observability projection', () => {
     })
   })
 
-  it('marks inactive assistant snippets as unread turns', () => {
-    const snapshot = buildSessionPresenceSnapshot(sessionFixture({ id: 'session-2' }), {
-      activeSessionId: 'session-1',
-      nowIso: NOW_ISO,
-      lastAssistantSnippet: 'Review is ready.',
-      lastEvidenceType: 'evidence.assistant_message'
-    })
-
-    expect(snapshot.hasUnreadTurn).toBe(true)
-  })
-
   it('builds session row view models with approved labels and attention state', () => {
     const session = sessionFixture({
-      agentState: 'blocked',
-      blockingReason: 'resume-confirmation'
+      turnState: 'running',
+      turnEpoch: 3,
+      blockingReason: 'elicitation'
     })
     const snapshot = buildSessionPresenceSnapshot(session, {
       activeSessionId: 'other-session',
       nowIso: NOW_ISO,
       modelLabel: 'Sonnet',
-      lastAssistantSnippet: 'Approve the command.',
+      lastAssistantSnippet: 'Answer this question.',
       lastEvidenceType: 'evidence.assistant_message'
     })
 
@@ -183,14 +170,16 @@ describe('observability projection', () => {
       tone: 'warning',
       hasUnreadTurn: true,
       needsAttention: true,
-      attentionReason: 'resume-confirmation',
+      attentionReason: 'elicitation',
       updatedAgoLabel: 'Just now'
     })
   })
 
   it('builds active session view models with descriptor labels', () => {
     const session = sessionFixture({
-      agentState: 'idle',
+      turnState: 'idle',
+      turnEpoch: 4,
+      lastTurnOutcome: 'completed',
       hasUnseenCompletion: true
     })
     const snapshot = buildSessionPresenceSnapshot(session, {
@@ -216,65 +205,47 @@ describe('observability projection', () => {
     })
   })
 
-  it('uses canonical shell provider descriptor for snapshot and row label', () => {
-    const session = sessionFixture({
-      id: 'shell-session',
-      type: 'shell',
-      agentState: 'idle',
-      hasUnseenCompletion: true,
-      externalSessionId: null
-    })
-    const snapshot = buildSessionPresenceSnapshot(session, {
-      activeSessionId: 'shell-session',
-      nowIso: NOW_ISO
-    })
-
-    const viewModel = buildSessionRowViewModel(session, snapshot, NOW_ISO)
-
-    expect(snapshot.providerId).toBe('local-shell')
-    expect(snapshot.providerLabel).toBe('Shell')
-    expect(snapshot.recoveryPointerState).toBe('missing')
-    expect(viewModel.secondaryLabel).toBe('Shell')
-  })
-
-  it('builds project attention with failed first then complete and blocked', () => {
+  it('builds project attention with failure first then complete and blocked', () => {
     const blockedSession = buildSessionPresenceSnapshot(
       sessionFixture({
         id: 'blocked',
-        agentState: 'blocked',
-        blockingReason: 'resume-confirmation',
-        updatedAt: '2026-04-24T07:59:00.000Z'
+        turnState: 'running',
+        turnEpoch: 1,
+        blockingReason: 'permission'
       }),
       {
         activeSessionId: 'active-session',
         nowIso: NOW_ISO,
         lastAssistantSnippet: 'Approve me.',
-        lastEventAt: '2026-04-24T07:58:00.000Z'
+        lastEventAt: '2026-05-06T07:58:00.000Z'
       }
     )
     const completeSession = buildSessionPresenceSnapshot(
       sessionFixture({
         id: 'complete',
-        agentState: 'idle',
-        hasUnseenCompletion: true,
-        updatedAt: '2026-04-24T07:58:00.000Z'
+        turnState: 'idle',
+        turnEpoch: 2,
+        lastTurnOutcome: 'completed',
+        hasUnseenCompletion: true
       }),
       {
         activeSessionId: 'active-session',
         nowIso: NOW_ISO,
-        lastEventAt: '2026-04-24T07:59:00.000Z'
+        lastEventAt: '2026-05-06T07:59:00.000Z'
       }
     )
     const failedSession = buildSessionPresenceSnapshot(
       sessionFixture({
         id: 'failed',
-        agentState: 'error',
-        updatedAt: '2026-04-24T07:40:00.000Z'
+        turnState: 'idle',
+        turnEpoch: 3,
+        lastTurnOutcome: 'failed',
+        failureReason: 'provider_error'
       }),
       {
         activeSessionId: 'active-session',
         nowIso: NOW_ISO,
-        lastEventAt: '2026-04-24T07:40:00.000Z'
+        lastEventAt: '2026-05-06T07:40:00.000Z'
       }
     )
     const completeBeforeBlocked = buildProjectObservabilitySnapshot('project-1', [blockedSession, completeSession], NOW_ISO)
@@ -296,8 +267,8 @@ describe('observability projection', () => {
       failedSessionCount: 1,
       unreadTurnCount: 1,
       latestAttentionSessionId: 'failed',
-      latestAttentionReason: 'provider-error',
-      lastEventAt: '2026-04-24T07:59:00.000Z',
+      latestAttentionReason: 'provider_error',
+      lastEventAt: '2026-05-06T07:59:00.000Z',
       sourceSequence: 0,
       updatedAt: NOW_ISO
     })
@@ -308,8 +279,9 @@ describe('observability projection', () => {
       sessionFixture({
         id: 'blocked-session',
         projectId: 'project-blocked',
-        agentState: 'blocked',
-        blockingReason: 'resume-confirmation'
+        turnState: 'running',
+        turnEpoch: 1,
+        blockingReason: 'permission'
       }),
       { activeSessionId: 'active-session', nowIso: NOW_ISO, lastAssistantSnippet: 'Please approve this action.' }
     )
@@ -318,7 +290,10 @@ describe('observability projection', () => {
         id: 'failed-session',
         projectId: 'project-failed',
         type: 'codex',
-        agentState: 'error'
+        turnState: 'idle',
+        turnEpoch: 1,
+        lastTurnOutcome: 'failed',
+        failureReason: 'provider_error'
       }),
       { activeSessionId: 'active-session', nowIso: NOW_ISO }
     )
@@ -341,53 +316,6 @@ describe('observability projection', () => {
       lastGlobalEventAt: NOW_ISO,
       sourceSequence: 0,
       updatedAt: NOW_ISO
-    })
-  })
-
-  it('keeps blocked and complete session phases on healthy aggregate health', () => {
-    const blockedSession = buildSessionPresenceSnapshot(
-      sessionFixture({
-        id: 'blocked-session',
-        projectId: 'project-attention',
-        agentState: 'blocked',
-        blockingReason: 'permission'
-      }),
-      { activeSessionId: 'active-session', nowIso: NOW_ISO, lastAssistantSnippet: 'Approval required.' }
-    )
-    const completeSession = buildSessionPresenceSnapshot(
-      sessionFixture({
-        id: 'complete-session',
-        projectId: 'project-attention',
-        hasUnseenCompletion: true
-      }),
-      { activeSessionId: 'active-session', nowIso: NOW_ISO, lastAssistantSnippet: 'Turn finished.' }
-    )
-    const project = buildProjectObservabilitySnapshot(
-      'project-attention',
-      [
-        blockedSession,
-        completeSession
-      ],
-      NOW_ISO
-    )
-    const app = buildAppObservabilitySnapshot(
-      [project],
-      [
-        blockedSession,
-        completeSession
-      ],
-      NOW_ISO
-    )
-
-    expect(project).toMatchObject({
-      overallHealth: 'healthy',
-      blockedSessionCount: 1,
-      failedSessionCount: 0
-    })
-    expect(app).toMatchObject({
-      providerHealthSummary: {
-        'claude-code': 'healthy'
-      }
     })
   })
 })

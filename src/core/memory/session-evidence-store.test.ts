@@ -17,8 +17,8 @@ function createEvent(overrides: Partial<CanonicalSessionEvent> = {}): CanonicalS
     source: 'provider-adapter',
     payload: {
       intent: 'agent.turn_completed',
-      agentState: 'idle',
-      hasUnseenCompletion: true,
+      turnEpoch: 7,
+      sourceTurnId: 'turn-77',
       summary: 'Stop',
       externalSessionId: 'provider-session-77'
     },
@@ -86,8 +86,8 @@ describe('SessionEvidenceStore', () => {
       summary: 'Stop',
       payload: {
         intent: 'agent.turn_completed',
-        agentState: 'idle',
-        hasUnseenCompletion: true,
+        turnEpoch: 7,
+        sourceTurnId: 'turn-77',
         summary: 'Stop',
         externalSessionId: 'provider-session-77'
       },

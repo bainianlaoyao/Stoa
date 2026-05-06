@@ -1,6 +1,6 @@
 import { access } from 'node:fs/promises'
 import { constants } from 'node:fs'
-import { join } from 'node:path'
+import { basename, dirname, join, parse } from 'node:path'
 
 export interface BundledEvolverResolverOptions {
   resourcesPath?: string
@@ -31,7 +31,31 @@ function resolvePackagedResourcesPath(options: BundledEvolverResolverOptions): s
     ?? trimNonEmpty(readProcessResourcesPath())
 }
 
-function buildRepoRootCandidates(cwd: string, options: BundledEvolverResolverOptions): string[] {
+async function resolveSearchCeiling(cwd: string): Promise<string> {
+  let current = cwd
+  const root = parse(cwd).root
+
+  while (current !== root) {
+    const parent = dirname(current)
+    if (basename(parent) === '.worktrees') {
+      return dirname(parent)
+    }
+    current = parent
+  }
+
+  current = cwd
+  while (true) {
+    if (await pathExists(join(current, '.git'))) {
+      return current
+    }
+    if (current === root) {
+      return root
+    }
+    current = dirname(current)
+  }
+}
+
+async function buildRepoRootCandidates(cwd: string, options: BundledEvolverResolverOptions): Promise<string[]> {
   const candidates = [
     trimNonEmpty(process.env.STOA_EVOLVER_REPO_ROOT)
   ]
@@ -39,7 +63,15 @@ function buildRepoRootCandidates(cwd: string, options: BundledEvolverResolverOpt
   if (resourcesPath !== null) {
     candidates.push(join(resourcesPath, 'evolver'))
   }
-  candidates.push(join(cwd, 'research', 'upstreams', 'evolver'))
+  const ceiling = await resolveSearchCeiling(cwd)
+  let current = cwd
+  while (true) {
+    candidates.push(join(current, 'research', 'upstreams', 'evolver'))
+    if (current === ceiling) {
+      break
+    }
+    current = dirname(current)
+  }
 
   return candidates.filter((candidate): candidate is string => candidate !== null)
 }
@@ -48,7 +80,7 @@ export async function resolveBundledEvolverRepoRoot(
   cwd: string = process.cwd(),
   options: BundledEvolverResolverOptions = {}
 ): Promise<string> {
-  const candidates = buildRepoRootCandidates(cwd, options)
+  const candidates = await buildRepoRootCandidates(cwd, options)
 
   for (const candidate of candidates) {
     if (await pathExists(join(candidate, 'package.json'))) {

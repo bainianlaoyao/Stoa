@@ -27,8 +27,6 @@ function createCanonicalEvent(overrides: Partial<CanonicalSessionEvent> = {}): C
     source: 'hook-sidecar',
     payload: {
       intent: 'agent.turn_completed',
-      agentState: 'idle',
-      hasUnseenCompletion: true,
       summary: 'session.idle',
       externalSessionId: 'opencode-real-123'
     },
@@ -47,8 +45,6 @@ function createCompletionEvent(): CanonicalSessionEvent {
     source: 'hook-sidecar',
     payload: {
       intent: 'agent.turn_completed',
-      agentState: 'idle',
-      hasUnseenCompletion: true,
       summary: 'Turn complete'
     }
   }
@@ -191,12 +187,12 @@ describe('SessionEventBridge', () => {
       intent: 'agent.turn_completed',
       source: 'provider',
       sourceEventType: 'session.idle',
-      runtimeState: undefined,
-      agentState: 'idle',
-      hasUnseenCompletion: true,
+      turnEpoch: 1,
+      sourceTurnId: undefined,
       runtimeExitCode: undefined,
       runtimeExitReason: undefined,
       blockingReason: undefined,
+      failureReason: undefined,
       summary: 'session.idle',
       externalSessionId: 'opencode-real-123'
     })
@@ -222,12 +218,12 @@ describe('SessionEventBridge', () => {
       intent: 'agent.turn_completed',
       source: 'provider',
       sourceEventType: 'session.idle',
-      runtimeState: undefined,
-      agentState: 'idle',
-      hasUnseenCompletion: true,
+      turnEpoch: 1,
+      sourceTurnId: undefined,
       runtimeExitCode: undefined,
       runtimeExitReason: undefined,
       blockingReason: undefined,
+      failureReason: undefined,
       summary: 'Turn complete',
       externalSessionId: undefined
     })
@@ -269,6 +265,115 @@ describe('SessionEventBridge', () => {
       expect.objectContaining<Partial<SessionStatePatchEvent>>({
         sessionId: 'session_1',
         sequence: 2
+      })
+    )
+  })
+
+  test('unknown sourceTurnId on a terminal event does not open a brand-new turn after restart-like mapping loss', async () => {
+    const stateDir = await createTestTempDir('session-event-bridge-stale-turn-state-')
+    const workspaceDir = await createTestTempDir('session-event-bridge-stale-turn-workspace-')
+    tempDirs.push(stateDir, workspaceDir)
+    const manager = await ProjectSessionManager.create({
+      webhookPort: null,
+      globalStatePath: join(stateDir, 'global.json')
+    })
+    const project = await manager.createProject({
+      name: 'P1',
+      path: workspaceDir,
+      defaultSessionType: 'claude-code'
+    })
+    const session = await manager.createSession({
+      projectId: project.id,
+      type: 'claude-code',
+      title: 'Claude Session'
+    })
+    await manager.markRuntimeAlive(session.id, null)
+
+    const controller = {
+      applyProviderStatePatch: vi.fn(async (patch: SessionStatePatchEvent) => {
+        await manager.applySessionStatePatch(patch)
+      })
+    }
+    const bridge = new SessionEventBridge(manager, controller)
+    bridges.push(bridge)
+
+    const port = await bridge.start()
+    const secret = bridge.issueSessionSecret(session.id)
+    const response = await postEvent(
+      port,
+      createCanonicalEvent({
+        session_id: session.id,
+        project_id: project.id,
+        event_id: 'evt_stale_stop',
+        event_type: 'claude-code.Stop',
+        source: 'provider-adapter',
+        payload: {
+          intent: 'agent.turn_completed',
+          sourceTurnId: 'old-turn-1',
+          summary: 'late stop'
+        }
+      }),
+      secret
+    )
+
+    expect(response.statusCode).toBe(202)
+    expect(controller.applyProviderStatePatch).toHaveBeenCalledWith(
+      expect.objectContaining<Partial<SessionStatePatchEvent>>({
+        intent: 'agent.turn_completed',
+        turnEpoch: 0,
+        sourceTurnId: 'old-turn-1'
+      })
+    )
+    expect(manager.snapshot().sessions.find(candidate => candidate.id === session.id)).toMatchObject({
+      runtimeState: 'alive',
+      turnState: 'idle',
+      turnEpoch: 0,
+      lastTurnOutcome: 'none',
+      hasUnseenCompletion: false,
+      summary: 'late stop'
+    })
+  })
+
+  test('runtime.failed_to_start is ingested as failure presence, not startup lifecycle info', async () => {
+    const manager = ProjectSessionManager.createForTest()
+    const controller = {
+      applyProviderStatePatch: vi.fn(async () => {})
+    }
+    const observability = {
+      ingest: vi.fn(() => true)
+    }
+    const bridge = new SessionEventBridge(manager, controller, observability, {
+      nowIso: () => '2026-01-01T00:00:12.000Z'
+    })
+    bridges.push(bridge)
+
+    const port = await bridge.start()
+    const secret = bridge.issueSessionSecret('session_1')
+    const response = await postEvent(
+      port,
+      createCanonicalEvent({
+        event_id: 'evt_failed_start',
+        event_type: 'runtime.failed_to_start',
+        source: 'system-recovery',
+        payload: {
+          intent: 'runtime.failed_to_start',
+          failureReason: 'failed_to_start',
+          runtimeExitCode: 1,
+          runtimeExitReason: 'failed',
+          summary: 'failed to start'
+        }
+      }),
+      secret
+    )
+
+    expect(response.statusCode).toBe(202)
+    expect(observability.ingest).toHaveBeenCalledWith(
+      expect.objectContaining<Partial<ObservationEvent>>({
+        eventId: 'evt_failed_start',
+        category: 'presence',
+        type: 'presence.failure',
+        severity: 'error',
+        retention: 'critical'
       })
     )
   })
@@ -372,8 +477,8 @@ describe('SessionEventBridge', () => {
       }
     )
 
-    expect(response.statusCode).toBe(202)
-    expect(response.body).toEqual(JSON.stringify({ accepted: true }))
+    expect(response.statusCode).toBe(204)
+    expect(response.body).toBe('')
   })
 
   test('claude SessionStart does not flip an alive session into running before any prompt', async () => {
@@ -416,10 +521,14 @@ describe('SessionEventBridge', () => {
       }
     )
 
-    expect(response.statusCode).toBe(202)
+    expect(response.statusCode).toBe(204)
     expect(manager.snapshot().sessions.find(candidate => candidate.id === session.id)).toMatchObject({
       runtimeState: 'alive',
-      agentState: 'unknown',
+      turnState: 'idle',
+      turnEpoch: 0,
+      lastTurnOutcome: 'none',
+      blockingReason: null,
+      failureReason: null,
       hasUnseenCompletion: false
     })
   })
@@ -464,8 +573,8 @@ describe('SessionEventBridge', () => {
       }
     )
 
-    expect(response.statusCode).toBe(202)
-    expect(response.body).toEqual(JSON.stringify({ accepted: true }))
+    expect(response.statusCode).toBe(204)
+    expect(response.body).toBe('')
   })
 
   test('forwards authenticated memory notifications to the registered callback', async () => {
@@ -555,12 +664,12 @@ describe('SessionEventBridge', () => {
       intent: 'agent.turn_completed',
       source: 'provider',
       sourceEventType: 'session.idle',
-      runtimeState: undefined,
-      agentState: 'idle',
-      hasUnseenCompletion: true,
+      turnEpoch: 1,
+      sourceTurnId: undefined,
       runtimeExitCode: undefined,
       runtimeExitReason: undefined,
       blockingReason: undefined,
+      failureReason: undefined,
       summary: 'Turn complete',
       externalSessionId: undefined
     })
@@ -609,8 +718,6 @@ describe('SessionEventBridge', () => {
       event_type: 'agent.turn_interrupted',
       payload: {
         intent: 'agent.turn_interrupted',
-        agentState: 'idle',
-        hasUnseenCompletion: false,
         summary: 'Turn interrupted'
       }
     })
@@ -620,8 +727,7 @@ describe('SessionEventBridge', () => {
     expect(controller.applyProviderStatePatch).toHaveBeenCalledWith(
       expect.objectContaining<Partial<SessionStatePatchEvent>>({
         intent: 'agent.turn_interrupted',
-        agentState: 'idle',
-        hasUnseenCompletion: false,
+        turnEpoch: 1,
         summary: 'Turn interrupted'
       })
     )
@@ -688,19 +794,21 @@ describe('SessionEventBridge', () => {
       intent: 'agent.turn_completed',
       source: 'provider',
       sourceEventType: 'session.idle',
-      runtimeState: undefined,
-      agentState: 'idle',
-      hasUnseenCompletion: true,
+      turnEpoch: 1,
+      sourceTurnId: undefined,
       runtimeExitCode: undefined,
       runtimeExitReason: undefined,
       blockingReason: undefined,
+      failureReason: undefined,
       summary: 'session.idle',
       externalSessionId: 'opencode-real-123'
     })
     expect(observability.getSessionPresence(session.id)).toMatchObject({
       sessionId: session.id,
       runtimeState: 'alive',
-      agentState: 'idle',
+      turnState: 'idle',
+      lastTurnOutcome: 'completed',
+      hasUnseenCompletion: true,
       phase: 'complete',
       confidence: 'authoritative',
       recoveryPointerState: 'trusted'
@@ -727,7 +835,7 @@ describe('SessionEventBridge', () => {
       }
     )
 
-    expect(response.statusCode).toBe(202)
+    expect(response.statusCode).toBe(204)
     expect(controller.applyProviderStatePatch).toHaveBeenCalledTimes(1)
     expect(controller.applyProviderStatePatch).toHaveBeenCalledWith({
       sessionId: 'session_1',
@@ -736,12 +844,12 @@ describe('SessionEventBridge', () => {
       intent: 'agent.turn_completed',
       source: 'provider',
       sourceEventType: 'claude-code.Stop',
-      runtimeState: undefined,
-      agentState: 'idle',
-      hasUnseenCompletion: true,
+      turnEpoch: 0,
+      sourceTurnId: undefined,
       runtimeExitCode: undefined,
       runtimeExitReason: undefined,
       blockingReason: undefined,
+      failureReason: undefined,
       summary: 'Stop',
       externalSessionId: undefined
     })
@@ -782,14 +890,15 @@ describe('SessionEventBridge', () => {
       'x-stoa-project-id': project.id
     }
 
-    expect((await postClaudeHook(port, { hook_event_name: 'PermissionRequest' }, headers)).statusCode).toBe(202)
-    expect((await postClaudeHook(port, { hook_event_name: 'PreToolUse' }, headers)).statusCode).toBe(202)
+    expect((await postClaudeHook(port, { hook_event_name: 'PermissionRequest' }, headers)).statusCode).toBe(204)
+    expect((await postClaudeHook(port, { hook_event_name: 'PreToolUse' }, headers)).statusCode).toBe(204)
 
     expect(controller.applyProviderStatePatch).toHaveBeenCalledTimes(2)
     expect(controller.applyProviderStatePatch).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining<Partial<SessionStatePatchEvent>>({
         intent: 'agent.permission_requested',
+        turnEpoch: 1,
         sourceEventType: 'claude-code.PermissionRequest'
       })
     )
@@ -797,12 +906,15 @@ describe('SessionEventBridge', () => {
       2,
       expect.objectContaining<Partial<SessionStatePatchEvent>>({
         intent: 'agent.tool_started',
+        turnEpoch: 1,
         sourceEventType: 'claude-code.PreToolUse'
       })
     )
     expect(manager.snapshot().sessions.find(candidate => candidate.id === session.id)).toMatchObject({
       runtimeState: 'alive',
-      agentState: 'working',
+      turnState: 'running',
+      turnEpoch: 1,
+      lastTurnOutcome: 'none',
       blockingReason: null,
       hasUnseenCompletion: false,
       summary: 'PreToolUse'
@@ -844,17 +956,18 @@ describe('SessionEventBridge', () => {
       'x-stoa-project-id': project.id
     }
 
-    expect((await postClaudeHook(port, { hook_event_name: 'PermissionRequest' }, headers)).statusCode).toBe(202)
+    expect((await postClaudeHook(port, { hook_event_name: 'PermissionRequest' }, headers)).statusCode).toBe(204)
     expect((await postClaudeHook(port, {
       hook_event_name: 'Stop',
       transcript_path: join(workspaceDir, 'missing-transcript.jsonl')
-    }, headers)).statusCode).toBe(202)
+    }, headers)).statusCode).toBe(204)
 
     expect(controller.applyProviderStatePatch).toHaveBeenCalledTimes(2)
     expect(controller.applyProviderStatePatch).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining<Partial<SessionStatePatchEvent>>({
         intent: 'agent.permission_requested',
+        turnEpoch: 1,
         sourceEventType: 'claude-code.PermissionRequest'
       })
     )
@@ -862,12 +975,15 @@ describe('SessionEventBridge', () => {
       2,
       expect.objectContaining<Partial<SessionStatePatchEvent>>({
         intent: 'agent.turn_completed',
+        turnEpoch: 1,
         sourceEventType: 'claude-code.Stop'
       })
     )
     expect(manager.snapshot().sessions.find(candidate => candidate.id === session.id)).toMatchObject({
       runtimeState: 'alive',
-      agentState: 'idle',
+      turnState: 'idle',
+      turnEpoch: 1,
+      lastTurnOutcome: 'completed',
       blockingReason: null,
       hasUnseenCompletion: true,
       summary: 'Stop'
@@ -1015,12 +1131,12 @@ describe('SessionEventBridge', () => {
       intent: 'agent.turn_completed',
       source: 'provider',
       sourceEventType: 'session.idle',
-      runtimeState: undefined,
-      agentState: 'idle',
-      hasUnseenCompletion: true,
+      turnEpoch: 0,
+      sourceTurnId: undefined,
       runtimeExitCode: undefined,
       runtimeExitReason: undefined,
       blockingReason: undefined,
+      failureReason: undefined,
       summary: 'session.idle',
       externalSessionId: 'opencode-real-123'
     })
@@ -1100,12 +1216,12 @@ describe('SessionEventBridge', () => {
       intent: 'agent.turn_completed',
       source: 'provider',
       sourceEventType: 'session.idle',
-      runtimeState: undefined,
-      agentState: 'idle',
-      hasUnseenCompletion: true,
+      turnEpoch: 0,
+      sourceTurnId: undefined,
       runtimeExitCode: undefined,
       runtimeExitReason: undefined,
       blockingReason: undefined,
+      failureReason: undefined,
       summary: 'session.idle',
       externalSessionId: 'opencode-real-123'
     })
@@ -1199,12 +1315,12 @@ describe('SessionEventBridge', () => {
         intent: 'agent.turn_completed',
         source: 'provider',
         sourceEventType: 'session.idle',
-        runtimeState: undefined,
-        agentState: 'idle',
-        hasUnseenCompletion: true,
+        turnEpoch: 1,
+        sourceTurnId: undefined,
         runtimeExitCode: undefined,
         runtimeExitReason: undefined,
         blockingReason: undefined,
+        failureReason: undefined,
         summary: 'session.idle',
         externalSessionId: 'opencode-real-123'
       })
@@ -1285,8 +1401,8 @@ describe('SessionEventBridge', () => {
       }
     )
 
-    expect(response.statusCode).toBe(202)
-    expect(response.body).toEqual(JSON.stringify({ accepted: true }))
+    expect(response.statusCode).toBe(204)
+    expect(response.body).toBe('')
   })
 
   test('captureEvidence=false preserves provider state patches without persisting evidence or running maintenance', async () => {
@@ -1343,7 +1459,7 @@ describe('SessionEventBridge', () => {
       }
     )
 
-    expect(response.statusCode).toBe(202)
+    expect(response.statusCode).toBe(204)
     expect(persist).not.toHaveBeenCalled()
     expect(run).not.toHaveBeenCalled()
     expect(applyProviderStatePatch).toHaveBeenCalledOnce()
@@ -1424,8 +1540,8 @@ describe('SessionEventBridge', () => {
       }
     )
 
-    expect(response.statusCode).toBe(202)
-    expect(response.body).toEqual(JSON.stringify({ accepted: true }))
+    expect(response.statusCode).toBe(204)
+    expect(response.body).toBe('')
   })
 
   test('Stop seals turn evidence and dispatches turn maintenance through the runner', async () => {
@@ -1559,7 +1675,7 @@ describe('SessionEventBridge', () => {
       }
     )
 
-    expect(response.statusCode).toBe(202)
+    expect(response.statusCode).toBe(204)
     await completedJob
 
     expect(sealTurn).toHaveBeenCalledWith(

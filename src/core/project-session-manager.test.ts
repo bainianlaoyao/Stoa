@@ -375,7 +375,7 @@ describe('ProjectSessionManager', () => {
       ]
     }, globalStatePath)
     await stateStore.writeProjectSessions(projectDir, {
-      version: 5,
+      version: 6,
       project_id: 'project_real',
       sessions: []
     })
@@ -411,7 +411,7 @@ describe('ProjectSessionManager', () => {
       ]
     }, globalStatePath)
     await stateStore.writeProjectSessions(projectDir, {
-      version: 5,
+      version: 6,
       project_id: 'project_real',
       sessions: [
         {
@@ -420,7 +420,10 @@ describe('ProjectSessionManager', () => {
           type: 'shell',
           title: 'Alpha shell',
           runtime_state: 'alive',
-          agent_state: 'unknown',
+          turn_state: 'idle',
+          turn_epoch: 0,
+          last_turn_outcome: 'none',
+          failure_reason: null,
           has_unseen_completion: false,
           runtime_exit_code: null,
           runtime_exit_reason: null,
@@ -467,7 +470,7 @@ describe('ProjectSessionManager', () => {
       ]
     }, globalStatePath)
     await stateStore.writeProjectSessions(projectDir, {
-      version: 5,
+      version: 6,
       project_id: 'project_real',
       sessions: [
         {
@@ -476,7 +479,10 @@ describe('ProjectSessionManager', () => {
           type: 'shell',
           title: 'Orphan shell',
           runtime_state: 'alive',
-          agent_state: 'unknown',
+          turn_state: 'idle',
+          turn_epoch: 0,
+          last_turn_outcome: 'none',
+          failure_reason: null,
           has_unseen_completion: false,
           runtime_exit_code: null,
           runtime_exit_reason: null,
@@ -588,7 +594,8 @@ describe('ProjectSessionManager', () => {
     expect(session.projectId).toBe(project.id)
     expect(session.recoveryMode).toBe('resume-external')
     expect(session.runtimeState).toBe('created')
-    expect(session.agentState).toBe('unknown')
+    expect(session.turnState).toBe('idle')
+    expect(session.lastTurnOutcome).toBe('none')
     expect(session.hasUnseenCompletion).toBe(false)
     expect(session.runtimeExitCode).toBeNull()
     expect(session.runtimeExitReason).toBeNull()
@@ -757,7 +764,8 @@ describe('ProjectSessionManager', () => {
       const session = await manager.createSession({ projectId: project.id, type: 'shell', title: 'S1' })
 
       expect(session.runtimeState).toBe('created')
-      expect(session.agentState).toBe('unknown')
+      expect(session.turnState).toBe('idle')
+      expect(session.lastTurnOutcome).toBe('none')
       expect(session.hasUnseenCompletion).toBe(false)
       expect(session.runtimeExitCode).toBeNull()
       expect(session.runtimeExitReason).toBeNull()
@@ -793,7 +801,8 @@ describe('ProjectSessionManager', () => {
 
       const updated = manager.snapshot().sessions.find(s => s.id === session.id)!
       expect(updated.runtimeState).toBe('starting')
-      expect(updated.agentState).toBe('unknown')
+      expect(updated.turnState).toBe('idle')
+      expect(updated.lastTurnOutcome).toBe('none')
       expect(updated.hasUnseenCompletion).toBe(false)
       expect(updated.runtimeExitCode).toBeNull()
       expect(updated.runtimeExitReason).toBeNull()
@@ -812,7 +821,8 @@ describe('ProjectSessionManager', () => {
 
       const updated = manager.snapshot().sessions.find(s => s.id === session.id)!
       expect(updated.runtimeState).toBe('alive')
-      expect(updated.agentState).toBe('unknown')
+      expect(updated.turnState).toBe('idle')
+      expect(updated.lastTurnOutcome).toBe('none')
       expect(updated.hasUnseenCompletion).toBe(false)
       expect(updated.externalSessionId).toBe('opencode-real-123')
       expect(updated.summary).toBe('Session running')
@@ -832,11 +842,13 @@ describe('ProjectSessionManager', () => {
         intent: 'agent.turn_completed',
         source: 'provider',
         sourceEventType: 'Stop',
+        turnEpoch: 1,
         summary: 'Claude completed'
       })
 
       const updated = manager.snapshot().sessions.find(s => s.id === session.id)!
-      expect(updated.agentState).toBe('idle')
+      expect(updated.turnState).toBe('idle')
+      expect(updated.lastTurnOutcome).toBe('completed')
       expect(updated.hasUnseenCompletion).toBe(true)
       expect(updated.summary).toBe('Claude completed')
       expect(updated.lastStateSequence).toBe(2)
@@ -855,6 +867,7 @@ describe('ProjectSessionManager', () => {
         occurredAt: '2026-04-24T00:00:01.000Z',
         intent: 'agent.turn_completed',
         source: 'provider',
+        turnEpoch: 1,
         summary: 'Claude completed'
       })
       await manager.setActiveSession(second.id)
@@ -862,13 +875,14 @@ describe('ProjectSessionManager', () => {
       await manager.setActiveSession(first.id)
 
       const updated = manager.snapshot().sessions.find(s => s.id === first.id)!
-      expect(updated.agentState).toBe('idle')
+      expect(updated.turnState).toBe('idle')
+      expect(updated.lastTurnOutcome).toBe('completed')
       expect(updated.hasUnseenCompletion).toBe(false)
       expect(updated.summary).toBe('Completion seen')
       expect(updated.lastStateSequence).toBe(3)
     })
 
-    test('persists project session schema v5 without legacy status', async () => {
+    test('persists project session schema v6 without legacy status', async () => {
       const globalStatePath = await createTempGlobalStatePath()
       const projectDir = await createTempProjectDir()
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
@@ -878,10 +892,13 @@ describe('ProjectSessionManager', () => {
       await manager.markRuntimeStarting(session.id, 'starting...', null)
 
       const diskSessions = await readProjectSessions(projectDir)
-      expect(diskSessions.version).toBe(5)
+      expect(diskSessions.version).toBe(6)
       expect(diskSessions.sessions[0]).toMatchObject({
         runtime_state: 'starting',
-        agent_state: 'unknown',
+        turn_state: 'idle',
+        turn_epoch: 0,
+        last_turn_outcome: 'none',
+        failure_reason: null,
         has_unseen_completion: false,
         runtime_exit_code: null,
         runtime_exit_reason: null,
@@ -953,7 +970,8 @@ describe('ProjectSessionManager', () => {
 
       const updated = manager.snapshot().sessions.find(s => s.id === session.id)!
       expect(updated.runtimeState).toBe('alive')
-      expect(updated.agentState).toBe('idle')
+      expect(updated.turnState).toBe('idle')
+      expect(updated.lastTurnOutcome).toBe('none')
       expect(updated.summary).toBe('Session running')
       expect(updated.externalSessionId).toBe('opencode-real-456')
     })
@@ -974,6 +992,7 @@ describe('ProjectSessionManager', () => {
         occurredAt: '2026-04-24T00:00:01.000Z',
         intent: 'agent.permission_requested',
         source: 'provider',
+        turnEpoch: 1,
         summary: 'PermissionRequest',
         blockingReason: 'permission'
       })
@@ -983,6 +1002,8 @@ describe('ProjectSessionManager', () => {
         occurredAt: '2026-04-24T00:00:01.000Z',
         intent: 'agent.turn_failed',
         source: 'provider',
+        turnEpoch: 1,
+        failureReason: 'provider_error',
         summary: 'Provider error'
       })
       await manager.markRuntimeAlive(blockedSession.id, 'claude-real-789')
@@ -990,10 +1011,13 @@ describe('ProjectSessionManager', () => {
 
       const updatedBlocked = manager.snapshot().sessions.find(s => s.id === blockedSession.id)!
       const updatedFailed = manager.snapshot().sessions.find(s => s.id === failedSession.id)!
-      expect(updatedBlocked.agentState).toBe('blocked')
+      expect(updatedBlocked.turnState).toBe('running')
+      expect(updatedBlocked.blockingReason).toBe('permission')
       expect(updatedBlocked.summary).toBe('PermissionRequest')
       expect(updatedBlocked.externalSessionId).toBe('claude-real-789')
-      expect(updatedFailed.agentState).toBe('error')
+      expect(updatedFailed.turnState).toBe('idle')
+      expect(updatedFailed.lastTurnOutcome).toBe('failed')
+      expect(updatedFailed.failureReason).toBe('provider_error')
       expect(updatedFailed.summary).toBe('Provider error')
       expect(updatedFailed.externalSessionId).toBe('claude-real-999')
     })
@@ -1089,8 +1113,7 @@ describe('ProjectSessionManager', () => {
         source: 'provider',
         summary: 'Stop',
         externalSessionId: 'stable-id',
-        agentState: 'idle',
-        hasUnseenCompletion: true
+        turnEpoch: 1
       })
 
       const updated = manager.snapshot().sessions.find(s => s.id === session.id)!
@@ -1120,8 +1143,7 @@ describe('ProjectSessionManager', () => {
         intent: 'agent.turn_completed',
         source: 'provider',
         summary: 'Stop',
-        agentState: 'idle',
-        hasUnseenCompletion: true
+        turnEpoch: 1
       })
       expect(manager.snapshot().sessions.find(s => s.id === session.id)!.externalSessionId).toBe('original-id')
 
