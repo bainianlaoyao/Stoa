@@ -119,6 +119,7 @@ interface SessionStateCore {
 
 - `phase` 只允许派生，不允许作为持久化主 truth 保存
 - `turnEpoch` 在每次新 turn 开始时递增
+- reducer 消费的不是 provider 原始 `turn_id`，而是 Stoa 归一化后的本地 `turnEpoch`
 - `turnState = running` 表示当前 turn 仍然打开；被 block 时也仍属于该 turn
 - 所有 turn 级事件都必须附着在某个 `turnEpoch` 上
 - `lastTurnOutcome` 在下一轮开始前保持稳定
@@ -162,7 +163,7 @@ interface SessionStateCore {
   条件：同一 `turnEpoch` 正常完成
   写入：`lastTurnOutcome=completed`、`hasUnseenCompletion=true`
 - `running -> ready`
-  条件：同一 `turnEpoch` interrupted / cancelled / denied
+  条件：同一 `turnEpoch` interrupted / cancelled，或 provider 明确给出 terminal deny/cancel 语义
   写入：`lastTurnOutcome=interrupted | cancelled`
 - `running -> blocked`
   条件：同一 `turnEpoch` permission requested / elicitation requested
@@ -174,7 +175,7 @@ interface SessionStateCore {
 - `blocked -> running`
   条件：同一 `turnEpoch` 的显式 unblock 证据；本质上是清除 `blockingReason`，`turnState` 保持 `running`
 - `blocked -> ready`
-  条件：同一 `turnEpoch` denied / cancelled / interrupted
+  条件：同一 `turnEpoch` interrupted / cancelled，或 provider 明确给出 terminal deny/cancel 语义
 - `blocked -> failure`
   条件：同一 `turnEpoch` provider error，或 runtime crash
 
@@ -193,6 +194,36 @@ interface SessionStateCore {
   条件：显式 recover，且 failure 不是 fatal runtime failure
 - `failure -> running`
   条件：用户 retry，开启新 `turnEpoch`
+
+## 事件契约
+
+reducer 不接受“只有 intent、没有 turn 边界”的 turn 级事件。所有 turn 级 patch 都必须带本地归一化后的 `turnEpoch`。
+
+```ts
+interface SessionStatePatchEvent {
+  sessionId: string
+  sequence: number
+  occurredAt: string
+  intent: SessionStateIntent
+  source: 'runtime' | 'provider' | 'ui'
+  turnEpoch?: number
+  sourceTurnId?: string | null
+  runtimeExitCode?: number | null
+  runtimeExitReason?: 'clean' | 'failed' | null
+  blockingReason?: BlockingReason | null
+  failureReason?: FailureReason | null
+  summary: string
+  externalSessionId?: string | null
+}
+```
+
+规则：
+
+- `runtime.*` 事件可以不带 `turnEpoch`
+- 所有 `agent.*` 事件必须带 `turnEpoch`
+- provider 原始 `turn_id` 如果存在，先写进 `sourceTurnId`
+- ingestion 层负责把 provider `turn_id` 或本地推断的 turn 边界归一化成单调递增的本地 `turnEpoch`
+- reducer 只对本地 `turnEpoch` 做 stale-event 判定，不直接比较 provider 原始 `turn_id`
 
 ## 必须禁止的转换
 
@@ -236,6 +267,7 @@ Claude 文档里的关键事件面：
   - 只表示 auto mode classifier 拒绝了一次工具调用
   - 不直接等价于 turn cancelled / ready / failure
   - 默认作为同一 turn 内的 denial evidence 记录，不单独驱动 phase 跳转
+  - 该事件进入 observability/evidence 流，而不是 session core state
 - `Elicitation` -> `blocked`, `blockingReason=elicitation`
 - `ElicitationResult`
   - `accept/decline/cancel` 都只表示用户已经响应，默认清除 `blockingReason`
@@ -314,7 +346,7 @@ OpenCode 文档里的关键事件面：
 - `permission.replied`
   - 必须先归一化真实 payload；不能假设所有实现都用同一个字段名表达 decision
   - approved/continued -> 解除 blocked，返回 `running`
-  - denied/cancelled -> 至少解除 blocked；是否直接进入 `ready/failure` 取决于后续是否还有明确 terminal evidence
+  - denied/cancelled -> 至少解除 blocked；默认返回 `running`，等待后续 terminal evidence 决定 `ready/failure/complete`
   - reply 带 error -> `failure`
 - `session.idle` -> `complete`, `lastTurnOutcome=completed`, `hasUnseenCompletion=true`
 - `session.error` -> `failure`, 尽量提取 `failureReason`
@@ -354,7 +386,6 @@ interface SessionSummary {
   projectId: string
   type: SessionType
   runtimeState: SessionRuntimeState
-  runtimeExitReason: 'clean' | 'failed' | null
   turnState: TurnState
   turnEpoch: number
   lastTurnOutcome: TurnOutcome
@@ -384,6 +415,7 @@ reducer 输入不能只带 phase patch，必须带意图和必要元数据。
 ```ts
 type SessionStateIntent =
   | 'runtime.created'
+  | 'runtime.starting'
   | 'runtime.alive'
   | 'runtime.exited_clean'
   | 'runtime.exited_failed'
@@ -402,6 +434,7 @@ type SessionStateIntent =
 
 核心规则：
 
+- `runtime.starting` 表示新的 runtime 边界，必须清空上一轮 turn/block/failure/completion 元数据
 - 任何新 turn 开始时，`turnEpoch += 1`，并设置 `turnState=running`
 - 新 turn 开始会清空上一轮 `blockingReason`、`failureReason`、`hasUnseenCompletion`
 - `turn_completed` 只能作用于当前 `turnEpoch`，并将 `turnState=idle`
@@ -426,19 +459,20 @@ type SessionStateIntent =
 ### Unit
 
 - `running -> interrupted -> ready` 后，同 epoch `turn_completed` 被忽略
-- `blocked -> denied -> ready` 后，同 epoch `tool_started` 不会回到 `running`
+- `blocked -> deny response` 后，若无 terminal evidence，不会错误跳成 `ready`
 - `failure` 后，同 epoch `turn_completed` 被忽略
 - `blockingReason` 清除后，在同 epoch 且 `turnState=running` 时正确回到 `running`
 - `complete` 只有 `completion_seen` 才能回到 `ready`
 - `runtime.exited_clean` 不覆盖 `complete`
 - `runtime.exited_failed` 总是进入 `failure`
+- `runtime.starting` 会清空上一轮 turn/block/failure/completion 元数据
 - `phase=ready` 但 `runtimeState=exited` 时，不允许发送输入
 
 ### Provider adapter
 
 - Claude `StopFailure` 提取 typed `failureReason`
 - Claude `Elicitation` 正确落成 `blockingReason=elicitation`
-- Claude `PermissionDenied` 不会被误当成 turn terminal event
+- Claude `PermissionDenied` 进入 observability evidence，但不被误当成 turn terminal event
 - Codex 使用 `turn_id` 对齐 `turnEpoch`
 - Codex 不把 hook 输出 `permissionDecision=ask|deny` 误当成 provider ingress
 - OpenCode `permission.replied` 正确区分 approve / deny / cancel / error
@@ -448,8 +482,8 @@ type SessionStateIntent =
 
 - 新建 Claude session 不因 runtime alive 显示 `running`
 - Claude interrupted 后不会因为迟到 `Stop` 重新显示 `complete`
-- Claude permission denied 后不会被迟到 `PreToolUse/PostToolUse` 冲回 `running`
-- OpenCode deny/cancel 后正确回到 `ready`
+- Claude `PermissionDenied` 不会错误终结当前 turn，也不会污染 core state
+- OpenCode deny/cancel 后不会继续卡在 `blocked`，并等待后续 terminal evidence 决定最终 phase
 - Codex 同一旧 `turn_id` 的迟到 `Stop` 不污染新 turn
 
 ## 实现步骤
