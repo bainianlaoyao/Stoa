@@ -94,6 +94,7 @@ function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
     quitAndInstallUpdate: vi.fn().mockResolvedValue(undefined),
     dismissUpdate: vi.fn().mockResolvedValue(undefined),
     onUpdateState: vi.fn().mockReturnValue(() => {}),
+    uninstallSidecars: vi.fn().mockResolvedValue(undefined),
     ...overrides
   }
 }

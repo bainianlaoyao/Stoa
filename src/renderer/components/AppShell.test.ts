@@ -239,7 +239,8 @@ describe('AppShell', () => {
       }),
       quitAndInstallUpdate: vi.fn().mockResolvedValue(undefined),
       dismissUpdate: vi.fn().mockResolvedValue(undefined),
-      onUpdateState: vi.fn().mockReturnValue(() => {})
+      onUpdateState: vi.fn().mockReturnValue(() => {}),
+      uninstallSidecars: vi.fn().mockResolvedValue(undefined)
     }
 
     window.stoa = stoaMock
