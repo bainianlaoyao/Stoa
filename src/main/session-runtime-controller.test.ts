@@ -1,6 +1,6 @@
 import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, test } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { SessionRuntimeController } from './session-runtime-controller'
 import { syncObservabilitySessionsFromManager } from './observability-sync'
 import { IPC_CHANNELS } from '@core/ipc-channels'
@@ -360,14 +360,19 @@ describe('SessionRuntimeController', () => {
   })
 
   test('appendTerminalData pushes terminal data to renderer', async () => {
+    vi.useFakeTimers()
     const { window: win, sent } = createMockWindow()
 
     const controller = new SessionRuntimeController(manager, () => win)
     await controller.appendTerminalData({ sessionId: 's1', data: 'hello world' })
 
+    expect(sent).toHaveLength(0)
+    vi.advanceTimersByTime(16)
+
     expect(sent).toHaveLength(1)
     expect(sent[0]!.channel).toBe(IPC_CHANNELS.terminalData)
     expect(sent[0]!.data).toEqual({ sessionId: 's1', data: 'hello world' })
+    vi.useRealTimers()
   })
 
   test('getTerminalReplay returns the accumulated backlog for a running session', async () => {
@@ -448,6 +453,7 @@ describe('SessionRuntimeController', () => {
   })
 
   test('appendTerminalData is no-op when window is destroyed', async () => {
+    vi.useFakeTimers()
     const destroyedWin = {
       isDestroyed: () => true,
       webContents: {
@@ -462,9 +468,13 @@ describe('SessionRuntimeController', () => {
     await expect(
       controller.appendTerminalData({ sessionId: 's1', data: 'test' })
     ).resolves.toBeUndefined()
+
+    vi.advanceTimersByTime(16)
+    vi.useRealTimers()
   })
 
   test('all methods work when window getter returns null', async () => {
+    vi.useFakeTimers()
     const project = await manager.createProject({ path: await createTestWorkspace('ctrl-null-'), name: 'test' })
     const session = await manager.createSession({ projectId: project.id, type: 'shell', title: 'S1' })
 
@@ -475,9 +485,12 @@ describe('SessionRuntimeController', () => {
     await controller.markRuntimeExited(session.id, 0, 'exit')
     await controller.appendTerminalData({ sessionId: session.id, data: 'x' })
 
+    vi.advanceTimersByTime(16)
+
     expect(manager.snapshot().sessions[0]!).toMatchObject({
       runtimeState: 'exited',
       runtimeExitReason: 'clean'
     })
+    vi.useRealTimers()
   })
 })

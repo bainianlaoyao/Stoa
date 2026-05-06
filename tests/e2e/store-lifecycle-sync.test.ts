@@ -252,6 +252,8 @@ describe('E2E: Store Lifecycle Synchronization', () => {
 
       expect(store.sessions[0]!.externalSessionId).toBeNull()
       expect(store.activeSession!.externalSessionId).toBeNull()
+
+      await waitForExit(capturing.exitSignal)
     })
   })
 

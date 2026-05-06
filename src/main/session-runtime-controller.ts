@@ -22,8 +22,12 @@ interface RuntimeObservabilityReader {
   getAppObservability: () => AppObservabilitySnapshot
 }
 
+const TERMINAL_BATCH_INTERVAL_MS = 16
+
 export class SessionRuntimeController implements SessionRuntimeManager {
   private readonly terminalBacklogs = new Map<string, string>()
+  private readonly pendingTerminalBatches = new Map<string, string>()
+  private batchFlushTimer: ReturnType<typeof setTimeout> | null = null
 
   constructor(
     private readonly manager: ProjectSessionManager,
@@ -72,10 +76,39 @@ export class SessionRuntimeController implements SessionRuntimeManager {
     const current = this.terminalBacklogs.get(chunk.sessionId) ?? ''
     this.terminalBacklogs.set(chunk.sessionId, trimBacklog(current + chunk.data))
 
-    const win = this.getWindow()
-    if (win && !win.isDestroyed()) {
-      win.webContents.send(IPC_CHANNELS.terminalData, chunk)
+    const pending = this.pendingTerminalBatches.get(chunk.sessionId) ?? ''
+    this.pendingTerminalBatches.set(chunk.sessionId, pending + chunk.data)
+
+    this.scheduleBatchFlush()
+  }
+
+  private scheduleBatchFlush(): void {
+    if (this.batchFlushTimer !== null) {
+      return
     }
+
+    this.batchFlushTimer = setTimeout(() => {
+      this.batchFlushTimer = null
+      this.flushTerminalBatch()
+    }, TERMINAL_BATCH_INTERVAL_MS)
+  }
+
+  private flushTerminalBatch(): void {
+    if (this.pendingTerminalBatches.size === 0) {
+      return
+    }
+
+    const win = this.getWindow()
+    if (!win || win.isDestroyed()) {
+      this.pendingTerminalBatches.clear()
+      return
+    }
+
+    for (const [sessionId, data] of this.pendingTerminalBatches) {
+      win.webContents.send(IPC_CHANNELS.terminalData, { sessionId, data })
+    }
+
+    this.pendingTerminalBatches.clear()
   }
 
   async getTerminalReplay(sessionId: string): Promise<string> {
