@@ -49,13 +49,14 @@ const archivedSessions = computed(() => {
 
       <section class="min-w-0 min-h-0 m-3 ml-0 border border-black/[0.04] rounded-2xl bg-surface backdrop-blur-[40px] saturate-[1.2] shadow-premium overflow-hidden" data-testid="app-viewport" aria-label="Application viewport">
         <CommandSurface
-          v-if="activeSurface === 'command'"
+          v-show="activeSurface === 'command'"
           aria-label="Command surface"
           :hierarchy="hierarchy"
           :active-project="activeProject"
           :active-session="activeSession"
           :active-project-id="activeProjectId"
           :active-session-id="activeSessionId"
+          :visible="activeSurface === 'command'"
           @select-project="emit('selectProject', $event)"
           @select-session="emit('selectSession', $event)"
           @create-project="emit('createProject', $event)"
@@ -65,11 +66,11 @@ const archivedSessions = computed(() => {
           @open-workspace="emit('openWorkspace', $event)"
         />
         <ArchiveSurface
-          v-else-if="activeSurface === 'archive'"
+          v-if="activeSurface === 'archive'"
           :archived-sessions="archivedSessions"
           @restore-session="emit('restoreSession', $event)"
         />
-        <SettingsSurface v-else />
+        <SettingsSurface v-if="activeSurface === 'settings'" />
       </section>
     </main>
   </div>

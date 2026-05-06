@@ -9,10 +9,13 @@ import type { FitAddon } from '@xterm/addon-fit'
 import type { Terminal } from '@xterm/xterm'
 import type { OpenWorkspaceRequest, ProjectSummary, SessionSummary, TerminalDataChunk } from '@shared/project-session'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   project: ProjectSummary | null
   session: SessionSummary | null
-}>()
+  visible?: boolean
+}>(), {
+  visible: true
+})
 
 const emit = defineEmits<{
   openWorkspace: [request: OpenWorkspaceRequest]
@@ -40,11 +43,13 @@ let pendingFitResolve: (() => void) | null = null
 let resizeDebounceTimer: ReturnType<typeof setTimeout> | null = null
 let mountVersion = 0
 let setupScheduleVersion = 0
+let visibleSyncVersion = 0
 const REPLAY_FALLBACK_TIMEOUT_MS = 1_000
 
 function disposeTerminal() {
   setupScheduleVersion += 1
   mountVersion += 1
+  visibleSyncVersion += 1
   pendingFitResolve?.()
   pendingFitResolve = null
   dataDisposable?.dispose()
@@ -67,11 +72,55 @@ function disposeTerminal() {
   terminal = null
 }
 
-  function writeChunk(targetTerminal: Terminal, data: string): Promise<void> {
-    return new Promise((resolve) => {
-      targetTerminal.write(data, () => resolve())
-    })
+function writeChunk(targetTerminal: Terminal, data: string): Promise<void> {
+  return new Promise((resolve) => {
+    targetTerminal.write(data, () => resolve())
+  })
+}
+
+async function syncVisibleTerminal(): Promise<void> {
+  const currentTerminal = terminal
+  const currentFitAddon = fitAddon
+  const sessionId = props.session?.id
+  const stoa = window.stoa
+
+  if (!props.visible || !currentTerminal || !currentFitAddon || !sessionId || !stoa) {
+    return
   }
+
+  const localVisibleSyncVersion = ++visibleSyncVersion
+
+  await nextTick()
+
+  if (
+    localVisibleSyncVersion !== visibleSyncVersion
+    || !props.visible
+    || terminal !== currentTerminal
+    || fitAddon !== currentFitAddon
+    || props.session?.id !== sessionId
+  ) {
+    return
+  }
+
+  await (document.fonts?.ready ?? Promise.resolve())
+
+  if (
+    localVisibleSyncVersion !== visibleSyncVersion
+    || !props.visible
+    || terminal !== currentTerminal
+    || fitAddon !== currentFitAddon
+    || props.session?.id !== sessionId
+  ) {
+    return
+  }
+
+  currentFitAddon.fit()
+  const { cols, rows } = currentTerminal
+  if (cols && rows) {
+    stoa.sendSessionResize(sessionId, cols, rows)
+  }
+  currentTerminal.focus()
+}
 
 function scheduleTerminalSetup() {
   const localScheduleVersion = ++setupScheduleVersion
@@ -105,7 +154,8 @@ function setupTerminal() {
   const localMountVersion = ++mountVersion
   let replayResolved = false
   const pendingOutput: string[] = []
-  let writeChain = Promise.resolve()
+  let writeBuffer = ''
+  let writeRafId: number | null = null
   let replayFallbackTimer: ReturnType<typeof setTimeout> | null = null
 
   let localFitResolve: (() => void) | null = null
@@ -120,7 +170,9 @@ function setupTerminal() {
   terminal = localTerminal
   fitAddon = localFitAddon
   localTerminal.open(terminalContainer.value)
-  localTerminal.focus()
+  if (props.visible) {
+    localTerminal.focus()
+  }
 
   localShellIntegration.onCwdChanged = (cwd: string) => {
     if (!isActiveMount()) return
@@ -132,17 +184,29 @@ function setupTerminal() {
   }
 
   const isActiveMount = () => mountVersion === localMountVersion && terminal === localTerminal
+  const flushWriteBuffer = () => {
+    if (!isActiveMount() || !writeBuffer) {
+      writeBuffer = ''
+      writeRafId = null
+      return
+    }
+
+    const data = writeBuffer
+    writeBuffer = ''
+    writeRafId = null
+
+    void fitSettled.then(() => {
+      if (!isActiveMount()) return
+      writeChunk(localTerminal, data)
+    })
+  }
   const enqueueWrite = (data: string) => {
     if (!data) return
 
-    writeChain = writeChain.then(async () => {
-      if (!isActiveMount()) {
-        return
-      }
-
-      await fitSettled
-      await writeChunk(localTerminal, data)
-    })
+    writeBuffer += data
+    if (writeRafId === null) {
+      writeRafId = requestAnimationFrame(flushWriteBuffer)
+    }
   }
   const clearReplayFallbackTimer = () => {
     if (replayFallbackTimer === null) {
@@ -184,12 +248,17 @@ function setupTerminal() {
     }
 
     await (document.fonts?.ready ?? Promise.resolve())
-    localFitAddon.fit()
-    const cols = localTerminal.cols
-    const rows = localTerminal.rows
-    if (cols && rows) {
-      stoa.sendSessionResize(sessionId, cols, rows)
+
+    if (props.visible) {
+      localFitAddon.fit()
+      const cols = localTerminal.cols
+      const rows = localTerminal.rows
+      if (cols && rows) {
+        stoa.sendSessionResize(sessionId, cols, rows)
+      }
+      localTerminal.focus()
     }
+
     localFitResolve?.()
     localFitResolve = null
   })
@@ -202,14 +271,14 @@ function setupTerminal() {
   })
 
   resizeObserver = new ResizeObserver(() => {
-    if (!isActiveMount()) return
+    if (!isActiveMount() || !props.visible) return
 
     if (resizeDebounceTimer !== null) {
       clearTimeout(resizeDebounceTimer)
     }
-      resizeDebounceTimer = setTimeout(() => {
-      if (!isActiveMount()) return
+    resizeDebounceTimer = setTimeout(() => {
       resizeDebounceTimer = null
+      if (!isActiveMount() || !props.visible) return
 
       localFitAddon.fit()
 
@@ -283,6 +352,15 @@ onMounted(() => {
     scheduleTerminalSetup()
   }
 })
+
+watch(
+  () => props.visible,
+  (visible) => {
+    if (visible) {
+      void syncVisibleTerminal()
+    }
+  }
+)
 
 onBeforeUnmount(disposeTerminal)
 </script>

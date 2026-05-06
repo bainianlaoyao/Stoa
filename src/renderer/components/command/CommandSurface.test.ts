@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import CommandSurface from './CommandSurface.vue'
+import TerminalSessionDeck from './TerminalSessionDeck.vue'
 import WorkspaceHierarchyPanel from './WorkspaceHierarchyPanel.vue'
-import TerminalViewport from '@renderer/components/TerminalViewport.vue'
 import { useWorkspaceStore } from '@renderer/stores/workspaces'
 import type { ProjectHierarchyNode } from '@renderer/stores/workspaces'
 import type { SessionPresenceSnapshot } from '@shared/observability'
@@ -40,6 +40,27 @@ const hierarchy: ProjectHierarchyNode[] = [
         lastActivatedAt: 'a',
         archived: false,
         active: true
+      },
+      {
+        id: 'session_2',
+        projectId: 'project_alpha',
+        type: 'codex',
+        runtimeState: 'alive',
+        agentState: 'idle',
+        hasUnseenCompletion: false,
+        runtimeExitCode: null,
+        runtimeExitReason: null,
+        lastStateSequence: 2,
+        blockingReason: null,
+        title: 'review release diff',
+        summary: 'waiting',
+        recoveryMode: 'resume-external',
+        externalSessionId: 'sess_2',
+        createdAt: 'a',
+        updatedAt: 'a',
+        lastActivatedAt: 'b',
+        archived: false,
+        active: false
       }
     ]
   }
@@ -71,6 +92,48 @@ const activeSession: SessionSummary = {
   createdAt: 'a',
   updatedAt: 'a',
   lastActivatedAt: 'a',
+  archived: false
+}
+
+const secondAiSession: SessionSummary = {
+  id: 'session_2',
+  projectId: 'project_alpha',
+  type: 'codex',
+  runtimeState: 'alive',
+  agentState: 'idle',
+  hasUnseenCompletion: false,
+  runtimeExitCode: null,
+  runtimeExitReason: null,
+  lastStateSequence: 2,
+  blockingReason: null,
+  title: 'review release diff',
+  summary: 'waiting',
+  recoveryMode: 'resume-external',
+  externalSessionId: 'sess_2',
+  createdAt: 'a',
+  updatedAt: 'a',
+  lastActivatedAt: 'b',
+  archived: false
+}
+
+const shellSession: SessionSummary = {
+  id: 'session_shell_1',
+  projectId: 'project_alpha',
+  type: 'shell',
+  runtimeState: 'alive',
+  agentState: 'idle',
+  hasUnseenCompletion: false,
+  runtimeExitCode: null,
+  runtimeExitReason: null,
+  lastStateSequence: 3,
+  blockingReason: null,
+  title: 'shell session',
+  summary: 'ready',
+  recoveryMode: 'fresh-shell',
+  externalSessionId: null,
+  createdAt: 'a',
+  updatedAt: 'a',
+  lastActivatedAt: 'c',
   archived: false
 }
 
@@ -130,6 +193,7 @@ describe('CommandSurface', () => {
     expect(wrapper.find('[data-testid="command-body"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="command-layout"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="workspace-hierarchy-panel"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="terminal-session-deck"]').exists()).toBe(true)
     expect(wrapper.find('.terminal-viewport').exists()).toBe(true)
   })
 
@@ -229,7 +293,7 @@ describe('CommandSurface', () => {
     expect(wrapper.emitted('archiveSession')).toEqual([['session_1']])
   })
 
-  it('forwards openWorkspace from TerminalViewport', async () => {
+  it('keeps previously activated AI terminals mounted when switching sessions', async () => {
     const wrapper = mount(CommandSurface, {
       global: { plugins: [createPinia()] },
       props: {
@@ -241,7 +305,72 @@ describe('CommandSurface', () => {
       }
     })
 
-    await wrapper.findComponent(TerminalViewport).vm.$emit('openWorkspace', {
+    expect(wrapper.findAll('.terminal-viewport')).toHaveLength(1)
+
+    await wrapper.setProps({
+      activeSession: secondAiSession,
+      activeSessionId: 'session_2'
+    })
+
+    expect(wrapper.findAll('.terminal-viewport')).toHaveLength(2)
+    expect(
+      wrapper.get('[data-testid="terminal-session-deck-item"][data-session-id="session_1"]').attributes('style')
+    ).toContain('display: none;')
+  })
+
+  it('keeps shell sessions on the deck ephemeral path', () => {
+    const wrapper = mount(CommandSurface, {
+      global: { plugins: [createPinia()] },
+      props: {
+        hierarchy: [{
+          ...hierarchy[0],
+          sessions: [{ ...shellSession, active: true }]
+        }],
+        activeProject,
+        activeSession: shellSession,
+        activeProjectId: 'project_alpha',
+        activeSessionId: shellSession.id
+      }
+    })
+
+    expect(wrapper.find('[data-testid="terminal-session-deck-ephemeral"]').exists()).toBe(true)
+    expect(wrapper.findAll('[data-testid="terminal-session-deck-item"]')).toHaveLength(0)
+    expect(wrapper.findAll('.terminal-viewport')).toHaveLength(1)
+  })
+
+  it('passes top-level visibility through to the terminal session deck', async () => {
+    const wrapper = mount(CommandSurface, {
+      global: { plugins: [createPinia()] },
+      props: {
+        hierarchy,
+        activeProject,
+        activeSession,
+        activeProjectId: 'project_alpha',
+        activeSessionId: 'session_1',
+        visible: true
+      }
+    })
+
+    expect(wrapper.findComponent(TerminalSessionDeck).props('visible')).toBe(true)
+
+    await wrapper.setProps({ visible: false })
+
+    expect(wrapper.findComponent(TerminalSessionDeck).props('visible')).toBe(false)
+  })
+
+  it('forwards openWorkspace from TerminalSessionDeck', async () => {
+    const wrapper = mount(CommandSurface, {
+      global: { plugins: [createPinia()] },
+      props: {
+        hierarchy,
+        activeProject,
+        activeSession,
+        activeProjectId: 'project_alpha',
+        activeSessionId: 'session_1'
+      }
+    })
+
+    await wrapper.findComponent(TerminalSessionDeck).vm.$emit('openWorkspace', {
       sessionId: 'session_1',
       target: 'ide'
     })

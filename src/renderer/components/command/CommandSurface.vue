@@ -2,19 +2,22 @@
 import { computed } from 'vue'
 import { storeToRefs } from 'pinia'
 import WorkspaceHierarchyPanel from './WorkspaceHierarchyPanel.vue'
-import TerminalViewport from '@renderer/components/TerminalViewport.vue'
+import TerminalSessionDeck from './TerminalSessionDeck.vue'
 import { useWorkspaceStore } from '@renderer/stores/workspaces'
 import { toSessionRowViewModel } from '@renderer/stores/observability-view-models'
 import type { OpenWorkspaceRequest, ProjectSummary, SessionSummary } from '@shared/project-session'
 import type { ProjectHierarchyNode } from '@renderer/stores/workspaces'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   hierarchy: ProjectHierarchyNode[]
   activeProject: ProjectSummary | null
   activeSession: SessionSummary | null
   activeProjectId: string | null
   activeSessionId: string | null
-}>()
+  visible?: boolean
+}>(), {
+  visible: true
+})
 
 const emit = defineEmits<{
   selectProject: [projectId: string]
@@ -65,9 +68,11 @@ const sessionRowViewModels = computed(() => {
           @archive-session="emit('archiveSession', $event)"
         />
 
-        <TerminalViewport
-          :project="activeProject"
-          :session="activeSession"
+        <TerminalSessionDeck
+          :hierarchy="hierarchy"
+          :active-project="activeProject"
+          :active-session="activeSession"
+          :visible="visible"
           @open-workspace="emit('openWorkspace', $event)"
         />
       </div>

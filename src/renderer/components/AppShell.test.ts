@@ -2,9 +2,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createPinia } from 'pinia'
+import { defineComponent, h, mergeProps } from 'vue'
 import AppShell from './AppShell.vue'
-import CommandSurface from './command/CommandSurface.vue'
 import type { ProjectSummary, RendererApi, SessionSummary } from '@shared/project-session'
+import type { ProjectHierarchyNode } from '@renderer/stores/workspaces'
 
 const baseProject: ProjectSummary = {
   id: 'project-1',
@@ -33,6 +34,111 @@ const baseSession: SessionSummary = {
   updatedAt: '2026-04-21T00:00:00.000Z',
   lastActivatedAt: '2026-04-21T00:00:00.000Z',
   archived: false
+}
+
+const CommandSurfaceStub = defineComponent({
+  name: 'CommandSurface',
+  inheritAttrs: false,
+  props: {
+    hierarchy: { type: Array, required: true },
+    activeProject: { default: null },
+    activeSession: { default: null },
+    activeProjectId: { default: null },
+    activeSessionId: { default: null },
+    visible: { type: Boolean, default: true }
+  },
+  emits: [
+    'selectProject',
+    'selectSession',
+    'createProject',
+    'createSession',
+    'deleteProject',
+    'archiveSession',
+    'openWorkspace'
+  ],
+  setup(props, { attrs }) {
+    return () =>
+      h(
+        'section',
+        mergeProps(attrs, {
+          'data-surface': 'command',
+          'data-command-surface': 'true',
+          'data-testid': 'command-panel'
+        }),
+        props.activeSession
+          ? [h('div', { 'data-testid': 'terminal-xterm' })]
+          : [h('div', { class: 'terminal-empty-state' }, 'No session selected')]
+      )
+  }
+})
+
+const ArchiveSurfaceStub = defineComponent({
+  name: 'ArchiveSurface',
+  inheritAttrs: false,
+  props: {
+    archivedSessions: { type: Array, required: true }
+  },
+  emits: ['restoreSession'],
+  setup(props, { attrs, emit }) {
+    return () =>
+      h(
+        'section',
+        mergeProps(attrs, {
+          'data-surface': 'archive',
+          'data-testid': 'surface.archive',
+          'aria-label': 'Archive surface'
+        }),
+        [
+          h('h2', 'Archived sessions'),
+          ...(props.archivedSessions as Array<{ id: string }>).map((session) =>
+            h(
+              'button',
+              {
+                'data-archive-restore': session.id,
+                onClick: () => emit('restoreSession', session.id)
+              },
+              'Restore'
+            )
+          )
+        ]
+      )
+  }
+})
+
+const SettingsSurfaceStub = defineComponent({
+  name: 'SettingsSurface',
+  inheritAttrs: false,
+  setup(_props, { attrs }) {
+    return () =>
+      h(
+        'section',
+        mergeProps(attrs, {
+          'data-surface': 'settings',
+          'aria-label': 'Settings surface'
+        }),
+        [h('h2', 'Settings')]
+      )
+  }
+})
+
+function mountAppShell(props: {
+  hierarchy: ProjectHierarchyNode[]
+  activeProjectId: string | null
+  activeSessionId: string | null
+  activeProject: ProjectSummary | null
+  activeSession: SessionSummary | null
+}) {
+  return mount(AppShell, {
+    global: {
+      plugins: [createPinia()],
+      stubs: {
+        CommandSurface: CommandSurfaceStub,
+        ArchiveSurface: ArchiveSurfaceStub,
+        SettingsSurface: SettingsSurfaceStub
+      }
+    },
+    props
+  })
 }
 
 describe('AppShell', () => {
@@ -137,15 +243,12 @@ describe('AppShell', () => {
   })
 
   it('shows all top-level activity items and defaults to command view', () => {
-    const wrapper = mount(AppShell, {
-      global: { plugins: [createPinia()] },
-      props: {
-        hierarchy: [],
-        activeProjectId: null,
-        activeSessionId: null,
-        activeProject: null,
-        activeSession: null
-      }
+    const wrapper = mountAppShell({
+      hierarchy: [],
+      activeProjectId: null,
+      activeSessionId: null,
+      activeProject: null,
+      activeSession: null
     })
 
     const labels = wrapper.findAll('[data-activity-item]').map((node) => node.attributes('data-activity-item'))
@@ -165,23 +268,20 @@ describe('AppShell', () => {
   })
 
   it('keeps stable command and active-session surface hooks when a session is selected', () => {
-    const wrapper = mount(AppShell, {
-      global: { plugins: [createPinia()] },
-      props: {
-        hierarchy: [{
-          ...baseProject,
-          active: true,
-          archivedSessions: [],
-          sessions: [{
-            ...baseSession,
-            active: true
-          }]
-        }],
-        activeProjectId: baseProject.id,
-        activeSessionId: baseSession.id,
-        activeProject: baseProject,
-        activeSession: baseSession
-      }
+    const wrapper = mountAppShell({
+      hierarchy: [{
+        ...baseProject,
+        active: true,
+        archivedSessions: [],
+        sessions: [{
+          ...baseSession,
+          active: true
+        }]
+      }],
+      activeProjectId: baseProject.id,
+      activeSessionId: baseSession.id,
+      activeProject: baseProject,
+      activeSession: baseSession
     })
 
     expect(wrapper.find('[data-surface="command"]').exists()).toBe(true)
@@ -191,65 +291,66 @@ describe('AppShell', () => {
     expect(wrapper.find('[data-testid="terminal-status-bar"]').exists()).toBe(false)
   })
 
-  it('switches to archive surface when the archive activity is selected', async () => {
-    const wrapper = mount(AppShell, {
-      global: { plugins: [createPinia()] },
-      props: {
-        hierarchy: [{
-          ...baseProject,
-          active: false,
-          sessions: [],
-          archivedSessions: [{
-            ...baseSession,
-            id: 'session-archived',
-            archived: true,
-            active: false
-          }]
-        }],
-        activeProjectId: null,
-        activeSessionId: null,
-        activeProject: null,
-        activeSession: null
-      }
+  it('keeps command surface mounted and hidden when the archive activity is selected', async () => {
+    const wrapper = mountAppShell({
+      hierarchy: [{
+        ...baseProject,
+        active: false,
+        sessions: [],
+        archivedSessions: [{
+          ...baseSession,
+          id: 'session-archived',
+          archived: true,
+          active: false
+        }]
+      }],
+      activeProjectId: null,
+      activeSessionId: null,
+      activeProject: null,
+      activeSession: null
     })
+
+    const commandSurface = wrapper.get('[data-surface="command"][aria-label="Command surface"]')
 
     await wrapper.get('button[aria-label="Archive"]').trigger('click')
 
     expect(wrapper.get('[data-surface="archive"][aria-label="Archive surface"]')).toBeTruthy()
     expect(wrapper.get('button[aria-label="Archive"]').attributes('aria-current')).toBe('true')
-    expect(wrapper.find('[data-surface="command"][aria-label="Command surface"]').exists()).toBe(false)
+    expect(wrapper.get('[data-surface="command"][aria-label="Command surface"]').element).toBe(commandSurface.element)
+    expect(wrapper.get('[data-surface="command"][aria-label="Command surface"]').attributes('style')).toContain('display: none;')
+    expect(wrapper.find('[data-surface="command"][aria-label="Command surface"]').exists()).toBe(true)
+    expect(wrapper.findComponent({ name: 'CommandSurface' }).props('visible')).toBe(false)
     expect(wrapper.text()).toContain('Archived sessions')
   })
 
-  it('switches to a named settings surface when the settings activity is selected', async () => {
-    const wrapper = mount(AppShell, {
-      global: { plugins: [createPinia()] },
-      props: {
-        hierarchy: [],
-        activeProjectId: null,
-        activeSessionId: null,
-        activeProject: null,
-        activeSession: null
-      }
+  it('keeps command surface mounted and hidden when the settings activity is selected', async () => {
+    const wrapper = mountAppShell({
+      hierarchy: [],
+      activeProjectId: null,
+      activeSessionId: null,
+      activeProject: null,
+      activeSession: null
     })
+
+    const commandSurface = wrapper.get('[data-surface="command"][aria-label="Command surface"]')
 
     await wrapper.get('button[aria-label="Settings"]').trigger('click')
 
     expect(wrapper.get('[data-surface="settings"][aria-label="Settings surface"]')).toBeTruthy()
     expect(wrapper.get('button[aria-label="Settings"]').attributes('aria-current')).toBe('true')
-    expect(wrapper.find('[data-surface="command"][aria-label="Command surface"]').exists()).toBe(false)
+    expect(wrapper.get('[data-surface="command"][aria-label="Command surface"]').element).toBe(commandSurface.element)
+    expect(wrapper.get('[data-surface="command"][aria-label="Command surface"]').attributes('style')).toContain('display: none;')
+    expect(wrapper.find('[data-surface="command"][aria-label="Command surface"]').exists()).toBe(true)
+    expect(wrapper.findComponent({ name: 'CommandSurface' }).props('visible')).toBe(false)
   })
 
   it('keeps activity icons rendered while switching surfaces', async () => {
-    const wrapper = mount(AppShell, {
-      global: { plugins: [createPinia()] },
-      props: {
-        hierarchy: [],
-        activeProjectId: null,
-        activeSessionId: null,
-        activeProject: null,
-        activeSession: null
-      }
+    const wrapper = mountAppShell({
+      hierarchy: [],
+      activeProjectId: null,
+      activeSessionId: null,
+      activeProject: null,
+      activeSession: null
     })
 
     const expectStableIcons = () => {
@@ -276,25 +377,22 @@ describe('AppShell', () => {
   })
 
   it('forwards restoreSession from archive surface', async () => {
-    const wrapper = mount(AppShell, {
-      global: { plugins: [createPinia()] },
-      props: {
-        hierarchy: [{
-          ...baseProject,
-          active: false,
-          sessions: [],
-          archivedSessions: [{
-            ...baseSession,
-            id: 'session-archived',
-            archived: true,
-            active: false
-          }]
-        }],
-        activeProjectId: null,
-        activeSessionId: null,
-        activeProject: null,
-        activeSession: null
-      }
+    const wrapper = mountAppShell({
+      hierarchy: [{
+        ...baseProject,
+        active: false,
+        sessions: [],
+        archivedSessions: [{
+          ...baseSession,
+          id: 'session-archived',
+          archived: true,
+          active: false
+        }]
+      }],
+      activeProjectId: null,
+      activeSessionId: null,
+      activeProject: null,
+      activeSession: null
     })
 
     await wrapper.get('button[aria-label="Archive"]').trigger('click')
@@ -304,26 +402,23 @@ describe('AppShell', () => {
   })
 
   it('forwards openWorkspace from command surface', async () => {
-    const wrapper = mount(AppShell, {
-      global: { plugins: [createPinia()] },
-      props: {
-        hierarchy: [{
-          ...baseProject,
-          active: true,
-          archivedSessions: [],
-          sessions: [{
-            ...baseSession,
-            active: true
-          }]
-        }],
-        activeProjectId: baseProject.id,
-        activeSessionId: baseSession.id,
-        activeProject: baseProject,
-        activeSession: baseSession
-      }
+    const wrapper = mountAppShell({
+      hierarchy: [{
+        ...baseProject,
+        active: true,
+        archivedSessions: [],
+        sessions: [{
+          ...baseSession,
+          active: true
+        }]
+      }],
+      activeProjectId: baseProject.id,
+      activeSessionId: baseSession.id,
+      activeProject: baseProject,
+      activeSession: baseSession
     })
 
-    await wrapper.findComponent(CommandSurface).vm.$emit('openWorkspace', {
+    await wrapper.findComponent({ name: 'CommandSurface' }).vm.$emit('openWorkspace', {
       sessionId: 'session-1',
       target: 'ide'
     })

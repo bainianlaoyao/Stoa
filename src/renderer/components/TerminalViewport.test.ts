@@ -183,7 +183,25 @@ function sessionSummary(overrides: Partial<SessionSummary> = {}): SessionSummary
   }
 }
 
+const rafQueue: Array<() => void> = []
+
+function installRafMock() {
+  window.requestAnimationFrame = (cb: FrameRequestCallback) => {
+    rafQueue.push(() => cb(0))
+    return 1
+  }
+  window.cancelAnimationFrame = (_id: number) => {
+    rafQueue.length = 0
+  }
+}
+
 async function flushTerminal(): Promise<void> {
+  await nextTick()
+  await Promise.resolve()
+  const pending = rafQueue.splice(0)
+  for (const cb of pending) {
+    cb()
+  }
   await nextTick()
   await Promise.resolve()
   await nextTick()
@@ -192,8 +210,15 @@ async function flushTerminal(): Promise<void> {
 describe('TerminalViewport', () => {
   let mockApi: ReturnType<typeof createMockApi>
   let pinia: ReturnType<typeof createPinia>
+  let originalRaf: typeof window.requestAnimationFrame
+  let originalCancelRaf: typeof window.cancelAnimationFrame
 
   beforeEach(async () => {
+    rafQueue.length = 0
+    originalRaf = window.requestAnimationFrame
+    originalCancelRaf = window.cancelAnimationFrame
+    installRafMock()
+
     pinia = createPinia()
     setActivePinia(pinia)
     mockApi = createMockApi()
@@ -205,6 +230,11 @@ describe('TerminalViewport', () => {
       configurable: true,
       writable: true
     })
+  })
+
+  afterEach(() => {
+    window.requestAnimationFrame = originalRaf
+    window.cancelAnimationFrame = originalCancelRaf
   })
 
   afterEach(() => {
@@ -313,6 +343,7 @@ describe('TerminalViewport', () => {
       props: { project: baseProject, session: baseSession },
     })
     await flushTerminal()
+    await flushTerminal()
 
     expect(mockApi.getTerminalReplay).toHaveBeenCalledWith('session_op_1')
 
@@ -348,6 +379,7 @@ describe('TerminalViewport', () => {
 
     resolveReplay('ABAB')
     await flushTerminal()
+    await flushTerminal()
 
     const { Terminal } = await import('@xterm/xterm')
     const instance = (Terminal as unknown as { instances: Array<{ writes: string[] }> }).instances.at(-1)
@@ -377,18 +409,18 @@ describe('TerminalViewport', () => {
 
     resolveReplay('restored-frame')
     await flushTerminal()
+    await flushTerminal()
 
     const { Terminal } = await import('@xterm/xterm')
     const instance = (Terminal as unknown as { instances: Array<{ writes: string[] }> }).instances.at(-1)
     expect(instance?.writes).toEqual([
       'restored-frame',
-      'live-before-replay',
-      '\r\n\x1b[90m[session exited]\x1b[0m',
+      'live-before-replay\r\n\x1b[90m[session exited]\x1b[0m',
     ])
   })
 
   test('hung replay request eventually falls back and flushes buffered live and exit output', async () => {
-    vi.useFakeTimers()
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     try {
       mockApi.getTerminalReplay = vi.fn().mockImplementation(() => {
         return new Promise<string>(() => {})
@@ -414,10 +446,11 @@ describe('TerminalViewport', () => {
 
       await vi.advanceTimersByTimeAsync(1_000)
       await flushTerminal()
+      await flushTerminal()
+      await flushTerminal()
 
       expect(instance?.writes).toEqual([
-        'live-while-hung',
-        '\r\n\x1b[90m[session exited]\x1b[0m',
+        'live-while-hung\r\n\x1b[90m[session exited]\x1b[0m',
       ])
     } finally {
       vi.useRealTimers()
@@ -443,6 +476,7 @@ describe('TerminalViewport', () => {
     })
 
     rejectReplay(new Error('replay failed'))
+    await flushTerminal()
     await flushTerminal()
 
     const { Terminal } = await import('@xterm/xterm')
@@ -621,6 +655,57 @@ describe('TerminalViewport', () => {
     expect(instances).toHaveLength(1)
     expect(wrapper.find('.terminal-viewport__xterm').exists()).toBe(true)
     expect(wrapper.find('[data-testid="terminal-status-bar"]').exists()).toBe(false)
+  })
+
+  test('defers initial resize until a hidden terminal becomes visible', async () => {
+    const { default: TerminalViewport } = await import('./TerminalViewport.vue')
+    const wrapper = mount(TerminalViewport, {
+      props: {
+        project: baseProject,
+        session: baseSession,
+        visible: false
+      },
+    })
+    await flushTerminal()
+
+    const { Terminal } = await import('@xterm/xterm')
+    const instances = (Terminal as unknown as { instances: unknown[] }).instances
+    expect(instances).toHaveLength(1)
+    expect(mockApi.sendSessionResize).not.toHaveBeenCalled()
+
+    await wrapper.setProps({ visible: true })
+    await flushTerminal()
+
+    expect(mockApi.sendSessionResize).toHaveBeenCalledWith('session_op_1', 80, 24)
+  })
+
+  test('refits the existing terminal instead of recreating it when visibility returns', async () => {
+    const { default: TerminalViewport } = await import('./TerminalViewport.vue')
+    const wrapper = mount(TerminalViewport, {
+      props: {
+        project: baseProject,
+        session: baseSession,
+        visible: true
+      },
+    })
+    await flushTerminal()
+
+    const { Terminal } = await import('@xterm/xterm')
+    const instances = (Terminal as unknown as { instances: unknown[] }).instances
+    expect(instances).toHaveLength(1)
+
+    mockApi.sendSessionResize.mockClear()
+
+    await wrapper.setProps({ visible: false })
+    await flushTerminal()
+    expect(instances).toHaveLength(1)
+    expect(mockApi.sendSessionResize).not.toHaveBeenCalled()
+
+    await wrapper.setProps({ visible: true })
+    await flushTerminal()
+
+    expect(instances).toHaveLength(1)
+    expect(mockApi.sendSessionResize).toHaveBeenCalledWith('session_op_1', 80, 24)
   })
 
   test('uses terminal settings from settings store for the xterm instance', async () => {

@@ -2,15 +2,16 @@ import { test, expect } from '@playwright/test'
 import { cleanupStateDir, launchElectronApp } from './fixtures/electron-app'
 
 test.describe('Settings tabs', () => {
-  test('renders 3 tab buttons', async () => {
+  test('renders 4 tab buttons', async () => {
     const app = await launchElectronApp()
     try {
       await app.page.locator('[data-activity-item="settings"]').click()
       await expect(app.page.locator('[data-surface="settings"]')).toBeVisible()
 
       const tabs = app.page.locator('[data-settings-tab]')
-      await expect(tabs).toHaveCount(3)
+      await expect(tabs).toHaveCount(4)
       await expect(app.page.locator('[data-settings-tab="general"]')).toBeVisible()
+      await expect(app.page.locator('[data-settings-tab="terminal"]')).toBeVisible()
       await expect(app.page.locator('[data-settings-tab="providers"]')).toBeVisible()
       await expect(app.page.locator('[data-settings-tab="about"]')).toBeVisible()
     } finally {
@@ -38,6 +39,19 @@ test.describe('Settings tabs', () => {
       await app.page.locator('[data-activity-item="settings"]').click()
       await app.page.locator('[data-settings-tab="providers"]').click()
       await expect(app.page.locator('[aria-label="Provider settings"]')).toBeVisible()
+    } finally {
+      const { stateDir } = app
+      await app.close()
+      await cleanupStateDir(stateDir)
+    }
+  })
+
+  test('clicking Terminal tab shows TerminalSettings', async () => {
+    const app = await launchElectronApp()
+    try {
+      await app.page.locator('[data-activity-item="settings"]').click()
+      await app.page.locator('[data-settings-tab="terminal"]').click()
+      await expect(app.page.locator('[aria-label="Terminal settings"]')).toBeVisible()
     } finally {
       const { stateDir } = app
       await app.close()
