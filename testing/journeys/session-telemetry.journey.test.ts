@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   sessionPresenceBlockedJourney,
-  sessionPresenceFailedJourney,
-  sessionPresenceInterruptedJourney,
+  sessionPresenceFailureJourney,
+  sessionPresenceReadyAfterInterruptJourney,
   sessionPresenceReadyJourney,
   sessionPresenceRunningJourney,
   sessionTelemetryClaudeLifecycleJourney,
@@ -15,7 +15,11 @@ describe('session telemetry journey', () => {
     expect(sessionTelemetryCompleteJourney.id).toBe('journey.session.telemetry.complete')
     expect(sessionTelemetryCompleteJourney.behavior).toBe('session.telemetry.complete')
     expect(sessionTelemetryCompleteJourney.usageMode).toBe('active_workflow')
-    expect(sessionTelemetryCompleteJourney.act).toEqual(['post.session.complete', 'post.claude.stopHook'])
+    expect(sessionTelemetryCompleteJourney.act).toEqual([
+      'post.session.complete',
+      'post.claude.userPromptSubmitHook',
+      'post.claude.stopHook'
+    ])
     expect(sessionTelemetryCompleteJourney.assert).toContain('terminal.liveSessionPreserved')
     expect(sessionTelemetryCompleteJourney.variants).toContain('claude-hook')
   })
@@ -39,7 +43,7 @@ describe('session telemetry journey', () => {
       'assert.presence.running',
       'post.claude.permissionRequestHook',
       'assert.presence.blocked',
-      'post.claude.permissionResolved',
+      'post.claude.preToolUseHook',
       'assert.presence.running',
       'post.claude.stopHook',
       'assert.presence.complete',
@@ -55,13 +59,13 @@ describe('session telemetry journey', () => {
 
     expect(sessionPresenceRunningJourney.behavior).toBe('session.presence.running')
     expect(sessionPresenceRunningJourney.act).toContain('post.claude.userPromptSubmitHook')
-    expect(sessionPresenceInterruptedJourney.behavior).toBe('session.presence.running')
-    expect(sessionPresenceInterruptedJourney.act).toEqual(['send.agentInterruptInput', 'observe.presence.ready'])
+    expect(sessionPresenceReadyAfterInterruptJourney.behavior).toBe('session.presence.running')
+    expect(sessionPresenceReadyAfterInterruptJourney.act).toEqual(['send.agentInterruptInput', 'observe.presence.ready'])
 
     expect(sessionPresenceBlockedJourney.behavior).toBe('session.presence.blocked')
     expect(sessionPresenceBlockedJourney.assert).toContain('command.sessionRequiresUserIntervention')
 
-    expect(sessionPresenceFailedJourney.behavior).toBe('session.presence.failed')
-    expect(sessionPresenceFailedJourney.assert).toContain('command.sessionStatusFailedOverridesComplete')
+    expect(sessionPresenceFailureJourney.behavior).toBe('session.presence.failure')
+    expect(sessionPresenceFailureJourney.assert).toContain('command.sessionStatusFailureOverridesComplete')
   })
 })

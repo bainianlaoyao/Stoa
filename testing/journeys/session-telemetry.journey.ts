@@ -5,7 +5,7 @@ export const sessionTelemetryCompleteJourney = defineJourney({
   behavior: 'session.telemetry.complete',
   usageMode: 'active_workflow',
   setup: ['project.withProviderSession', 'session.selectedInCommandSurface'],
-  act: ['post.session.complete', 'post.claude.stopHook'],
+  act: ['post.session.complete', 'post.claude.userPromptSubmitHook', 'post.claude.stopHook'],
   assert: ['command.sessionStatusCompleteVisible', 'terminal.liveSessionPreserved', 'persisted.sessionPresenceUpdated'],
   variants: ['canonical', 'claude-hook']
 })
@@ -40,8 +40,8 @@ export const sessionPresenceRunningJourney = defineJourney({
   variants: ['claude-hook']
 })
 
-export const sessionPresenceInterruptedJourney = defineJourney({
-  id: 'journey.session.presence.interrupted',
+export const sessionPresenceReadyAfterInterruptJourney = defineJourney({
+  id: 'journey.session.presence.ready-after-interrupt',
   behavior: 'session.presence.running',
   usageMode: 'active_workflow',
   setup: ['project.withCodexSession', 'session.runtimeAlive', 'post.codex.userPromptSubmitHook'],
@@ -60,13 +60,13 @@ export const sessionPresenceBlockedJourney = defineJourney({
   variants: ['claude-hook']
 })
 
-export const sessionPresenceFailedJourney = defineJourney({
-  id: 'journey.session.presence.failed',
-  behavior: 'session.presence.failed',
+export const sessionPresenceFailureJourney = defineJourney({
+  id: 'journey.session.presence.failure',
+  behavior: 'session.presence.failure',
   usageMode: 'active_workflow',
-  setup: ['project.withClaudeSession', 'session.runtimeAlive', 'post.claude.stopHook'],
-  act: ['runtime.exitedFailed', 'observe.presence.failed'],
-  assert: ['command.sessionStatusFailedVisible', 'command.sessionStatusFailedOverridesComplete'],
+  setup: ['project.withClaudeSession', 'session.runtimeAlive', 'post.claude.userPromptSubmitHook', 'post.claude.stopHook'],
+  act: ['runtime.exitedFailed', 'observe.presence.failure'],
+  assert: ['command.sessionStatusFailureVisible', 'command.sessionStatusFailureOverridesComplete'],
   variants: ['runtime-failed-after-complete']
 })
 
@@ -85,7 +85,7 @@ export const sessionTelemetryClaudeLifecycleJourney = defineJourney({
     'assert.presence.running',
     'post.claude.permissionRequestHook',
     'assert.presence.blocked',
-    'post.claude.permissionResolved',
+    'post.claude.preToolUseHook',
     'assert.presence.running',
     'post.claude.stopHook',
     'assert.presence.complete',

@@ -5,10 +5,10 @@ import { homedir } from 'node:os'
 import type {
   PersistedAppStateV2,
   PersistedGlobalStateV4,
+  FailureReason,
   PersistedProject,
   PersistedProjectSessions,
   PersistedSession,
-  SessionAgentState,
   SessionRecoveryMode,
   SessionRuntimeState,
   SessionType
@@ -34,7 +34,7 @@ export const DEFAULT_GLOBAL_STATE: PersistedGlobalStateV4 = {
 }
 
 export const DEFAULT_PROJECT_SESSIONS: PersistedProjectSessions = {
-  version: 5,
+  version: 6,
   project_id: '',
   sessions: []
 }
@@ -131,7 +131,7 @@ function isValidProjectSessions(value: unknown): value is PersistedProjectSessio
   if (!(typeof value === 'object'
     && value !== null
     && 'version' in value
-    && value.version === 5
+    && value.version === 6
     && 'project_id' in value
     && typeof value.project_id === 'string'
     && 'sessions' in value
@@ -150,12 +150,32 @@ function isValidPersistedSession(value: unknown): value is PersistedSession {
     && hasEnumValue<SessionType>(value, 'type', ['shell', 'opencode', 'codex', 'claude-code'])
     && hasString(value, 'title')
     && hasEnumValue<SessionRuntimeState>(value, 'runtime_state', ['created', 'starting', 'alive', 'exited', 'failed_to_start'])
-    && hasEnumValue<SessionAgentState>(value, 'agent_state', ['unknown', 'idle', 'working', 'blocked', 'error'])
+    && hasEnumValue(value, 'turn_state', ['idle', 'running'])
+    && hasNumber(value, 'turn_epoch')
+    && hasEnumValue(value, 'last_turn_outcome', ['none', 'completed', 'interrupted', 'cancelled', 'failed'])
+    && hasNullableEnumValue<BlockingReason>(value, 'blocking_reason', ['permission', 'elicitation', 'denied', 'provider_wait'])
+    && hasNullableEnumValue<FailureReason>(
+      value,
+      'failure_reason',
+      [
+        'rate_limit',
+        'authentication_failed',
+        'billing_error',
+        'invalid_request',
+        'server_error',
+        'max_output_tokens',
+        'permission_denied',
+        'tool_error',
+        'provider_error',
+        'runtime_crash',
+        'failed_to_start',
+        'unknown'
+      ]
+    )
     && hasBoolean(value, 'has_unseen_completion')
     && hasNullableNumber(value, 'runtime_exit_code')
     && hasNullableEnumValue(value, 'runtime_exit_reason', ['clean', 'failed'])
     && hasNumber(value, 'last_state_sequence')
-    && hasNullableEnumValue<BlockingReason>(value, 'blocking_reason', ['permission', 'elicitation', 'resume-confirmation', 'provider-error'])
     && hasString(value, 'last_summary')
     && hasNullableString(value, 'external_session_id')
     && hasString(value, 'created_at')
@@ -199,7 +219,7 @@ function isProjectSessionsWithUnsupportedVersion(value: unknown): value is { ver
   return typeof value === 'object'
     && value !== null
     && 'version' in value
-    && value.version !== 5
+    && value.version !== 6
 }
 
 export function createAtomicTempFilePath(filePath: string): string {
@@ -337,16 +357,16 @@ export async function readProjectSessions(projectPath: string): Promise<Persiste
       const parsed = JSON.parse(raw) as unknown
       if (isProjectSessionsWithUnsupportedVersion(parsed)) {
         return {
-          version: 5,
+          version: 6,
           project_id: typeof parsed.project_id === 'string' ? parsed.project_id : '',
           sessions: []
         }
       }
 
       if (!isValidProjectSessions(parsed)) {
-        if (isVersionFiveProjectSessionsWrapper(parsed)) {
+        if (isVersionSixProjectSessionsWrapper(parsed)) {
           return {
-            version: 5,
+            version: 6,
             project_id: parsed.project_id,
             sessions: []
           }
@@ -370,11 +390,11 @@ export async function readProjectSessions(projectPath: string): Promise<Persiste
   })
 }
 
-function isVersionFiveProjectSessionsWrapper(value: unknown): value is { version: 5; project_id: string; sessions: unknown[] } {
+function isVersionSixProjectSessionsWrapper(value: unknown): value is { version: 6; project_id: string; sessions: unknown[] } {
   return typeof value === 'object'
     && value !== null
     && 'version' in value
-    && value.version === 5
+    && value.version === 6
     && 'project_id' in value
     && typeof value.project_id === 'string'
     && 'sessions' in value
@@ -413,7 +433,7 @@ export async function writeProjectSessions(
   const filePath = getProjectSessionsFilePath(projectPath)
 
   await writeJsonAtomically(filePath, {
-    version: 5,
+    version: 6,
     project_id: data.project_id,
     sessions: data.sessions
   } satisfies PersistedProjectSessions)

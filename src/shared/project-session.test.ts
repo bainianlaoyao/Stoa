@@ -3,7 +3,6 @@ import type {
   PersistedAppStateV2,
   PersistedProjectSessions,
   ProjectSummary,
-  SessionAgentState,
   SessionRuntimeState,
   SessionSummary,
   SessionType
@@ -25,12 +24,15 @@ describe('project/session shared contracts', () => {
       projectId: 'project_alpha',
       type: 'shell' satisfies SessionType,
       runtimeState: 'alive',
-      agentState: 'unknown',
+      turnState: 'idle',
+      turnEpoch: 0,
+      lastTurnOutcome: 'none',
+      blockingReason: null,
+      failureReason: null,
       hasUnseenCompletion: false,
       runtimeExitCode: null,
       runtimeExitReason: null,
       lastStateSequence: 0,
-      blockingReason: null,
       title: 'Shell 1',
       summary: 'attached',
       recoveryMode: 'fresh-shell',
@@ -61,12 +63,15 @@ describe('project/session shared contracts', () => {
           type: session.type,
           title: session.title,
           runtime_state: session.runtimeState,
-          agent_state: session.agentState,
+          turn_state: session.turnState,
+          turn_epoch: session.turnEpoch,
+          last_turn_outcome: session.lastTurnOutcome,
+          blocking_reason: session.blockingReason,
+          failure_reason: session.failureReason,
           has_unseen_completion: session.hasUnseenCompletion,
           runtime_exit_code: session.runtimeExitCode,
           runtime_exit_reason: session.runtimeExitReason,
           last_state_sequence: session.lastStateSequence,
-          blocking_reason: session.blockingReason,
           last_summary: session.summary,
           external_session_id: null,
           created_at: session.createdAt,
@@ -82,7 +87,7 @@ describe('project/session shared contracts', () => {
     expect(state.sessions[0]?.project_id).toBe('project_alpha')
 
     const projectSessions: PersistedProjectSessions = {
-      version: 5,
+      version: 6,
       project_id: project.id,
       sessions: [
         {
@@ -91,12 +96,15 @@ describe('project/session shared contracts', () => {
           type: session.type,
           title: session.title,
           runtime_state: session.runtimeState,
-          agent_state: session.agentState,
+          turn_state: session.turnState,
+          turn_epoch: session.turnEpoch,
+          last_turn_outcome: session.lastTurnOutcome,
+          blocking_reason: session.blockingReason,
+          failure_reason: session.failureReason,
           has_unseen_completion: session.hasUnseenCompletion,
           runtime_exit_code: session.runtimeExitCode,
           runtime_exit_reason: session.runtimeExitReason,
           last_state_sequence: session.lastStateSequence,
-          blocking_reason: session.blockingReason,
           last_summary: session.summary,
           external_session_id: null,
           created_at: session.createdAt,
@@ -108,9 +116,9 @@ describe('project/session shared contracts', () => {
       ]
     }
 
-    expect(projectSessions.version).toBe(5)
+    expect(projectSessions.version).toBe(6)
     expect(projectSessions.sessions[0]?.runtime_state).toBe('alive')
-    expect(projectSessions.sessions[0]?.agent_state).toBe('unknown')
+    expect(projectSessions.sessions[0]?.turn_state).toBe('idle')
   })
 
   it('supports shell, opencode, codex, and claude-code session types', () => {
@@ -136,11 +144,11 @@ describe('project/session shared contracts', () => {
     ])
   })
 
-  it('supports runtime and agent session states', () => {
+  it('supports runtime and turn session states', () => {
     const runtimeState: SessionRuntimeState = 'alive'
-    const agentState: SessionAgentState = 'idle'
+    const turnState = 'idle' as const
 
     expect(runtimeState).toBe('alive')
-    expect(agentState).toBe('idle')
+    expect(turnState).toBe('idle')
   })
 })

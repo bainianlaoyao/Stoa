@@ -24,11 +24,8 @@ export function mapPhaseToTone(phase: SessionPresencePhase): ObservabilityTone {
       return 'warning'
     case 'blocked':
       return 'warning'
-    case 'failed':
+    case 'failure':
       return 'danger'
-    case 'preparing':
-    case 'exited':
-      return 'neutral'
   }
 }
 
@@ -38,8 +35,6 @@ export function providerLabel(providerId: string): string {
 
 export function phaseLabel(phase: SessionPresencePhase): string {
   switch (phase) {
-    case 'preparing':
-      return 'Preparing'
     case 'running':
       return 'Running'
     case 'ready':
@@ -48,10 +43,8 @@ export function phaseLabel(phase: SessionPresencePhase): string {
       return 'Complete'
     case 'blocked':
       return 'Blocked'
-    case 'failed':
+    case 'failure':
       return 'Failed'
-    case 'exited':
-      return 'Exited'
   }
 }
 
@@ -71,7 +64,11 @@ export function buildSessionPresenceSnapshot(
   const descriptor = getProviderDescriptorBySessionType(session.type)
   const phase = derivePresencePhase({
     runtimeState: session.runtimeState,
-    agentState: session.agentState,
+    turnState: session.turnState,
+    turnEpoch: session.turnEpoch,
+    lastTurnOutcome: session.lastTurnOutcome,
+    blockingReason: session.blockingReason,
+    failureReason: session.failureReason,
     hasUnseenCompletion: session.hasUnseenCompletion,
     runtimeExitCode: session.runtimeExitCode,
     runtimeExitReason: session.runtimeExitReason,
@@ -89,13 +86,16 @@ export function buildSessionPresenceSnapshot(
     modelLabel: options.modelLabel ?? null,
     phase,
     runtimeState: session.runtimeState,
-    agentState: session.agentState,
+    turnState: session.turnState,
+    turnEpoch: session.turnEpoch,
+    lastTurnOutcome: session.lastTurnOutcome,
+    blockingReason: session.blockingReason,
+    failureReason: session.failureReason,
     hasUnseenCompletion: session.hasUnseenCompletion,
     runtimeExitCode: session.runtimeExitCode,
     runtimeExitReason: session.runtimeExitReason,
     confidence: confidenceForSession(session),
     health: healthForPhase(phase),
-    blockingReason: session.blockingReason,
     lastAssistantSnippet,
     lastEventAt,
     lastEvidenceType: options.lastEvidenceType ?? null,
@@ -167,7 +167,7 @@ export function buildProjectObservabilitySnapshot(
     overallHealth: aggregateSessionHealth(sessions),
     activeSessionCount: sessions.length,
     blockedSessionCount: sessions.filter((session) => session.phase === 'blocked').length,
-    failedSessionCount: sessions.filter((session) => session.phase === 'failed').length,
+    failedSessionCount: sessions.filter((session) => session.phase === 'failure').length,
     unreadTurnCount: sessions.filter((session) => session.hasUnreadTurn).length,
     latestAttentionSessionId: attentionSession?.sessionId ?? null,
     latestAttentionReason: attentionSession ? attentionReasonForSession(attentionSession) : null,
@@ -201,7 +201,7 @@ function maxSourceSequence(values: Array<{ sourceSequence: number }>): number {
 }
 
 function healthForPhase(phase: SessionPresencePhase): ObservabilityHealth {
-  if (phase === 'failed') {
+  if (phase === 'failure') {
     return 'lost'
   }
 
@@ -253,12 +253,8 @@ function latestAttentionSession(sessions: SessionPresenceSnapshot[]): SessionPre
 }
 
 function attentionReasonForSession(session: SessionPresenceSnapshot): string | null {
-  if (session.blockingReason) {
-    return session.blockingReason
-  }
-
-  if (session.phase === 'failed') {
-    return 'provider-error'
+  if (session.phase === 'failure') {
+    return session.failureReason ?? 'failure'
   }
 
   if (session.phase === 'complete') {
@@ -266,7 +262,7 @@ function attentionReasonForSession(session: SessionPresenceSnapshot): string | n
   }
 
   if (session.phase === 'blocked') {
-    return 'blocked'
+    return session.blockingReason ?? 'blocked'
   }
 
   if (session.hasUnreadTurn) {
@@ -278,7 +274,7 @@ function attentionReasonForSession(session: SessionPresenceSnapshot): string | n
 
 function attentionPriority(session: SessionPresenceSnapshot): number {
   switch (session.phase) {
-    case 'failed':
+    case 'failure':
       return 5
     case 'complete':
     case 'blocked':

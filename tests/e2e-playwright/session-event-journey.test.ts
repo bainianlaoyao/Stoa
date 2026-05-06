@@ -51,8 +51,10 @@ async function waitForSessionState(
   predicate: (
     session: {
       runtimeState?: string
-      agentState?: string
+      turnState?: string
+      lastTurnOutcome?: string
       hasUnseenCompletion?: boolean
+      blockingReason?: string | null
       runtimeExitReason?: string | null
     }
   ) => boolean
@@ -106,8 +108,7 @@ test.describe('Electron push and webhook journeys', () => {
           eventType: 'session.completed',
           payload: {
             intent: 'agent.turn_completed',
-            agentState: 'idle',
-            hasUnseenCompletion: true,
+            turnEpoch: 1,
             summary: 'session.idle'
           }
         })
@@ -124,7 +125,8 @@ test.describe('Electron push and webhook journeys', () => {
         return nextDebugState?.snapshot?.sessions.find(candidate => candidate.id === sessionState!.id) ?? null
       }).toMatchObject({
         runtimeState: 'alive',
-        agentState: 'idle',
+        turnState: 'idle',
+        lastTurnOutcome: 'completed',
         hasUnseenCompletion: true,
         summary: 'session.idle'
       })
@@ -176,7 +178,7 @@ test.describe('Electron push and webhook journeys', () => {
       expect(response.status).toBe(202)
       await expect(session.row.locator('[data-testid="session-status-dot"]')).toHaveAttribute(
         'data-session-status-testid',
-        'session-status-exited'
+        'session-status-ready'
       )
 
       await expect.poll(async () => {
@@ -224,8 +226,7 @@ test.describe('Electron push and webhook journeys', () => {
           eventType: 'session.completed',
           payload: {
             intent: 'agent.turn_completed',
-            agentState: 'idle',
-            hasUnseenCompletion: true,
+            turnEpoch: 1,
             summary: 'Turn complete'
           }
         })
@@ -242,7 +243,8 @@ test.describe('Electron push and webhook journeys', () => {
         return nextDebugState?.snapshot?.sessions.find(candidate => candidate.id === sessionState!.id) ?? null
       }).toMatchObject({
         runtimeState: 'alive',
-        agentState: 'idle',
+        turnState: 'idle',
+        lastTurnOutcome: 'completed',
         hasUnseenCompletion: true,
         summary: 'Turn complete'
       })
@@ -253,7 +255,7 @@ test.describe('Electron push and webhook journeys', () => {
     }
   })
 
-  test('claude Stop hook updates UI through the raw hook route', async () => {
+  test('claude raw Stop hook without an open turn does not fabricate completion in the UI', async () => {
     const app = await launchElectronApp()
 
     try {
@@ -284,10 +286,10 @@ test.describe('Electron push and webhook journeys', () => {
         }
       })
 
-      expect(response.status).toBe(202)
+      expect(response.status).toBe(204)
       await expect(session.row.locator('[data-testid="session-status-dot"]')).toHaveAttribute(
         'data-session-status-testid',
-        'session-status-complete'
+        'session-status-ready'
       )
 
       await expect.poll(async () => {
@@ -295,8 +297,9 @@ test.describe('Electron push and webhook journeys', () => {
         return nextDebugState?.snapshot?.sessions.find(candidate => candidate.id === sessionState!.id) ?? null
       }).toMatchObject({
         runtimeState: 'alive',
-        agentState: 'idle',
-        hasUnseenCompletion: true,
+        turnState: 'idle',
+        lastTurnOutcome: 'none',
+        hasUnseenCompletion: false,
         summary: 'Stop'
       })
     } finally {
@@ -336,11 +339,24 @@ test.describe('Electron push and webhook journeys', () => {
         sessionId: sessionState!.id,
         projectId: sessionState!.projectId,
         body: {
+          hook_event_name: 'UserPromptSubmit'
+        }
+      })
+
+      expect(stopResponse.status).toBe(204)
+      await expect(statusDot).toHaveAttribute('data-session-status-testid', 'session-status-running')
+
+      const completeResponse = await postClaudeHookEvent({
+        port: debugState!.webhookPort!,
+        secret: secret!,
+        sessionId: sessionState!.id,
+        projectId: sessionState!.projectId,
+        body: {
           hook_event_name: 'Stop'
         }
       })
 
-      expect(stopResponse.status).toBe(202)
+      expect(completeResponse.status).toBe(204)
       await expect(statusDot).toHaveAttribute('data-session-status-testid', 'session-status-complete')
       await session.row.click()
       await expect(statusDot).toHaveAttribute('data-session-status-testid', 'session-status-ready')
@@ -355,7 +371,7 @@ test.describe('Electron push and webhook journeys', () => {
         }
       })
 
-      expect(activityResponse.status).toBe(202)
+      expect(activityResponse.status).toBe(204)
       await expect(statusDot).toHaveAttribute('data-session-status-testid', 'session-status-running')
       await expect(statusDot).toHaveAttribute('data-phase', 'running')
       await expect(statusDot).toHaveAttribute('data-tone', 'success')
@@ -398,7 +414,7 @@ test.describe('Electron push and webhook journeys', () => {
         }
       })
 
-      expect(response.status).toBe(202)
+      expect(response.status).toBe(204)
       const statusDot = session.row.locator('[data-testid="session-status-dot"]')
       await expect(statusDot).toHaveAttribute('data-session-status-testid', 'session-status-blocked')
       await expect(statusDot).toHaveAttribute('data-phase', 'blocked')
@@ -414,7 +430,8 @@ test.describe('Electron push and webhook journeys', () => {
         return nextDebugState?.snapshot?.sessions.find(candidate => candidate.id === sessionState!.id) ?? null
       }).toMatchObject({
         runtimeState: 'alive',
-        agentState: 'blocked',
+        turnState: 'running',
+        blockingReason: 'permission',
         summary: 'PermissionRequest'
       })
     } finally {
@@ -459,8 +476,7 @@ test.describe('Electron push and webhook journeys', () => {
           eventType: 'session.completed',
           payload: {
             intent: 'agent.turn_completed',
-            agentState: 'idle',
-            hasUnseenCompletion: true,
+            turnEpoch: 1,
             summary: 'should-not-apply'
           }
         })

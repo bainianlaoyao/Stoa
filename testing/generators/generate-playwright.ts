@@ -87,7 +87,7 @@ export const meta = defineGeneratedTestMeta({
     'session.presence.running',
     'session.presence.blocked',
     'session.presence.complete',
-    'session.presence.failed'
+    'session.presence.failure'
   ],
   entities: ['project', 'session', 'provider-telemetry', 'renderer-status'],
   statesCovered: [
@@ -95,7 +95,7 @@ export const meta = defineGeneratedTestMeta({
     'presence.running',
     'presence.blocked',
     'presence.complete',
-    'presence.failed'
+    'presence.failure'
   ],
   interruptionsCovered: [
     'runtime.alive.withoutAgentTelemetry',
@@ -131,7 +131,16 @@ async function installFakeClaude(app: Awaited<ReturnType<typeof launchElectronAp
 async function waitForSessionState(
   app: Awaited<ReturnType<typeof launchElectronApp>>,
   title: string,
-  predicate: (session: { runtimeState?: string; agentState?: string }) => boolean
+  predicate: (
+    session: {
+      runtimeState?: string
+      turnState?: string
+      lastTurnOutcome?: string
+      hasUnseenCompletion?: boolean
+      blockingReason?: string | null
+      runtimeExitReason?: string | null
+    }
+  ) => boolean
 ) {
   await expect.poll(async () => {
     const debugState = await getMainE2EDebugState(app.electronApp)
@@ -180,7 +189,7 @@ test('journey.session.telemetry.claude-lifecycle', async () => {
       sessionId: sessionState.id,
       projectId: sessionState.projectId,
       body: { hook_event_name: 'UserPromptSubmit' }
-    })).status).toBe(202)
+    })).status).toBe(204)
     await expect(statusDot).toHaveAttribute('data-session-status-testid', 'session-status-running')
 
     await expect((await postClaudeHookEvent({
@@ -189,7 +198,7 @@ test('journey.session.telemetry.claude-lifecycle', async () => {
       sessionId: sessionState.id,
       projectId: sessionState.projectId,
       body: { hook_event_name: 'PermissionRequest' }
-    })).status).toBe(202)
+    })).status).toBe(204)
     await expect(statusDot).toHaveAttribute('data-session-status-testid', 'session-status-blocked')
 
     await expect((await postClaudeHookEvent({
@@ -198,7 +207,7 @@ test('journey.session.telemetry.claude-lifecycle', async () => {
       sessionId: sessionState.id,
       projectId: sessionState.projectId,
       body: { hook_event_name: 'PreToolUse' }
-    })).status).toBe(202)
+    })).status).toBe(204)
     await expect(statusDot).toHaveAttribute('data-session-status-testid', 'session-status-running')
 
     await expect((await postClaudeHookEvent({
@@ -207,7 +216,7 @@ test('journey.session.telemetry.claude-lifecycle', async () => {
       sessionId: sessionState.id,
       projectId: sessionState.projectId,
       body: { hook_event_name: 'Stop' }
-    })).status).toBe(202)
+    })).status).toBe(204)
     await expect(statusDot).toHaveAttribute('data-session-status-testid', 'session-status-complete')
 
     await session.row.click()
@@ -233,7 +242,7 @@ test('journey.session.telemetry.claude-lifecycle', async () => {
         }
       }
     })).status).toBe(202)
-    await expect(statusDot).toHaveAttribute('data-session-status-testid', 'session-status-failed')
+    await expect(statusDot).toHaveAttribute('data-session-status-testid', 'session-status-failure')
   } finally {
     const { stateDir } = app
     await app.close()

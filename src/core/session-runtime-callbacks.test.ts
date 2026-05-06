@@ -49,7 +49,7 @@ function createBaseSession(
     title: 'Deploy',
     type: 'opencode' as const,
     runtimeState: 'alive' as const,
-    agentState: 'working' as const,
+    turnState: 'idle' as const,
     externalSessionId: null as string | null,
     sessionSecret: 'secret-1',
     providerPort: 43128,
@@ -458,7 +458,7 @@ describe('session runtime callbacks and defaults', () => {
       expect(buildResumeCommand).not.toHaveBeenCalled()
     })
 
-    test('opencode with blocked agent state does not resume', async () => {
+    test('opencode with a running turn still resumes when external session recovery is available', async () => {
       const buildStartCommand = vi.fn(async () => ({
         command: 'opencode', args: [], cwd: 'D:/demo', env: {}
       }))
@@ -468,7 +468,7 @@ describe('session runtime callbacks and defaults', () => {
       const provider = createProvider({ buildStartCommand, buildResumeCommand })
 
       await startSessionRuntime({
-        session: createBaseSession({ type: 'opencode', externalSessionId: 'ext-1', agentState: 'blocked' }),
+        session: createBaseSession({ type: 'opencode', externalSessionId: 'ext-1', turnState: 'running' }),
         webhookPort: 43127,
         provider,
         ptyHost: { start: vi.fn(() => ({ runtimeId: 'session_op_1' })) } as never,
@@ -481,8 +481,8 @@ describe('session runtime callbacks and defaults', () => {
         } as never
       })
 
-      expect(buildStartCommand).toHaveBeenCalledOnce()
-      expect(buildResumeCommand).not.toHaveBeenCalled()
+      expect(buildStartCommand).not.toHaveBeenCalled()
+      expect(buildResumeCommand).toHaveBeenCalledOnce()
     })
 
     test('opencode without externalSessionId does not resume', async () => {

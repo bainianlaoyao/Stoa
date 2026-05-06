@@ -12,7 +12,6 @@ export const sessionStatusTopology = defineTopology({
     running: 'session-status-running',
     complete: 'session-status-complete',
     blocked: 'session-status-blocked',
-    failed: 'session-status-failed',
-    exited: 'session-status-exited'
+    failure: 'session-status-failure'
   }
 })

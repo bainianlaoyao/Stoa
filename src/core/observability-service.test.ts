@@ -17,12 +17,15 @@ const session = (overrides: Partial<SessionSummary> = {}): SessionSummary => ({
   title: 'Codex session',
   summary: 'Working',
   runtimeState: 'alive',
-  agentState: 'working',
+  turnState: 'running',
+  turnEpoch: 1,
+  lastTurnOutcome: 'none',
+  blockingReason: null,
+  failureReason: null,
   hasUnseenCompletion: false,
   runtimeExitCode: null,
   runtimeExitReason: null,
   lastStateSequence: 0,
-  blockingReason: null,
   recoveryMode: 'resume-external',
   externalSessionId: 'external-1',
   createdAt: '2026-01-01T00:00:00.000Z',
@@ -148,7 +151,7 @@ describe('ObservabilityService', () => {
     })
 
     service.registerSession(session({
-      agentState: 'working',
+      turnState: 'running',
       lastStateSequence: 7
     }), 'session-1')
     expect(service.ingest(event({
@@ -207,7 +210,8 @@ describe('ObservabilityService', () => {
     })
 
     service.registerSession(session({
-      agentState: 'idle',
+      turnState: 'idle',
+      lastTurnOutcome: 'completed',
       hasUnseenCompletion: true,
       lastStateSequence: 20
     }), 'session-1')
@@ -477,12 +481,17 @@ describe('ObservabilityService', () => {
 
     service.registerSession(session({
       id: 'blocked-session',
-      agentState: 'blocked',
+      turnState: 'running',
+      turnEpoch: 2,
+      lastTurnOutcome: 'none',
       blockingReason: 'permission'
     }), 'active-session')
     service.registerSession(session({
       id: 'failed-session',
-      agentState: 'error'
+      turnState: 'idle',
+      turnEpoch: 1,
+      lastTurnOutcome: 'failed',
+      failureReason: 'provider_error'
     }), 'active-session')
     service.ingest(
       event({

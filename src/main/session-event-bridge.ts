@@ -49,6 +49,8 @@ export class SessionEventBridge {
   private readonly sessionEventQueues = new Map<string, Promise<null>>()
   private readonly turnEvidenceIds = new Map<string, Set<string>>()
   private readonly activeTurnIds = new Map<string, string>()
+  private readonly activeTurnEpochs = new Map<string, number>()
+  private readonly sourceTurnEpochs = new Map<string, Map<string, number>>()
   private readonly nowIso: () => string
   private readonly evidenceStore: EvidenceStoreLike
   private readonly transcriptSnapshotter: (event: CanonicalSessionEvent) => Promise<Awaited<ReturnType<typeof createTranscriptSnapshot>>>
@@ -226,6 +228,7 @@ export class SessionEventBridge {
   }
 
   private toSessionStatePatch(event: CanonicalSessionEvent): SessionStatePatchEvent {
+    const turnEpoch = this.resolveTurnEpoch(event)
     return {
       sessionId: event.session_id,
       sequence: this.allocateProviderPatchSequence(event.session_id),
@@ -233,12 +236,12 @@ export class SessionEventBridge {
       intent: event.payload.intent,
       source: 'provider',
       sourceEventType: event.event_type,
-      runtimeState: event.payload.runtimeState,
-      agentState: event.payload.agentState,
-      hasUnseenCompletion: event.payload.hasUnseenCompletion,
+      turnEpoch,
+      sourceTurnId: event.payload.sourceTurnId,
       runtimeExitCode: event.payload.runtimeExitCode,
       runtimeExitReason: event.payload.runtimeExitReason,
       blockingReason: event.payload.blockingReason,
+      failureReason: event.payload.failureReason,
       summary: event.payload.summary,
       externalSessionId: event.payload.externalSessionId
     }
@@ -251,6 +254,132 @@ export class SessionEventBridge {
     const nextSequence = Math.max(lastManagerSequence, lastAllocatedSequence) + 1
     this.providerPatchSequences.set(sessionId, nextSequence)
     return nextSequence
+  }
+
+  private resolveTurnEpoch(event: CanonicalSessionEvent): number | undefined {
+    if (!event.payload.intent.startsWith('agent.')) {
+      return event.payload.turnEpoch
+    }
+
+    const explicitEpoch = event.payload.turnEpoch
+    if (typeof explicitEpoch === 'number') {
+      this.recordResolvedTurnEpoch(event.session_id, event.payload.sourceTurnId, explicitEpoch)
+      return explicitEpoch
+    }
+
+    const sourceTurnId = event.payload.sourceTurnId ?? event.evidence?.turnId ?? null
+    if (sourceTurnId) {
+      return this.resolveSourceTurnEpoch(event.session_id, sourceTurnId, event.payload.intent)
+    }
+
+    return this.resolveSyntheticTurnEpoch(event.session_id, event.payload.intent)
+  }
+
+  private resolveSourceTurnEpoch(sessionId: string, sourceTurnId: string, intent: CanonicalSessionEvent['payload']['intent']): number {
+    const mapping = this.sourceTurnEpochs.get(sessionId) ?? new Map<string, number>()
+    const existing = mapping.get(sourceTurnId)
+    if (existing !== undefined) {
+      this.activeTurnEpochs.set(sessionId, existing)
+      return existing
+    }
+
+    const nextEpoch = this.shouldAllocateSourceTurnEpoch(sessionId, intent)
+      ? this.allocateNextTurnEpoch(sessionId)
+      : this.lastKnownTurnEpoch(sessionId)
+
+    mapping.set(sourceTurnId, nextEpoch)
+    this.sourceTurnEpochs.set(sessionId, mapping)
+    this.activeTurnEpochs.set(sessionId, nextEpoch)
+    return nextEpoch
+  }
+
+  private resolveSyntheticTurnEpoch(sessionId: string, intent: CanonicalSessionEvent['payload']['intent']): number {
+    const nextEpoch = this.shouldOpenSyntheticTurn(sessionId, intent)
+      ? this.allocateNextTurnEpoch(sessionId)
+      : this.currentTurnEpoch(sessionId)
+    this.activeTurnEpochs.set(sessionId, nextEpoch)
+    return nextEpoch
+  }
+
+  private recordResolvedTurnEpoch(sessionId: string, sourceTurnId: string | null | undefined, turnEpoch: number): void {
+    this.activeTurnEpochs.set(sessionId, turnEpoch)
+    if (!sourceTurnId) {
+      return
+    }
+
+    const mapping = this.sourceTurnEpochs.get(sessionId) ?? new Map<string, number>()
+    mapping.set(sourceTurnId, turnEpoch)
+    this.sourceTurnEpochs.set(sessionId, mapping)
+  }
+
+  private allocateNextTurnEpoch(sessionId: string): number {
+    const snapshot = this.manager.snapshot()
+    const session = snapshot.sessions.find((candidate) => candidate.id === sessionId)
+    const baseline = Math.max(
+      session?.turnEpoch ?? 0,
+      this.activeTurnEpochs.get(sessionId) ?? 0
+    )
+    return baseline + 1
+  }
+
+  private currentTurnEpoch(sessionId: string): number {
+    const snapshot = this.manager.snapshot()
+    const session = snapshot.sessions.find((candidate) => candidate.id === sessionId)
+    return Math.max(
+      session?.turnEpoch ?? 0,
+      this.activeTurnEpochs.get(sessionId) ?? 0,
+      1
+    )
+  }
+
+  private lastKnownTurnEpoch(sessionId: string): number {
+    const snapshot = this.manager.snapshot()
+    const session = snapshot.sessions.find((candidate) => candidate.id === sessionId)
+    return Math.max(
+      session?.turnEpoch ?? 0,
+      this.activeTurnEpochs.get(sessionId) ?? 0
+    )
+  }
+
+  private intentStartsTurn(intent: CanonicalSessionEvent['payload']['intent']): boolean {
+    return intent === 'agent.turn_started'
+  }
+
+  private intentCanOpenTurnWithoutExistingMapping(intent: CanonicalSessionEvent['payload']['intent']): boolean {
+    return intent === 'agent.turn_started'
+      || intent === 'agent.tool_started'
+      || intent === 'agent.permission_requested'
+  }
+
+  private shouldAllocateSourceTurnEpoch(
+    sessionId: string,
+    intent: CanonicalSessionEvent['payload']['intent']
+  ): boolean {
+    const snapshot = this.manager.snapshot()
+    const session = snapshot.sessions.find((candidate) => candidate.id === sessionId)
+    if (session?.turnState === 'running') {
+      return false
+    }
+
+    return this.intentCanOpenTurnWithoutExistingMapping(intent)
+  }
+
+  private shouldOpenSyntheticTurn(sessionId: string, intent: CanonicalSessionEvent['payload']['intent']): boolean {
+    if (this.intentStartsTurn(intent)) {
+      return true
+    }
+
+    const snapshot = this.manager.snapshot()
+    const session = snapshot.sessions.find((candidate) => candidate.id === sessionId)
+    if (!session) {
+      return true
+    }
+
+    if (session.turnState === 'running') {
+      return false
+    }
+
+    return intent !== 'agent.permission_resolved'
   }
 
   private async persistEvidenceIfPresent(event: CanonicalSessionEvent): Promise<EvidenceRef | null> {
@@ -499,6 +628,8 @@ export class SessionEventBridge {
     this.sessionEventQueues.clear()
     this.turnEvidenceIds.clear()
     this.activeTurnIds.clear()
+    this.activeTurnEpochs.clear()
+    this.sourceTurnEpochs.clear()
     this.port = null
     await this.manager.setTerminalWebhookPort(null)
   }
@@ -522,17 +653,19 @@ function mapIntentToObservation(intent: CanonicalSessionEvent['payload']['intent
     case 'agent.permission_resolved':
     case 'agent.recovered':
     case 'agent.turn_interrupted':
+    case 'agent.turn_cancelled':
       return { category: 'presence', type: 'presence.ready', severity: 'info', retention: 'operational' }
     case 'agent.turn_failed':
-      return { category: 'presence', type: 'presence.failed', severity: 'error', retention: 'critical' }
+      return { category: 'presence', type: 'presence.failure', severity: 'error', retention: 'critical' }
     case 'runtime.exited_clean':
     case 'runtime.exited_failed':
       return { category: 'lifecycle', type: 'lifecycle.session_exited', severity: 'info', retention: 'operational' }
     case 'runtime.created':
       return { category: 'lifecycle', type: 'lifecycle.session_created', severity: 'info', retention: 'ephemeral' }
+    case 'runtime.failed_to_start':
+      return { category: 'presence', type: 'presence.failure', severity: 'error', retention: 'critical' }
     case 'runtime.starting':
     case 'runtime.alive':
-    case 'runtime.failed_to_start':
     case 'agent.completion_seen':
       return { category: 'lifecycle', type: 'lifecycle.session_starting', severity: 'info', retention: 'ephemeral' }
   }

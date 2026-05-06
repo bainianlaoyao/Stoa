@@ -87,18 +87,21 @@ describe('opencode provider', () => {
       const manifest = JSON.parse(await readFile(join(workspaceDir, '.opencode', '.stoa-managed-sidecar.json'), 'utf8')) as {
         artifactPaths: string[]
       }
+      expect(content).toContain("intent: 'agent.tool_started'")
       expect(content).toContain("intent: 'agent.permission_requested'")
       expect(content).toContain("intent: 'agent.permission_resolved'")
       expect(content).toContain("intent: 'agent.turn_completed'")
       expect(content).toContain("intent: 'agent.turn_failed'")
-      expect(content).toContain("agentState: denied ? (failed ? 'error' : 'idle') : 'working'")
-      expect(content).toContain('hasUnseenCompletion: true')
+      expect(content).toContain('sourceTurnId: event.properties?.messageID ?? undefined')
+      expect(content).toContain("failureReason: toFailureReason(event)")
       expect(content).toContain("'x-stoa-secret': sessionSecret")
       expect(content).toContain('session_id: sessionId')
       expect(content).toContain('project_id: projectId')
       expect(content).not.toContain("'x-stoa-secret': process.env.STOA_SESSION_SECRET")
       expect(content).not.toContain('session_id: process.env.STOA_SESSION_ID')
       expect(content).not.toContain('project_id: process.env.STOA_PROJECT_ID')
+      expect(content).not.toContain('agentState:')
+      expect(content).not.toContain('hasUnseenCompletion:')
       expect(content).not.toContain("status = 'running'")
       expect(content).not.toContain("status = 'completed'")
       expect(manifest.artifactPaths).toEqual([join('.opencode', 'plugins', 'stoa-status.ts')])

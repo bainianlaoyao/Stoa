@@ -1,4 +1,4 @@
-import type { ProviderCommand, SessionAgentState, SessionRuntimeState } from '@shared/project-session'
+import type { ProviderCommand, SessionRuntimeState, TurnState } from '@shared/project-session'
 import { getProviderDescriptorBySessionType } from '@shared/provider-descriptors'
 import type { ProviderDefinition, ProviderRuntimeTarget } from '@extensions/providers'
 import { wrapCommandForShell } from './shell-command'
@@ -29,7 +29,7 @@ export interface StartSessionRuntimeOptions {
     title: string
     type: 'shell' | 'opencode' | 'codex' | 'claude-code'
     runtimeState: SessionRuntimeState
-    agentState: SessionAgentState
+    turnState: TurnState
     externalSessionId: string | null
     sessionSecret?: string | null
     providerPort?: number | null
@@ -75,20 +75,17 @@ export async function startSessionRuntime(options: StartSessionRuntimeOptions): 
   console.log(`[session-runtime] installSidecar done for ${session.id}`)
 
   const hasResumeBoundary = session.runtimeState !== 'created' && session.runtimeState !== 'starting'
-  const resumeAllowedByAgentState = session.agentState !== 'blocked'
   const canResume =
     descriptor.supportsResume
     && provider.supportsResume()
     && !!session.externalSessionId
     && hasResumeBoundary
-    && resumeAllowedByAgentState
 
   const canFallbackResume =
     descriptor.supportsResume
     && provider.supportsResume()
     && !session.externalSessionId
     && hasResumeBoundary
-    && resumeAllowedByAgentState
     && !!provider.buildFallbackResumeCommand
 
   const providerCommand = canResume

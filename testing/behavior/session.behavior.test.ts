@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   sessionPresenceBlockedBehavior,
   sessionPresenceCompleteBehavior,
-  sessionPresenceFailedBehavior,
+  sessionPresenceFailureBehavior,
   sessionMemoryNotificationBehavior,
   sessionPresenceReadyBehavior,
   sessionPresenceRunningBehavior,
@@ -83,7 +83,7 @@ describe('session behavior assets', () => {
     expect(sessionPresenceRunningBehavior.id).toBe('session.presence.running')
     expect(sessionPresenceRunningBehavior.expects).toContain('session.presence.phase=running')
     expect(sessionPresenceRunningBehavior.expects).toContain('session.presence.priority=medium')
-    expect(sessionPresenceRunningBehavior.invalidPreconditions).toContain('session.agentState=blocked')
+    expect(sessionPresenceRunningBehavior.invalidPreconditions).toContain('session.blockingReason.exists')
     expect(sessionPresenceRunningBehavior.interruptions).toContain('user.interruptsAgentTurn')
     expect(sessionPresenceRunningBehavior.recovery).toContain('userInterruptReturnsReadyWithoutCompletion')
   })
@@ -103,11 +103,11 @@ describe('session behavior assets', () => {
     expect(sessionPresenceBlockedBehavior.interruptions).toContain('provider.permissionResolved')
   })
 
-  it('declares failed presence as highest priority over complete and blocked', () => {
-    expect(sessionPresenceFailedBehavior.id).toBe('session.presence.failed')
-    expect(sessionPresenceFailedBehavior.expects).toContain('session.presence.phase=failed')
-    expect(sessionPresenceFailedBehavior.expects).toContain('session.presence.priority=highest')
-    expect(sessionPresenceFailedBehavior.expects).toContain('session.presence.overrides=complete')
-    expect(sessionPresenceFailedBehavior.expects).toContain('session.presence.overrides=blocked')
+  it('declares failure presence as highest priority over complete and blocked', () => {
+    expect(sessionPresenceFailureBehavior.id).toBe('session.presence.failure')
+    expect(sessionPresenceFailureBehavior.expects).toContain('session.presence.phase=failure')
+    expect(sessionPresenceFailureBehavior.expects).toContain('session.presence.priority=highest')
+    expect(sessionPresenceFailureBehavior.expects).toContain('session.presence.overrides=complete')
+    expect(sessionPresenceFailureBehavior.expects).toContain('session.presence.overrides=blocked')
   })
 })

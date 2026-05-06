@@ -17,8 +17,8 @@ const mockProject: ProjectSummary = {
 
 const mockSession: SessionSummary = {
   id: 'session_1', projectId: 'project_1', type: 'opencode',
-  runtimeState: 'alive', agentState: 'working', hasUnseenCompletion: false,
-  runtimeExitCode: null, runtimeExitReason: null, lastStateSequence: 1, blockingReason: null,
+  runtimeState: 'alive', turnState: 'running', turnEpoch: 1, lastTurnOutcome: 'none', hasUnseenCompletion: false,
+  runtimeExitCode: null, runtimeExitReason: null, lastStateSequence: 1, blockingReason: null, failureReason: null,
   title: 'test session', summary: 'running', recoveryMode: 'resume-external',
   externalSessionId: 'ext-1', createdAt: 'a', updatedAt: 'a', lastActivatedAt: 'a', archived: false
 }
@@ -51,13 +51,13 @@ describe('TerminalMetaBar', () => {
     expect(wrapper.text()).toContain('Provider is waiting for permission.')
   })
 
-  it('renders the real blocked active session explanation for resume confirmation', () => {
+  it('renders the real blocked active session explanation for permission gating', () => {
     const blockedSession: SessionSummary = {
       ...mockSession,
       type: 'claude-code',
-      agentState: 'blocked',
-      blockingReason: 'resume-confirmation',
-      summary: 'waiting for resume confirmation'
+      turnState: 'running',
+      blockingReason: 'permission',
+      summary: 'waiting for permission'
     }
     const blockedPresence = buildSessionPresenceSnapshot(blockedSession, {
       activeSessionId: blockedSession.id,
@@ -80,7 +80,7 @@ describe('TerminalMetaBar', () => {
 
     expect(blockedViewModel.phaseLabel).toBe('Blocked')
     expect(wrapper.text()).toContain('Blocked')
-    expect(wrapper.text()).toContain('Provider is waiting for confirmation.')
+    expect(wrapper.text()).toContain('Provider is waiting for permission.')
   })
 
   it('does not render raw session state without an active view model', () => {

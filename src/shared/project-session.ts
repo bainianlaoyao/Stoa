@@ -13,8 +13,23 @@ export type SessionType = 'shell' | 'opencode' | 'codex' | 'claude-code'
 export type EvolverInferenceProvider = 'claude-code'
 export type EvolverExecutionMode = 'workspace-shell'
 export type SessionRecoveryMode = 'fresh-shell' | 'resume-external'
+export type SessionPhase = 'ready' | 'running' | 'blocked' | 'complete' | 'failure'
 export type SessionRuntimeState = 'created' | 'starting' | 'alive' | 'exited' | 'failed_to_start'
-export type SessionAgentState = 'unknown' | 'idle' | 'working' | 'blocked' | 'error'
+export type TurnState = 'idle' | 'running'
+export type TurnOutcome = 'none' | 'completed' | 'interrupted' | 'cancelled' | 'failed'
+export type FailureReason =
+  | 'rate_limit'
+  | 'authentication_failed'
+  | 'billing_error'
+  | 'invalid_request'
+  | 'server_error'
+  | 'max_output_tokens'
+  | 'permission_denied'
+  | 'tool_error'
+  | 'provider_error'
+  | 'runtime_crash'
+  | 'failed_to_start'
+  | 'unknown'
 export type SessionStateSource = 'runtime' | 'provider' | 'ui'
 export type SessionStateIntent =
   | 'runtime.created'
@@ -26,12 +41,13 @@ export type SessionStateIntent =
   | 'agent.turn_started'
   | 'agent.tool_started'
   | 'agent.tool_completed'
-  | 'agent.turn_completed'
-  | 'agent.turn_interrupted'
-  | 'agent.completion_seen'
   | 'agent.permission_requested'
   | 'agent.permission_resolved'
+  | 'agent.turn_completed'
+  | 'agent.turn_interrupted'
+  | 'agent.turn_cancelled'
   | 'agent.turn_failed'
+  | 'agent.completion_seen'
   | 'agent.recovered'
 
 export interface SessionStatePatchEvent {
@@ -41,24 +57,24 @@ export interface SessionStatePatchEvent {
   intent: SessionStateIntent
   source: SessionStateSource
   sourceEventType?: string
-  runtimeState?: SessionRuntimeState
-  agentState?: SessionAgentState
-  hasUnseenCompletion?: boolean
+  turnEpoch?: number
+  sourceTurnId?: string | null
   runtimeExitCode?: number | null
   runtimeExitReason?: 'clean' | 'failed' | null
   blockingReason?: BlockingReason | null
+  failureReason?: FailureReason | null
   summary: string
   externalSessionId?: string | null
 }
 
 export interface SessionStatePatchPayload {
   intent: SessionStateIntent
-  agentState?: SessionAgentState
-  runtimeState?: SessionRuntimeState
-  hasUnseenCompletion?: boolean
+  turnEpoch?: number
+  sourceTurnId?: string | null
   runtimeExitCode?: number | null
   runtimeExitReason?: 'clean' | 'failed' | null
   blockingReason?: BlockingReason | null
+  failureReason?: FailureReason | null
   summary: string
   externalSessionId?: string | null
   model?: string
@@ -81,12 +97,15 @@ export interface SessionSummary {
   projectId: string
   type: SessionType
   runtimeState: SessionRuntimeState
-  agentState: SessionAgentState
+  turnState: TurnState
+  turnEpoch: number
+  lastTurnOutcome: TurnOutcome
+  blockingReason: BlockingReason | null
+  failureReason: FailureReason | null
   hasUnseenCompletion: boolean
   runtimeExitCode: number | null
   runtimeExitReason: 'clean' | 'failed' | null
   lastStateSequence: number
-  blockingReason: BlockingReason | null
   title: string
   summary: string
   recoveryMode: SessionRecoveryMode
@@ -112,12 +131,15 @@ export interface PersistedSession {
   type: SessionType
   title: string
   runtime_state: SessionRuntimeState
-  agent_state: SessionAgentState
+  turn_state: TurnState
+  turn_epoch: number
+  last_turn_outcome: TurnOutcome
+  blocking_reason: BlockingReason | null
+  failure_reason: FailureReason | null
   has_unseen_completion: boolean
   runtime_exit_code: number | null
   runtime_exit_reason: 'clean' | 'failed' | null
   last_state_sequence: number
-  blocking_reason: BlockingReason | null
   last_summary: string
   external_session_id: string | null
   created_at: string
@@ -185,7 +207,7 @@ export interface PersistedGlobalStateV4 {
 }
 
 export interface PersistedProjectSessions {
-  version: 5
+  version: 6
   project_id: string
   sessions: PersistedSession[]
 }

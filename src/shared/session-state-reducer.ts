@@ -1,15 +1,21 @@
 import type {
-  SessionAgentState,
+  FailureReason,
   SessionRuntimeState,
   SessionStatePatchEvent,
   SessionSummary,
-  SessionType
+  SessionType,
+  TurnOutcome,
+  TurnState
 } from './project-session'
-import type { SessionPresencePhase } from './observability'
+import type { BlockingReason, SessionPresencePhase } from './observability'
 
 export interface SessionPresenceInput {
   runtimeState: SessionRuntimeState
-  agentState: SessionAgentState
+  turnState: TurnState
+  turnEpoch: number
+  lastTurnOutcome: TurnOutcome
+  blockingReason: BlockingReason | null
+  failureReason: FailureReason | null
   hasUnseenCompletion: boolean
   runtimeExitCode: number | null
   runtimeExitReason: 'clean' | 'failed' | null
@@ -18,47 +24,39 @@ export interface SessionPresenceInput {
 
 export function derivePresencePhase(input: SessionPresenceInput): SessionPresencePhase {
   if (input.runtimeState === 'failed_to_start') {
-    return 'failed'
+    return 'failure'
   }
 
-  if (input.runtimeState === 'exited' && input.runtimeExitReason === 'failed') {
-    return 'failed'
+  if (input.runtimeExitReason === 'failed') {
+    return 'failure'
   }
 
-  if (input.agentState === 'error') {
-    return 'failed'
+  if (input.failureReason !== null) {
+    return 'failure'
   }
 
   if (input.runtimeState === 'created' || input.runtimeState === 'starting') {
-    return 'preparing'
+    return 'ready'
   }
 
-  if (input.agentState === 'blocked') {
+  if (input.runtimeState !== 'alive') {
+    if (input.hasUnseenCompletion && input.lastTurnOutcome === 'completed') {
+      return 'complete'
+    }
+
+    return 'ready'
+  }
+
+  if (input.blockingReason !== null && input.turnState === 'running') {
     return 'blocked'
   }
 
-  if (input.agentState === 'idle' && input.hasUnseenCompletion) {
+  if (input.hasUnseenCompletion && input.lastTurnOutcome === 'completed') {
     return 'complete'
   }
 
-  if (input.runtimeState === 'exited' && input.runtimeExitReason === 'clean') {
-    return 'exited'
-  }
-
-  if (input.agentState === 'working') {
+  if (input.runtimeState === 'alive' && input.turnState === 'running') {
     return 'running'
-  }
-
-  if (input.agentState === 'idle') {
-    return 'ready'
-  }
-
-  if (input.runtimeState === 'alive' && input.agentState === 'unknown' && input.provider === 'shell') {
-    return 'running'
-  }
-
-  if (input.runtimeState === 'alive' && input.agentState === 'unknown' && input.provider !== 'shell') {
-    return 'ready'
   }
 
   return 'ready'
@@ -82,11 +80,11 @@ export function reduceSessionState(
   switch (patch.intent) {
     case 'runtime.created':
       next.runtimeState = 'created'
-      resetStartingState(next)
+      resetLaunchBoundary(next)
       break
     case 'runtime.starting':
       next.runtimeState = 'starting'
-      resetStartingState(next)
+      resetLaunchBoundary(next)
       break
     case 'runtime.alive':
       next.runtimeState = 'alive'
@@ -101,72 +99,123 @@ export function reduceSessionState(
       next.runtimeState = 'exited'
       next.runtimeExitReason = 'failed'
       next.runtimeExitCode = patch.runtimeExitCode ?? 1
+      next.failureReason = next.failureReason ?? 'runtime_crash'
       break
     case 'runtime.failed_to_start':
       next.runtimeState = 'failed_to_start'
       next.runtimeExitReason = 'failed'
       next.runtimeExitCode = patch.runtimeExitCode ?? 1
-      next.agentState = 'error'
+      next.turnState = 'idle'
       next.blockingReason = null
+      next.failureReason = patch.failureReason ?? 'failed_to_start'
+      next.hasUnseenCompletion = false
+      next.lastTurnOutcome = 'failed'
       break
     case 'agent.turn_started':
-      markAgentWorkingIfRuntimeAlive(session, next)
+      if (!canAdvanceTurn(session, patch.turnEpoch)) {
+        break
+      }
+      openTurn(next, patch.turnEpoch)
+      applyExternalSessionId(next, patch)
       break
     case 'agent.tool_started':
-      markAgentWorkingIfRuntimeAlive(session, next)
+      if (shouldAdvanceTurnFromProvider(session, patch.turnEpoch)) {
+        openTurn(next, patch.turnEpoch)
+        break
+      }
+      if (shouldResumeBlockedTurnFromContinuation(session, patch)) {
+        next.blockingReason = null
+      }
       break
     case 'agent.tool_completed':
-      markAgentWorkingIfRuntimeAlive(session, next)
+      break
+    case 'agent.permission_requested':
+      if (shouldAdvanceTurnFromProvider(session, patch.turnEpoch)) {
+        openTurn(next, patch.turnEpoch)
+      } else if (!isCurrentRunningTurn(session, patch.turnEpoch)) {
+        break
+      }
+      next.blockingReason = patch.blockingReason ?? session.blockingReason
+      break
+    case 'agent.permission_resolved':
+      if (!isCurrentRunningTurn(session, patch.turnEpoch) || session.blockingReason === null) {
+        break
+      }
+      next.blockingReason = null
       break
     case 'agent.turn_completed':
-      if (session.agentState === 'unknown' || session.agentState === 'working' || session.agentState === 'blocked') {
-        next.agentState = 'idle'
-        next.hasUnseenCompletion = true
-        next.blockingReason = null
+      if (isCurrentTurnTerminal(session, patch.turnEpoch)) {
+        break
       }
+      if (!isCurrentRunningTurn(session, patch.turnEpoch) && !shouldAdvanceTurnFromProvider(session, patch.turnEpoch)) {
+        break
+      }
+      next.turnEpoch = patch.turnEpoch
+      next.turnState = 'idle'
+      next.lastTurnOutcome = 'completed'
+      next.blockingReason = null
+      next.failureReason = null
+      next.hasUnseenCompletion = true
       break
     case 'agent.turn_interrupted':
-      if (session.runtimeState === 'alive' && (session.agentState === 'working' || session.agentState === 'blocked')) {
-        next.agentState = 'idle'
-        next.hasUnseenCompletion = false
-        next.blockingReason = null
+      if (!isCurrentRunningTurn(session, patch.turnEpoch) && !shouldAdvanceTurnFromProvider(session, patch.turnEpoch)) {
+        break
       }
+      next.turnEpoch = patch.turnEpoch
+      next.turnState = 'idle'
+      next.lastTurnOutcome = 'interrupted'
+      next.blockingReason = null
+      next.failureReason = null
+      next.hasUnseenCompletion = false
+      break
+    case 'agent.turn_cancelled':
+      if (!isCurrentRunningTurn(session, patch.turnEpoch) && !shouldAdvanceTurnFromProvider(session, patch.turnEpoch)) {
+        break
+      }
+      next.turnEpoch = patch.turnEpoch
+      next.turnState = 'idle'
+      next.lastTurnOutcome = 'cancelled'
+      next.blockingReason = null
+      next.failureReason = null
+      next.hasUnseenCompletion = false
+      break
+    case 'agent.turn_failed':
+      if (isCurrentTurnTerminal(session, patch.turnEpoch)) {
+        break
+      }
+      if (!isCurrentRunningTurn(session, patch.turnEpoch) && !shouldAdvanceTurnFromProvider(session, patch.turnEpoch)) {
+        break
+      }
+      next.turnEpoch = patch.turnEpoch
+      next.turnState = 'idle'
+      next.lastTurnOutcome = 'failed'
+      next.blockingReason = null
+      next.failureReason = patch.failureReason ?? session.failureReason ?? 'unknown'
+      next.hasUnseenCompletion = false
       break
     case 'agent.completion_seen':
       next.hasUnseenCompletion = false
       break
-    case 'agent.permission_requested':
-      if (session.runtimeState === 'alive') {
-        next.agentState = 'blocked'
-        next.blockingReason = patch.blockingReason ?? null
-      }
-      break
-    case 'agent.permission_resolved':
-      if (session.runtimeState === 'alive' && session.agentState === 'blocked') {
-        next.agentState = getPermissionResolvedAgentState(patch.agentState)
-        next.blockingReason = null
-      }
-      break
-    case 'agent.turn_failed':
-      next.agentState = 'error'
-      next.blockingReason = null
-      break
     case 'agent.recovered':
-      next.agentState = 'idle'
-      next.hasUnseenCompletion = false
       next.blockingReason = null
+      next.failureReason = null
+      if (next.turnState !== 'running') {
+        next.lastTurnOutcome = 'none'
+      }
       break
   }
 
   return next
 }
 
-function resetStartingState(next: SessionSummary): void {
-  next.agentState = 'unknown'
-  next.hasUnseenCompletion = false
+function resetLaunchBoundary(next: SessionSummary): void {
+  next.turnState = 'idle'
   next.blockingReason = null
+  next.failureReason = null
+  next.hasUnseenCompletion = false
   next.runtimeExitCode = null
   next.runtimeExitReason = null
+  next.lastTurnOutcome = 'none'
 }
 
 function applyExternalSessionId(next: SessionSummary, patch: SessionStatePatchEvent): void {
@@ -175,24 +224,48 @@ function applyExternalSessionId(next: SessionSummary, patch: SessionStatePatchEv
   }
 }
 
-function getPermissionResolvedAgentState(agentState: SessionStatePatchEvent['agentState']): SessionAgentState {
-  if (agentState === undefined) {
-    return 'working'
-  }
-
-  if (agentState === 'working' || agentState === 'idle' || agentState === 'error') {
-    return agentState
-  }
-
-  return 'error'
+function openTurn(next: SessionSummary, turnEpoch: number): void {
+  next.turnState = 'running'
+  next.turnEpoch = turnEpoch
+  next.lastTurnOutcome = 'none'
+  next.blockingReason = null
+  next.failureReason = null
+  next.hasUnseenCompletion = false
 }
 
-function markAgentWorkingIfRuntimeAlive(current: SessionSummary, next: SessionSummary): void {
-  if (current.runtimeState !== 'alive') {
-    return
-  }
+function canAdvanceTurn(session: SessionSummary, turnEpoch: number | undefined): turnEpoch is number {
+  return session.runtimeState === 'alive'
+    && typeof turnEpoch === 'number'
+    && turnEpoch > session.turnEpoch
+}
 
-  next.agentState = 'working'
-  next.hasUnseenCompletion = false
-  next.blockingReason = null
+function shouldAdvanceTurnFromProvider(session: SessionSummary, turnEpoch: number | undefined): turnEpoch is number {
+  return canAdvanceTurn(session, turnEpoch)
+    && session.turnState !== 'running'
+}
+
+function isCurrentRunningTurn(session: SessionSummary, turnEpoch: number | undefined): turnEpoch is number {
+  return session.runtimeState === 'alive'
+    && session.turnState === 'running'
+    && typeof turnEpoch === 'number'
+    && turnEpoch === session.turnEpoch
+}
+
+function isCurrentTurnTerminal(session: SessionSummary, turnEpoch: number | undefined): boolean {
+  return typeof turnEpoch === 'number'
+    && turnEpoch === session.turnEpoch
+    && isTerminalOutcome(session.lastTurnOutcome)
+}
+
+function shouldResumeBlockedTurnFromContinuation(
+  session: SessionSummary,
+  patch: SessionStatePatchEvent
+): boolean {
+  return isCurrentRunningTurn(session, patch.turnEpoch)
+    && session.blockingReason !== null
+    && patch.sourceEventType === 'claude-code.PreToolUse'
+}
+
+function isTerminalOutcome(outcome: TurnOutcome): boolean {
+  return outcome === 'interrupted' || outcome === 'cancelled' || outcome === 'failed'
 }

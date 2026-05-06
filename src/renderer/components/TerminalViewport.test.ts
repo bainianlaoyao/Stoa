@@ -160,12 +160,15 @@ const baseSession: SessionSummary = {
   projectId: 'project_alpha',
   type: 'opencode',
   runtimeState: 'alive',
-  agentState: 'idle',
+  turnState: 'idle',
+  turnEpoch: 0,
+  lastTurnOutcome: 'none',
   hasUnseenCompletion: false,
   runtimeExitCode: null,
   runtimeExitReason: null,
   lastStateSequence: 1,
   blockingReason: null,
+  failureReason: null,
   title: 'Deploy',
   summary: 'ready',
   recoveryMode: 'resume-external',
@@ -592,13 +595,76 @@ describe('TerminalViewport', () => {
   })
 
   test.each([
-    { runtimeState: 'created' as const, agentState: 'unknown' as const, hasUnseenCompletion: false, runtimeExitReason: null },
-    { runtimeState: 'starting' as const, agentState: 'unknown' as const, hasUnseenCompletion: false, runtimeExitReason: null },
-    { runtimeState: 'alive' as const, agentState: 'working' as const, hasUnseenCompletion: false, runtimeExitReason: null },
-    { runtimeState: 'alive' as const, agentState: 'idle' as const, hasUnseenCompletion: true, runtimeExitReason: null },
-    { runtimeState: 'alive' as const, agentState: 'blocked' as const, hasUnseenCompletion: false, runtimeExitReason: null },
-    { runtimeState: 'alive' as const, agentState: 'error' as const, hasUnseenCompletion: false, runtimeExitReason: null },
-    { runtimeState: 'exited' as const, agentState: 'idle' as const, hasUnseenCompletion: false, runtimeExitReason: 'clean' as const },
+    {
+      runtimeState: 'created' as const,
+      turnState: 'idle' as const,
+      turnEpoch: 0,
+      lastTurnOutcome: 'none' as const,
+      blockingReason: null,
+      failureReason: null,
+      hasUnseenCompletion: false,
+      runtimeExitReason: null
+    },
+    {
+      runtimeState: 'starting' as const,
+      turnState: 'idle' as const,
+      turnEpoch: 0,
+      lastTurnOutcome: 'none' as const,
+      blockingReason: null,
+      failureReason: null,
+      hasUnseenCompletion: false,
+      runtimeExitReason: null
+    },
+    {
+      runtimeState: 'alive' as const,
+      turnState: 'running' as const,
+      turnEpoch: 1,
+      lastTurnOutcome: 'none' as const,
+      blockingReason: null,
+      failureReason: null,
+      hasUnseenCompletion: false,
+      runtimeExitReason: null
+    },
+    {
+      runtimeState: 'alive' as const,
+      turnState: 'idle' as const,
+      turnEpoch: 1,
+      lastTurnOutcome: 'completed' as const,
+      blockingReason: null,
+      failureReason: null,
+      hasUnseenCompletion: true,
+      runtimeExitReason: null
+    },
+    {
+      runtimeState: 'alive' as const,
+      turnState: 'running' as const,
+      turnEpoch: 1,
+      lastTurnOutcome: 'none' as const,
+      blockingReason: 'permission' as const,
+      failureReason: null,
+      hasUnseenCompletion: false,
+      runtimeExitReason: null
+    },
+    {
+      runtimeState: 'alive' as const,
+      turnState: 'idle' as const,
+      turnEpoch: 1,
+      lastTurnOutcome: 'failed' as const,
+      blockingReason: null,
+      failureReason: 'provider_error' as const,
+      hasUnseenCompletion: false,
+      runtimeExitReason: null
+    },
+    {
+      runtimeState: 'exited' as const,
+      turnState: 'idle' as const,
+      turnEpoch: 1,
+      lastTurnOutcome: 'none' as const,
+      blockingReason: null,
+      failureReason: null,
+      hasUnseenCompletion: false,
+      runtimeExitReason: 'clean' as const
+    },
   ])('keeps xterm mounted for %j session states', async (statePatch) => {
     const { default: TerminalViewport } = await import('./TerminalViewport.vue')
     const wrapper = mount(TerminalViewport, {
@@ -630,7 +696,9 @@ describe('TerminalViewport', () => {
     await wrapper.setProps({
       session: {
         ...baseSession,
-        agentState: 'blocked',
+        turnState: 'running',
+        turnEpoch: 1,
+        lastTurnOutcome: 'none',
         blockingReason: 'permission',
         summary: 'Waiting for approval'
       }

@@ -83,14 +83,15 @@ describe('SessionRuntimeController', () => {
 
     await controller.applyProviderStatePatch(providerPatch(session.id, 'agent.turn_started', 3, 'UserPromptSubmit', {
       sourceEventType: 'claude-code.UserPromptSubmit',
-      agentState: 'working'
+      turnEpoch: 1
     }))
 
     expect(sent.some(event => event.channel === IPC_CHANNELS.observabilitySessionPresenceChanged)).toBe(true)
     expect(sent.find(event => event.channel === IPC_CHANNELS.sessionEvent)?.data).toEqual({
       session: expect.objectContaining({
         id: session.id,
-        agentState: 'working',
+        turnState: 'running',
+        turnEpoch: 1,
         summary: 'UserPromptSubmit'
       })
     })
@@ -134,7 +135,8 @@ describe('SessionRuntimeController', () => {
 
     const updated = manager.snapshot().sessions[0]!
     expect(updated.runtimeState).toBe('alive')
-    expect(updated.agentState).toBe('unknown')
+    expect(updated.turnState).toBe('idle')
+    expect(updated.lastTurnOutcome).toBe('none')
     expect(updated.externalSessionId).toBe('opencode-real-123')
     expect(sent.map((item) => item.channel)).toEqual([
       IPC_CHANNELS.sessionEvent,
@@ -153,7 +155,8 @@ describe('SessionRuntimeController', () => {
       sessionId: session.id,
       phase: 'ready',
       runtimeState: 'alive',
-      agentState: 'unknown',
+      turnState: 'idle',
+      lastTurnOutcome: 'none',
       hasUnseenCompletion: false
     })
   })
@@ -163,7 +166,9 @@ describe('SessionRuntimeController', () => {
     const project = await manager.createProject({ path: await createTestWorkspace('ctrl-exit-'), name: 'test' })
     const session = await manager.createSession({ projectId: project.id, type: 'codex', title: 'S1' })
     await manager.markRuntimeAlive(session.id, 'codex-real-123')
-    await manager.applySessionStatePatch(providerPatch(session.id, 'agent.turn_completed', 2, 'Turn complete'))
+    await manager.applySessionStatePatch(providerPatch(session.id, 'agent.turn_completed', 2, 'Turn complete', {
+      turnEpoch: 1
+    }))
     const observability = new ObservabilityService(new InMemoryObservationStore(), {
       nowIso: () => '2026-01-01T00:00:03.000Z'
     })
@@ -174,13 +179,15 @@ describe('SessionRuntimeController', () => {
     const updated = manager.snapshot().sessions[0]!
     expect(updated.runtimeState).toBe('exited')
     expect(updated.runtimeExitReason).toBe('clean')
-    expect(updated.agentState).toBe('idle')
+    expect(updated.turnState).toBe('idle')
+    expect(updated.lastTurnOutcome).toBe('completed')
     expect(updated.hasUnseenCompletion).toBe(true)
     expect(sent.find((item) => item.channel === IPC_CHANNELS.observabilitySessionPresenceChanged)?.data).toMatchObject({
       sessionId: session.id,
       phase: 'complete',
       runtimeState: 'exited',
-      agentState: 'idle',
+      turnState: 'idle',
+      lastTurnOutcome: 'completed',
       hasUnseenCompletion: true
     })
   })
@@ -197,13 +204,14 @@ describe('SessionRuntimeController', () => {
 
     await controller.applyProviderStatePatch(
       providerPatch(session.id, 'agent.permission_requested', 2, 'Confirm resume', {
+        turnEpoch: 1,
         blockingReason: 'permission',
         externalSessionId: 'opencode-real-456'
       })
     )
 
     const updated = manager.snapshot().sessions[0]!
-    expect(updated.agentState).toBe('blocked')
+    expect(updated.turnState).toBe('running')
     expect(updated.blockingReason).toBe('permission')
     expect(updated.externalSessionId).toBe('opencode-real-456')
     expect(sent.map((item) => item.channel)).toEqual([
@@ -215,7 +223,8 @@ describe('SessionRuntimeController', () => {
     expect(sent[0]!.data).toEqual({
       session: expect.objectContaining({
         id: session.id,
-        agentState: 'blocked',
+        turnState: 'running',
+        turnEpoch: 1,
         blockingReason: 'permission',
         externalSessionId: 'opencode-real-456'
       })
@@ -223,7 +232,7 @@ describe('SessionRuntimeController', () => {
     expect(sent[1]!.data).toMatchObject({
       sessionId: session.id,
       phase: 'blocked',
-      agentState: 'blocked',
+      turnState: 'running',
       blockingReason: 'permission'
     })
   })
@@ -234,7 +243,9 @@ describe('SessionRuntimeController', () => {
     const other = await manager.createSession({ projectId: project.id, type: 'opencode', title: 'Other' })
     const complete = await manager.createSession({ projectId: project.id, type: 'opencode', title: 'Complete' })
     await manager.markRuntimeAlive(complete.id, 'opencode-real-123')
-    await manager.applySessionStatePatch(providerPatch(complete.id, 'agent.turn_completed', 2, 'Turn complete'))
+    await manager.applySessionStatePatch(providerPatch(complete.id, 'agent.turn_completed', 2, 'Turn complete', {
+      turnEpoch: 1
+    }))
     await manager.setActiveSession(other.id)
     const observability = new ObservabilityService(new InMemoryObservationStore(), {
       nowIso: () => '2026-01-01T00:00:05.000Z'
@@ -244,19 +255,22 @@ describe('SessionRuntimeController', () => {
     await controller.setActiveSession(complete.id)
 
     const updated = manager.snapshot().sessions.find((candidate) => candidate.id === complete.id)!
-    expect(updated.agentState).toBe('idle')
+    expect(updated.turnState).toBe('idle')
+    expect(updated.lastTurnOutcome).toBe('completed')
     expect(updated.hasUnseenCompletion).toBe(false)
     expect(sent.find((item) => item.channel === IPC_CHANNELS.sessionEvent)?.data).toEqual({
       session: expect.objectContaining({
         id: complete.id,
-        agentState: 'idle',
+        turnState: 'idle',
+        lastTurnOutcome: 'completed',
         hasUnseenCompletion: false
       })
     })
     expect(sent.find((item) => item.channel === IPC_CHANNELS.observabilitySessionPresenceChanged)?.data).toMatchObject({
       sessionId: complete.id,
       phase: 'ready',
-      agentState: 'idle',
+      turnState: 'idle',
+      lastTurnOutcome: 'completed',
       hasUnseenCompletion: false
     })
   })
@@ -266,7 +280,9 @@ describe('SessionRuntimeController', () => {
     const project = await manager.createProject({ path: await createTestWorkspace('ctrl-interrupt-'), name: 'test' })
     const session = await manager.createSession({ projectId: project.id, type: 'codex', title: 'Codex' })
     await manager.markRuntimeAlive(session.id, 'codex-real-123')
-    await manager.applySessionStatePatch(providerPatch(session.id, 'agent.turn_started', 2, 'UserPromptSubmit'))
+    await manager.applySessionStatePatch(providerPatch(session.id, 'agent.turn_started', 2, 'UserPromptSubmit', {
+      turnEpoch: 1
+    }))
     const observability = new ObservabilityService(new InMemoryObservationStore(), {
       nowIso: () => '2026-01-01T00:00:06.000Z'
     })
@@ -275,13 +291,15 @@ describe('SessionRuntimeController', () => {
     await controller.markAgentTurnInterrupted(session.id, 'User interrupted current turn')
 
     const updated = manager.snapshot().sessions.find((candidate) => candidate.id === session.id)!
-    expect(updated.agentState).toBe('idle')
+    expect(updated.turnState).toBe('idle')
+    expect(updated.lastTurnOutcome).toBe('interrupted')
     expect(updated.hasUnseenCompletion).toBe(false)
     expect(updated.summary).toBe('User interrupted current turn')
     expect(sent.find((item) => item.channel === IPC_CHANNELS.observabilitySessionPresenceChanged)?.data).toMatchObject({
       sessionId: session.id,
       phase: 'ready',
-      agentState: 'idle',
+      turnState: 'idle',
+      lastTurnOutcome: 'interrupted',
       hasUnseenCompletion: false
     })
   })
@@ -294,7 +312,8 @@ describe('SessionRuntimeController', () => {
     await manager.markRuntimeAlive(activeSession.id, 'active-ext')
     await manager.markRuntimeAlive(archivedSession.id, 'archived-ext')
     await manager.applySessionStatePatch(providerPatch(archivedSession.id, 'agent.permission_requested', 2, 'Confirm resume', {
-      blockingReason: 'resume-confirmation'
+      turnEpoch: 1,
+      blockingReason: 'permission'
     }))
     await manager.archiveSession(archivedSession.id)
 
@@ -328,7 +347,8 @@ describe('SessionRuntimeController', () => {
     await manager.markRuntimeAlive(retainedSession.id, 'retained-ext')
     await manager.markRuntimeAlive(archivedSession.id, 'archived-ext')
     await manager.applySessionStatePatch(providerPatch(archivedSession.id, 'agent.permission_requested', 2, 'Confirm resume', {
-      blockingReason: 'resume-confirmation'
+      turnEpoch: 1,
+      blockingReason: 'permission'
     }))
 
     const observability = new ObservabilityService(new InMemoryObservationStore(), {

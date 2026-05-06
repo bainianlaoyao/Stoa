@@ -101,7 +101,7 @@ describe('state-store', () => {
   test('reads and writes per-project sessions', async () => {
     const projectDir = await createTempProjectDir()
     const data: PersistedProjectSessions = {
-      version: 5,
+      version: 6,
       project_id: 'project_alpha',
       sessions: [
         {
@@ -110,7 +110,10 @@ describe('state-store', () => {
           type: 'shell',
           title: 'Local shell',
           runtime_state: 'alive',
-          agent_state: 'unknown',
+          turn_state: 'idle',
+          turn_epoch: 0,
+          last_turn_outcome: 'none',
+          failure_reason: null,
           has_unseen_completion: false,
           runtime_exit_code: null,
           runtime_exit_reason: null,
@@ -130,7 +133,7 @@ describe('state-store', () => {
     await writeProjectSessions(projectDir, data)
 
     const read = await readProjectSessions(projectDir)
-    expect(read.version).toBe(5)
+    expect(read.version).toBe(6)
     expect(read.project_id).toBe('project_alpha')
     expect(read.sessions).toHaveLength(1)
     expect(read.sessions[0]!.session_id).toBe('session_shell_1')
@@ -140,12 +143,12 @@ describe('state-store', () => {
   test('overwrites an existing project sessions file on repeated writes', async () => {
     const projectDir = await createTempProjectDir()
     const first: PersistedProjectSessions = {
-      version: 5,
+      version: 6,
       project_id: 'project_alpha',
       sessions: []
     }
     const second: PersistedProjectSessions = {
-      version: 5,
+      version: 6,
       project_id: 'project_beta',
       sessions: []
     }
@@ -159,12 +162,12 @@ describe('state-store', () => {
   test('serializes concurrent writes to the same project sessions file and keeps the last payload', async () => {
     const projectDir = await createTempProjectDir()
     const first: PersistedProjectSessions = {
-      version: 5,
+      version: 6,
       project_id: 'project_alpha',
       sessions: []
     }
     const second: PersistedProjectSessions = {
-      version: 5,
+      version: 6,
       project_id: 'project_beta',
       sessions: []
     }
@@ -202,7 +205,7 @@ describe('state-store', () => {
     }), 'utf-8')
 
     await expect(readProjectSessions(projectDir)).resolves.toEqual({
-      version: 5,
+      version: 6,
       project_id: 'project_legacy',
       sessions: []
     })
@@ -213,7 +216,7 @@ describe('state-store', () => {
     const sessionsFilePath = getProjectSessionsFilePath(projectDir)
     await fsPromises.mkdir(join(projectDir, '.stoa'), { recursive: true })
     await fsPromises.writeFile(sessionsFilePath, JSON.stringify({
-      version: 5,
+      version: 6,
       project_id: 'project_malformed',
       sessions: [
         {
@@ -233,8 +236,41 @@ describe('state-store', () => {
     }), 'utf-8')
 
     await expect(readProjectSessions(projectDir)).resolves.toEqual({
-      version: 5,
+      version: 6,
       project_id: 'project_malformed',
+      sessions: []
+    })
+  })
+
+  test('readProjectSessions treats legacy v5 payloads as unsupported after the five-phase schema version bump', async () => {
+    const projectDir = await createTempProjectDir()
+    const sessionsFilePath = getProjectSessionsFilePath(projectDir)
+    await fsPromises.mkdir(join(projectDir, '.stoa'), { recursive: true })
+    await fsPromises.writeFile(sessionsFilePath, JSON.stringify({
+      version: 6,
+      project_id: 'project_legacy_v5',
+      sessions: [
+        {
+          session_id: 'session_legacy',
+          project_id: 'project_legacy_v5',
+          type: 'shell',
+          title: 'Legacy shell',
+          agent_state: 'idle',
+          has_unseen_completion: false,
+          last_summary: 'attached',
+          external_session_id: null,
+          created_at: '2026-04-19T00:00:00.000Z',
+          updated_at: '2026-04-19T00:00:00.000Z',
+          last_activated_at: '2026-04-19T00:00:00.000Z',
+          recovery_mode: 'fresh-shell',
+          archived: false
+        }
+      ]
+    }), 'utf-8')
+
+    await expect(readProjectSessions(projectDir)).resolves.toEqual({
+      version: 6,
+      project_id: 'project_legacy_v5',
       sessions: []
     })
   })
@@ -244,7 +280,7 @@ describe('state-store', () => {
 
     const read = await readProjectSessions(projectDir)
     expect(read).toEqual({
-      version: 5,
+      version: 6,
       project_id: '',
       sessions: []
     })

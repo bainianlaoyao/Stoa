@@ -28,7 +28,6 @@ function createValidEvent(overrides: Record<string, unknown> = {}): Record<strin
     source: 'hook-sidecar',
     payload: {
       intent: 'agent.turn_started',
-      agentState: 'working',
       summary: 'event accepted'
     },
     ...overrides
@@ -344,8 +343,6 @@ describe('webhook event validation', () => {
           event_type: 'agent.turn_interrupted',
           payload: {
             intent: 'agent.turn_interrupted',
-            agentState: 'idle',
-            hasUnseenCompletion: false,
             summary: 'Turn interrupted'
           }
         }),
@@ -422,10 +419,10 @@ describe('webhook event validation', () => {
 
     test.each([
       ['invalid intent', { intent: 'agent.teleported' }],
-      ['invalid agentState', { agentState: 'paused' }],
+      ['legacy agentState field', { agentState: 'working' }],
       ['invalid runtimeState', { runtimeState: 'sleeping' }],
       ['invalid blockingReason', { blockingReason: 'approval' }],
-      ['invalid hasUnseenCompletion type', { hasUnseenCompletion: 'true' }],
+      ['legacy hasUnseenCompletion field', { hasUnseenCompletion: true }],
       ['invalid runtimeExitCode type', { runtimeExitCode: '1' }],
       ['invalid runtimeExitReason', { runtimeExitReason: 'timeout' }],
       ['invalid externalSessionId type', { externalSessionId: 123 }],
@@ -443,7 +440,6 @@ describe('webhook event validation', () => {
       const event = createValidEvent({
         payload: {
           intent: 'agent.turn_started',
-          agentState: 'working',
           summary: 'event rejected',
           ...payloadOverrides
         }
@@ -461,7 +457,6 @@ describe('webhook event validation', () => {
       const event = createValidEvent({
         payload: {
           intent: 'agent.tool_started',
-          agentState: 'working',
           summary: 'event rejected',
           toolUseId: 'toolu_123'
         }
@@ -510,7 +505,6 @@ describe('webhook event validation', () => {
       const event = createValidEvent({
         payload: {
           intent: 'agent.turn_started',
-          agentState: 'working',
           summary: 'event accepted',
           externalSessionId: null
         }
@@ -523,21 +517,21 @@ describe('webhook event validation', () => {
       expect(events[0]!.payload.externalSessionId).toBeNull()
     })
 
-    test('rejects permission resolved events targeting blocked agent state', async () => {
-      const { server } = createTestServer()
+    test('accepts permission resolved events without legacy target state fields', async () => {
+      const { server, events } = createTestServer()
       const port = await server.start()
       const event = createValidEvent({
         payload: {
           intent: 'agent.permission_resolved',
-          agentState: 'blocked',
-          summary: 'invalid target'
+          summary: 'permission resolved'
         }
       })
 
       const response = await postJson(port, event, 'secret-1')
 
-      expect(response.statusCode).toBe(400)
-      expect(JSON.parse(response.body)).toEqual({ accepted: false, reason: 'invalid_event' })
+      expect(response.statusCode).toBe(202)
+      expect(events).toHaveLength(1)
+      expect(events[0]!.payload.intent).toBe('agent.permission_resolved')
     })
   })
 
@@ -729,7 +723,7 @@ describe('webhook event validation', () => {
         }
       )
 
-      expect(response.statusCode).toBe(202)
+      expect(response.statusCode).toBe(204)
       expect(events).toHaveLength(1)
       expect(events[0]!.evidence).toMatchObject({
         rawSource: {

@@ -98,6 +98,15 @@ async function closeElectronAppWithTimeout(
   }
 }
 
+async function disposeElectronAppConnection(electronApp: ElectronApplication): Promise<void> {
+  try {
+    await electronApp.close()
+  } catch {
+    // The process may already be gone after a hard kill; in that case we still need
+    // Playwright to release its connection to avoid worker teardown hangs.
+  }
+}
+
 export async function launchElectronApp(options: LaunchOptions = {}): Promise<LaunchedElectronApp> {
   const stateDir = options.stateDir ?? await createStateDir()
   const entryPath = ensureElectronMainEntrypoint()
@@ -131,11 +140,13 @@ export async function launchElectronApp(options: LaunchOptions = {}): Promise<La
       const processHandle = electronApp.process()
       processHandle?.kill('SIGKILL')
       await waitForProcessExit(processHandle)
+      await disposeElectronAppConnection(electronApp)
     },
     async killAndRelaunch() {
       const processHandle = electronApp.process()
       processHandle?.kill('SIGKILL')
       await waitForProcessExit(processHandle)
+      await disposeElectronAppConnection(electronApp)
       return await launchElectronApp({ stateDir, env: options.env })
     },
     async relaunch() {

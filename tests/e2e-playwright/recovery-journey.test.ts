@@ -10,7 +10,7 @@ import { createProject, createSession } from './helpers/ui-actions'
 async function waitForSessionState(
   app: LaunchedElectronApp,
   title: string,
-  predicate: (session: { runtimeState?: string; agentState?: string }) => boolean
+  predicate: (session: { runtimeState?: string; turnState?: string; lastTurnOutcome?: string }) => boolean
 ): Promise<void> {
   await expect.poll(async () => {
     const debugState = await getMainE2EDebugState(app.electronApp)

@@ -53,7 +53,7 @@ describe('session runtime', () => {
         title: 'Deploy',
         type: 'opencode',
         runtimeState: 'alive',
-        agentState: 'working',
+        turnState: 'idle',
         externalSessionId: null,
         sessionSecret: 'secret-1',
         providerPort: 43128
@@ -103,7 +103,7 @@ describe('session runtime', () => {
         title: 'Shell',
         type: 'shell',
         runtimeState: 'alive',
-        agentState: 'working',
+        turnState: 'idle',
         externalSessionId: null,
         sessionSecret: 'secret-1',
         providerPort: 43128
@@ -154,7 +154,7 @@ describe('session runtime', () => {
         title: 'Shell no path',
         type: 'shell',
         runtimeState: 'alive',
-        agentState: 'working',
+        turnState: 'idle',
         externalSessionId: null,
         sessionSecret: 'secret-1',
         providerPort: 43128
@@ -202,7 +202,7 @@ describe('session runtime', () => {
         title: 'Deploy',
         type: 'opencode',
         runtimeState: 'alive',
-        agentState: 'working',
+        turnState: 'idle',
         externalSessionId: 'ext-123',
         sessionSecret: 'secret-1',
         providerPort: 43128
@@ -253,7 +253,7 @@ describe('session runtime', () => {
         title: 'Fast exit',
         type: 'opencode',
         runtimeState: 'alive',
-        agentState: 'working',
+        turnState: 'running',
         externalSessionId: null,
         sessionSecret: 'secret-1',
         providerPort: 43128
@@ -294,7 +294,7 @@ describe('session runtime', () => {
         title: 'Deploy',
         type: 'opencode',
         runtimeState: 'alive',
-        agentState: 'blocked',
+        turnState: 'running',
         externalSessionId: null,
         sessionSecret: 'secret-1',
         providerPort: 43128
@@ -326,7 +326,57 @@ describe('session runtime', () => {
     expect(markRuntimeAlive).toHaveBeenCalledWith('session_op_1', null)
   })
 
-  test('preserves existing externalSessionId on fresh start when resume is not allowed', async () => {
+  test('resumes provider-backed sessions even when the persisted turn is still marked running', async () => {
+    const buildResumeCommand = vi.fn(async () => ({
+      command: 'opencode',
+      args: ['--resume', 'stale-ext-1'],
+      cwd: 'D:/demo',
+      env: { TEST_ENV: '1' }
+    }))
+    const buildStartCommand = vi.fn(async () => ({
+      command: 'opencode',
+      args: [],
+      cwd: 'D:/demo',
+      env: { TEST_ENV: '1' }
+    }))
+    const markRuntimeStarting = vi.fn(async () => {})
+    const markRuntimeAlive = vi.fn(async () => {})
+
+    await startSessionRuntime({
+      session: {
+        id: 'session_op_1',
+        projectId: 'project_alpha',
+        path: 'D:/demo',
+        title: 'Deploy',
+        type: 'opencode',
+        runtimeState: 'alive',
+        turnState: 'running',
+        externalSessionId: 'stale-ext-1',
+        sessionSecret: 'secret-1',
+        providerPort: 43128
+      },
+      webhookPort: 43127,
+      provider: createProvider({
+        buildStartCommand,
+        buildResumeCommand
+      }),
+      ptyHost: { start: vi.fn(() => ({ runtimeId: 'session_op_1' })) } as never,
+      manager: {
+        markRuntimeStarting,
+        markRuntimeAlive,
+        markRuntimeExited: vi.fn(async () => {}),
+        markRuntimeFailedToStart: vi.fn(async () => {}),
+        appendTerminalData: vi.fn(async () => {})
+      } as never
+    })
+
+    expect(buildResumeCommand).toHaveBeenCalledOnce()
+    expect(buildStartCommand).not.toHaveBeenCalled()
+    expect(markRuntimeStarting).toHaveBeenCalledWith('session_op_1', 'Starting opencode', 'stale-ext-1')
+    expect(markRuntimeAlive).toHaveBeenCalledWith('session_op_1', 'stale-ext-1')
+  })
+
+  test('preserves existing externalSessionId on fresh start when resume is not available', async () => {
     const buildStartCommand = vi.fn(async () => ({
       command: 'opencode',
       args: [],
@@ -345,7 +395,7 @@ describe('session runtime', () => {
         title: 'Deploy',
         type: 'opencode',
         runtimeState: 'alive',
-        agentState: 'blocked',
+        turnState: 'running',
         externalSessionId: 'stale-ext-1',
         sessionSecret: 'secret-1',
         providerPort: 43128
@@ -353,7 +403,8 @@ describe('session runtime', () => {
       webhookPort: 43127,
       provider: createProvider({
         buildStartCommand,
-        discoverExternalSessionIdAfterStart
+        discoverExternalSessionIdAfterStart,
+        supportsResume: () => false
       }),
       ptyHost: { start: vi.fn(() => ({ runtimeId: 'session_op_1' })) } as never,
       manager: {
@@ -395,7 +446,7 @@ describe('session runtime', () => {
         title: 'Claude',
         type: 'claude-code',
         runtimeState: 'created',
-        agentState: 'unknown',
+        turnState: 'idle',
         externalSessionId: 'claude-seeded-1',
         sessionSecret: 'secret-1',
         providerPort: 43128
@@ -442,7 +493,7 @@ describe('session runtime', () => {
         title: 'Codex',
         type: 'codex',
         runtimeState: 'created',
-        agentState: 'unknown',
+        turnState: 'idle',
         externalSessionId: null,
         sessionSecret: 'secret-1',
         providerPort: 43128
@@ -498,7 +549,7 @@ describe('session runtime', () => {
         title: 'Codex recovered',
         type: 'codex',
         runtimeState: 'alive',
-        agentState: 'working',
+        turnState: 'idle',
         externalSessionId: null,
         sessionSecret: 'secret-1',
         providerPort: 43128
@@ -553,7 +604,7 @@ describe('session runtime', () => {
         title: 'Codex resume',
         type: 'codex',
         runtimeState: 'alive',
-        agentState: 'working',
+        turnState: 'idle',
         externalSessionId: 'codex-known-123',
         sessionSecret: 'secret-1',
         providerPort: 43128
@@ -600,7 +651,7 @@ describe('session runtime', () => {
         title: 'Claude boot',
         type: 'claude-code',
         runtimeState: 'created',
-        agentState: 'unknown',
+        turnState: 'idle',
         externalSessionId: 'claude-seeded-boot',
         sessionSecret: 'secret-1',
         providerPort: 43128

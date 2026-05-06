@@ -175,7 +175,7 @@ describe('E2E: Provider Integration', () => {
         source: 'hook-sidecar' as const,
         payload: {
           intent: 'agent.turn_started' as const,
-          agentState: 'working' as const,
+          sourceTurnId: 'turn-001',
           summary: 'event accepted'
         }
       }
@@ -589,19 +589,20 @@ describe('E2E: Provider Integration', () => {
       const content = await readFile(join(workspaceDir, '.opencode', 'plugins', 'stoa-status.ts'), 'utf8')
       expect(content).toContain("case 'session.idle'")
       expect(content).toContain("intent: 'agent.turn_completed'")
-      expect(content).toContain("agentState: 'idle'")
-      expect(content).toContain('hasUnseenCompletion: true')
+      expect(content).toContain("case 'tool.execute.before'")
+      expect(content).toContain("intent: 'agent.tool_started'")
       expect(content).toContain("case 'permission.asked'")
       expect(content).toContain("intent: 'agent.permission_requested'")
-      expect(content).toContain("agentState: 'blocked'")
       expect(content).toContain("blockingReason: 'permission'")
       expect(content).toContain("case 'permission.replied'")
       expect(content).toContain("intent: 'agent.permission_resolved'")
-      expect(content).toContain("agentState: denied ? (failed ? 'error' : 'idle') : 'working'")
       expect(content).toContain("case 'session.error'")
       expect(content).toContain("intent: 'agent.turn_failed'")
-      expect(content).toContain("agentState: 'error'")
+      expect(content).toContain("failureReason: toFailureReason(event)")
+      expect(content).toContain('sourceTurnId: event.properties?.messageID ?? undefined')
       expect(content).toContain('externalSessionId: event.properties?.sessionID ?? undefined')
+      expect(content).not.toContain('agentState:')
+      expect(content).not.toContain('hasUnseenCompletion:')
       expect(content).not.toContain("status: event.type === 'session.idle' ? 'awaiting_input' : 'running'")
     })
 
@@ -829,9 +830,8 @@ describe('E2E: Provider Integration', () => {
         port, 'session_flow_001', 'project_flow_001', 'flow-secret', codexHookPayload
       )
 
-      expect(statusCode).toBe(202)
-      const parsed = JSON.parse(body)
-      expect(parsed.accepted).toBe(true)
+      expect(statusCode).toBe(204)
+      expect(body).toBe('')
 
       expect(acceptedEvents).toHaveLength(1)
       const event = acceptedEvents[0]!
@@ -841,7 +841,7 @@ describe('E2E: Provider Integration', () => {
       expect(event.project_id).toBe('project_flow_001')
       expect(event.source).toBe('provider-adapter')
       expect(event.payload.intent).toBe('agent.tool_started')
-      expect(event.payload.agentState).toBe('working')
+      expect(event.payload.sourceTurnId).toBe('turn-001')
       expect(event.payload.summary).toBe('PreToolUse')
       expect(event.payload.externalSessionId).toBe('codex-thread-abc')
       expect(event.evidence).toMatchObject({
@@ -877,11 +877,10 @@ describe('E2E: Provider Integration', () => {
         { hook_event_name: 'Stop', session_id: 'codex-thread-stop', turn_id: 'turn-final' }
       )
 
-      expect(statusCode).toBe(202)
+      expect(statusCode).toBe(204)
       expect(acceptedEvents).toHaveLength(1)
       expect(acceptedEvents[0]!.payload.intent).toBe('agent.turn_completed')
-      expect(acceptedEvents[0]!.payload.agentState).toBe('idle')
-      expect(acceptedEvents[0]!.payload.hasUnseenCompletion).toBe(true)
+      expect(acceptedEvents[0]!.payload.sourceTurnId).toBe('turn-final')
       expect(acceptedEvents[0]!.event_type).toBe('codex.Stop')
     })
 
@@ -902,10 +901,8 @@ describe('E2E: Provider Integration', () => {
         { hook_event_name: 'PostToolResult' }
       )
 
-      expect(statusCode).toBe(202)
-      const parsed = JSON.parse(body)
-      expect(parsed.accepted).toBe(true)
-      expect(parsed.ignored).toBe(true)
+      expect(statusCode).toBe(204)
+      expect(body).toBe('')
       expect(acceptedEvents).toHaveLength(0)
     })
 
@@ -988,7 +985,7 @@ describe('E2E: Provider Integration', () => {
         source: 'provider-adapter',
         payload: {
           intent: 'runtime.alive',
-          agentState: 'idle',
+          sourceTurnId: 'turn-start-001',
           summary: 'SessionStart',
           externalSessionId: 'codex-uuid-start'
         },
@@ -1035,7 +1032,7 @@ describe('E2E: Provider Integration', () => {
         session_id: 'trigger-sess-2',
         payload: {
           intent: 'agent.tool_started',
-          agentState: 'working',
+          sourceTurnId: 'turn-tool-001',
           summary: 'PreToolUse'
         },
         evidence: {
@@ -1073,8 +1070,7 @@ describe('E2E: Provider Integration', () => {
       expect(exitCode).toBe(0)
       expect(triggerEvents).toHaveLength(1)
       expect(triggerEvents[0]!.payload.intent).toBe('agent.turn_completed')
-      expect(triggerEvents[0]!.payload.agentState).toBe('idle')
-      expect(triggerEvents[0]!.payload.hasUnseenCompletion).toBe(true)
+      expect(triggerEvents[0]!.payload.sourceTurnId).toBe('turn-stop-001')
       expect(triggerEvents[0]!.event_type).toBe('codex.Stop')
     })
 

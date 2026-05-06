@@ -4,6 +4,9 @@ import type { SessionType } from '@shared/project-session'
 import { getProviderDescriptorBySessionType } from '@shared/provider-descriptors'
 import { queueNextFolderPick } from '../fixtures/electron-app'
 
+const ADD_SESSION_MOUSE_DOWN_TIME = 1_000
+const ADD_SESSION_MOUSE_UP_TIME = ADD_SESSION_MOUSE_DOWN_TIME + 50
+
 type ElectronPageTarget = {
   page: Page
   electronApp: ElectronApplication
@@ -53,7 +56,8 @@ export async function createSession(
     : `${descriptor.titlePrefix}-${projectName}`
 
   // Navigate from project-row button → parent div → sibling add-session button
-  await projectRow.locator('..').locator('[data-testid="workspace.add-session"]').click()
+  const addSessionButton = projectRow.locator('..').locator('[data-testid="workspace.add-session"]')
+  await dispatchQuickAddSessionPress(addSessionButton)
 
   const providerGroup = page.getByTestId('provider-card')
   await expect(providerGroup).toBeVisible()
@@ -65,6 +69,31 @@ export async function createSession(
     row: sessionRow,
     title: sessionTitle
   }
+}
+
+async function dispatchQuickAddSessionPress(addSessionButton: Locator): Promise<void> {
+  // The add-session button distinguishes short clicks from long-press radial-menu activation.
+  // Playwright's real click timing can occasionally cross that threshold under load, so the
+  // helper dispatches the same DOM events with a deterministic short-press timestamp.
+  await addSessionButton.evaluate(
+    (element, { mouseDownTime, mouseUpTime }) => {
+      const dispatchTimedMouseEvent = (type: 'mousedown' | 'mouseup', timeStamp: number) => {
+        const event = new MouseEvent(type, { bubbles: true })
+        Object.defineProperty(event, 'timeStamp', {
+          configurable: true,
+          value: timeStamp
+        })
+        element.dispatchEvent(event)
+      }
+
+      dispatchTimedMouseEvent('mousedown', mouseDownTime)
+      dispatchTimedMouseEvent('mouseup', mouseUpTime)
+    },
+    {
+      mouseDownTime: ADD_SESSION_MOUSE_DOWN_TIME,
+      mouseUpTime: ADD_SESSION_MOUSE_UP_TIME
+    }
+  )
 }
 
 export async function focusTerminalInput(page: Page): Promise<Locator> {

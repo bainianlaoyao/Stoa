@@ -36,6 +36,30 @@ describe('bundled Evolver resolver', () => {
 
     await expect(resolveBundledEvolverRepoRoot(appCwd)).resolves.toBe(sourceRepoRoot)
   })
+
+  test('resolves source checkout from ancestor directories when running inside a git worktree', async () => {
+    const repoRoot = join(rootDir, 'repo-root')
+    const worktreeCwd = join(repoRoot, '.worktrees', 'feature-branch')
+    const sourceRepoRoot = join(repoRoot, 'research', 'upstreams', 'evolver')
+    await mkdir(worktreeCwd, { recursive: true })
+    await mkdir(sourceRepoRoot, { recursive: true })
+    await writeFile(join(sourceRepoRoot, 'package.json'), JSON.stringify({ name: 'evolver' }) + '\n', 'utf8')
+
+    await expect(resolveBundledEvolverRepoRoot(worktreeCwd)).resolves.toBe(sourceRepoRoot)
+  })
+
+  test('does not escape the owning repo root when a parent workspace also vendors evolver', async () => {
+    const outerRepoRoot = join(rootDir, 'outer-repo')
+    const nestedRepoRoot = join(outerRepoRoot, 'nested-repo')
+    const nestedWorktreeCwd = join(nestedRepoRoot, '.worktrees', 'feature-branch')
+    const outerEvolverRepoRoot = join(outerRepoRoot, 'research', 'upstreams', 'evolver')
+    await mkdir(join(nestedRepoRoot, '.git'), { recursive: true })
+    await mkdir(nestedWorktreeCwd, { recursive: true })
+    await mkdir(outerEvolverRepoRoot, { recursive: true })
+    await writeFile(join(outerEvolverRepoRoot, 'package.json'), JSON.stringify({ name: 'evolver' }) + '\n', 'utf8')
+
+    await expect(resolveBundledEvolverRepoRoot(nestedWorktreeCwd)).rejects.toThrow('Bundled Evolver repository is unavailable')
+  })
 })
 
 describe('bundled Evolver clean upstream boundary', () => {

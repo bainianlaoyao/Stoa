@@ -13,7 +13,6 @@ describe('session status topology', () => {
     expect(sessionStatusTopology.testIds.running).toBe('session-status-running')
     expect(sessionStatusTopology.testIds.complete).toBe('session-status-complete')
     expect(sessionStatusTopology.testIds.blocked).toBe('session-status-blocked')
-    expect(sessionStatusTopology.testIds.failed).toBe('session-status-failed')
-    expect(sessionStatusTopology.testIds.exited).toBe('session-status-exited')
+    expect(sessionStatusTopology.testIds.failure).toBe('session-status-failure')
   })
 })

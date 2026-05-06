@@ -8,6 +8,7 @@ import { buildSessionPresenceSnapshot } from '@shared/observability-projection'
 import type { ProviderDefinition } from '@extensions/providers'
 import { createTestWorkspace, createTestGlobalStatePath } from './helpers'
 import { readProjectSessions } from '@core/state-store'
+import { waitForExit } from './wait-for-exit'
 
 function createEchoProvider(): ProviderDefinition {
   const isWin = process.platform === 'win32'
@@ -89,15 +90,6 @@ function createFailProvider(): ProviderDefinition {
   }
 }
 
-function waitForExit(signal: Promise<void>, timeoutMs = 10_000): Promise<void> {
-  return Promise.race([
-    signal,
-    new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('Timed out waiting for process exit')), timeoutMs)
-    )
-  ])
-}
-
 interface CapturingManager extends SessionRuntimeManager {
   terminalData: Array<{ sessionId: string; data: string }>
   exitSignal: Promise<void>
@@ -174,7 +166,7 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
           title: session.title,
           type: session.type,
           runtimeState: session.runtimeState,
-          agentState: session.agentState,
+          turnState: session.turnState,
           externalSessionId: session.externalSessionId
         },
         webhookPort: 43127,
@@ -191,9 +183,8 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
         activeSessionId: snapshot.activeSessionId,
         nowIso: '2026-04-25T00:00:00.000Z'
       })).toMatchObject({
-        phase: 'running',
-        runtimeState: 'alive',
-        agentState: 'unknown'
+        phase: 'ready',
+        runtimeState: 'alive'
       })
 
       await waitForExit(capturing.exitSignal)
@@ -230,7 +221,7 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
           title: session.title,
           type: session.type,
           runtimeState: session.runtimeState,
-          agentState: session.agentState,
+          turnState: session.turnState,
           externalSessionId: session.externalSessionId
         },
         webhookPort: 43127,
@@ -275,7 +266,7 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
           title: session.title,
           type: session.type,
           runtimeState: session.runtimeState,
-          agentState: session.agentState,
+          turnState: session.turnState,
           externalSessionId: session.externalSessionId
         },
         webhookPort: 43127,
@@ -316,7 +307,7 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
       await startSessionRuntime({
         session: {
           id: session1.id, projectId: session1.projectId, path: workspaceDir,
-          title: session1.title, type: session1.type, runtimeState: session1.runtimeState, agentState: session1.agentState,
+          title: session1.title, type: session1.type, runtimeState: session1.runtimeState, turnState: session1.turnState,
           externalSessionId: session1.externalSessionId
         },
         webhookPort: 43127, provider, ptyHost, manager: capturing1
@@ -327,7 +318,7 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
       await startSessionRuntime({
         session: {
           id: session2.id, projectId: session2.projectId, path: workspaceDir,
-          title: session2.title, type: session2.type, runtimeState: session2.runtimeState, agentState: session2.agentState,
+          title: session2.title, type: session2.type, runtimeState: session2.runtimeState, turnState: session2.turnState,
           externalSessionId: session2.externalSessionId
         },
         webhookPort: 43127, provider, ptyHost, manager: capturing2
@@ -359,7 +350,7 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
       await startSessionRuntime({
         session: {
           id: session.id, projectId: session.projectId, path: workspaceDir,
-          title: session.title, type: session.type, runtimeState: session.runtimeState, agentState: session.agentState,
+          title: session.title, type: session.type, runtimeState: session.runtimeState, turnState: session.turnState,
           externalSessionId: session.externalSessionId
         },
         webhookPort: 43127, provider: createEchoProvider(), ptyHost, manager: capturing
@@ -386,7 +377,7 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
       await startSessionRuntime({
         session: {
           id: session.id, projectId: session.projectId, path: workspaceDir,
-          title: session.title, type: session.type, runtimeState: session.runtimeState, agentState: session.agentState,
+          title: session.title, type: session.type, runtimeState: session.runtimeState, turnState: session.turnState,
           externalSessionId: session.externalSessionId
         },
         webhookPort: 43127, provider: createEchoProvider(), ptyHost, manager: capturing
@@ -425,7 +416,7 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
         startSessionRuntime({
           session: {
             id: session1.id, projectId: session1.projectId, path: workspaceDir,
-            title: session1.title, type: session1.type, runtimeState: session1.runtimeState, agentState: session1.agentState,
+            title: session1.title, type: session1.type, runtimeState: session1.runtimeState, turnState: session1.turnState,
             externalSessionId: session1.externalSessionId
           },
           webhookPort: 43127, provider, ptyHost, manager: capturing1
@@ -433,7 +424,7 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
         startSessionRuntime({
           session: {
             id: session2.id, projectId: session2.projectId, path: workspaceDir,
-            title: session2.title, type: session2.type, runtimeState: session2.runtimeState, agentState: session2.agentState,
+            title: session2.title, type: session2.type, runtimeState: session2.runtimeState, turnState: session2.turnState,
             externalSessionId: session2.externalSessionId
           },
           webhookPort: 43127, provider, ptyHost, manager: capturing2
@@ -473,7 +464,7 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
       await startSessionRuntime({
         session: {
           id: session.id, projectId: session.projectId, path: workspaceDir,
-          title: session.title, type: session.type, runtimeState: session.runtimeState, agentState: session.agentState,
+          title: session.title, type: session.type, runtimeState: session.runtimeState, turnState: session.turnState,
           externalSessionId: session.externalSessionId
         },
         webhookPort: 43127, provider: createFailProvider(), ptyHost, manager: capturing
@@ -488,7 +479,7 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
         activeSessionId: session.id,
         nowIso: '2026-04-25T00:00:00.000Z'
       })).toMatchObject({
-        phase: 'failed',
+        phase: 'failure',
         runtimeState: 'exited',
         runtimeExitReason: 'failed',
         runtimeExitCode: 42

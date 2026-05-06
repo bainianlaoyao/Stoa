@@ -10,6 +10,7 @@ import type { ProviderDefinition } from '@extensions/providers'
 import { useWorkspaceStore } from '@renderer/stores/workspaces'
 import { createTestWorkspace, createTestGlobalStatePath, readGlobalStateFile } from './helpers'
 import { readProjectSessions } from '@core/state-store'
+import { waitForExit } from './wait-for-exit'
 
 function createEchoProvider(): ProviderDefinition {
   const isWin = process.platform === 'win32'
@@ -32,15 +33,6 @@ function createEchoProvider(): ProviderDefinition {
     resolveSessionId(event) { return event.session_id ?? null },
     async installSidecar() {}
   }
-}
-
-function waitForExit(signal: Promise<void>, timeoutMs = 10_000): Promise<void> {
-  return Promise.race([
-    signal,
-    new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('Timed out waiting for process exit')), timeoutMs)
-    )
-  ])
 }
 
 interface StoreCapturingManager extends SessionRuntimeManager {
@@ -128,9 +120,11 @@ describe('E2E: Store Lifecycle Synchronization', () => {
 
       expect(store.sessions).toHaveLength(1)
       expect(store.sessions[0]!.runtimeState).toBe('created')
-      expect(store.sessions[0]!.agentState).toBe('unknown')
+      expect(store.sessions[0]!.turnState).toBe('idle')
+      expect(store.sessions[0]!.lastTurnOutcome).toBe('none')
       expect(store.activeSession!.runtimeState).toBe('created')
-      expect(store.activeSession!.agentState).toBe('unknown')
+      expect(store.activeSession!.turnState).toBe('idle')
+      expect(store.activeSession!.lastTurnOutcome).toBe('none')
       expect(store.activeSession!.summary).toBe('Waiting for session to start')
 
       const ptyHost = new PtyHost()
@@ -252,7 +246,6 @@ describe('E2E: Store Lifecycle Synchronization', () => {
 
       expect(store.sessions[0]!.externalSessionId).toBeNull()
       expect(store.activeSession!.externalSessionId).toBeNull()
-
       await waitForExit(capturing.exitSignal)
     })
   })
@@ -405,7 +398,8 @@ describe('E2E: Store Lifecycle Synchronization', () => {
       store.setActiveSession(session1.id)
       expect(store.activeSessionId).toBe(session1.id)
       expect(store.activeSession!.runtimeState).toBe('created')
-      expect(store.activeSession!.agentState).toBe('unknown')
+      expect(store.activeSession!.turnState).toBe('idle')
+      expect(store.activeSession!.lastTurnOutcome).toBe('none')
 
       const ptyHost = new PtyHost()
       activeHosts.push(ptyHost)

@@ -60,12 +60,15 @@ function sessionFixture(overrides: Partial<SessionSummary> = {}): SessionSummary
     projectId: 'project_alpha',
     type: 'opencode',
     runtimeState: 'alive',
-    agentState: 'working',
+    turnState: 'running',
+    turnEpoch: 1,
+    lastTurnOutcome: 'none',
     hasUnseenCompletion: false,
     runtimeExitCode: null,
     runtimeExitReason: null,
     lastStateSequence: 1,
     blockingReason: null,
+    failureReason: null,
     title: 'session',
     summary: 'ready',
     recoveryMode: 'resume-external',
@@ -148,6 +151,8 @@ describe('TerminalSessionDeck', () => {
     const firstShellSession = sessionFixture({
       id: 'session_shell_1',
       type: 'shell',
+      turnState: 'idle',
+      turnEpoch: 0,
       title: 'Shell 1',
       recoveryMode: 'fresh-shell',
       externalSessionId: null
@@ -155,6 +160,8 @@ describe('TerminalSessionDeck', () => {
     const secondShellSession = sessionFixture({
       id: 'session_shell_2',
       type: 'shell',
+      turnState: 'idle',
+      turnEpoch: 0,
       title: 'Shell 2',
       recoveryMode: 'fresh-shell',
       externalSessionId: null
@@ -310,6 +317,8 @@ describe('TerminalSessionDeck', () => {
     const shellSession = sessionFixture({
       id: 'session_shell_1',
       type: 'shell',
+      turnState: 'idle',
+      turnEpoch: 0,
       title: 'Shell 1',
       recoveryMode: 'fresh-shell',
       externalSessionId: null

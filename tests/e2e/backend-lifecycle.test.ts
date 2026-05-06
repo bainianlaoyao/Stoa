@@ -69,7 +69,7 @@ function createCanonicalEvent(sessionId: string, projectId: string): CanonicalSe
     source: 'hook-sidecar',
     payload: {
       intent: 'agent.turn_started',
-      agentState: 'working',
+      sourceTurnId: 'turn-demo-1',
       summary: 'event accepted'
     }
   }
@@ -83,12 +83,12 @@ function toProviderPatch(event: CanonicalSessionEvent, sequence: number): Sessio
     intent: event.payload.intent,
     source: 'provider',
     sourceEventType: event.event_type,
-    runtimeState: event.payload.runtimeState,
-    agentState: event.payload.agentState,
-    hasUnseenCompletion: event.payload.hasUnseenCompletion,
+    turnEpoch: event.payload.turnEpoch ?? 1,
+    sourceTurnId: event.payload.sourceTurnId,
     runtimeExitCode: event.payload.runtimeExitCode,
     runtimeExitReason: event.payload.runtimeExitReason,
     blockingReason: event.payload.blockingReason,
+    failureReason: event.payload.failureReason,
     summary: event.payload.summary,
     externalSessionId: event.payload.externalSessionId
   }
@@ -744,7 +744,8 @@ describe('E2E: Backend Full User Lifecycle', () => {
       expect(sessionPresence(manager, session.id)).toMatchObject({
         phase: 'ready',
         runtimeState: 'alive',
-        agentState: 'unknown',
+        turnState: 'idle',
+        lastTurnOutcome: 'none',
         hasUnseenCompletion: false
       })
     })
@@ -773,29 +774,35 @@ describe('E2E: Backend Full User Lifecycle', () => {
       expect(sessionPresence(manager, session.id).phase).toBe('ready')
 
       await httpPost(port, '/hooks/claude-code', { hook_event_name: 'UserPromptSubmit' }, headers)
-      expect(sessionPresence(manager, session.id)).toMatchObject({ phase: 'running', agentState: 'working' })
+      expect(sessionPresence(manager, session.id)).toMatchObject({ phase: 'running', turnState: 'running' })
 
       await httpPost(port, '/hooks/claude-code', { hook_event_name: 'PermissionRequest' }, headers)
       expect(sessionPresence(manager, session.id)).toMatchObject({
         phase: 'blocked',
-        agentState: 'blocked',
+        turnState: 'running',
         blockingReason: 'permission'
       })
 
       await httpPost(port, '/hooks/claude-code', { hook_event_name: 'PreToolUse' }, headers)
-      expect(sessionPresence(manager, session.id)).toMatchObject({ phase: 'running', agentState: 'working' })
+      expect(sessionPresence(manager, session.id)).toMatchObject({
+        phase: 'running',
+        turnState: 'running',
+        blockingReason: null
+      })
 
       await httpPost(port, '/hooks/claude-code', { hook_event_name: 'Stop' }, headers)
       expect(sessionPresence(manager, session.id)).toMatchObject({
         phase: 'complete',
-        agentState: 'idle',
+        turnState: 'idle',
+        lastTurnOutcome: 'completed',
         hasUnseenCompletion: true
       })
 
       await manager.setActiveSession(session.id)
       expect(sessionPresence(manager, session.id)).toMatchObject({
         phase: 'ready',
-        agentState: 'idle',
+        turnState: 'idle',
+        lastTurnOutcome: 'completed',
         hasUnseenCompletion: false
       })
     })
@@ -826,10 +833,10 @@ describe('E2E: Backend Full User Lifecycle', () => {
         'x-stoa-secret': 'claude-secret'
       })
 
-      expect(sessionPresence(manager, session.id)).toMatchObject({ phase: 'running', agentState: 'working' })
+      expect(sessionPresence(manager, session.id)).toMatchObject({ phase: 'running', turnState: 'running' })
     })
 
-    test('runtime starting after restore derives preparing and clears stale agent state', async () => {
+    test('runtime starting after restore derives ready and clears stale turn completion metadata', async () => {
       const workspaceDir = await createTestWorkspace('stoa-e2e-restore-starting-')
       const globalStatePath = await createTestGlobalStatePath()
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
@@ -844,21 +851,21 @@ describe('E2E: Backend Full User Lifecycle', () => {
         intent: 'agent.turn_completed',
         source: 'provider',
         sourceEventType: 'claude-code.Stop',
-        agentState: 'idle',
-        hasUnseenCompletion: true,
+        turnEpoch: 1,
         summary: 'Stop'
       })
       await manager.markRuntimeStarting(session.id, 'Restoring Claude', session.externalSessionId)
 
       expect(sessionPresence(manager, session.id)).toMatchObject({
-        phase: 'preparing',
+        phase: 'ready',
         runtimeState: 'starting',
-        agentState: 'unknown',
+        turnState: 'idle',
+        lastTurnOutcome: 'none',
         hasUnseenCompletion: false
       })
     })
 
-    test('failed exit derives failed before blocked or complete attention states', async () => {
+    test('failed exit derives failure before blocked or complete attention states', async () => {
       const workspaceDir = await createTestWorkspace('stoa-e2e-failed-priority-')
       const globalStatePath = await createTestGlobalStatePath()
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
@@ -874,17 +881,17 @@ describe('E2E: Backend Full User Lifecycle', () => {
         intent: 'agent.permission_requested',
         source: 'provider',
         sourceEventType: 'claude-code.PermissionRequest',
-        agentState: 'blocked',
+        turnEpoch: 1,
         blockingReason: 'permission',
         summary: 'PermissionRequest'
       })
       await manager.markRuntimeExited(blockedSession.id, 42, 'claude failed (42)')
 
       expect(sessionPresence(manager, blockedSession.id)).toMatchObject({
-        phase: 'failed',
+        phase: 'failure',
         runtimeState: 'exited',
         runtimeExitReason: 'failed',
-        agentState: 'blocked',
+        turnState: 'running',
         blockingReason: 'permission'
       })
 
@@ -896,17 +903,17 @@ describe('E2E: Backend Full User Lifecycle', () => {
         intent: 'agent.turn_completed',
         source: 'provider',
         sourceEventType: 'claude-code.Stop',
-        agentState: 'idle',
-        hasUnseenCompletion: true,
+        turnEpoch: 1,
         summary: 'Stop'
       })
       await manager.markRuntimeExited(completeSession.id, 42, 'claude failed (42)')
 
       expect(sessionPresence(manager, completeSession.id)).toMatchObject({
-        phase: 'failed',
+        phase: 'failure',
         runtimeState: 'exited',
         runtimeExitReason: 'failed',
-        agentState: 'idle',
+        turnState: 'idle',
+        lastTurnOutcome: 'completed',
         hasUnseenCompletion: true
       })
     })
@@ -928,7 +935,7 @@ describe('E2E: Backend Full User Lifecycle', () => {
           title: 'Test',
           type: 'opencode',
           runtimeState: 'created',
-          agentState: 'unknown',
+          turnState: 'idle',
           externalSessionId: null
         },
         webhookPort: 43127,
@@ -958,7 +965,7 @@ describe('E2E: Backend Full User Lifecycle', () => {
           title: 'Shell Test',
           type: 'shell',
           runtimeState: 'created',
-          agentState: 'unknown',
+          turnState: 'idle',
           externalSessionId: null
         },
         webhookPort: 43127,
@@ -986,7 +993,7 @@ describe('E2E: Backend Full User Lifecycle', () => {
           title: 'OpenCode Test',
           type: 'opencode',
           runtimeState: 'created',
-          agentState: 'unknown',
+          turnState: 'idle',
           externalSessionId: null
         },
         webhookPort: 43127,
@@ -1013,7 +1020,7 @@ describe('E2E: Backend Full User Lifecycle', () => {
           title: 'OpenCode Resume',
           type: 'opencode',
           runtimeState: 'alive',
-          agentState: 'idle',
+          turnState: 'idle',
           externalSessionId: 'ext-123'
         },
         webhookPort: 43127,
@@ -1039,7 +1046,7 @@ describe('E2E: Backend Full User Lifecycle', () => {
           title: 'OpenCode Test',
           type: 'opencode',
           runtimeState: 'created',
-          agentState: 'unknown',
+          turnState: 'idle',
           externalSessionId: null
         },
         webhookPort: 43127,
@@ -1067,7 +1074,7 @@ describe('E2E: Backend Full User Lifecycle', () => {
           title: 'OpenCode Test',
           type: 'opencode',
           runtimeState: 'created',
-          agentState: 'unknown',
+          turnState: 'idle',
           externalSessionId: null
         },
         webhookPort: 43127,
@@ -1098,7 +1105,7 @@ describe('E2E: Backend Full User Lifecycle', () => {
           title: 'OpenCode Test',
           type: 'opencode',
           runtimeState: 'alive',
-          agentState: 'blocked',
+          turnState: 'running',
           externalSessionId: 'stale-ext'
         },
         webhookPort: 43127,
@@ -1134,7 +1141,7 @@ describe('E2E: Backend Full User Lifecycle', () => {
           title: 'Shell Test',
           type: 'shell',
           runtimeState: 'created',
-          agentState: 'unknown',
+          turnState: 'idle',
           externalSessionId: null
         },
         webhookPort: 43127,

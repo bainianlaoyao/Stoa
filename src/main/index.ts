@@ -625,7 +625,11 @@ app.whenReady().then(async () => {
 
         const phase = derivePresencePhase({
           runtimeState: currentSession.runtimeState,
-          agentState: currentSession.agentState,
+          turnState: currentSession.turnState,
+          turnEpoch: currentSession.turnEpoch,
+          lastTurnOutcome: currentSession.lastTurnOutcome,
+          blockingReason: currentSession.blockingReason,
+          failureReason: currentSession.failureReason,
           hasUnseenCompletion: currentSession.hasUnseenCompletion,
           runtimeExitCode: currentSession.runtimeExitCode,
           runtimeExitReason: currentSession.runtimeExitReason,

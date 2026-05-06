@@ -63,7 +63,7 @@ describe('launchTrackedSessionRuntime', () => {
           title: 'Restored shell',
           type: 'shell',
           runtimeState: 'created',
-          agentState: 'unknown',
+          turnState: 'idle',
           externalSessionId: null,
           sessionSecret: 'secret-1'
         }),
