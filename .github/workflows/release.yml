@@ -1,4 +1,9 @@
-name: release
+name: release (deprecated)
+
+# DEPRECATED — do not use for production releases.
+# The authoritative release path is local build + manual upload per the
+# operations/release-and-update-runbook.  This workflow is kept only as an
+# emergency fallback and must NOT be triggered without explicit approval.
 
 on:
   workflow_dispatch: {}

@@ -4,9 +4,10 @@
 
 This runbook covers the Windows release flow for Stoa.
 
-- Releases are cut locally: tag → build → package → `gh` CLI upload.
+- **Releases are cut locally and uploaded manually.** This is the authoritative release path — the only process used for production releases.
 - The formal end-user artifacts are the NSIS installer and the portable executable.
 - In-app updates stay user-confirmed. The app does not silently download or install updates.
+- The `.github/workflows/release.yml` workflow is **deprecated** and kept only as an emergency fallback. Do not use it for routine releases.
 
 ## Release Inputs
 
