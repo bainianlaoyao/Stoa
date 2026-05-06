@@ -64,6 +64,7 @@ describe('managed-sidecar-maintenance', () => {
       }
       expect(Object.keys(hooks.hooks ?? {}).sort()).toEqual([
         'PostToolUse',
+        'PreToolUse',
         'SessionStart',
         'Stop',
         'UserPromptSubmit'

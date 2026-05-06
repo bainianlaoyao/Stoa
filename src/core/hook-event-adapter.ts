@@ -20,7 +20,8 @@ export function adaptClaudeCodeHook(
     return null
   }
 
-  const patch = mapClaudeHookToPatch(hookEventName)
+  const toolName = typeof body.tool_name === 'string' ? body.tool_name : undefined
+  const patch = mapClaudeHookToPatch(hookEventName, toolName)
   if (!patch) {
     return null
   }
@@ -148,13 +149,16 @@ type HookPatch = Pick<
   'intent' | 'blockingReason' | 'failureReason' | 'sourceTurnId'
 >
 
-function mapClaudeHookToPatch(hookEventName: string): HookPatch | null {
+function mapClaudeHookToPatch(hookEventName: string, toolName?: string): HookPatch | null {
   switch (hookEventName) {
     case 'SessionStart':
       return { intent: 'runtime.alive' }
     case 'UserPromptSubmit':
       return { intent: 'agent.turn_started' }
     case 'PreToolUse':
+      if (toolName === 'AskUserQuestion') {
+        return { intent: 'agent.permission_requested', blockingReason: 'elicitation' }
+      }
       return { intent: 'agent.tool_started' }
     case 'PostToolUse':
       return { intent: 'agent.tool_completed' }

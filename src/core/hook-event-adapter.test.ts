@@ -213,7 +213,7 @@ describe('hook event adapter', () => {
     })
   })
 
-  test('adapts Claude PreToolUse with AskUserQuestion tool without elevating tool name into lifecycle semantics', () => {
+  test('adapts Claude PreToolUse with AskUserQuestion tool as permission_requested with elicitation blocking reason', () => {
     const event = adaptClaudeCodeHook(
       {
         hook_event_name: 'PreToolUse',
@@ -231,8 +231,9 @@ describe('hook event adapter', () => {
       project_id: 'project_elicitation_1',
       source: 'provider-adapter',
       payload: {
-        intent: 'agent.tool_started',
+        intent: 'agent.permission_requested',
         summary: 'PreToolUse',
+        blockingReason: 'elicitation',
         toolName: 'AskUserQuestion'
       },
       evidence: {

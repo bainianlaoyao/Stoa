@@ -53,9 +53,15 @@ async function writeSharedHookSidecar(target: ProviderRuntimeTarget): Promise<vo
           hooks: [{ type: 'command', command: 'node .codex/hook-stoa.mjs UserPromptSubmit', timeout_sec: 5 }]
         }
       ],
+      PreToolUse: [
+        {
+          matcher: '*',
+          hooks: [{ type: 'command', command: 'node .codex/hook-stoa.mjs PreToolUse', timeout_sec: 5 }]
+        }
+      ],
       PostToolUse: [
         {
-          matcher: 'Write',
+          matcher: '*',
           hooks: [{ type: 'command', command: 'node .codex/hook-stoa.mjs PostToolUse', timeout_sec: 5 }]
         }
       ],
