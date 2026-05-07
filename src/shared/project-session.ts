@@ -314,6 +314,7 @@ export interface RendererApi {
   uninstallSidecars: (projectId: string) => Promise<void>
   listSessionEvidence: (sessionId: string) => Promise<SessionEvidenceSnapshot[]>
   contextExportFullText: (sessionId: string, options: { includeThinking?: boolean; includeToolDetails?: boolean; maxChars?: number; cursor?: string }) => Promise<{ text: string; nextCursor?: string; truncated: boolean; totalTurns: number }>
+  contextExportSlimText: (sessionId: string, options: { maxChars?: number; cursor?: string }) => Promise<{ text: string; nextCursor?: string; truncated: boolean; totalTurns: number }>
   onUpdateState: (callback: (state: UpdateState) => void) => () => void
 }
 

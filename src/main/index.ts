@@ -990,41 +990,20 @@ app.whenReady().then(async () => {
     return evidenceStore.listSnapshots(project.path, sessionId)
   })
 
-  ipcMain.handle(IPC_CHANNELS.contextExportFullText, async (_event, sessionId: string, options: any) => {
+  ipcMain.handle(IPC_CHANNELS.contextExportFullText, async (_event, sessionId: string, options?: { includeThinking?: boolean; includeToolDetails?: boolean; maxChars?: number; cursor?: string }) => {
     if (!projectSessionManager || !runtimeController) {
       return { text: '', truncated: false, totalTurns: 0 }
     }
-    const snapshot = projectSessionManager.snapshot()
-    const session = snapshot.sessions.find(s => s.id === sessionId)
-    if (!session) {
+    const { handleContextExportFullText } = await import('@core/context/session-context-exporter')
+    return handleContextExportFullText(sessionId, options ?? {}, { projectSessionManager, runtimeController })
+  })
+
+  ipcMain.handle(IPC_CHANNELS.contextExportSlimText, async (_event, sessionId: string, options?: { maxChars?: number; cursor?: string }) => {
+    if (!projectSessionManager) {
       return { text: '', truncated: false, totalTurns: 0 }
     }
-
-    const project = snapshot.projects.find(p => p.id === session.projectId)
-    if (!project) {
-      return { text: '', truncated: false, totalTurns: 0 }
-    }
-
-    const terminalReplay = await runtimeController.getTerminalReplay(sessionId)
-
-    const { SessionContextExporter } = await import('@core/context/session-context-exporter')
-    const exporter = new SessionContextExporter()
-    return exporter.exportFullText(
-      {
-        sessionId: session.id,
-        type: session.type,
-        projectPath: project.path,
-        externalSessionId: session.externalSessionId,
-        createdAt: session.createdAt,
-        terminalReplay: terminalReplay || undefined
-      },
-      {
-        includeThinking: options.includeThinking ?? false,
-        includeToolDetails: options.includeToolDetails ?? false,
-        maxChars: options.maxChars,
-        cursor: options.cursor
-      }
-    )
+    const { handleContextExportSlimText } = await import('@core/context/session-context-exporter')
+    return handleContextExportSlimText(sessionId, options ?? {}, { projectSessionManager })
   })
 
   mainWindow = createMainWindow()

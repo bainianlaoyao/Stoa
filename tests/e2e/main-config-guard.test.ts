@@ -193,7 +193,8 @@ describe('E2E: Main Process Config Guard', () => {
         ['dismissUpdate', 'updateDismiss'],
         ['uninstallSidecars', 'sidecarUninstall'],
         ['listSessionEvidence', 'evidenceListSessionSnapshots'],
-        ['contextExportFullText', 'contextExportFullText']
+        ['contextExportFullText', 'contextExportFullText'],
+        ['contextExportSlimText', 'contextExportSlimText']
       ])
 
       for (const method of rendererApiMethods) {
@@ -318,6 +319,7 @@ describe('E2E: Main Process Config Guard', () => {
         'uninstallSidecars',
         'listSessionEvidence',
         'contextExportFullText',
+        'contextExportSlimText',
         'minimizeWindow',
         'maximizeWindow',
         'closeWindow',
@@ -392,6 +394,7 @@ describe('E2E: Main Process Config Guard', () => {
       expect(invMap.get('uninstallSidecars')).toBe('sidecar:uninstall')
       expect(invMap.get('listSessionEvidence')).toBe('evidence:list-session-snapshots')
       expect(invMap.get('contextExportFullText')).toBe('context:export-full-text')
+      expect(invMap.get('contextExportSlimText')).toBe('context:export-slim-text')
     })
 
     it('preload send-only methods use correct channel names', () => {

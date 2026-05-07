@@ -107,7 +107,7 @@ function* parseCodex(jsonl: string): Generator<NormalizedTurn> {
       const texts = (payload.content ?? [])
         .filter((c: any) => c.type === 'input_text' && typeof c.text === 'string')
         .map((c: any) => c.text as string)
-        .filter((t: string) => !t.startsWith('<'))
+        .filter((t: string) => !t.startsWith('<') && !t.startsWith('# AGENTS.md'))
       if (texts.length > 0) yield { role: 'user', text: texts.join('\n'), timestamp: ts }
     }
     if (payload.type === 'function_call') {
@@ -255,5 +255,42 @@ if (existsSync(ocMsgPath) && existsSync(ocPartsPath)) {
   // SQLite access is handled by the production pipeline, not this standalone script
   console.log('  (SQLite extraction requires the main process — use IPC through the app)')
 }
+
+const slimOutputDir = join(outputDir, 'slim')
+if (!existsSync(slimOutputDir)) mkdirSync(slimOutputDir, { recursive: true })
+
+function formatSlimText(turns: NormalizedTurn[]): string {
+  const lines: string[] = []
+  for (const turn of turns) {
+    if (!turn.text.trim()) continue
+    const header = turn.role === 'user' ? '[User]' : '[Assistant]'
+    lines.push(`${header}\n${turn.text}`)
+  }
+  return lines.join('\n\n')
+}
+
+console.log(`\n=== Slim mode extraction ===`)
+
+if (existsSync(claudeSessionPath)) {
+  const raw = readFileSync(claudeSessionPath, 'utf8')
+  const turns = [...parseClaudeCode(raw)]
+  const slimText = formatSlimText(turns)
+  const textTurns = turns.filter(t => t.text.trim() !== '').length
+  writeFileSync(join(slimOutputDir, 'claude-code-slim.txt'), slimText, 'utf8')
+  console.log(`Claude Code slim: ${textTurns} text turns (of ${turns.length} total), ${(slimText.length / 1024).toFixed(1)}KB`)
+  console.log(`  File: ${join(slimOutputDir, 'claude-code-slim.txt')}`)
+}
+
+if (existsSync(codexSessionPath)) {
+  const raw = readFileSync(codexSessionPath, 'utf8')
+  const turns = [...parseCodex(raw)]
+  const slimText = formatSlimText(turns)
+  const textTurns = turns.filter(t => t.text.trim() !== '').length
+  writeFileSync(join(slimOutputDir, 'codex-slim.txt'), slimText, 'utf8')
+  console.log(`Codex slim: ${textTurns} text turns (of ${turns.length} total), ${(slimText.length / 1024).toFixed(1)}KB`)
+  console.log(`  File: ${join(slimOutputDir, 'codex-slim.txt')}`)
+}
+
+console.log(`\n  (OpenCode slim extraction: run "node scripts/extract-opencode-slim.cjs" separately)`)
 
 console.log(`\n=== Output directory: ${outputDir} ===`)

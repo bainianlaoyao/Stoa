@@ -108,6 +108,7 @@ function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
     onUpdateState: vi.fn().mockReturnValue(() => {}),
     uninstallSidecars: vi.fn().mockResolvedValue(undefined),
     contextExportFullText: vi.fn().mockResolvedValue({ text: '', truncated: false, totalTurns: 0 }),
+      contextExportSlimText: vi.fn().mockResolvedValue({ text: '', truncated: false, totalTurns: 0 }),
     ...overrides
   }
 }

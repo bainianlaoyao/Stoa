@@ -46,4 +46,5 @@ export const IPC_CHANNELS = {
   sidecarUninstall: 'sidecar:uninstall',
   evidenceListSessionSnapshots: 'evidence:list-session-snapshots',
   contextExportFullText: 'context:export-full-text',
+  contextExportSlimText: 'context:export-slim-text',
 } as const
