@@ -10,6 +10,7 @@ import type { TerminalSettings, RightClickBehavior, GpuAcceleration } from '@sha
 import { normalizeTerminalSettings } from '@shared/terminal-settings'
 import type { FontWeight } from '@xterm/xterm'
 import { ShellIntegrationAddon } from './shell-integration-addon'
+import { FileLinkProvider } from './file-link-provider'
 
 declare global {
   interface Navigator {
@@ -28,6 +29,7 @@ export interface XtermRuntime {
   webglAddon: WebglAddon | null
   searchAddon: SearchAddon
   shellIntegrationAddon: ShellIntegrationAddon
+  fileLinkProvider: FileLinkProvider
 }
 
 export type ExternalLinkOpener = (uri: string) => void
@@ -232,6 +234,11 @@ export function createTerminalRuntime(options: {
   const shellIntegrationAddon = new ShellIntegrationAddon()
   terminal.loadAddon(shellIntegrationAddon)
 
+  const fileLinkProvider = new FileLinkProvider(
+    () => shellIntegrationAddon.getState().currentCwd
+  )
+  terminal.loadAddon(fileLinkProvider)
+
   let webglAddon: WebglAddon | null = null
   if (shouldEnableWebgl(s.gpuAcceleration)) {
     try {
@@ -259,6 +266,7 @@ export function createTerminalRuntime(options: {
     webLinksAddon,
     webglAddon,
     searchAddon,
-    shellIntegrationAddon
+    shellIntegrationAddon,
+    fileLinkProvider
   }
 }

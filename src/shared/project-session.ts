@@ -5,7 +5,7 @@ import type {
   ProjectObservabilitySnapshot,
   SessionPresenceSnapshot
 } from './observability'
-import type { MemoryRuntimeEvidence } from './memory-runtime'
+import type { MemoryRuntimeEvidence, MemoryRuntimeEvidenceProvider } from './memory-runtime'
 import type { BlockingReason } from '@shared/observability'
 import type { TerminalSettings } from './terminal-settings'
 
@@ -265,6 +265,26 @@ export interface MemoryNotificationEvent {
   createdAt: string
 }
 
+export interface SessionEvidenceSnapshot {
+  eventId: string
+  eventType: string
+  sessionId: string
+  projectId: string
+  timestamp: string
+  provider: MemoryRuntimeEvidenceProvider
+  providerSessionId: string | null
+  turnId: string | null
+  evidenceKey: string
+  payload: SessionStatePatchPayload
+  evidence: MemoryRuntimeEvidence
+  snapshot: {
+    kind: 'provider-transcript' | 'turn-slice'
+    fileName: string
+    content: string
+    sourceTranscriptPath?: string | null
+  }
+}
+
 export interface RendererApi {
   windowsBuildNumber: number | undefined
   getBootstrapState: () => Promise<BootstrapState>
@@ -299,6 +319,7 @@ export interface RendererApi {
   detectShell: () => Promise<string | null>
   detectProvider: (providerId: string) => Promise<string | null>
   detectVscode: () => Promise<string | null>
+  openFile: (filePath: string, line?: number, col?: number) => Promise<void>
   minimizeWindow: () => Promise<void>
   maximizeWindow: () => Promise<void>
   closeWindow: () => Promise<void>
@@ -312,6 +333,7 @@ export interface RendererApi {
   quitAndInstallUpdate: () => Promise<void>
   dismissUpdate: () => Promise<void>
   uninstallSidecars: (projectId: string) => Promise<void>
+  listSessionEvidence: (sessionId: string) => Promise<SessionEvidenceSnapshot[]>
   onUpdateState: (callback: (state: UpdateState) => void) => () => void
 }
 

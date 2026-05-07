@@ -22,6 +22,7 @@ import { launchTrackedSessionRuntime } from './launch-tracked-session-runtime'
 import { syncObservabilitySessionsFromManager } from './observability-sync'
 import { syncManagedSidecars } from './managed-sidecar-maintenance'
 import { UpdateService } from './update-service'
+import { SessionEvidenceStore } from '@core/memory/session-evidence-store'
 import { DEFAULT_SETTINGS } from '@shared/project-session'
 import type {
   CreateProjectRequest,
@@ -40,6 +41,7 @@ let sessionInputRouter: SessionInputRouter | null = null
 let observationStore: InMemoryObservationStore | null = null
 let observabilityService: ObservabilityService | null = null
 let updateService: UpdateService | null = null
+const evidenceStore = new SessionEvidenceStore()
 const e2eWorkspaceOpenRequests: OpenWorkspaceRequest[] = []
 let isQuittingAfterBridgeStop = false
 const pendingE2EPickFolders: Array<string | null> = []
@@ -894,6 +896,43 @@ app.whenReady().then(async () => {
     return detectVscode()
   })
 
+  ipcMain.handle(IPC_CHANNELS.shellOpenFile, async (_event, filePath: string, line?: number, col?: number) => {
+    const configuredExecutable = projectSessionManager?.getSettings().workspaceIde.executablePath?.trim() ?? ''
+    const candidates: string[] = []
+
+    if (configuredExecutable.length > 0) {
+      candidates.push(configuredExecutable)
+    }
+    const detected = await detectVscode()
+    if (detected) {
+      candidates.push(detected)
+    }
+    candidates.push('code', 'code.cmd')
+
+    const gotoArg = line != null
+      ? col != null ? `${filePath}:${line}:${col}` : `${filePath}:${line}`
+      : filePath
+
+    for (const executable of candidates) {
+      try {
+        const child = spawn(executable, ['--goto', gotoArg], {
+          cwd: filePath,
+          detached: true,
+          stdio: 'ignore',
+          windowsHide: true,
+          shell: false,
+          env: process.env
+        })
+        child.unref()
+        return
+      } catch {
+        continue
+      }
+    }
+
+    await shell.openPath(filePath)
+  })
+
   ipcMain.handle(IPC_CHANNELS.windowMinimize, () => {
     mainWindow?.minimize()
   })
@@ -977,6 +1016,17 @@ app.whenReady().then(async () => {
         console.warn(`[sidecar-uninstall] Failed to uninstall ${providerType} sidecar for ${project.path}:`, error)
       }
     }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.evidenceListSessionSnapshots, async (_event, sessionId: string) => {
+    if (!projectSessionManager) return []
+
+    const state = projectSessionManager.snapshot()
+    const session = state.sessions.find(s => s.id === sessionId)
+    if (!session) return []
+    const project = state.projects.find(p => p.id === session.projectId)
+    if (!project) return []
+    return evidenceStore.listSnapshots(project.path, sessionId)
   })
 
   mainWindow = createMainWindow()

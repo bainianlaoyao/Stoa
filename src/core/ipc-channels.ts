@@ -44,4 +44,6 @@ export const IPC_CHANNELS = {
   debugToggleDevTools: 'debug:toggle-devtools',
   shellGetScriptsDir: 'shell:get-scripts-dir',
   sidecarUninstall: 'sidecar:uninstall',
+  evidenceListSessionSnapshots: 'evidence:list-session-snapshots',
+  shellOpenFile: 'shell:open-file',
 } as const

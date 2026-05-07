@@ -9,6 +9,7 @@ import type {
   ObservationEventListOptions,
   OpenWorkspaceRequest,
   RendererApi,
+  SessionEvidenceSnapshot,
   SessionSummaryEvent,
   TerminalDataChunk
 } from '@shared/project-session'
@@ -96,6 +97,9 @@ const api: RendererApi = {
   async uninstallSidecars(projectId: string) {
     return ipcRenderer.invoke(IPC_CHANNELS.sidecarUninstall, projectId)
   },
+  async listSessionEvidence(sessionId: string) {
+    return ipcRenderer.invoke(IPC_CHANNELS.evidenceListSessionSnapshots, sessionId) as Promise<SessionEvidenceSnapshot[]>
+  },
   onTerminalData(callback: (chunk: TerminalDataChunk) => void) {
     const handler = (_event: Electron.IpcRendererEvent, chunk: TerminalDataChunk) => callback(chunk)
     ipcRenderer.on(IPC_CHANNELS.terminalData, handler)
@@ -166,6 +170,9 @@ const api: RendererApi = {
   },
   async detectVscode() {
     return ipcRenderer.invoke(IPC_CHANNELS.settingsDetectVscode) as Promise<string | null>
+  },
+  async openFile(filePath: string, line?: number, col?: number) {
+    return ipcRenderer.invoke(IPC_CHANNELS.shellOpenFile, filePath, line, col)
   },
   async minimizeWindow() {
     return ipcRenderer.invoke(IPC_CHANNELS.windowMinimize)

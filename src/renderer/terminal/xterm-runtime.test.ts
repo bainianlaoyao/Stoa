@@ -90,6 +90,16 @@ vi.mock('@xterm/addon-serialize', () => {
   }
 })
 
+vi.mock('./file-link-provider', () => {
+  return {
+    FileLinkProvider: class {
+      constructor() {}
+      activate() {}
+      dispose() {}
+    },
+  }
+})
+
 describe('createTerminalRuntime', () => {
   beforeEach(async () => {
     vi.resetModules()
@@ -130,7 +140,7 @@ describe('createTerminalRuntime', () => {
       unicode: { activeVersion: string }
     }
 
-    expect(terminal.loadedAddons).toHaveLength(8)
+    expect(terminal.loadedAddons).toHaveLength(9)
     expect(terminal.unicode.activeVersion).toBe('11')
   })
 
