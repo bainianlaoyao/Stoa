@@ -68,8 +68,7 @@ const RENDERER_API_INVOKE_CHANNELS = [
   IPC_CHANNELS.observabilityGetApp,
   IPC_CHANNELS.observabilityListSessionEvents,
   IPC_CHANNELS.sessionTerminalReplay,
-  IPC_CHANNELS.sessionResize,
-  IPC_CHANNELS.shellOpenFile
+  IPC_CHANNELS.sessionResize
 ] as const
 
 const RENDERER_API_SEND_CHANNELS = [
@@ -165,7 +164,6 @@ function createPreloadApi(bus: FakeIpcBus): RendererApi {
     sendSessionInput: (sessionId: string, data: string) => { bus.send(IPC_CHANNELS.sessionInput, sessionId, data) },
     sendSessionBinaryInput: (sessionId: string, data: Uint8Array) => { bus.send(IPC_CHANNELS.sessionBinaryInput, sessionId, data) },
     sendSessionResize: (sessionId: string, cols: number, rows: number) => bus.invoke(IPC_CHANNELS.sessionResize, sessionId, cols, rows),
-    openFile: (filePath: string, line?: number, col?: number) => bus.invoke(IPC_CHANNELS.shellOpenFile, filePath, line, col),
     onTerminalData: () => () => {},
     onMemoryNotification: () => () => {},
     onSessionPresenceChanged: () => () => {},
@@ -233,10 +231,6 @@ async function registerMainHandlers(
   })
 
   bus.handle(IPC_CHANNELS.sessionResize, async () => {
-    return
-  })
-
-  bus.handle(IPC_CHANNELS.shellOpenFile, async () => {
     return
   })
 
