@@ -30,7 +30,126 @@ function createCommand(target: ProviderRuntimeTarget, context: ProviderCommandCo
 
 async function writeSidecarPlugin(target: ProviderRuntimeTarget, context: ProviderCommandContext): Promise<void> {
   const pluginPath = join('.opencode', 'plugins', 'stoa-status.ts')
-  const pluginContent = `const sessionId = process.env.STOA_SESSION_ID\nconst projectId = process.env.STOA_PROJECT_ID\nconst sessionSecret = process.env.STOA_SESSION_SECRET\n\nfunction toFailureReason(event) {\n  const raw = event.properties?.error ?? event.properties?.reason ?? null\n  if (typeof raw !== 'string') {\n    return 'provider_error'\n  }\n\n  const normalized = raw.toLowerCase()\n  if (normalized.includes('permission')) {\n    return 'permission_denied'\n  }\n  if (normalized.includes('rate')) {\n    return 'rate_limit'\n  }\n  if (normalized.includes('auth')) {\n    return 'authentication_failed'\n  }\n  return 'provider_error'\n}\n\nexport const StoaStatusPlugin = async () => ({\n  event: async ({ event }) => {\n    let payload\n    switch (event.type) {\n      case 'tool.execute.before':\n        payload = {\n          intent: 'agent.tool_started',\n          summary: event.type\n        }\n        break\n      case 'session.idle':\n        payload = {\n          intent: 'agent.turn_completed',\n          summary: event.type\n        }\n        break\n      case 'permission.asked':\n        payload = {\n          intent: 'agent.permission_requested',\n          blockingReason: 'permission',\n          summary: event.type\n        }\n        break\n      case 'permission.replied': {\n        const failed = Boolean(event.properties?.error)\n        if (failed) {\n          payload = {\n            intent: 'agent.turn_failed',\n            failureReason: toFailureReason(event),\n            summary: event.type\n          }\n          break\n        }\n\n        payload = {\n          intent: 'agent.permission_resolved',\n          summary: event.type\n        }\n        break\n      }\n      case 'session.error':\n        payload = {\n          intent: 'agent.turn_failed',\n          failureReason: toFailureReason(event),\n          summary: event.type\n        }\n        break\n      default:\n        return\n    }\n\n    if (!sessionId || !projectId || !sessionSecret) {\n      return\n    }\n\n    await fetch('http://127.0.0.1:${context.webhookPort}/events', {\n      method: 'POST',\n      headers: {\n        'content-type': 'application/json',\n        'x-stoa-secret': sessionSecret\n      },\n      body: JSON.stringify({\n        event_version: 1,\n        event_id: event.id ?? crypto.randomUUID(),\n        event_type: event.type ?? 'session.event',\n        timestamp: new Date().toISOString(),\n        session_id: sessionId,\n        project_id: projectId,\n        correlation_id: event.properties?.messageID ?? event.properties?.tool?.messageID ?? event.properties?.sessionID ?? undefined,\n        source: 'hook-sidecar',\n        payload: {\n          ...payload,\n          sourceTurnId: event.properties?.messageID ?? undefined,\n          externalSessionId: event.properties?.sessionID ?? undefined\n        }\n      })\n    })\n  }\n})\n`
+  const pluginContent = `const sessionId = process.env.STOA_SESSION_ID
+const projectId = process.env.STOA_PROJECT_ID
+const sessionSecret = process.env.STOA_SESSION_SECRET
+const webhookPort = process.env.STOA_WEBHOOK_PORT
+
+function toFailureReason(event) {
+  const raw = event.properties?.error ?? event.properties?.reason ?? null
+  if (typeof raw !== 'string') {
+    return 'provider_error'
+  }
+
+  const normalized = raw.toLowerCase()
+  if (normalized.includes('permission')) {
+    return 'permission_denied'
+  }
+  if (normalized.includes('rate')) {
+    return 'rate_limit'
+  }
+  if (normalized.includes('auth')) {
+    return 'authentication_failed'
+  }
+  return 'provider_error'
+}
+
+async function enrichWithMessages(client, event, body) {
+  if (event.type !== 'session.idle') return
+  if (!event.properties?.sessionID) return
+  try {
+    const result = await client.session.messages({ path: { id: event.properties.sessionID } })
+    if (result && result.data && Array.isArray(result.data)) {
+      const recent = result.data.slice(-10)
+      const summary = recent.map((msg) => {
+        const info = msg.info ?? {}
+        const role = info.role ?? 'unknown'
+        const parts = (msg.parts ?? []).map((p) => p.text ?? p.type ?? '').filter(Boolean).join(' ')
+        return { role, content: parts.slice(0, 500) }
+      })
+      const serialized = JSON.stringify(summary)
+      body.last_assistant_message = serialized.length > 10240 ? serialized.slice(0, 10240) : serialized
+    }
+  } catch {
+    // enrichment is best-effort, never block the event
+  }
+}
+
+async function sendEvent(body) {
+  if (!sessionId || !projectId || !sessionSecret) {
+    return
+  }
+
+  try {
+    await fetch('http://127.0.0.1:${context.webhookPort}/hooks/opencode', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-stoa-session-id': sessionId,
+        'x-stoa-project-id': projectId,
+        'x-stoa-secret': sessionSecret
+      },
+      body: JSON.stringify(body)
+    })
+  } catch {}
+}
+
+function buildEventBody(event) {
+  return {
+    hook_event_name: event.type,
+    session_id: event.properties?.sessionID ?? undefined,
+    turn_id: event.properties?.messageID ?? undefined,
+    tool_name: event.properties?.toolName ?? undefined,
+    tool_input: event.properties?.toolInput ?? undefined,
+    model: event.properties?.model ?? undefined,
+    last_assistant_message: undefined,
+    prompt_text: event.properties?.promptText ?? undefined,
+    provider_session_id: event.properties?.sessionID ?? undefined,
+    message_id: event.properties?.messageID ?? undefined
+  }
+}
+
+export const StoaStatusPlugin = async ({ client }) => ({
+  'tool.execute.before': async ({ event }) => {
+    const body = buildEventBody(event)
+    await sendEvent(body)
+  },
+  'tool.execute.after': async ({ event }) => {
+    const body = buildEventBody(event)
+    await sendEvent(body)
+  },
+  'session.created': async ({ event }) => {
+    const body = buildEventBody(event)
+    await sendEvent(body)
+  },
+  'session.idle': async ({ event }) => {
+    const body = buildEventBody(event)
+    await enrichWithMessages(client, event, body)
+    await sendEvent(body)
+  },
+  'session.error': async ({ event }) => {
+    const body = buildEventBody(event)
+    body.error = toFailureReason(event)
+    await sendEvent(body)
+  },
+  'message.updated': async ({ event }) => {
+    const body = buildEventBody(event)
+    await sendEvent(body)
+  },
+  'permission.asked': async ({ event }) => {
+    const body = buildEventBody(event)
+    await sendEvent(body)
+  },
+  'permission.replied': async ({ event }) => {
+    const body = buildEventBody(event)
+    const failed = Boolean(event.properties?.error)
+    if (failed) {
+      body.error = toFailureReason(event)
+    }
+    await sendEvent(body)
+  }
+})
+`
 
   await installManagedSidecar({
     rootDir: target.path,

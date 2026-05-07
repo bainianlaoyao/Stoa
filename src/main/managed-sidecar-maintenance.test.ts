@@ -96,8 +96,8 @@ describe('managed-sidecar-maintenance', () => {
       })
 
       const plugin = await readFile(join(projectDir, '.opencode', 'plugins', 'stoa-status.ts'), 'utf8')
-      expect(plugin).toContain('http://127.0.0.1:43127/events')
-      expect(plugin).toContain("intent: 'agent.turn_completed'")
+      expect(plugin).toContain('http://127.0.0.1:43127/hooks/opencode')
+      expect(plugin).toContain("'session.idle'")
       expect(plugin).toContain("'x-stoa-secret': sessionSecret")
     } finally {
       await rm(projectDir, { recursive: true, force: true })
