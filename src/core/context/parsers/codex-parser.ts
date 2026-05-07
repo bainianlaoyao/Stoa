@@ -83,7 +83,7 @@ function extractInputTexts(content: any[] | undefined): string[] {
   return content
     .filter((c: any) => c.type === 'input_text' && typeof c.text === 'string')
     .map((c: any) => c.text as string)
-    .filter((t: string) => !t.startsWith('<'))
+    .filter((t: string) => !t.startsWith('<') && !t.startsWith('# AGENTS.md'))
 }
 
 function extractOutputTexts(content: any[] | undefined): string[] {

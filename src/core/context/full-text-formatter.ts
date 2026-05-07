@@ -40,7 +40,7 @@ export function formatFullText(
             text: lines.join(SEPARATOR),
             nextCursor: encodeCursor(i),
             truncated: true,
-            totalTurns: turnsIncluded
+            totalTurns: turns.length
           }
         }
       } else {
@@ -48,7 +48,7 @@ export function formatFullText(
           text: lines.join(SEPARATOR),
           nextCursor: encodeCursor(i),
           truncated: true,
-          totalTurns: turnsIncluded
+          totalTurns: turns.length
         }
       }
     } else {
@@ -61,7 +61,7 @@ export function formatFullText(
   return {
     text: lines.join(SEPARATOR),
     truncated: false,
-    totalTurns: turnsIncluded
+    totalTurns: turns.length
   }
 }
 

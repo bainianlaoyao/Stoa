@@ -281,59 +281,98 @@ export function createLocalWebhookServer(options: LocalWebhookServerOptions = {}
     response.status(200).json(result)
   })
 
-  app.post('/hooks/claude-code', async (request, response) => {
-    const sessionId = request.header('x-stoa-session-id')
-    const projectId = request.header('x-stoa-project-id')
+  function createHookEndpoint(
+    adapt: (body: Record<string, unknown>, context: { sessionId: string; projectId: string }) => CanonicalSessionEvent | null,
+    debugLabel: string
+  ): express.RequestHandler {
+    return async (request, response) => {
+      const sessionId = request.header('x-stoa-session-id')
+      const projectId = request.header('x-stoa-project-id')
 
-    if (!sessionId || !projectId) {
-      response.status(400).json({ accepted: false, reason: 'invalid_hook_context' })
-      return
-    }
+      if (WEBHOOK_DEBUG) {
+        console.log(`[webhook-debug] ${debugLabel} hook request`, {
+          sessionId,
+          projectId,
+          hookEventName:
+            request.body && typeof request.body === 'object' && 'hook_event_name' in request.body
+              ? (request.body as Record<string, unknown>).hook_event_name
+              : null
+        })
+      }
 
-    const expectedSecret = options.getSessionSecret?.(sessionId) ?? null
-    if (!expectedSecret || request.header('x-stoa-secret') !== expectedSecret) {
-      response.status(401).json({ accepted: false, reason: 'invalid_secret' })
-      return
-    }
+      if (!sessionId || !projectId) {
+        response.status(400).json({ accepted: false, reason: 'invalid_hook_context' })
+        return
+      }
 
-    const body = request.body
-    if (!body || typeof body !== 'object') {
-      response.status(400).json({ accepted: false, reason: 'invalid_hook_event' })
-      return
-    }
+      const expectedSecret = options.getSessionSecret?.(sessionId) ?? null
+      if (!expectedSecret || request.header('x-stoa-secret') !== expectedSecret) {
+        if (WEBHOOK_DEBUG) {
+          console.log(`[webhook-debug] ${debugLabel} hook secret rejected`, { sessionId, projectId })
+        }
+        response.status(401).json({ accepted: false, reason: 'invalid_secret' })
+        return
+      }
 
-    let event: CanonicalSessionEvent | null
-    try {
-      event = adaptClaudeCodeHook(body as Record<string, unknown>, {
-        sessionId,
-        projectId
-      })
-    } catch (error) {
-      if (error instanceof InvalidHookEvidenceError) {
+      const body = request.body
+      if (!body || typeof body !== 'object') {
         response.status(400).json({ accepted: false, reason: 'invalid_hook_event' })
         return
       }
 
-      throw error
-    }
-    if (!event) {
-      response.status(204).send()
-      return
-    }
+      let event: CanonicalSessionEvent | null
+      try {
+        event = adapt(body as Record<string, unknown>, {
+          sessionId,
+          projectId
+        })
+      } catch (error) {
+        if (error instanceof InvalidHookEvidenceError) {
+          response.status(400).json({ accepted: false, reason: 'invalid_hook_event' })
+          return
+        }
 
-    if (!isCanonicalSessionEvent(event)) {
-      response.status(400).json({ accepted: false, reason: 'invalid_hook_event' })
-      return
-    }
+        throw error
+      }
+      if (!event) {
+        if (WEBHOOK_DEBUG) {
+          console.log(`[webhook-debug] ${debugLabel} hook ignored`, {
+            sessionId,
+            projectId,
+            hookEventName:
+              body && typeof body === 'object' && 'hook_event_name' in body
+                ? (body as Record<string, unknown>).hook_event_name
+                : null
+          })
+        }
+        response.status(204).send()
+        return
+      }
 
-    const result = await options.onEvent?.(event)
-    if (result === undefined || result === null) {
-      response.status(204).send()
-      return
-    }
+      if (!isCanonicalSessionEvent(event)) {
+        response.status(400).json({ accepted: false, reason: 'invalid_hook_event' })
+        return
+      }
 
-    response.status(200).json(result)
-  })
+      if (WEBHOOK_DEBUG) {
+        console.log(`[webhook-debug] ${debugLabel} hook accepted`, {
+          sessionId,
+          projectId,
+          eventType: event.event_type,
+          intent: event.payload.intent
+        })
+      }
+      const result = await options.onEvent?.(event)
+      if (result === undefined || result === null) {
+        response.status(204).send()
+        return
+      }
+
+      response.status(200).json(result)
+    }
+  }
+
+  app.post('/hooks/claude-code', createHookEndpoint(adaptClaudeCodeHook, 'claude-code'))
 
   app.post('/memory-notifications', async (request, response) => {
     const sessionId = request.header('x-stoa-session-id')
@@ -371,177 +410,8 @@ export function createLocalWebhookServer(options: LocalWebhookServerOptions = {}
     response.status(200).json(result)
   })
 
-  app.post('/hooks/codex', async (request, response) => {
-    const sessionId = request.header('x-stoa-session-id')
-    const projectId = request.header('x-stoa-project-id')
-
-    if (WEBHOOK_DEBUG) {
-      console.log('[webhook-debug] codex hook request', {
-        sessionId,
-        projectId,
-        hookEventName:
-          request.body && typeof request.body === 'object' && 'hook_event_name' in request.body
-            ? (request.body as Record<string, unknown>).hook_event_name
-            : null
-      })
-    }
-
-    if (!sessionId || !projectId) {
-      response.status(400).json({ accepted: false, reason: 'invalid_hook_context' })
-      return
-    }
-
-    const expectedSecret = options.getSessionSecret?.(sessionId) ?? null
-    if (!expectedSecret || request.header('x-stoa-secret') !== expectedSecret) {
-      if (WEBHOOK_DEBUG) {
-        console.log('[webhook-debug] codex hook secret rejected', { sessionId, projectId })
-      }
-      response.status(401).json({ accepted: false, reason: 'invalid_secret' })
-      return
-    }
-
-    const body = request.body
-    if (!body || typeof body !== 'object') {
-      response.status(400).json({ accepted: false, reason: 'invalid_hook_event' })
-      return
-    }
-
-    let event: CanonicalSessionEvent | null
-    try {
-      event = adaptCodexHook(body as Record<string, unknown>, {
-        sessionId,
-        projectId
-      })
-    } catch (error) {
-      if (error instanceof InvalidHookEvidenceError) {
-        response.status(400).json({ accepted: false, reason: 'invalid_hook_event' })
-        return
-      }
-
-      throw error
-    }
-    if (!event) {
-      if (WEBHOOK_DEBUG) {
-        console.log('[webhook-debug] codex hook ignored', {
-          sessionId,
-          projectId,
-          hookEventName:
-            body && typeof body === 'object' && 'hook_event_name' in body
-              ? (body as Record<string, unknown>).hook_event_name
-              : null
-        })
-      }
-      response.status(204).send()
-      return
-    }
-
-    if (!isCanonicalSessionEvent(event)) {
-      response.status(400).json({ accepted: false, reason: 'invalid_hook_event' })
-      return
-    }
-
-    if (WEBHOOK_DEBUG) {
-      console.log('[webhook-debug] codex hook accepted', {
-        sessionId,
-        projectId,
-        eventType: event.event_type,
-        intent: event.payload.intent
-      })
-    }
-    const result = await options.onEvent?.(event)
-    if (result === undefined || result === null) {
-      response.status(204).send()
-      return
-    }
-
-    response.status(200).json(result)
-  })
-
-  app.post('/hooks/opencode', async (request, response) => {
-    const sessionId = request.header('x-stoa-session-id')
-    const projectId = request.header('x-stoa-project-id')
-
-    if (WEBHOOK_DEBUG) {
-      console.log('[webhook-debug] opencode hook request', {
-        sessionId,
-        projectId,
-        hookEventName:
-          request.body && typeof request.body === 'object' && 'hook_event_name' in request.body
-            ? (request.body as Record<string, unknown>).hook_event_name
-            : null
-      })
-    }
-
-    if (!sessionId || !projectId) {
-      response.status(400).json({ accepted: false, reason: 'invalid_hook_context' })
-      return
-    }
-
-    const expectedSecret = options.getSessionSecret?.(sessionId) ?? null
-    if (!expectedSecret || request.header('x-stoa-secret') !== expectedSecret) {
-      if (WEBHOOK_DEBUG) {
-        console.log('[webhook-debug] opencode hook secret rejected', { sessionId, projectId })
-      }
-      response.status(401).json({ accepted: false, reason: 'invalid_secret' })
-      return
-    }
-
-    const body = request.body
-    if (!body || typeof body !== 'object') {
-      response.status(400).json({ accepted: false, reason: 'invalid_hook_event' })
-      return
-    }
-
-    let event: CanonicalSessionEvent | null
-    try {
-      event = adaptOpenCodeHook(body as Record<string, unknown>, {
-        sessionId,
-        projectId
-      })
-    } catch (error) {
-      if (error instanceof InvalidHookEvidenceError) {
-        response.status(400).json({ accepted: false, reason: 'invalid_hook_event' })
-        return
-      }
-
-      throw error
-    }
-    if (!event) {
-      if (WEBHOOK_DEBUG) {
-        console.log('[webhook-debug] opencode hook ignored', {
-          sessionId,
-          projectId,
-          hookEventName:
-            body && typeof body === 'object' && 'hook_event_name' in body
-              ? (body as Record<string, unknown>).hook_event_name
-              : null
-        })
-      }
-      response.status(204).send()
-      return
-    }
-
-    if (!isCanonicalSessionEvent(event)) {
-      response.status(400).json({ accepted: false, reason: 'invalid_hook_event' })
-      return
-    }
-
-    if (WEBHOOK_DEBUG) {
-      console.log('[webhook-debug] opencode hook accepted', {
-        sessionId,
-        projectId,
-        eventType: event.event_type,
-        intent: event.payload.intent
-      })
-    }
-    const result = await options.onEvent?.(event)
-    if (result === undefined || result === null) {
-      response.status(204).send()
-      return
-    }
-
-    response.status(200).json(result)
-  })
+  app.post('/hooks/codex', createHookEndpoint(adaptCodexHook, 'codex'))
+  app.post('/hooks/opencode', createHookEndpoint(adaptOpenCodeHook, 'opencode'))
 
   return {
     app,

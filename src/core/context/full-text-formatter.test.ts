@@ -55,7 +55,7 @@ describe('formatFullText', () => {
       { role: 'assistant', text: 'Response', timestamp: 2000 }
     ]
     const result = formatFullText(turns, { includeThinking: false, includeToolDetails: false })
-    expect(result.totalTurns).toBe(1)
+    expect(result.totalTurns).toBe(2)
     expect(result.text).not.toContain('[User]')
     expect(result.text).toContain('[Assistant]')
   })
@@ -71,7 +71,7 @@ describe('formatFullText', () => {
       { role: 'user', text: 'Next prompt', timestamp: 2000 }
     ]
     const result = formatFullText(turns, { includeThinking: false, includeToolDetails: false })
-    expect(result.totalTurns).toBe(1)
+    expect(result.totalTurns).toBe(2)
     expect(result.text).toContain('[User]\nNext prompt')
   })
 
@@ -84,7 +84,7 @@ describe('formatFullText', () => {
     expect(result.truncated).toBe(true)
     expect(result.nextCursor).toBeDefined()
     expect(result.text.length).toBeLessThanOrEqual(50)
-    expect(result.totalTurns).toBeLessThan(4)
+    expect(result.totalTurns).toBe(4)
   })
 
   it('resumes from cursor', () => {
@@ -131,5 +131,29 @@ describe('formatFullText', () => {
     // All user/assistant text should appear somewhere
     expect(allText).toContain('Fix the build error')
     expect(allText).toContain('missing semicolon')
+  })
+
+  it('reports full session turn count even when paginated', () => {
+    const manyTurns: NormalizedTurn[] = Array.from({ length: 20 }, (_, i) => ({
+      role: (i % 2 === 0 ? 'user' : 'assistant') as 'user' | 'assistant',
+      text: `Turn ${i}: some content here`,
+      timestamp: i * 1000
+    }))
+
+    const page1 = formatFullText(manyTurns, {
+      maxChars: 60,
+      includeThinking: false,
+      includeToolDetails: false
+    })
+    expect(page1.truncated).toBe(true)
+    expect(page1.totalTurns).toBe(20)
+
+    const page2 = formatFullText(manyTurns, {
+      maxChars: 60,
+      cursor: page1.nextCursor,
+      includeThinking: false,
+      includeToolDetails: false
+    })
+    expect(page2.totalTurns).toBe(20)
   })
 })
