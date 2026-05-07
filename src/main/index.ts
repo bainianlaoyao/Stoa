@@ -979,6 +979,54 @@ app.whenReady().then(async () => {
     }
   })
 
+  ipcMain.handle(IPC_CHANNELS.evidenceListSessionSnapshots, async (_event, sessionId: string) => {
+    if (!projectSessionManager) return []
+
+    const state = projectSessionManager.snapshot()
+    const session = state.sessions.find(s => s.id === sessionId)
+    if (!session) return []
+    const project = state.projects.find(p => p.id === session.projectId)
+    if (!project) return []
+    return evidenceStore.listSnapshots(project.path, sessionId)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.contextExportFullText, async (_event, sessionId: string, options: any) => {
+    if (!projectSessionManager || !runtimeController) {
+      return { text: '', truncated: false, totalTurns: 0 }
+    }
+    const snapshot = projectSessionManager.snapshot()
+    const session = snapshot.sessions.find(s => s.id === sessionId)
+    if (!session) {
+      return { text: '', truncated: false, totalTurns: 0 }
+    }
+
+    const project = snapshot.projects.find(p => p.id === session.projectId)
+    if (!project) {
+      return { text: '', truncated: false, totalTurns: 0 }
+    }
+
+    const terminalReplay = await runtimeController.getTerminalReplay(sessionId)
+
+    const { SessionContextExporter } = await import('@core/context/session-context-exporter')
+    const exporter = new SessionContextExporter()
+    return exporter.exportFullText(
+      {
+        sessionId: session.id,
+        type: session.type,
+        projectPath: project.path,
+        externalSessionId: session.externalSessionId,
+        createdAt: session.createdAt,
+        terminalReplay: terminalReplay || undefined
+      },
+      {
+        includeThinking: options.includeThinking ?? false,
+        includeToolDetails: options.includeToolDetails ?? false,
+        maxChars: options.maxChars,
+        cursor: options.cursor
+      }
+    )
+  })
+
   mainWindow = createMainWindow()
   await syncUpdateStateToWindow()
 
