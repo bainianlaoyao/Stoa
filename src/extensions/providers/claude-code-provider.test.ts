@@ -226,6 +226,50 @@ describe('claude-code provider', () => {
       await rm(workspaceDir, { recursive: true, force: true })
     }
   })
+
+  test('installSidecar removes legacy settings.local.json to avoid duplicate Stop hooks', async () => {
+    const workspaceDir = await mkdtemp(join(tmpdir(), 'stoa-claude-local-settings-'))
+    try {
+      await mkdir(join(workspaceDir, '.claude'), { recursive: true })
+      await writeFile(
+        join(workspaceDir, '.claude', 'settings.local.json'),
+        JSON.stringify({
+          hooks: {
+            Stop: [{
+              hooks: [{
+                type: 'http',
+                url: 'http://127.0.0.1:54198/hooks/claude-code'
+              }]
+            }]
+          }
+        }, null, 2),
+        'utf8'
+      )
+
+      const provider = createClaudeCodeProvider()
+      await provider.installSidecar({
+        session_id: 'session_claude_cleanup_local',
+        project_id: 'project_alpha',
+        path: workspaceDir,
+        title: 'Claude Alpha',
+        type: 'claude-code',
+        external_session_id: 'external-cleanup-local'
+      }, {
+        webhookPort: 43127,
+        sessionSecret: 'secret-env',
+        providerPort: 43128
+      })
+
+      await expect(readFile(join(workspaceDir, '.claude', 'settings.local.json'), 'utf8')).rejects.toThrow()
+      const content = await readFile(join(workspaceDir, '.claude', 'settings.json'), 'utf8')
+      expect(readHttpHook(content, 'Stop')).toMatchObject({
+        type: 'http',
+        url: 'http://127.0.0.1:43127/hooks/claude-code'
+      })
+    } finally {
+      await rm(workspaceDir, { recursive: true, force: true })
+    }
+  })
 })
 
 function readHttpHook(settingsJson: string, eventName: string): {

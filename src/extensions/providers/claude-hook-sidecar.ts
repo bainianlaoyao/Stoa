@@ -32,6 +32,7 @@ const CURRENT_ARTIFACTS = [
 ] as const
 const LEGACY_ARTIFACTS = [
   '.stoa-managed-sidecar.json',
+  '.claude/settings.local.json',
   '.claude/hooks/stoa-evolver-hook-bridge.cjs',
   '.claude/hooks/stoa-evolver-hook-bridge.cmd',
   '.claude/hooks/stoa-evolver-hook-bridge.sh',
