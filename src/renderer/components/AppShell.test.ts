@@ -258,7 +258,9 @@ describe('AppShell', () => {
       quitAndInstallUpdate: vi.fn().mockResolvedValue(undefined),
       dismissUpdate: vi.fn().mockResolvedValue(undefined),
       onUpdateState: vi.fn().mockReturnValue(() => {}),
-      uninstallSidecars: vi.fn().mockResolvedValue(undefined)
+      uninstallSidecars: vi.fn().mockResolvedValue(undefined),
+      contextExportFullText: vi.fn().mockResolvedValue({ text: '', truncated: false, totalTurns: 0 }),
+      contextExportSlimText: vi.fn().mockResolvedValue({ text: '', truncated: false, totalTurns: 0 })
     }
 
     window.stoa = stoaMock

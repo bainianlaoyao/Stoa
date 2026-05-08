@@ -337,7 +337,7 @@ function isNullableString(value: unknown): value is string | null {
 }
 
 function isProvider(value: unknown): value is MemoryRuntimeEvidenceProvider {
-  return value === 'claude-code' || value === 'codex'
+  return value === 'claude-code' || value === 'codex' || value === 'opencode'
 }
 
 function isPersistedSessionEvidenceMetadata(value: unknown): value is PersistedSessionEvidenceMetadata {

@@ -4,7 +4,11 @@ import type { MemoryRuntimeEvidence, MemoryRuntimeEvidenceProvider } from '@shar
 
 export class InvalidHookEvidenceError extends Error {
   constructor(provider: MemoryRuntimeEvidenceProvider) {
-    super(`Invalid ${provider === 'codex' ? 'Codex' : 'Claude'} hook evidence`)
+    const label =
+      provider === 'codex' ? 'Codex' :
+      provider === 'opencode' ? 'OpenCode' :
+      'Claude'
+    super(`Invalid ${label} hook evidence`)
   }
 }
 
@@ -92,6 +96,50 @@ export function adaptCodexHook(
   }
 }
 
+export function adaptOpenCodeHook(
+  body: Record<string, unknown>,
+  context: {
+    sessionId: string
+    projectId: string
+  }
+): CanonicalSessionEvent | null {
+  const hookEventName = typeof body.hook_event_name === 'string' ? body.hook_event_name : null
+  if (!hookEventName) {
+    return null
+  }
+
+  const hasError = 'error' in body && body.error !== undefined && body.error !== null
+  const patch = mapOpenCodeHookToPatch(hookEventName, hasError)
+  if (!patch) {
+    return null
+  }
+
+  const evidence = buildOpenCodeHookEvidence(body, hookEventName)
+  const snippet = stringField(body.last_assistant_message)
+  const externalSessionId = evidence.providerSessionId
+  const error = stringField(body.error)
+
+  return {
+    event_version: 1,
+    event_id: randomUUID(),
+    event_type: `opencode.${hookEventName}`,
+    timestamp: new Date().toISOString(),
+    session_id: context.sessionId,
+    project_id: context.projectId,
+    source: 'provider-adapter',
+    payload: {
+      ...withSourceTurnId(patch, evidence.turnId),
+      summary: hookEventName,
+      ...(evidence.model ? { model: evidence.model } : {}),
+      ...(snippet ? { snippet } : {}),
+      ...(evidence.toolName ? { toolName: evidence.toolName } : {}),
+      ...(error ? { error } : {}),
+      ...(externalSessionId ? { externalSessionId } : {})
+    },
+    evidence
+  }
+}
+
 function buildClaudeHookEvidence(
   body: Record<string, unknown>,
   hookEventName: string
@@ -144,6 +192,29 @@ function buildCodexHookEvidence(
   })
 }
 
+function buildOpenCodeHookEvidence(
+  body: Record<string, unknown>,
+  hookEventName: string
+): MemoryRuntimeEvidence {
+  return compactEvidence({
+    rawSource: {
+      provider: 'opencode',
+      channel: 'hook',
+      rawEventName: hookEventName
+    },
+    hookEventName,
+    providerSessionId: requiredOptionalStringField(body, 'provider_session_id', 'opencode'),
+    turnId:
+      requiredOptionalStringField(body, 'turn_id', 'opencode')
+      ?? requiredOptionalStringField(body, 'message_id', 'opencode'),
+    lastAssistantMessage: requiredOptionalStringField(body, 'last_assistant_message', 'opencode'),
+    promptText: requiredOptionalStringField(body, 'prompt_text', 'opencode'),
+    toolName: requiredOptionalStringField(body, 'tool_name', 'opencode'),
+    toolInput: isRecord(body.tool_input) ? body.tool_input : undefined,
+    model: requiredOptionalStringField(body, 'model', 'opencode')
+  })
+}
+
 type HookPatch = Pick<
   CanonicalSessionEvent['payload'],
   'intent' | 'blockingReason' | 'failureReason' | 'sourceTurnId'
@@ -191,6 +262,29 @@ function mapCodexHookToPatch(hookEventName: string): HookPatch | null {
       return { intent: 'agent.tool_completed' }
     case 'Stop':
       return { intent: 'agent.turn_completed' }
+    default:
+      return null
+  }
+}
+
+function mapOpenCodeHookToPatch(hookEventName: string, hasError: boolean): HookPatch | null {
+  switch (hookEventName) {
+    case 'tool.execute.before':
+      return { intent: 'agent.tool_started' }
+    case 'tool.execute.after':
+      return { intent: 'agent.tool_completed' }
+    case 'session.idle':
+      return { intent: 'agent.turn_completed' }
+    case 'permission.asked':
+      return { intent: 'agent.permission_requested', blockingReason: 'permission' }
+    case 'permission.replied':
+      return hasError
+        ? { intent: 'agent.turn_failed', failureReason: 'provider_error' }
+        : { intent: 'agent.permission_resolved' }
+    case 'session.error':
+      return { intent: 'agent.turn_failed', failureReason: 'provider_error' }
+    case 'session.created':
+      return { intent: 'runtime.alive' }
     default:
       return null
   }

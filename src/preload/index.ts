@@ -127,6 +127,15 @@ const api: RendererApi = {
   async uninstallSidecars(projectId: string) {
     return ipcRenderer.invoke(IPC_CHANNELS.sidecarUninstall, projectId)
   },
+  async listSessionEvidence(sessionId: string) {
+    return ipcRenderer.invoke(IPC_CHANNELS.evidenceListSessionSnapshots, sessionId) as Promise<SessionEvidenceSnapshot[]>
+  },
+  async contextExportFullText(sessionId: string, options: { includeThinking?: boolean; includeToolDetails?: boolean; maxChars?: number; cursor?: string }) {
+    return ipcRenderer.invoke(IPC_CHANNELS.contextExportFullText, sessionId, options) as Promise<{ text: string; nextCursor?: string; truncated: boolean; totalTurns: number }>
+  },
+  async contextExportSlimText(sessionId: string, options: { maxChars?: number; cursor?: string }) {
+    return ipcRenderer.invoke(IPC_CHANNELS.contextExportSlimText, sessionId, options) as Promise<{ text: string; nextCursor?: string; truncated: boolean; totalTurns: number }>
+  },
   onTerminalData(callback: (chunk: TerminalDataChunk) => void) {
     const handler = (_event: Electron.IpcRendererEvent, chunk: TerminalDataChunk) => callback(chunk)
     ipcRenderer.on(IPC_CHANNELS.terminalData, handler)

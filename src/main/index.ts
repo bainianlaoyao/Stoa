@@ -1291,6 +1291,33 @@ app.whenReady().then(async () => {
     }
   })
 
+  ipcMain.handle(IPC_CHANNELS.evidenceListSessionSnapshots, async (_event, sessionId: string) => {
+    if (!projectSessionManager) return []
+
+    const state = projectSessionManager.snapshot()
+    const session = state.sessions.find(s => s.id === sessionId)
+    if (!session) return []
+    const project = state.projects.find(p => p.id === session.projectId)
+    if (!project) return []
+    return evidenceStore.listSnapshots(project.path, sessionId)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.contextExportFullText, async (_event, sessionId: string, options?: { includeThinking?: boolean; includeToolDetails?: boolean; maxChars?: number; cursor?: string }) => {
+    if (!projectSessionManager || !runtimeController) {
+      return { text: '', truncated: false, totalTurns: 0 }
+    }
+    const { handleContextExportFullText } = await import('@core/context/session-context-exporter')
+    return handleContextExportFullText(sessionId, options ?? {}, { projectSessionManager, runtimeController })
+  })
+
+  ipcMain.handle(IPC_CHANNELS.contextExportSlimText, async (_event, sessionId: string, options?: { maxChars?: number; cursor?: string }) => {
+    if (!projectSessionManager) {
+      return { text: '', truncated: false, totalTurns: 0 }
+    }
+    const { handleContextExportSlimText } = await import('@core/context/session-context-exporter')
+    return handleContextExportSlimText(sessionId, options ?? {}, { projectSessionManager })
+  })
+
   mainWindow = createMainWindow()
   await syncUpdateStateToWindow()
 

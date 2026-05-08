@@ -1,4 +1,4 @@
-export type ObservedEventProvider = 'claude-code' | 'codex'
+export type ObservedEventProvider = 'claude-code' | 'codex' | 'opencode'
 export type ObservedEventChannel = 'hook' | 'notify'
 export type Consumer = ObservedEventProvider | 'opencode' | 'generic'
 export type InferencePurpose = 'distill' | 'llm-review'

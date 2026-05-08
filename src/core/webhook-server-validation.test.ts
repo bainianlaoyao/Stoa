@@ -471,7 +471,7 @@ describe('webhook event validation', () => {
     test.each([
       ['non-object evidence', 'bad'],
       ['missing raw source provider', { rawSource: { channel: 'hook', rawEventName: 'Stop' } }],
-      ['invalid raw source provider', { rawSource: { provider: 'opencode', channel: 'hook', rawEventName: 'Stop' } }],
+      ['invalid raw source provider', { rawSource: { provider: 'invalid-provider', channel: 'hook', rawEventName: 'Stop' } }],
       ['invalid raw source channel', { rawSource: { provider: 'codex', channel: 'sidecar', rawEventName: 'Stop' } }],
       ['missing raw event name', { rawSource: { provider: 'codex', channel: 'hook' } }],
       ['blank raw event name', { rawSource: { provider: 'codex', channel: 'notify', rawEventName: '   ' } }],
