@@ -48,10 +48,12 @@ function updateSessionTitle(event: Event): void {
   emit('update:sessionTitle', (event.target as HTMLInputElement).value)
 }
 
-const sessionTypeOptions = listProviderDescriptors().map((descriptor) => ({
-  value: descriptor.sessionType,
-  label: descriptor.displayName
-}))
+const sessionTypeOptions = listProviderDescriptors()
+  .filter((descriptor) => descriptor.sessionType !== 'hermes-agent')
+  .map((descriptor) => ({
+    value: descriptor.sessionType,
+    label: descriptor.displayName
+  }))
 const validSessionTypes = new Set<SessionType>(sessionTypeOptions.map((option) => option.value))
 
 function updateSessionType(value: string): void {

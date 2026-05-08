@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { ProjectSessionManager } from '@core/project-session-manager'
+import { useHermesStore } from '@renderer/stores/hermes'
 import { useWorkspaceStore } from '@renderer/stores/workspaces'
 import { DEFAULT_SETTINGS } from '@shared/project-session'
 import { buildSessionPresenceSnapshot } from '@shared/observability-projection'
@@ -77,6 +78,94 @@ describe('E2E: Frontend Store Projection', () => {
 
   afterEach(() => {
     Reflect.deleteProperty(window, 'stoa')
+  })
+
+  describe('Hermes surface store projection', () => {
+    test('Hermes store hydrates independently from work-session hierarchy', async () => {
+      const store = useHermesStore()
+
+      store.hydrate({
+        activeHermesSessionId: 'hermes_1',
+        sessions: [{
+          id: 'hermes_1',
+          title: 'global-triage',
+          status: 'running',
+          capabilityLevel: 3,
+          pendingProposalCount: 2,
+          activeTargetCount: 4,
+          lastSummary: 'Collecting blocked sessions.',
+          lastRisk: 'Two sessions are editing the same module.',
+          resumeSessionId: 'resume-hermes-1',
+          createdAt: '2026-05-07T08:00:00.000Z',
+          updatedAt: '2026-05-07T08:05:00.000Z',
+          lastActivatedAt: '2026-05-07T08:05:00.000Z'
+        }],
+        inspectorTarget: {
+          kind: 'app'
+        }
+      })
+
+      expect(store.activeHermesSession?.id).toBe('hermes_1')
+      expect(store.sessions).toHaveLength(1)
+      expect(store.inspectorTarget).toEqual({ kind: 'app' })
+    })
+
+    test('Hermes proposal hydration updates pending counts and selected proposal projection independently from work-session hierarchy', async () => {
+      const store = useHermesStore()
+
+      store.hydrate({
+        activeHermesSessionId: 'hermes_1',
+        sessions: [{
+          id: 'hermes_1',
+          title: 'global-triage',
+          status: 'running',
+          capabilityLevel: 3,
+          pendingProposalCount: 0,
+          activeTargetCount: 4,
+          lastSummary: 'Collecting blocked sessions.',
+          lastRisk: 'Two sessions are editing the same module.',
+          resumeSessionId: 'resume-hermes-1',
+          createdAt: '2026-05-07T08:00:00.000Z',
+          updatedAt: '2026-05-07T08:05:00.000Z',
+          lastActivatedAt: '2026-05-07T08:05:00.000Z'
+        }],
+        inspectorTarget: {
+          kind: 'proposal',
+          proposalId: 'proposal_1'
+        }
+      })
+
+      store.hydrateProposals([{
+        id: 'proposal_1',
+        hermesSessionId: 'hermes_1',
+        kind: 'prompt',
+        targetSessionIds: ['session_1'],
+        riskLevel: 3,
+        status: 'pending_approval',
+        summary: 'Prompt injection for session_1',
+        reason: 'Freeform prompt injection requires explicit approval.',
+        promptText: 'Refactor and edit the code now.',
+        presetName: null,
+        snapshot: {
+          sessions: [{
+            sessionId: 'session_1',
+            lastStateSequence: 17,
+            turnEpoch: 4,
+            updatedAt: '2026-05-07T08:05:00.000Z'
+          }]
+        },
+        createdAt: '2026-05-07T08:05:00.000Z',
+        updatedAt: '2026-05-07T08:05:00.000Z',
+        approvedAt: null,
+        rejectedAt: null,
+        executedAt: null,
+        executionResult: null
+      }])
+
+      expect(store.selectedProposal?.id).toBe('proposal_1')
+      expect(store.activeHermesSession?.pendingProposalCount).toBe(1)
+      expect(store.pendingProposals).toHaveLength(1)
+    })
   })
 
   // ── Phase 1: Hydration from real backend state ─────────────────────

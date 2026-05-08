@@ -56,10 +56,21 @@ const PROVIDER_DESCRIPTORS: Record<SessionType, ProviderDescriptor> = {
     supportsStructuredEvents: true,
     seedsExternalSessionId: true,
     prefersShellWrap: false
+  },
+  'hermes-agent': {
+    sessionType: 'hermes-agent',
+    providerId: 'hermes-agent',
+    executableName: 'hermes-agent',
+    displayName: 'Hermes',
+    titlePrefix: 'hermes',
+    supportsResume: true,
+    supportsStructuredEvents: true,
+    seedsExternalSessionId: false,
+    prefersShellWrap: true
   }
 }
 
-export const SESSION_PROVIDER_ORDER: SessionType[] = ['opencode', 'codex', 'claude-code', 'shell']
+export const SESSION_PROVIDER_ORDER: SessionType[] = ['opencode', 'codex', 'claude-code', 'hermes-agent', 'shell']
 
 export function getProviderDescriptorBySessionType(type: SessionType): ProviderDescriptor {
   return PROVIDER_DESCRIPTORS[type]

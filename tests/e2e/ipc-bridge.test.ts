@@ -1,5 +1,8 @@
 import { describe, test, expect, beforeEach } from 'vitest'
 import { IPC_CHANNELS } from '@core/ipc-channels'
+import { HermesCommandDispatcher } from '@core/hermes-command-dispatcher'
+import { HermesManager } from '@core/hermes-manager'
+import { HermesProposalStore } from '@core/hermes-proposal-store'
 import { ProjectSessionManager } from '@core/project-session-manager'
 import { createTestWorkspace, createTestGlobalStatePath, tempDirs } from './helpers'
 import type {
@@ -18,6 +21,7 @@ import type {
   ProjectObservabilitySnapshot,
   SessionPresenceSnapshot
 } from '@shared/observability'
+import type { CreateHermesSessionRequest, HermesBootstrapState, HermesInspectorTarget, HermesProposal } from '@shared/hermes'
 
 class FakeIpcBus {
   private handlers = new Map<string, (...args: any[]) => Promise<any>>()
@@ -63,6 +67,16 @@ const RENDERER_API_INVOKE_CHANNELS = [
   IPC_CHANNELS.workspaceOpen,
   IPC_CHANNELS.projectSetActive,
   IPC_CHANNELS.sessionSetActive,
+  IPC_CHANNELS.hermesBootstrap,
+  IPC_CHANNELS.hermesSessionCreate,
+  IPC_CHANNELS.hermesSessionSetActive,
+  IPC_CHANNELS.hermesSessionClose,
+  IPC_CHANNELS.hermesProposalList,
+  IPC_CHANNELS.hermesProposalGet,
+  IPC_CHANNELS.hermesProposalApprove,
+  IPC_CHANNELS.hermesProposalReject,
+  IPC_CHANNELS.hermesProposalDispatch,
+  IPC_CHANNELS.hermesInspectorSetTarget,
   IPC_CHANNELS.observabilityGetSessionPresence,
   IPC_CHANNELS.observabilityGetProject,
   IPC_CHANNELS.observabilityGetApp,
@@ -155,6 +169,16 @@ function createPreloadApi(bus: FakeIpcBus): RendererApi {
     openWorkspace: (request: OpenWorkspaceRequest) => bus.invoke(IPC_CHANNELS.workspaceOpen, request),
     setActiveProject: (projectId: string) => bus.invoke(IPC_CHANNELS.projectSetActive, projectId),
     setActiveSession: (sessionId: string) => bus.invoke(IPC_CHANNELS.sessionSetActive, sessionId),
+    getHermesBootstrapState: () => bus.invoke(IPC_CHANNELS.hermesBootstrap),
+    createHermesSession: (request: CreateHermesSessionRequest) => bus.invoke(IPC_CHANNELS.hermesSessionCreate, request),
+    setActiveHermesSession: (sessionId: string) => bus.invoke(IPC_CHANNELS.hermesSessionSetActive, sessionId),
+    closeHermesSession: (sessionId: string) => bus.invoke(IPC_CHANNELS.hermesSessionClose, sessionId),
+    listHermesProposals: () => bus.invoke(IPC_CHANNELS.hermesProposalList),
+    getHermesProposal: (proposalId: string) => bus.invoke(IPC_CHANNELS.hermesProposalGet, proposalId),
+    approveHermesProposal: (proposalId: string) => bus.invoke(IPC_CHANNELS.hermesProposalApprove, proposalId),
+    rejectHermesProposal: (proposalId: string, reason?: string) => bus.invoke(IPC_CHANNELS.hermesProposalReject, proposalId, reason),
+    dispatchHermesProposal: (proposalId: string) => bus.invoke(IPC_CHANNELS.hermesProposalDispatch, proposalId),
+    setHermesInspectorTarget: (target: HermesInspectorTarget | null) => bus.invoke(IPC_CHANNELS.hermesInspectorSetTarget, target),
     getSessionPresence: (sessionId: string) => bus.invoke(IPC_CHANNELS.observabilityGetSessionPresence, sessionId),
     getProjectObservability: (projectId: string) => bus.invoke(IPC_CHANNELS.observabilityGetProject, projectId),
     getAppObservability: () => bus.invoke(IPC_CHANNELS.observabilityGetApp),
@@ -180,6 +204,17 @@ async function registerMainHandlers(
     webhookPort: null,
     globalStatePath
   })
+  const hermes = await HermesManager.create({ statePath: `${globalStatePath}.hermes.json` })
+  const proposals = new HermesProposalStore()
+  const dispatcher = new HermesCommandDispatcher({
+    snapshotSource: manager,
+    sessionInput: {
+      async send() {
+        return
+      }
+    },
+    proposals
+  })
 
   bus.handle(IPC_CHANNELS.projectBootstrap, async () => {
     return manager.snapshot()
@@ -203,6 +238,52 @@ async function registerMainHandlers(
 
   bus.handle(IPC_CHANNELS.sessionSetActive, async (_event, sessionId: string) => {
     await manager.setActiveSession(sessionId)
+  })
+
+  bus.handle(IPC_CHANNELS.hermesBootstrap, async (): Promise<HermesBootstrapState> => {
+    const snapshot = hermes.snapshot()
+    return {
+      activeHermesSessionId: snapshot.activeHermesSessionId,
+      sessions: snapshot.sessions,
+      inspectorTarget: snapshot.inspectorTarget
+    }
+  })
+
+  bus.handle(IPC_CHANNELS.hermesSessionCreate, async (_event, payload: CreateHermesSessionRequest) => {
+    return await hermes.createSession(payload)
+  })
+
+  bus.handle(IPC_CHANNELS.hermesSessionSetActive, async (_event, sessionId: string) => {
+    await hermes.setActiveSession(sessionId)
+  })
+
+  bus.handle(IPC_CHANNELS.hermesSessionClose, async (_event, sessionId: string) => {
+    await hermes.closeSession(sessionId)
+  })
+
+  bus.handle(IPC_CHANNELS.hermesProposalList, async (): Promise<HermesProposal[]> => {
+    return proposals.list()
+  })
+
+  bus.handle(IPC_CHANNELS.hermesProposalGet, async (_event, proposalId: string): Promise<HermesProposal | null> => {
+    return proposals.get(proposalId)
+  })
+
+  bus.handle(IPC_CHANNELS.hermesProposalApprove, async (_event, proposalId: string): Promise<HermesProposal | null> => {
+    return await proposals.markApproved(proposalId)
+  })
+
+  bus.handle(IPC_CHANNELS.hermesProposalReject, async (_event, proposalId: string, reason?: string): Promise<HermesProposal | null> => {
+    return await proposals.markRejected(proposalId, reason)
+  })
+
+  bus.handle(IPC_CHANNELS.hermesProposalDispatch, async (_event, proposalId: string): Promise<HermesProposal | null> => {
+    await dispatcher.dispatchProposal(proposalId)
+    return proposals.get(proposalId)
+  })
+
+  bus.handle(IPC_CHANNELS.hermesInspectorSetTarget, async (_event, target: HermesInspectorTarget | null) => {
+    await hermes.setInspectorTarget(target)
   })
 
   bus.handle(IPC_CHANNELS.observabilityGetSessionPresence, async () => defaultPresenceSnapshot)
@@ -279,6 +360,16 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
       expect(IPC_CHANNELS.sessionCreate).toBe('session:create')
       expect(IPC_CHANNELS.workspaceOpen).toBe('workspace:open')
       expect(IPC_CHANNELS.sessionSetActive).toBe('session:set-active')
+      expect(IPC_CHANNELS.hermesBootstrap).toBe('hermes:bootstrap')
+      expect(IPC_CHANNELS.hermesSessionCreate).toBe('hermes:session-create')
+      expect(IPC_CHANNELS.hermesSessionSetActive).toBe('hermes:session-set-active')
+      expect(IPC_CHANNELS.hermesSessionClose).toBe('hermes:session-close')
+      expect(IPC_CHANNELS.hermesProposalList).toBe('hermes:proposal-list')
+      expect(IPC_CHANNELS.hermesProposalGet).toBe('hermes:proposal-get')
+      expect(IPC_CHANNELS.hermesProposalApprove).toBe('hermes:proposal-approve')
+      expect(IPC_CHANNELS.hermesProposalReject).toBe('hermes:proposal-reject')
+      expect(IPC_CHANNELS.hermesProposalDispatch).toBe('hermes:proposal-dispatch')
+      expect(IPC_CHANNELS.hermesInspectorSetTarget).toBe('hermes:inspector-set-target')
       expect(IPC_CHANNELS.observabilityGetSessionPresence).toBe('observability:get-session-presence')
       expect(IPC_CHANNELS.observabilityGetProject).toBe('observability:get-project-observability')
       expect(IPC_CHANNELS.observabilityGetApp).toBe('observability:get-app-observability')
@@ -313,6 +404,16 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
       expect(state).toHaveProperty('terminalWebhookPort')
       expect(Array.isArray(state.projects)).toBe(true)
       expect(Array.isArray(state.sessions)).toBe(true)
+    })
+
+    test('getHermesBootstrapState round-trip returns an isolated Hermes bootstrap payload', async () => {
+      const state = await api.getHermesBootstrapState?.()
+
+      expect(state).toEqual({
+        activeHermesSessionId: null,
+        sessions: [],
+        inspectorTarget: { kind: 'app' }
+      })
     })
 
     test('createProject round-trip creates real project and returns ProjectSummary', async () => {
@@ -372,6 +473,123 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
       expect(state1.sessions).toHaveLength(1)
       expect(state1.projects[0]!.id).toBe(project.id)
       expect(state1.sessions[0]!.id).toBe(session.id)
+    })
+
+    test('createHermesSession / setActiveHermesSession / closeHermesSession round-trip updates isolated Hermes state', async () => {
+      const created = await api.createHermesSession?.({
+        title: 'global-triage',
+        capabilityLevel: 2
+      })
+
+      expect(created?.id).toMatch(/^hermes_/)
+      expect(created?.resumeSessionId).toBeTruthy()
+
+      await api.setActiveHermesSession?.(created!.id)
+      let bootstrap = await api.getHermesBootstrapState?.()
+      expect(bootstrap?.activeHermesSessionId).toBe(created!.id)
+
+      await api.closeHermesSession?.(created!.id)
+      bootstrap = await api.getHermesBootstrapState?.()
+      expect(bootstrap?.sessions.find((session) => session.id === created!.id)?.status).toBe('closed')
+    })
+
+    test('Hermes proposal and inspector IPC round-trip can list approve reject dispatch and persist inspector target', async () => {
+      const workspaceDir = await createTestWorkspace('ipc-hermes-proposal-')
+      const project = await api.createProject({
+        name: 'proposal_host',
+        path: workspaceDir
+      })
+      const workSession = await api.createSession({
+        projectId: project.id,
+        type: 'codex',
+        title: 'Worker'
+      })
+      const hermesSession = await api.createHermesSession?.({
+        title: 'global-triage',
+        capabilityLevel: 3
+      })
+
+      const proposalStore = new HermesProposalStore()
+      const proposal = proposalStore.createPromptProposal({
+        hermesSessionId: hermesSession!.id,
+        targetSessionId: workSession.id,
+        text: 'Refactor and edit the code now.',
+        targetSession: workSession
+      })
+      bus.handle(IPC_CHANNELS.hermesProposalList, async () => proposalStore.list())
+      bus.handle(IPC_CHANNELS.hermesProposalGet, async (_event, proposalId: string) => proposalStore.get(proposalId))
+      bus.handle(IPC_CHANNELS.hermesProposalApprove, async (_event, proposalId: string) => await proposalStore.markApproved(proposalId))
+      bus.handle(IPC_CHANNELS.hermesProposalReject, async (_event, proposalId: string, reason?: string) => await proposalStore.markRejected(proposalId, reason))
+      bus.handle(IPC_CHANNELS.hermesProposalDispatch, async (_event, proposalId: string) => {
+        const liveDispatcher = new HermesCommandDispatcher({
+          snapshotSource: manager,
+          sessionInput: {
+            async send() {
+              return
+            }
+          },
+          proposals: proposalStore
+        })
+        await liveDispatcher.dispatchProposal(proposalId)
+        return proposalStore.get(proposalId)
+      })
+
+      await expect(api.listHermesProposals?.()).resolves.toEqual([
+        expect.objectContaining({
+          id: proposal.id,
+          status: 'pending_approval'
+        })
+      ])
+      await expect(api.getHermesProposal?.(proposal.id)).resolves.toEqual(
+        expect.objectContaining({
+          id: proposal.id,
+          promptText: 'Refactor and edit the code now.'
+        })
+      )
+      await expect(api.approveHermesProposal?.(proposal.id)).resolves.toEqual(
+        expect.objectContaining({
+          id: proposal.id,
+          status: 'approved'
+        })
+      )
+
+      const proposal2 = proposalStore.createPromptProposal({
+        hermesSessionId: hermesSession!.id,
+        targetSessionId: workSession.id,
+        text: 'Unsafe dispatch.',
+        targetSession: workSession
+      })
+      await expect(api.rejectHermesProposal?.(proposal2.id, 'Unsafe dispatch.')).resolves.toEqual(
+        expect.objectContaining({
+          id: proposal2.id,
+          status: 'rejected',
+          executionResult: 'Unsafe dispatch.'
+        })
+      )
+
+      const proposal3 = proposalStore.createPromptProposal({
+        hermesSessionId: hermesSession!.id,
+        targetSessionId: workSession.id,
+        text: 'Run the prompt.',
+        targetSession: workSession
+      })
+      await expect(api.dispatchHermesProposal?.(proposal3.id)).resolves.toEqual(
+        expect.objectContaining({
+          id: proposal3.id,
+          status: 'completed'
+        })
+      )
+
+      await api.setHermesInspectorTarget?.({
+        kind: 'proposal',
+        proposalId: proposal3.id
+      })
+
+      const bootstrap = await api.getHermesBootstrapState?.()
+      expect(bootstrap?.inspectorTarget).toEqual({
+        kind: 'proposal',
+        proposalId: proposal3.id
+      })
     })
 
     test('getTerminalReplay round-trip returns the current session backlog payload', async () => {
@@ -531,6 +749,16 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
         openWorkspace: IPC_CHANNELS.workspaceOpen,
         setActiveProject: IPC_CHANNELS.projectSetActive,
         setActiveSession: IPC_CHANNELS.sessionSetActive,
+        getHermesBootstrapState: IPC_CHANNELS.hermesBootstrap,
+        createHermesSession: IPC_CHANNELS.hermesSessionCreate,
+        setActiveHermesSession: IPC_CHANNELS.hermesSessionSetActive,
+        closeHermesSession: IPC_CHANNELS.hermesSessionClose,
+        listHermesProposals: IPC_CHANNELS.hermesProposalList,
+        getHermesProposal: IPC_CHANNELS.hermesProposalGet,
+        approveHermesProposal: IPC_CHANNELS.hermesProposalApprove,
+        rejectHermesProposal: IPC_CHANNELS.hermesProposalReject,
+        dispatchHermesProposal: IPC_CHANNELS.hermesProposalDispatch,
+        setHermesInspectorTarget: IPC_CHANNELS.hermesInspectorSetTarget,
         getSessionPresence: IPC_CHANNELS.observabilityGetSessionPresence,
         getProjectObservability: IPC_CHANNELS.observabilityGetProject,
         getAppObservability: IPC_CHANNELS.observabilityGetApp,
@@ -547,11 +775,11 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
       }
 
       const methods = Object.keys(apiMethodToChannel)
-      expect(methods).toHaveLength(19)
+      expect(methods).toHaveLength(29)
 
       const channelValues = Object.values(apiMethodToChannel)
       const uniqueChannels = new Set(channelValues)
-      expect(uniqueChannels.size).toBe(19)
+      expect(uniqueChannels.size).toBe(29)
 
       for (const channel of channelValues) {
         expect(typeof channel).toBe('string')

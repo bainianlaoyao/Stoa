@@ -154,4 +154,89 @@ describe('launchTrackedSessionRuntime', () => {
     expect(launched).toBe(true)
     expect(startRuntime).toHaveBeenCalledTimes(1)
   })
+
+  test('launches Hermes sessions when the manager snapshot provides a Hermes-scoped entry', async () => {
+    const provider = { providerId: 'hermes-agent' }
+    const getProvider = vi.fn(() => provider)
+    const resolveRuntimePaths = vi.fn(async () => ({
+      shellPath: 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+      providerPath: 'hermes-agent',
+      claudeDangerouslySkipPermissions: false
+    }))
+    const issueSessionSecret = vi.fn(() => 'secret-hermes')
+    const startRuntime = vi.fn(async () => {})
+
+    const launched = await launchTrackedSessionRuntime({
+      sessionId: 'hermes_session_1',
+      manager: {
+        snapshot() {
+          return {
+            activeProjectId: null,
+            activeSessionId: null,
+            terminalWebhookPort: null,
+            projects: [{
+              id: 'stoa-hermes',
+              name: 'Hermes',
+              path: 'D:/Data/DEV/ultra_simple_panel',
+              createdAt: '2026-05-07T08:00:00.000Z',
+              updatedAt: '2026-05-07T08:00:00.000Z'
+            }],
+            sessions: [{
+              id: 'hermes_session_1',
+              projectId: 'stoa-hermes',
+              type: 'hermes-agent',
+              runtimeState: 'created',
+              turnState: 'idle',
+              turnEpoch: 0,
+              lastTurnOutcome: 'none',
+              hasUnseenCompletion: false,
+              runtimeExitCode: null,
+              runtimeExitReason: null,
+              lastStateSequence: 0,
+              blockingReason: null,
+              failureReason: null,
+              title: 'global-triage',
+              summary: 'Waiting for Hermes to start',
+              recoveryMode: 'resume-external',
+              externalSessionId: 'resume-hermes-1',
+              createdAt: '2026-05-07T08:00:00.000Z',
+              updatedAt: '2026-05-07T08:00:00.000Z',
+              lastActivatedAt: null,
+              archived: false
+            }]
+          }
+        }
+      } as never,
+      webhookPort: 43127,
+      ptyHost: { start: vi.fn(() => ({ runtimeId: 'hermes_session_1' })) } as never,
+      runtimeController: {
+        markRuntimeStarting: vi.fn(async () => {}),
+        markRuntimeAlive: vi.fn(async () => {}),
+        markRuntimeExited: vi.fn(async () => {}),
+        markRuntimeFailedToStart: vi.fn(async () => {}),
+        appendTerminalData: vi.fn(async () => {})
+      },
+      sessionEventBridge: {
+        issueSessionSecret
+      } as never,
+      resolveRuntimePaths,
+      getProvider: getProvider as never,
+      startRuntime
+    })
+
+    expect(launched).toBe(true)
+    expect(resolveRuntimePaths).toHaveBeenCalledWith('hermes-agent')
+    expect(getProvider).toHaveBeenCalledWith('hermes-agent')
+    expect(startRuntime).toHaveBeenCalledWith(
+      expect.objectContaining({
+        session: expect.objectContaining({
+          id: 'hermes_session_1',
+          type: 'hermes-agent',
+          externalSessionId: 'resume-hermes-1',
+          sessionSecret: 'secret-hermes'
+        }),
+        providerPath: 'hermes-agent'
+      })
+    )
+  })
 })

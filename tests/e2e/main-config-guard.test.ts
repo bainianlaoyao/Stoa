@@ -179,6 +179,16 @@ describe('E2E: Main Process Config Guard', () => {
         ['archiveSession', 'sessionArchive'],
         ['restoreSession', 'sessionRestore'],
         ['listArchivedSessions', 'sessionListArchived'],
+        ['getHermesBootstrapState', 'hermesBootstrap'],
+        ['createHermesSession', 'hermesSessionCreate'],
+        ['setActiveHermesSession', 'hermesSessionSetActive'],
+        ['closeHermesSession', 'hermesSessionClose'],
+        ['listHermesProposals', 'hermesProposalList'],
+        ['getHermesProposal', 'hermesProposalGet'],
+        ['approveHermesProposal', 'hermesProposalApprove'],
+        ['rejectHermesProposal', 'hermesProposalReject'],
+        ['dispatchHermesProposal', 'hermesProposalDispatch'],
+        ['setHermesInspectorTarget', 'hermesInspectorSetTarget'],
         ['getSettings', 'settingsGet'],
         ['setSetting', 'settingsSet'],
         ['pickFolder', 'dialogPickFolder'],
@@ -308,6 +318,16 @@ describe('E2E: Main Process Config Guard', () => {
         'archiveSession',
         'restoreSession',
         'listArchivedSessions',
+        'getHermesBootstrapState',
+        'createHermesSession',
+        'setActiveHermesSession',
+        'closeHermesSession',
+        'listHermesProposals',
+        'getHermesProposal',
+        'approveHermesProposal',
+        'rejectHermesProposal',
+        'dispatchHermesProposal',
+        'setHermesInspectorTarget',
         'getUpdateState',
         'checkForUpdates',
         'downloadUpdate',
@@ -380,6 +400,16 @@ describe('E2E: Main Process Config Guard', () => {
       expect(invMap.get('archiveSession')).toBe('session:archive')
       expect(invMap.get('restoreSession')).toBe('session:restore')
       expect(invMap.get('listArchivedSessions')).toBe('session:list-archived')
+      expect(invMap.get('getHermesBootstrapState')).toBe('hermes:bootstrap')
+      expect(invMap.get('createHermesSession')).toBe('hermes:session-create')
+      expect(invMap.get('setActiveHermesSession')).toBe('hermes:session-set-active')
+      expect(invMap.get('closeHermesSession')).toBe('hermes:session-close')
+      expect(invMap.get('listHermesProposals')).toBe('hermes:proposal-list')
+      expect(invMap.get('getHermesProposal')).toBe('hermes:proposal-get')
+      expect(invMap.get('approveHermesProposal')).toBe('hermes:proposal-approve')
+      expect(invMap.get('rejectHermesProposal')).toBe('hermes:proposal-reject')
+      expect(invMap.get('dispatchHermesProposal')).toBe('hermes:proposal-dispatch')
+      expect(invMap.get('setHermesInspectorTarget')).toBe('hermes:inspector-set-target')
       expect(invMap.get('getUpdateState')).toBe('update:get-state')
       expect(invMap.get('checkForUpdates')).toBe('update:check')
       expect(invMap.get('downloadUpdate')).toBe('update:download')
@@ -427,6 +457,10 @@ describe('E2E: Main Process Config Guard', () => {
 
     it('preload registers listener for update:state channel', () => {
       expect(preloadSource).toMatch(/ipcRenderer\.on\(\s*IPC_CHANNELS\.updateState/)
+    })
+
+    it('preload registers listener for hermes:session-event channel', () => {
+      expect(preloadSource).toMatch(/ipcRenderer\.on\(\s*IPC_CHANNELS\.hermesSessionEvent/)
     })
 
     it('preload registers listener for memory:notification channel', () => {

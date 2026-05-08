@@ -75,6 +75,23 @@ const CommandSurfaceStub = defineComponent({
   }
 })
 
+const HermesSurfaceStub = defineComponent({
+  name: 'HermesSurface',
+  inheritAttrs: false,
+  setup(_props, { attrs }) {
+    return () =>
+      h(
+        'section',
+        mergeProps(attrs, {
+          'data-surface': 'hermes',
+          'data-testid': 'surface.hermes',
+          'aria-label': 'Hermes surface'
+        }),
+        [h('h2', 'Hermes')]
+      )
+  }
+})
+
 const ArchiveSurfaceStub = defineComponent({
   name: 'ArchiveSurface',
   inheritAttrs: false,
@@ -136,6 +153,7 @@ function mountAppShell(props: {
       plugins: [createPinia()],
       stubs: {
         CommandSurface: CommandSurfaceStub,
+        HermesSurface: HermesSurfaceStub,
         ArchiveSurface: ArchiveSurfaceStub,
         SettingsSurface: SettingsSurfaceStub
       }
@@ -258,12 +276,14 @@ describe('AppShell', () => {
     const labels = wrapper.findAll('[data-activity-item]').map((node) => node.attributes('data-activity-item'))
     const navigation = wrapper.get('nav[aria-label="Global activity"]')
     const commandButton = wrapper.get('button[aria-label="Command panel"]')
+    const hermesButton = wrapper.get('button[aria-label="Hermes"]')
     const archiveButton = wrapper.get('button[aria-label="Archive"]')
     const settingsButton = wrapper.get('button[aria-label="Settings"]')
 
-    expect(labels).toEqual(['command', 'archive', 'settings'])
+    expect(labels).toEqual(['command', 'hermes', 'archive', 'settings'])
     expect(navigation).toBeTruthy()
     expect(commandButton.attributes('aria-current')).toBe('true')
+    expect(hermesButton.attributes('aria-current')).toBeUndefined()
     expect(archiveButton.attributes('aria-current')).toBeUndefined()
     expect(settingsButton.attributes('aria-current')).toBeUndefined()
     expect(wrapper.find('[data-command-surface="true"]').exists()).toBe(true)
@@ -293,6 +313,27 @@ describe('AppShell', () => {
     expect(wrapper.find('.terminal-empty-state').exists()).toBe(false)
     expect(wrapper.find('[data-testid="terminal-xterm"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="terminal-status-bar"]').exists()).toBe(false)
+  })
+
+  it('keeps command surface mounted and hidden when the Hermes activity is selected', async () => {
+    const wrapper = mountAppShell({
+      hierarchy: [],
+      activeProjectId: null,
+      activeSessionId: null,
+      activeProject: null,
+      activeSession: null
+    })
+
+    const commandSurface = wrapper.get('[data-surface="command"][aria-label="Command surface"]')
+
+    await wrapper.get('button[aria-label="Hermes"]').trigger('click')
+
+    expect(wrapper.get('[data-surface="hermes"][aria-label="Hermes surface"]')).toBeTruthy()
+    expect(wrapper.get('button[aria-label="Hermes"]').attributes('aria-current')).toBe('true')
+    expect(wrapper.get('[data-surface="command"][aria-label="Command surface"]').element).toBe(commandSurface.element)
+    expect(wrapper.get('[data-surface="command"][aria-label="Command surface"]').attributes('style')).toContain('display: none;')
+    expect(wrapper.find('[data-surface="command"][aria-label="Command surface"]').exists()).toBe(true)
+    expect(wrapper.findComponent({ name: 'CommandSurface' }).props('visible')).toBe(false)
   })
 
   it('keeps command surface mounted and hidden when the archive activity is selected', async () => {
@@ -361,9 +402,10 @@ describe('AppShell', () => {
       const items = wrapper.findAll('[data-activity-item]')
       const icons = wrapper.findAll('[data-activity-icon]')
 
-      expect(items).toHaveLength(3)
-      expect(icons).toHaveLength(3)
+      expect(items).toHaveLength(4)
+      expect(icons).toHaveLength(4)
       expect(wrapper.get('[data-activity-item="command"]').find('[data-activity-icon]').exists()).toBe(true)
+      expect(wrapper.get('[data-activity-item="hermes"]').find('[data-activity-icon]').exists()).toBe(true)
       expect(wrapper.get('[data-activity-item="archive"]').find('[data-activity-icon]').exists()).toBe(true)
       expect(wrapper.get('[data-activity-item="settings"]').find('[data-activity-icon]').exists()).toBe(true)
     }
@@ -371,6 +413,9 @@ describe('AppShell', () => {
     expectStableIcons()
 
     await wrapper.get('button[aria-label="Settings"]').trigger('click')
+    expectStableIcons()
+
+    await wrapper.get('button[aria-label="Hermes"]').trigger('click')
     expectStableIcons()
 
     await wrapper.get('button[aria-label="Archive"]').trigger('click')

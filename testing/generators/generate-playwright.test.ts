@@ -4,6 +4,7 @@ import { sessionRestoreJourney } from '../journeys/session-restore.journey'
 import { archiveTopology } from '../topology/archive.topology'
 import {
   generateClaudeLifecyclePlaywrightSkeleton,
+  generateHermesSurfaceSessionFlowPlaywrightSkeleton,
   generatePlaywrightSkeleton,
   generateWorkspaceQuickAccessPlaywrightSkeleton
 } from './generate-playwright'
@@ -84,5 +85,18 @@ describe('playwright skeleton generator', () => {
     expect(generated).toContain("app.page.getByTestId('workspace.open-file-manager').click()")
     expect(generated).toContain("{ sessionId, target: 'ide' }")
     expect(generated).toContain("{ sessionId, target: 'file-manager' }")
+  })
+
+  it('generates a deterministic Hermes surface session flow skeleton', () => {
+    const generated = generateHermesSurfaceSessionFlowPlaywrightSkeleton()
+
+    expect(generated).toContain('AUTO-GENERATED FILE. DO NOT EDIT.')
+    expect(generated).toContain("id: 'journey.hermes.surface.session-flow'")
+    expect(generated).toContain("behaviorIds: ['hermes.surface.session-flow']")
+    expect(generated).toContain("app.page.locator('[data-activity-item=\"hermes\"]').click()")
+    expect(generated).toContain("app.page.getByTestId('surface.hermes')")
+    expect(generated).toContain("const initialCount = await app.page.getByTestId('hermes.session.item').count()")
+    expect(generated).toContain("app.page.getByTestId('hermes.session.create').click()")
+    expect(generated).toContain("app.page.getByTestId('hermes.session.item')).toHaveCount(initialCount + 1)")
   })
 })

@@ -121,10 +121,10 @@ describe('project/session shared contracts', () => {
     expect(projectSessions.sessions[0]?.turn_state).toBe('idle')
   })
 
-  it('supports shell, opencode, codex, and claude-code session types', () => {
-    const sessionTypes: SessionType[] = ['shell', 'opencode', 'codex', 'claude-code']
+  it('supports shell, opencode, codex, claude-code, and hermes-agent session types', () => {
+    const sessionTypes: SessionType[] = ['shell', 'opencode', 'codex', 'claude-code', 'hermes-agent']
 
-    expect(sessionTypes).toEqual(['shell', 'opencode', 'codex', 'claude-code'])
+    expect(sessionTypes).toEqual(['shell', 'opencode', 'codex', 'claude-code', 'hermes-agent'])
     expect(getProviderDescriptorBySessionType('claude-code')).toMatchObject({
       providerId: 'claude-code',
       executableName: 'claude',
@@ -136,10 +136,18 @@ describe('project/session shared contracts', () => {
       executableName: 'codex',
       supportsResume: true
     })
+    expect(getProviderDescriptorBySessionType('hermes-agent')).toMatchObject({
+      providerId: 'hermes-agent',
+      executableName: 'hermes-agent',
+      displayName: 'Hermes',
+      supportsResume: true,
+      supportsStructuredEvents: true
+    })
     expect(listProviderDescriptors().map((descriptor) => descriptor.sessionType)).toEqual([
       'opencode',
       'codex',
       'claude-code',
+      'hermes-agent',
       'shell'
     ])
   })

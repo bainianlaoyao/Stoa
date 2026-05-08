@@ -1,6 +1,7 @@
 import type { CanonicalSessionEvent, ProviderCommand, ProviderCommandContext, SessionType } from '@shared/project-session'
 import { claudeCodeProvider } from './claude-code-provider'
 import { codexProvider } from './codex-provider'
+import { hermesAgentProvider } from './hermes-agent-provider'
 import { localShellProvider } from './local-shell-provider'
 import { opencodeProvider } from './opencode-provider'
 
@@ -40,7 +41,8 @@ const providers = new Map<string, ProviderDefinition>([
   [localShellProvider.providerId, localShellProvider],
   [opencodeProvider.providerId, opencodeProvider],
   [codexProvider.providerId, codexProvider],
-  [claudeCodeProvider.providerId, claudeCodeProvider]
+  [claudeCodeProvider.providerId, claudeCodeProvider],
+  [hermesAgentProvider.providerId, hermesAgentProvider]
 ])
 
 export function getProvider(providerId: string): ProviderDefinition {

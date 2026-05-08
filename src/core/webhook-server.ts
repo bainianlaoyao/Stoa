@@ -79,6 +79,7 @@ export interface LocalWebhookServerOptions {
     message: string
   }) => Promise<unknown> | unknown
   getSessionSecret?: (sessionId: string) => string | null
+  configureApp?: (app: Express) => void
   port?: number
 }
 
@@ -252,6 +253,7 @@ function isMemoryNotificationPayload(value: unknown): value is Pick<
 export function createLocalWebhookServer(options: LocalWebhookServerOptions = {}): LocalWebhookServer {
   const app = express()
   app.use(express.json())
+  options.configureApp?.(app)
 
   let server: import('node:http').Server | null = null
   const port = options.port ?? 0

@@ -78,14 +78,15 @@ function createContext(overrides: Partial<ProviderCommandContext> = {}): Provide
 
 describe('E2E: Provider Integration', () => {
   describe('Provider registry', () => {
-    test('listProviders returns local-shell opencode codex and claude-code providers', () => {
+    test('listProviders returns local-shell opencode codex claude-code and hermes-agent providers', () => {
       const providers = listProviders()
       const ids = providers.map(p => p.providerId)
       expect(ids).toContain('local-shell')
       expect(ids).toContain('opencode')
       expect(ids).toContain('codex')
       expect(ids).toContain('claude-code')
-      expect(providers).toHaveLength(4)
+      expect(ids).toContain('hermes-agent')
+      expect(providers).toHaveLength(5)
     })
 
     test('getProvider returns local shell provider', () => {
@@ -106,6 +107,11 @@ describe('E2E: Provider Integration', () => {
     test('getProvider returns claude-code provider', () => {
       const provider = getProvider('claude-code')
       expect(provider.providerId).toBe('claude-code')
+    })
+
+    test('getProvider returns hermes-agent provider', () => {
+      const provider = getProvider('hermes-agent')
+      expect(provider.providerId).toBe('hermes-agent')
     })
 
     test('getProvider falls back to local-shell for unknown provider', () => {
