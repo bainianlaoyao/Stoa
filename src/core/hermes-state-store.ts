@@ -1,4 +1,4 @@
-import { access, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { access, copyFile, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { homedir } from 'node:os'
 import { createAtomicTempFilePath } from './state-store'
@@ -266,35 +266,99 @@ async function replaceFileAtomically(tempFilePath: string, filePath: string): Pr
   }
 }
 
+async function writeJsonAtomicallyUnlocked(filePath: string, payload: unknown): Promise<void> {
+  await mkdir(dirname(filePath), { recursive: true })
+  const tempFilePath = createAtomicTempFilePath(filePath)
+
+  try {
+    await writeFile(tempFilePath, JSON.stringify(payload, null, 2), 'utf-8')
+    await replaceFileAtomically(tempFilePath, filePath)
+  } finally {
+    await rm(tempFilePath, { force: true })
+  }
+}
+
 async function writeJsonAtomically(filePath: string, payload: unknown): Promise<void> {
   await withFileAccess(filePath, async () => {
-    await mkdir(dirname(filePath), { recursive: true })
-    const tempFilePath = createAtomicTempFilePath(filePath)
-
-    try {
-      await writeFile(tempFilePath, JSON.stringify(payload, null, 2), 'utf-8')
-      await replaceFileAtomically(tempFilePath, filePath)
-    } finally {
-      await rm(tempFilePath, { force: true })
-    }
+    await writeJsonAtomicallyUnlocked(filePath, payload)
   })
+}
+
+function toNormalizedHermesState(value: unknown): PersistedHermesStateV1 | null {
+  if (isValidHermesState(value)) {
+    return value
+  }
+
+  if (typeof value !== 'object' || value === null) {
+    return null
+  }
+
+  if (!('version' in value) || value.version !== 1) {
+    return null
+  }
+
+  if (!('active_hermes_session_id' in value) || (value.active_hermes_session_id !== null && typeof value.active_hermes_session_id !== 'string')) {
+    return null
+  }
+
+  if (!('sessions' in value) || !Array.isArray(value.sessions) || !value.sessions.every(isValidPersistedHermesSession)) {
+    return null
+  }
+
+  const inspectorTarget = 'inspector_target' in value && isValidInspectorTarget(value.inspector_target)
+    ? value.inspector_target
+    : structuredClone(DEFAULT_HERMES_STATE.inspector_target)
+
+  return {
+    version: 1,
+    active_hermes_session_id: value.active_hermes_session_id,
+    sessions: value.sessions,
+    proposals: 'proposals' in value && Array.isArray(value.proposals) && value.proposals.every(isValidPersistedHermesProposal)
+      ? value.proposals
+      : [],
+    action_logs: 'action_logs' in value && Array.isArray(value.action_logs) && value.action_logs.every(isValidPersistedHermesActionLog)
+      ? value.action_logs
+      : [],
+    inspector_target: inspectorTarget
+  }
+}
+
+async function backupInvalidHermesState(filePath: string): Promise<void> {
+  const backupPath = `${filePath}.invalid.${Date.now()}.bak`
+  await copyFile(filePath, backupPath)
+}
+
+async function resetInvalidHermesState(filePath: string): Promise<PersistedHermesStateV1> {
+  await backupInvalidHermesState(filePath)
+  const fallback = structuredClone(DEFAULT_HERMES_STATE)
+  await writeJsonAtomicallyUnlocked(filePath, fallback)
+  return fallback
 }
 
 async function readHermesStateUnlocked(filePath: string): Promise<PersistedHermesStateV1> {
   try {
     const raw = await readFile(filePath, 'utf-8')
-    const parsed = JSON.parse(raw) as unknown
-    if (!isValidHermesState(parsed)) {
-      throw new Error('Invalid Hermes state')
+    let parsed: unknown
+
+    try {
+      parsed = JSON.parse(raw) as unknown
+    } catch {
+      return await resetInvalidHermesState(filePath)
     }
-    return parsed
+
+    const normalized = toNormalizedHermesState(parsed)
+    if (normalized) {
+      if (!isValidHermesState(parsed)) {
+        await backupInvalidHermesState(filePath)
+        await writeJsonAtomicallyUnlocked(filePath, normalized)
+      }
+      return normalized
+    }
+
+    return await resetInvalidHermesState(filePath)
   } catch (error) {
     if (getErrorCode(error) === 'ENOENT') {
       return structuredClone(DEFAULT_HERMES_STATE)
-    }
-
-    if (error instanceof Error && error.message === 'Invalid Hermes state') {
-      throw error
     }
 
     throw error
