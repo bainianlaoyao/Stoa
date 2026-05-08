@@ -6,10 +6,18 @@ import type {
   SessionPresenceSnapshot
 } from './observability'
 import type { MemoryRuntimeEvidence } from './memory-runtime'
+import type { SessionEvidenceSnapshot } from './memory-runtime'
 import type { BlockingReason } from '@shared/observability'
 import type { TerminalSettings } from './terminal-settings'
+import type {
+  CreateHermesSessionRequest,
+  HermesBootstrapState,
+  HermesInspectorTarget,
+  HermesProposal,
+  HermesSessionEvent,
+} from './hermes'
 
-export type SessionType = 'shell' | 'opencode' | 'codex' | 'claude-code'
+export type SessionType = 'shell' | 'opencode' | 'codex' | 'claude-code' | 'hermes-agent'
 export type EvolverInferenceProvider = 'claude-code'
 export type EvolverExecutionMode = 'workspace-shell'
 export type SessionRecoveryMode = 'fresh-shell' | 'resume-external'
@@ -316,6 +324,17 @@ export interface RendererApi {
   contextExportFullText: (sessionId: string, options: { includeThinking?: boolean; includeToolDetails?: boolean; maxChars?: number; cursor?: string }) => Promise<{ text: string; nextCursor?: string; truncated: boolean; totalTurns: number }>
   contextExportSlimText: (sessionId: string, options: { maxChars?: number; cursor?: string }) => Promise<{ text: string; nextCursor?: string; truncated: boolean; totalTurns: number }>
   onUpdateState: (callback: (state: UpdateState) => void) => () => void
+  getHermesBootstrapState?: () => Promise<HermesBootstrapState>
+  createHermesSession?: (request: CreateHermesSessionRequest) => Promise<import('./hermes').HermesSessionSummary>
+  setActiveHermesSession?: (sessionId: string) => Promise<void>
+  closeHermesSession?: (sessionId: string) => Promise<void>
+  listHermesProposals?: () => Promise<HermesProposal[]>
+  getHermesProposal?: (proposalId: string) => Promise<HermesProposal | null>
+  approveHermesProposal?: (proposalId: string) => Promise<HermesProposal | null>
+  rejectHermesProposal?: (proposalId: string, reason?: string) => Promise<HermesProposal | null>
+  dispatchHermesProposal?: (proposalId: string) => Promise<HermesProposal | null>
+  setHermesInspectorTarget?: (target: HermesInspectorTarget | null) => Promise<void>
+  onHermesSessionEvent?: (callback: (event: HermesSessionEvent) => void) => () => void
 }
 
 export interface CanonicalSessionEvent {

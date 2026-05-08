@@ -1,4 +1,4 @@
-import type { ProviderCommand, SessionRuntimeState, TurnState } from '@shared/project-session'
+import type { ProviderCommand, SessionRuntimeState, SessionType, TurnState } from '@shared/project-session'
 import { getProviderDescriptorBySessionType } from '@shared/provider-descriptors'
 import type { ProviderDefinition, ProviderRuntimeTarget } from '@extensions/providers'
 import { wrapCommandForShell } from './shell-command'
@@ -27,7 +27,7 @@ export interface StartSessionRuntimeOptions {
     projectId: string
     path: string
     title: string
-    type: 'shell' | 'opencode' | 'codex' | 'claude-code'
+    type: SessionType
     runtimeState: SessionRuntimeState
     turnState: TurnState
     externalSessionId: string | null

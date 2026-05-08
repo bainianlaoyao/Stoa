@@ -244,6 +244,7 @@ export default {
 
   activityBar: {
     command: '\u547D\u4EE4\u9762\u677F',
+    hermes: 'Hermes',
     archive: '\u5F52\u6863',
     settings: '\u8BBE\u7F6E'
   },

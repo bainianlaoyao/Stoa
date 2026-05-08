@@ -22,6 +22,7 @@
     "package:release": "electron-builder --config electron-builder.yml --publish always",
     "rebuild:native": "node scripts/rebuild-node-pty.mjs",
     "generate:icons": "node scripts/generate-icons.mjs",
+    "stoa-ctl": "tsx --tsconfig tsconfig.node.json tools/stoa-ctl/index.ts",
     "verify:icons": "node scripts/validate-ico.mjs build/icons/icon.ico",
     "verify:packaging": "node scripts/verify-packaging-baseline.mjs",
     "verify:release-smoke": "node scripts/smoke-packaged-release.mjs",

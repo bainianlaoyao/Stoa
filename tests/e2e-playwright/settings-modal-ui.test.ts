@@ -1,6 +1,12 @@
 import { test, expect } from '@playwright/test'
 import { cleanupStateDir, launchElectronApp } from './fixtures/electron-app'
 
+async function openCommandSurfaceNewProject(app: Awaited<ReturnType<typeof launchElectronApp>>): Promise<void> {
+  await app.page.locator('[data-activity-item="command"]').click()
+  await expect(app.page.getByTestId('command-panel')).toBeVisible()
+  await app.page.getByTestId('command-panel').getByTestId('workspace.new-project').click()
+}
+
 test.describe('Settings tabs', () => {
   test('renders 4 tab buttons', async () => {
     const app = await launchElectronApp()
@@ -102,7 +108,7 @@ test.describe('Modal (BaseModal via NewProjectModal)', () => {
     try {
       await expect(app.page.getByTestId('command-panel')).toBeVisible()
 
-      await app.page.locator('[data-testid="workspace.new-project"]').click()
+      await openCommandSurfaceNewProject(app)
       await expect(app.page.getByTestId('modal-panel')).toBeVisible()
       await expect(app.page.getByTestId('modal-title')).toContainText('New project')
     } finally {
@@ -115,7 +121,7 @@ test.describe('Modal (BaseModal via NewProjectModal)', () => {
   test('modal has role="dialog" and aria-modal', async () => {
     const app = await launchElectronApp()
     try {
-      await app.page.locator('[data-testid="workspace.new-project"]').click()
+      await openCommandSurfaceNewProject(app)
       await expect(app.page.getByTestId('modal-panel')).toBeVisible()
       const dialog = app.page.getByTestId('modal-root')
       await expect(dialog).toHaveAttribute('role', 'dialog')
@@ -130,7 +136,7 @@ test.describe('Modal (BaseModal via NewProjectModal)', () => {
   test('close button closes the modal', async () => {
     const app = await launchElectronApp()
     try {
-      await app.page.locator('[data-testid="workspace.new-project"]').click()
+      await openCommandSurfaceNewProject(app)
       await expect(app.page.getByTestId('modal-panel')).toBeVisible()
 
       await app.page.getByTestId('modal-close').click()
@@ -145,7 +151,7 @@ test.describe('Modal (BaseModal via NewProjectModal)', () => {
   test('Escape key closes the modal', async () => {
     const app = await launchElectronApp()
     try {
-      await app.page.locator('[data-testid="workspace.new-project"]').click()
+      await openCommandSurfaceNewProject(app)
       await expect(app.page.getByTestId('modal-panel')).toBeVisible()
 
       await app.page.keyboard.press('Escape')
@@ -160,7 +166,7 @@ test.describe('Modal (BaseModal via NewProjectModal)', () => {
   test('aria-labelledby links title to dialog', async () => {
     const app = await launchElectronApp()
     try {
-      await app.page.locator('[data-testid="workspace.new-project"]').click()
+      await openCommandSurfaceNewProject(app)
       await expect(app.page.getByTestId('modal-panel')).toBeVisible()
 
       const dialog = app.page.getByTestId('modal-root')

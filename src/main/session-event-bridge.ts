@@ -4,6 +4,7 @@ import { SessionEvidenceStore } from '@core/memory/session-evidence-store'
 import { TurnMaintenancePhaseError, TurnMaintenanceRunner } from '@core/memory/turn-maintenance-runner'
 import { createTranscriptSnapshot } from '@core/memory/transcript-snapshot'
 import { createLocalWebhookServer } from '@core/webhook-server'
+import type { Express } from 'express'
 import type { ProjectSessionManager } from '@core/project-session-manager'
 import type {
   CanonicalSessionEvent,
@@ -41,6 +42,7 @@ interface SessionEventBridgeOptions {
   turnMaintenanceRunner?: TurnMaintenanceRunner
   createRuntimeStateStore?: (projectPath: string) => RuntimeStateStoreLike
   captureEvidence?: boolean
+  configureServerApp?: (app: Express) => void
 }
 
 export class SessionEventBridge {
@@ -58,6 +60,7 @@ export class SessionEventBridge {
   private readonly turnMaintenanceRunner?: TurnMaintenanceRunner
   private readonly createRuntimeStateStore: (projectPath: string) => RuntimeStateStoreLike
   private readonly captureEvidence: boolean
+  private readonly configureServerApp?: (app: Express) => void
   private server: ReturnType<typeof createLocalWebhookServer> | null = null
   private port: number | null = null
 
@@ -81,6 +84,7 @@ export class SessionEventBridge {
     this.turnMaintenanceRunner = options.turnMaintenanceRunner
     this.createRuntimeStateStore = options.createRuntimeStateStore ?? ((projectPath) => new RuntimeStateStore(projectPath))
     this.captureEvidence = options.captureEvidence !== false
+    this.configureServerApp = options.configureServerApp
   }
 
   async start(): Promise<number> {
@@ -108,7 +112,8 @@ export class SessionEventBridge {
             createdAt: this.nowIso()
           })
           return null
-        }
+        },
+        configureApp: this.configureServerApp
       })
     }
 

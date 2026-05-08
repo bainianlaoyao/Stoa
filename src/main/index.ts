@@ -10,6 +10,13 @@ import type { ListObservationEventsOptions } from '@core/observation-store'
 import { ObservabilityService } from '@core/observability-service'
 import { ProjectSessionManager } from '@core/project-session-manager'
 import { detectShell, detectProvider, detectVscode } from '@core/settings-detector'
+import { HermesCommandDispatcher } from '@core/hermes-command-dispatcher'
+import { HermesContextAssembler } from '@core/hermes-context-assembler'
+import { createHermesControlServer } from '@core/hermes-control-server'
+import { HermesManager } from '@core/hermes-manager'
+import { SessionEvidenceStore } from '@core/memory/session-evidence-store'
+import { HermesProposalStore } from '@core/hermes-proposal-store'
+import { resolveHermesStateFilePath } from '@core/hermes-state-store'
 import { openWorkspace } from '@core/workspace-launcher'
 import { resolveRuntimePaths as resolveProviderRuntimePaths } from '@core/provider-path-resolver'
 import { getProvider } from '@extensions/providers'
@@ -28,6 +35,7 @@ import type {
   CreateSessionRequest,
   OpenWorkspaceRequest
 } from '@shared/project-session'
+import type { CreateHermesSessionRequest, HermesSessionSummary } from '@shared/hermes'
 import type { UpdateState } from '@shared/update-state'
 import type { PtyHost } from '@core/pty-host'
 
@@ -40,6 +48,8 @@ let sessionInputRouter: SessionInputRouter | null = null
 let observationStore: InMemoryObservationStore | null = null
 let observabilityService: ObservabilityService | null = null
 let updateService: UpdateService | null = null
+let hermesManager: HermesManager | null = null
+let evidenceStore: SessionEvidenceStore | null = null
 const e2eWorkspaceOpenRequests: OpenWorkspaceRequest[] = []
 let isQuittingAfterBridgeStop = false
 const pendingE2EPickFolders: Array<string | null> = []
@@ -326,6 +336,15 @@ function pushUpdateState(state: UpdateState): void {
   }
 }
 
+function pushHermesSessionEvent(session: HermesSessionSummary): void {
+  const win = mainWindow
+  if (!win || win.isDestroyed()) {
+    return
+  }
+
+  win.webContents.send(IPC_CHANNELS.hermesSessionEvent, { session })
+}
+
 function pushObservabilitySnapshotsForSession(sessionId: string): void {
   if (!mainWindow || mainWindow.isDestroyed() || !projectSessionManager || !observabilityService) {
     return
@@ -418,8 +437,12 @@ app.whenReady().then(async () => {
     webhookPort: null,
     globalStatePath: e2eGlobalStatePath
   })
+  hermesManager = await HermesManager.create({
+    statePath: resolveHermesStateFilePath(e2eGlobalStatePath)
+  })
   observationStore = new InMemoryObservationStore()
   observabilityService = new ObservabilityService(observationStore)
+  evidenceStore = new SessionEvidenceStore()
 
   syncObservabilitySessions()
 
@@ -470,8 +493,63 @@ app.whenReady().then(async () => {
     },
     observabilityService
   )
-  sessionEventBridge = new SessionEventBridge(projectSessionManager, runtimeController, observabilityService, {
-    captureEvidence: false
+  const activeProjectSessionManager = projectSessionManager
+  const activeRuntimeController = runtimeController
+  const activeObservationStore = observationStore
+  const activeObservabilityService = observabilityService
+  const activeSessionInputRouter = sessionInputRouter
+  const activeHermesManager = hermesManager
+  const hermesProposalStore = await HermesProposalStore.create({
+    statePath: resolveHermesStateFilePath(e2eGlobalStatePath)
+  })
+  const hermesContextAssembler = new HermesContextAssembler({
+    snapshotSource: activeProjectSessionManager,
+    getSessionPresence(sessionId) {
+      return activeObservabilityService?.getSessionPresence(sessionId) ?? null
+    },
+    listSessionEvents(sessionId, options) {
+      return activeObservationStore?.listSessionEvents(sessionId, {
+        limit: options?.limit ?? 100,
+        cursor: options?.cursor,
+        categories: options?.categories,
+        includeEphemeral: options?.includeEphemeral ?? true
+      }) ?? {
+        events: [],
+        nextCursor: null
+      }
+    },
+    async getTerminalReplay(sessionId) {
+      return await activeRuntimeController?.getTerminalReplay(sessionId) ?? ''
+    }
+  })
+  const hermesCommandDispatcher = new HermesCommandDispatcher({
+    snapshotSource: activeProjectSessionManager,
+    sessionInput: {
+      async send(sessionId, data) {
+        await activeSessionInputRouter?.send(sessionId, data)
+      }
+    },
+    proposals: hermesProposalStore
+  })
+  sessionEventBridge = new SessionEventBridge(activeProjectSessionManager, activeRuntimeController, activeObservabilityService, {
+    captureEvidence: false,
+    configureServerApp(app) {
+      const hermesControlServer = createHermesControlServer({
+        app,
+        getSessionSecret(sessionId) {
+          return sessionEventBridge?.debugSnapshotSessionSecrets()[sessionId] ?? null
+        },
+        hermesSessionSource: activeHermesManager!,
+        snapshotSource: activeProjectSessionManager,
+        getSessionPresence(sessionId) {
+          return activeObservabilityService?.getSessionPresence(sessionId) ?? null
+        },
+        contextAssembler: hermesContextAssembler,
+        dispatcher: hermesCommandDispatcher,
+        proposals: hermesProposalStore
+      })
+      void hermesControlServer
+    }
   })
   updateService = new UpdateService({
     app,
@@ -567,6 +645,131 @@ app.whenReady().then(async () => {
       await runtimeController.markRuntimeFailedToStart(sessionId, `启动失败: ${err instanceof Error ? err.message : String(err)}`)
       return false
     }
+  }
+
+  async function launchHermesRuntimeWithGuard(
+    sessionId: string,
+    source: 'hermes-create' | 'hermes-restore'
+  ): Promise<boolean> {
+    if (!hermesManager || !ptyHost || !runtimeController || !sessionEventBridge || !projectSessionManager) {
+      return false
+    }
+
+    const hermesSession = hermesManager.getSession(sessionId)
+    if (!hermesSession) {
+      return false
+    }
+
+    const workingDirectory = projectSessionManager.snapshot().projects[0]?.path ?? process.cwd()
+    const runtimeManager = {
+      snapshot() {
+        return {
+          activeProjectId: 'stoa-hermes',
+          activeSessionId: sessionId,
+          terminalWebhookPort: projectSessionManager?.snapshot().terminalWebhookPort ?? null,
+          projects: [{
+            id: 'stoa-hermes',
+            name: 'Hermes',
+            path: workingDirectory,
+            createdAt: hermesSession.createdAt,
+            updatedAt: hermesSession.updatedAt
+          }],
+          sessions: [{
+            id: hermesSession.id,
+            projectId: 'stoa-hermes',
+            type: 'hermes-agent' as const,
+            runtimeState: hermesSession.status === 'failed'
+              ? 'failed_to_start'
+              : hermesSession.status === 'closed'
+                ? 'exited'
+                : hermesSession.status === 'created'
+                  ? 'created'
+                  : hermesSession.status === 'starting'
+                    ? 'starting'
+                    : 'alive',
+            turnState: hermesSession.status === 'running' ? 'running' : 'idle',
+            turnEpoch: 0,
+            lastTurnOutcome: 'none' as const,
+            hasUnseenCompletion: false,
+            runtimeExitCode: null,
+            runtimeExitReason: hermesSession.status === 'closed' ? 'clean' : null,
+            lastStateSequence: 0,
+            blockingReason: hermesSession.status === 'waiting_approval' ? 'permission' : null,
+            failureReason: hermesSession.status === 'failed' ? 'failed_to_start' : null,
+            title: hermesSession.title,
+            summary: hermesSession.lastSummary,
+            recoveryMode: 'resume-external' as const,
+            externalSessionId: hermesSession.resumeSessionId,
+            createdAt: hermesSession.createdAt,
+            updatedAt: hermesSession.updatedAt,
+            lastActivatedAt: hermesSession.lastActivatedAt,
+            archived: false
+          }]
+        }
+      }
+    }
+
+    const runtimeHooks = {
+      async markRuntimeStarting(targetSessionId: string, summary: string, externalSessionId: string | null) {
+        await hermesManager?.updateSession(targetSessionId, {
+          status: 'starting',
+          lastSummary: summary,
+          resumeSessionId: externalSessionId
+        })
+        const next = hermesManager?.getSession(targetSessionId)
+        if (next) {
+          pushHermesSessionEvent(next)
+        }
+      },
+      async markRuntimeAlive(targetSessionId: string, externalSessionId: string | null) {
+        await hermesManager?.updateSession(targetSessionId, {
+          status: 'running',
+          resumeSessionId: externalSessionId
+        })
+        const next = hermesManager?.getSession(targetSessionId)
+        if (next) {
+          pushHermesSessionEvent(next)
+        }
+      },
+      async markRuntimeExited(targetSessionId: string, _exitCode: number | null, summary: string) {
+        await hermesManager?.updateSession(targetSessionId, {
+          status: 'idle',
+          lastSummary: summary
+        })
+        const next = hermesManager?.getSession(targetSessionId)
+        if (next) {
+          pushHermesSessionEvent(next)
+        }
+      },
+      async markRuntimeFailedToStart(targetSessionId: string, summary: string) {
+        await hermesManager?.updateSession(targetSessionId, {
+          status: 'failed',
+          lastSummary: summary
+        })
+        const next = hermesManager?.getSession(targetSessionId)
+        if (next) {
+          pushHermesSessionEvent(next)
+        }
+      },
+      async appendTerminalData(chunk: { sessionId: string; data: string }) {
+        await runtimeController?.appendTerminalData(chunk)
+      }
+    }
+
+    sessionInputRouter?.resetSession(sessionId)
+    const launched = await launchTrackedSessionRuntime({
+      sessionId,
+      manager: runtimeManager as never,
+      webhookPort,
+      ptyHost,
+      runtimeController: runtimeHooks as never,
+      sessionEventBridge,
+      resolveRuntimePaths,
+      initialDimensions: { cols: 120, rows: 30 }
+    })
+
+    void source
+    return launched
   }
 
   async function runPackagedSmoke(): Promise<void> {
@@ -941,6 +1144,122 @@ app.whenReady().then(async () => {
     return projectSessionManager?.getArchivedSessions() ?? []
   })
 
+  ipcMain.handle(IPC_CHANNELS.hermesBootstrap, async () => {
+    const snapshot = hermesManager?.snapshot()
+    return {
+      activeHermesSessionId: snapshot?.activeHermesSessionId ?? null,
+      sessions: snapshot?.sessions ?? [],
+      inspectorTarget: snapshot?.inspectorTarget ?? { kind: 'app' }
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.hermesSessionCreate, async (_event, payload: CreateHermesSessionRequest) => {
+    const created = await hermesManager?.createSession(payload)
+    if (!created) {
+      return null
+    }
+
+    pushHermesSessionEvent(created)
+    void launchHermesRuntimeWithGuard(created.id, 'hermes-create')
+    return created
+  })
+
+  ipcMain.handle(IPC_CHANNELS.hermesSessionSetActive, async (_event, sessionId: string) => {
+    await hermesManager?.setActiveSession(sessionId)
+    const session = hermesManager?.getSession(sessionId)
+    if (session) {
+      pushHermesSessionEvent(session)
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.hermesSessionClose, async (_event, sessionId: string) => {
+    ptyHost?.kill(sessionId)
+    await hermesManager?.closeSession(sessionId)
+    const session = hermesManager?.getSession(sessionId)
+    if (session) {
+      pushHermesSessionEvent(session)
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.hermesProposalList, async () => {
+    return hermesProposalStore.list()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.hermesProposalGet, async (_event, proposalId: string) => {
+    return hermesProposalStore.get(proposalId)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.hermesProposalApprove, async (_event, proposalId: string) => {
+    const proposal = await hermesProposalStore.markApproved(proposalId)
+    const snapshot = hermesManager?.snapshot()
+    const hermesSessionId = proposal?.hermesSessionId
+    if (proposal && hermesSessionId) {
+      const nextCount = hermesProposalStore.list().filter((candidate) => {
+        return candidate.hermesSessionId === hermesSessionId && candidate.status === 'pending_approval'
+      }).length
+      await hermesManager?.updateSession(hermesSessionId, {
+        pendingProposalCount: nextCount
+      })
+      const session = snapshot?.sessions.find((candidate) => candidate.id === hermesSessionId)
+      if (session) {
+        pushHermesSessionEvent({
+          ...session,
+          pendingProposalCount: nextCount
+        })
+      }
+    }
+    return proposal
+  })
+
+  ipcMain.handle(IPC_CHANNELS.hermesProposalReject, async (_event, proposalId: string, reason?: string) => {
+    const proposal = await hermesProposalStore.markRejected(proposalId, reason)
+    const snapshot = hermesManager?.snapshot()
+    const hermesSessionId = proposal?.hermesSessionId
+    if (proposal && hermesSessionId) {
+      const nextCount = hermesProposalStore.list().filter((candidate) => {
+        return candidate.hermesSessionId === hermesSessionId && candidate.status === 'pending_approval'
+      }).length
+      await hermesManager?.updateSession(hermesSessionId, {
+        pendingProposalCount: nextCount
+      })
+      const session = snapshot?.sessions.find((candidate) => candidate.id === hermesSessionId)
+      if (session) {
+        pushHermesSessionEvent({
+          ...session,
+          pendingProposalCount: nextCount
+        })
+      }
+    }
+    return proposal
+  })
+
+  ipcMain.handle(IPC_CHANNELS.hermesProposalDispatch, async (_event, proposalId: string) => {
+    await hermesCommandDispatcher.dispatchProposal(proposalId)
+    const proposal = hermesProposalStore.get(proposalId)
+    const snapshot = hermesManager?.snapshot()
+    const hermesSessionId = proposal?.hermesSessionId
+    if (proposal && hermesSessionId) {
+      const nextCount = hermesProposalStore.list().filter((candidate) => {
+        return candidate.hermesSessionId === hermesSessionId && candidate.status === 'pending_approval'
+      }).length
+      await hermesManager?.updateSession(hermesSessionId, {
+        pendingProposalCount: nextCount
+      })
+      const session = snapshot?.sessions.find((candidate) => candidate.id === hermesSessionId)
+      if (session) {
+        pushHermesSessionEvent({
+          ...session,
+          pendingProposalCount: nextCount
+        })
+      }
+    }
+    return proposal
+  })
+
+  ipcMain.handle(IPC_CHANNELS.hermesInspectorSetTarget, async (_event, target) => {
+    await hermesManager?.setInspectorTarget(target)
+  })
+
   ipcMain.handle(IPC_CHANNELS.updateGetState, async () => {
     return updateService?.getState() ?? createDisabledUpdateState()
   })
@@ -981,7 +1300,7 @@ app.whenReady().then(async () => {
   })
 
   ipcMain.handle(IPC_CHANNELS.evidenceListSessionSnapshots, async (_event, sessionId: string) => {
-    if (!projectSessionManager) return []
+    if (!projectSessionManager || !evidenceStore) return []
 
     const state = projectSessionManager.snapshot()
     const session = state.sessions.find(s => s.id === sessionId)
@@ -1027,6 +1346,10 @@ app.whenReady().then(async () => {
 
   for (const plan of projectSessionManager.buildBootstrapRecoveryPlan()) {
     void launchSessionRuntimeWithGuard(plan.sessionId, 'bootstrap-recovery')
+  }
+
+  for (const plan of hermesManager.buildBootstrapRecoveryPlan()) {
+    void launchHermesRuntimeWithGuard(plan.sessionId, 'hermes-restore')
   }
 
   app.on('activate', () => {

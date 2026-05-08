@@ -6,6 +6,12 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 import { InMemoryObservationStore } from '@core/observation-store'
 import { ObservabilityService } from '@core/observability-service'
 import { ProjectSessionManager } from '@core/project-session-manager'
+import { HermesCommandDispatcher } from '@core/hermes-command-dispatcher'
+import { HermesContextAssembler } from '@core/hermes-context-assembler'
+import { createHermesControlServer } from '@core/hermes-control-server'
+import { HermesManager } from '@core/hermes-manager'
+import { HermesProposalStore } from '@core/hermes-proposal-store'
+import { resolveHermesStateFilePath } from '@core/hermes-state-store'
 import { TurnMaintenanceRunner } from '@core/memory/turn-maintenance-runner'
 import type { CanonicalSessionEvent, SessionStatePatchEvent } from '@shared/project-session'
 import type { MemoryNotificationEvent } from '@shared/project-session'
@@ -161,6 +167,37 @@ async function postMemoryNotification(
   })
 }
 
+async function getPath(
+  port: number,
+  path: string,
+  headers: Record<string, string>
+): Promise<{ statusCode: number; body: string }> {
+  return await new Promise((resolve, reject) => {
+    const req = request(
+      {
+        host: '127.0.0.1',
+        port,
+        path,
+        method: 'GET',
+        headers
+      },
+      (response) => {
+        let body = ''
+        response.setEncoding('utf8')
+        response.on('data', (chunk) => {
+          body += chunk
+        })
+        response.on('end', () => {
+          resolve({ statusCode: response.statusCode ?? 0, body })
+        })
+      }
+    )
+
+    req.on('error', reject)
+    req.end()
+  })
+}
+
 describe('SessionEventBridge', () => {
   afterEach(async () => {
     await Promise.allSettled(bridges.splice(0).map(async (bridge) => bridge.stop()))
@@ -195,6 +232,73 @@ describe('SessionEventBridge', () => {
       failureReason: undefined,
       summary: 'session.idle',
       externalSessionId: 'opencode-real-123'
+    })
+  })
+
+  test('shared loopback server can expose Hermes control routes via configureServerApp', async () => {
+    const manager = ProjectSessionManager.createForTest()
+    const controller = {
+      applyProviderStatePatch: vi.fn(async () => {})
+    }
+    const proposalStore = new HermesProposalStore()
+    const hermesStateDir = await createTestTempDir('session-event-bridge-hermes-state-')
+    const hermesManager = await HermesManager.create({
+      statePath: resolveHermesStateFilePath(join(hermesStateDir, 'global.json'))
+    })
+    const assembler = new HermesContextAssembler({
+      snapshotSource: manager,
+      getSessionPresence() {
+        return null
+      },
+      listSessionEvents() {
+        return { events: [], nextCursor: null }
+      },
+      async getTerminalReplay() {
+        return ''
+      }
+    })
+
+    const bridge = new SessionEventBridge(manager, controller, undefined, {
+      configureServerApp(app) {
+        const dispatcher = new HermesCommandDispatcher({
+          snapshotSource: manager,
+          sessionInput: {
+            async send() {}
+          },
+          proposals: proposalStore
+        })
+        createHermesControlServer({
+          app,
+          getSessionSecret(sessionId) {
+            return bridge.debugSnapshotSessionSecrets()[sessionId] ?? null
+          },
+          hermesSessionSource: hermesManager,
+          snapshotSource: manager,
+          getSessionPresence() {
+            return null
+          },
+          contextAssembler: assembler,
+          dispatcher,
+          proposals: proposalStore
+        })
+      }
+    })
+    bridges.push(bridge)
+
+    const port = await bridge.start()
+    const secret = bridge.issueSessionSecret('hermes_1')
+    const response = await getPath(port, '/ctl/state/brief', {
+      'x-stoa-session-id': 'hermes_1',
+      'x-stoa-secret': secret
+    })
+
+    expect(response.statusCode).toBe(200)
+    expect(JSON.parse(response.body)).toMatchObject({
+      ok: true,
+      data: {
+        activeProjectId: null,
+        activeSessionId: null
+      }
     })
   })
 

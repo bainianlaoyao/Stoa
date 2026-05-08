@@ -10,7 +10,15 @@ import {
   sessionTelemetryCompleteBehavior,
   workspaceQuickAccessBehavior
 } from '../behavior/session.behavior'
+import {
+  hermesReadFullContextAndGatePromptBehavior,
+  hermesSurfaceSessionFlowBehavior
+} from '../behavior/hermes.behavior'
 import { defineGeneratedTestMeta } from '../contracts/testing-contracts'
+import {
+  hermesReadFullContextAndGatePromptJourney,
+  hermesSurfaceSessionFlowJourney
+} from '../journeys/hermes.journey'
 import { sessionRestoreJourney } from '../journeys/session-restore.journey'
 import { workspaceQuickAccessJourney } from '../journeys/workspace-quick-access.journey'
 import {
@@ -25,6 +33,55 @@ import {
 import { buildBehaviorCoverageReport } from './behavior-coverage'
 
 describe('behavior coverage report', () => {
+  it('marks Hermes surface session flow as verified by generated UI metadata', () => {
+    const report = buildBehaviorCoverageReport({
+      behaviors: [hermesSurfaceSessionFlowBehavior],
+      journeys: [hermesSurfaceSessionFlowJourney],
+      generatedTests: [
+        defineGeneratedTestMeta({
+          id: 'journey.hermes.surface.session-flow',
+          behaviorIds: ['hermes.surface.session-flow'],
+          entities: ['hermes-session', 'hermes-surface', 'hermes-terminal', 'hermes-inspector'],
+          statesCovered: ['hermes.session.created', 'hermes.session.active'],
+          interruptionsCovered: [],
+          observationLayers: ['ui', 'renderer-store'],
+          riskBudget: 'high',
+          regressionSources: ['hermes-surface', 'hermes-store']
+        })
+      ]
+    })
+
+    expect(report.behaviors['hermes.surface.session-flow']?.maturity).toBe('Verified')
+    expect(report.behaviors['hermes.surface.session-flow']?.generatedTestIds).toEqual([
+      'journey.hermes.surface.session-flow'
+    ])
+  })
+
+  it('marks Hermes full-context reads and prompt gating as hardened when context and approval evidence are covered', () => {
+    const report = buildBehaviorCoverageReport({
+      behaviors: [hermesReadFullContextAndGatePromptBehavior],
+      journeys: [hermesReadFullContextAndGatePromptJourney],
+      generatedTests: [
+        defineGeneratedTestMeta({
+          id: 'journey.hermes.read-full-context-and-gate-prompt',
+          behaviorIds: ['hermes.read-full-context-and-gate-prompt'],
+          entities: ['hermes-session', 'work-session', 'context-full-text', 'proposal'],
+          statesCovered: ['ctl.context.full', 'ctl.prompt.approval-required'],
+          interruptionsCovered: ['proposal.dispatch.afterStaleContext'],
+          observationLayers: ['main-debug-state', 'persisted-state'],
+          riskBudget: 'critical',
+          regressionSources: ['hermes-control-server', 'hermes-command-dispatcher']
+        })
+      ]
+    })
+
+    expect(report.behaviors['hermes.read-full-context-and-gate-prompt']?.maturity).toBe('Hardened')
+    expect(report.behaviors['hermes.read-full-context-and-gate-prompt']?.missingObservationLayers).toEqual([])
+    expect(report.behaviors['hermes.read-full-context-and-gate-prompt']?.missingInterruptions).toEqual([
+      'app.relaunch.duringPromptGate'
+    ])
+  })
+
   it('marks behavior as Declared when no journey exists', () => {
     const report = buildBehaviorCoverageReport({
       behaviors: [sessionRestoreBehavior],

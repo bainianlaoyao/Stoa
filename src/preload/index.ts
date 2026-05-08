@@ -12,12 +12,14 @@ import type {
   SessionSummaryEvent,
   TerminalDataChunk
 } from '@shared/project-session'
+import type { SessionEvidenceSnapshot } from '@shared/memory-runtime'
 import type {
   AppObservabilitySnapshot,
   ObservationEvent,
   ProjectObservabilitySnapshot,
   SessionPresenceSnapshot
 } from '@shared/observability'
+import type { HermesInspectorTarget, HermesProposal, HermesSessionEvent } from '@shared/hermes'
 import type { UpdateState } from '@shared/update-state'
 
 interface PreloadKeyboardEvent {
@@ -78,6 +80,36 @@ const api: RendererApi = {
   async listArchivedSessions() {
     return ipcRenderer.invoke(IPC_CHANNELS.sessionListArchived)
   },
+  async getHermesBootstrapState() {
+    return ipcRenderer.invoke(IPC_CHANNELS.hermesBootstrap)
+  },
+  async createHermesSession(request) {
+    return ipcRenderer.invoke(IPC_CHANNELS.hermesSessionCreate, request)
+  },
+  async setActiveHermesSession(sessionId) {
+    return ipcRenderer.invoke(IPC_CHANNELS.hermesSessionSetActive, sessionId)
+  },
+  async closeHermesSession(sessionId) {
+    return ipcRenderer.invoke(IPC_CHANNELS.hermesSessionClose, sessionId)
+  },
+  async listHermesProposals() {
+    return ipcRenderer.invoke(IPC_CHANNELS.hermesProposalList) as Promise<HermesProposal[]>
+  },
+  async getHermesProposal(proposalId: string) {
+    return ipcRenderer.invoke(IPC_CHANNELS.hermesProposalGet, proposalId) as Promise<HermesProposal | null>
+  },
+  async approveHermesProposal(proposalId: string) {
+    return ipcRenderer.invoke(IPC_CHANNELS.hermesProposalApprove, proposalId) as Promise<HermesProposal | null>
+  },
+  async rejectHermesProposal(proposalId: string, reason?: string) {
+    return ipcRenderer.invoke(IPC_CHANNELS.hermesProposalReject, proposalId, reason) as Promise<HermesProposal | null>
+  },
+  async dispatchHermesProposal(proposalId: string) {
+    return ipcRenderer.invoke(IPC_CHANNELS.hermesProposalDispatch, proposalId) as Promise<HermesProposal | null>
+  },
+  async setHermesInspectorTarget(target: HermesInspectorTarget | null) {
+    return ipcRenderer.invoke(IPC_CHANNELS.hermesInspectorSetTarget, target)
+  },
   async getUpdateState() {
     return ipcRenderer.invoke(IPC_CHANNELS.updateGetState) as Promise<UpdateState>
   },
@@ -119,6 +151,11 @@ const api: RendererApi = {
     const handler = (_event: Electron.IpcRendererEvent, event: SessionSummaryEvent) => callback(event)
     ipcRenderer.on(IPC_CHANNELS.sessionEvent, handler)
     return () => ipcRenderer.removeListener(IPC_CHANNELS.sessionEvent, handler)
+  },
+  onHermesSessionEvent(callback) {
+    const handler = (_event: Electron.IpcRendererEvent, event: HermesSessionEvent) => callback(event)
+    ipcRenderer.on(IPC_CHANNELS.hermesSessionEvent, handler)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.hermesSessionEvent, handler)
   },
   async getSessionPresence(sessionId: string) {
     return ipcRenderer.invoke(IPC_CHANNELS.observabilityGetSessionPresence, sessionId) as Promise<SessionPresenceSnapshot | null>

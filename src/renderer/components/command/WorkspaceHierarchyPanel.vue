@@ -74,6 +74,7 @@ function providerIcon(type: SessionType): string {
     'shell': new URL('@renderer/assets/providers/shell.svg', import.meta.url).href,
     'codex': new URL('@renderer/assets/providers/codex.svg', import.meta.url).href,
     'opencode': new URL('@renderer/assets/providers/opencode.svg', import.meta.url).href,
+    'hermes-agent': new URL('@renderer/assets/providers/hermes-agent.svg', import.meta.url).href,
   }
   return map[type]
 }

@@ -3,6 +3,7 @@ import { dirname, resolve } from 'node:path'
 import { sessionRestoreBehavior } from '../behavior/session.behavior'
 import {
   generateClaudeLifecyclePlaywrightSkeleton,
+  generateHermesSurfaceSessionFlowPlaywrightSkeleton,
   generatePlaywrightSkeleton,
   generateWorkspaceQuickAccessPlaywrightSkeleton
 } from './generate-playwright'
@@ -26,3 +27,7 @@ await writeFile(claudeLifecycleOutputPath, generateClaudeLifecyclePlaywrightSkel
 const workspaceQuickAccessOutputPath = resolve('tests/generated/playwright/workspace-quick-access.generated.spec.ts')
 await mkdir(dirname(workspaceQuickAccessOutputPath), { recursive: true })
 await writeFile(workspaceQuickAccessOutputPath, generateWorkspaceQuickAccessPlaywrightSkeleton(), 'utf8')
+
+const hermesSurfaceOutputPath = resolve('tests/generated/playwright/hermes-surface-session-flow.generated.spec.ts')
+await mkdir(dirname(hermesSurfaceOutputPath), { recursive: true })
+await writeFile(hermesSurfaceOutputPath, generateHermesSurfaceSessionFlowPlaywrightSkeleton(), 'utf8')

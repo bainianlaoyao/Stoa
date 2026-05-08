@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 
-export type AppSurface = 'command' | 'archive' | 'settings'
+export type AppSurface = 'command' | 'hermes' | 'archive' | 'settings'
 
 const { t } = useI18n()
 
@@ -36,6 +36,17 @@ const topItems: ActivityItem[] = [
       'M5.75 5.75h12.5A1.75 1.75 0 0 1 20 7.5v9A1.75 1.75 0 0 1 18.25 18.25H5.75A1.75 1.75 0 0 1 4 16.5v-9A1.75 1.75 0 0 1 5.75 5.75Z',
       'm8 10 2.25 2.25L7.75 14.5',
       'M12.75 14.5h3.75'
+    ]
+  },
+  {
+    id: 'hermes',
+    title: t('activityBar.hermes'),
+    iconKind: 'hermes-orbit',
+    iconPaths: [
+      'M12 5.25v13.5',
+      'M5.25 12h13.5',
+      'M7.5 7.5l9 9',
+      'M16.5 7.5l-9 9'
     ]
   }
 ]

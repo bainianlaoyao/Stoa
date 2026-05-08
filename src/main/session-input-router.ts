@@ -85,7 +85,10 @@ export class SessionInputRouter {
 }
 
 function isAgentSessionType(sessionType: SessionType | null): sessionType is Exclude<SessionType, 'shell'> {
-  return sessionType === 'codex' || sessionType === 'claude-code' || sessionType === 'opencode'
+  return sessionType === 'codex'
+    || sessionType === 'claude-code'
+    || sessionType === 'opencode'
+    || sessionType === 'hermes-agent'
 }
 
 function isUserInterruptInput(data: string): boolean {
