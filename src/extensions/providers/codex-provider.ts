@@ -129,7 +129,7 @@ if (response.ok && text.trim()) {
     writes: [
       {
         relativePath: '.codex/config.toml',
-        content: '[features]\ncodex_hooks = true\n'
+        content: '[features]\nhooks = true\n'
       },
       {
         relativePath: '.codex/hooks.json',

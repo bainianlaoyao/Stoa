@@ -70,7 +70,7 @@ describe('managed-sidecar-maintenance', () => {
         'UserPromptSubmit'
       ])
       expect(await readFile(join(projectDir, '.codex', 'hook-stoa.mjs'), 'utf8')).toContain('/hooks/codex')
-      expect(await readFile(join(projectDir, '.codex', 'config.toml'), 'utf8')).toContain('codex_hooks = true')
+      expect(await readFile(join(projectDir, '.codex', 'config.toml'), 'utf8')).toContain('hooks = true')
     } finally {
       await rm(projectDir, { recursive: true, force: true })
     }

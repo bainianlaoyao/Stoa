@@ -285,6 +285,8 @@ function mapOpenCodeHookToPatch(hookEventName: string, hasError: boolean): HookP
       return { intent: 'agent.turn_failed', failureReason: 'provider_error' }
     case 'session.created':
       return { intent: 'runtime.alive' }
+    case 'message.updated':
+      return { intent: 'agent.turn_started' }
     default:
       return null
   }

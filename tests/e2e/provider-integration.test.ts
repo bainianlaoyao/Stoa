@@ -764,7 +764,7 @@ describe('E2E: Provider Integration', () => {
       expect(parsed.hooks.SessionStart[0].matcher).toBe('*')
     })
 
-    test('installSidecar writes config.toml with codex_hooks feature flag', async () => {
+    test('installSidecar writes config.toml with hooks feature flag', async () => {
       const workspaceDir = await createTempDir('stoa-codex-config-')
       const provider = getProvider('codex')
       const target = createTarget({ path: workspaceDir, type: 'codex' })
@@ -775,7 +775,7 @@ describe('E2E: Provider Integration', () => {
       const configPath = join(workspaceDir, '.codex', 'config.toml')
       const configContent = await readFile(configPath, 'utf8')
 
-      expect(configContent).toContain('codex_hooks = true')
+      expect(configContent).toContain('hooks = true')
       expect(configContent).toContain('[features]')
       expect(configContent).not.toContain('notify =')
     })

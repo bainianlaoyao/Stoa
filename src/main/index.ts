@@ -382,6 +382,7 @@ async function syncUpdateStateToWindow(): Promise<void> {
 
 function createMainWindow(): BrowserWindow {
   const window = new BrowserWindow({
+    show: !isE2EMode,
     width: 1440,
     height: 900,
     minWidth: 1100,
