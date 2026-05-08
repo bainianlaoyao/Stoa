@@ -6,7 +6,8 @@ import type { CanonicalSessionEvent } from '@shared/project-session'
 import type {
   EvidenceRef,
   MemoryRuntimeEvidence,
-  MemoryRuntimeEvidenceProvider
+  MemoryRuntimeEvidenceProvider,
+  SessionEvidenceSnapshot
 } from '@shared/memory-runtime'
 
 export interface PersistSessionEvidenceInput {
@@ -21,26 +22,6 @@ export interface PersistSessionEvidenceResult {
   snapshotPath: string
   evidenceKey: string
   evidenceRef: EvidenceRef
-}
-
-export interface SessionEvidenceSnapshot {
-  eventId: string
-  eventType: string
-  sessionId: string
-  projectId: string
-  timestamp: string
-  provider: MemoryRuntimeEvidenceProvider
-  providerSessionId: string | null
-  turnId: string | null
-  evidenceKey: string
-  payload: CanonicalSessionEvent['payload']
-  evidence: MemoryRuntimeEvidence
-  snapshot: {
-    kind: 'provider-transcript' | 'turn-slice'
-    fileName: string
-    content: string
-    sourceTranscriptPath?: string | null
-  }
 }
 
 interface PersistedSessionEvidenceMetadata {

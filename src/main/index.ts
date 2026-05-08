@@ -14,6 +14,7 @@ import { HermesCommandDispatcher } from '@core/hermes-command-dispatcher'
 import { HermesContextAssembler } from '@core/hermes-context-assembler'
 import { createHermesControlServer } from '@core/hermes-control-server'
 import { HermesManager } from '@core/hermes-manager'
+import { SessionEvidenceStore } from '@core/memory/session-evidence-store'
 import { HermesProposalStore } from '@core/hermes-proposal-store'
 import { resolveHermesStateFilePath } from '@core/hermes-state-store'
 import { openWorkspace } from '@core/workspace-launcher'
@@ -48,6 +49,7 @@ let observationStore: InMemoryObservationStore | null = null
 let observabilityService: ObservabilityService | null = null
 let updateService: UpdateService | null = null
 let hermesManager: HermesManager | null = null
+let evidenceStore: SessionEvidenceStore | null = null
 const e2eWorkspaceOpenRequests: OpenWorkspaceRequest[] = []
 let isQuittingAfterBridgeStop = false
 const pendingE2EPickFolders: Array<string | null> = []
@@ -439,6 +441,7 @@ app.whenReady().then(async () => {
   })
   observationStore = new InMemoryObservationStore()
   observabilityService = new ObservabilityService(observationStore)
+  evidenceStore = new SessionEvidenceStore()
 
   syncObservabilitySessions()
 
@@ -494,6 +497,7 @@ app.whenReady().then(async () => {
   const activeObservationStore = observationStore
   const activeObservabilityService = observabilityService
   const activeSessionInputRouter = sessionInputRouter
+  const activeHermesManager = hermesManager
   const hermesProposalStore = await HermesProposalStore.create({
     statePath: resolveHermesStateFilePath(e2eGlobalStatePath)
   })
@@ -502,10 +506,12 @@ app.whenReady().then(async () => {
     getSessionPresence(sessionId) {
       return activeObservabilityService?.getSessionPresence(sessionId) ?? null
     },
-    listSessionEvents(sessionId) {
+    listSessionEvents(sessionId, options) {
       return activeObservationStore?.listSessionEvents(sessionId, {
-        limit: 100,
-        includeEphemeral: true
+        limit: options?.limit ?? 100,
+        cursor: options?.cursor,
+        categories: options?.categories,
+        includeEphemeral: options?.includeEphemeral ?? true
       }) ?? {
         events: [],
         nextCursor: null
@@ -532,6 +538,7 @@ app.whenReady().then(async () => {
         getSessionSecret(sessionId) {
           return sessionEventBridge?.debugSnapshotSessionSecrets()[sessionId] ?? null
         },
+        hermesSessionSource: activeHermesManager!,
         snapshotSource: activeProjectSessionManager,
         getSessionPresence(sessionId) {
           return activeObservabilityService?.getSessionPresence(sessionId) ?? null
@@ -1292,7 +1299,7 @@ app.whenReady().then(async () => {
   })
 
   ipcMain.handle(IPC_CHANNELS.evidenceListSessionSnapshots, async (_event, sessionId: string) => {
-    if (!projectSessionManager) return []
+    if (!projectSessionManager || !evidenceStore) return []
 
     const state = projectSessionManager.snapshot()
     const session = state.sessions.find(s => s.id === sessionId)

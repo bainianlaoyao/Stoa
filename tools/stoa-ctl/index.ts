@@ -38,14 +38,28 @@ const DEFAULT_WAIT_INTERVAL_MS = 1_000
 export const USAGE_TEXT = [
   'Usage: stoa-ctl',
   '  health',
+  '  whoami',
+  '  capabilities',
   '  state brief',
+  '  state attention-queue',
+  '  state conflicts',
+  '  work-sessions list',
+  '  work-sessions get <id>',
+  '  work-sessions events <id> [--limit <n>] [--cursor <token>] [--include-ephemeral]',
   '  work-sessions context <id> --level <status|bundle|full> [--max-chars <n>] [--cursor <token>]',
   '  work-sessions prompt <id> --text "..."',
   '  work-sessions prompt <id> --file <path>',
   '  work-sessions prompt <id> --stdin',
+  '  hermes-sessions list',
+  '  hermes-sessions create --title "..." [--capability-level <0|1|2|3>]',
+  '  hermes-sessions get <id>',
+  '  hermes-sessions close <id>',
+  '  hermes-sessions activate <id>',
+  '  proposals create prompt --target <sessionId> --text "..."',
   '  proposals list',
   '  proposals get <proposalId>',
   '  proposals wait <proposalId> [--timeout-ms <n>] [--interval-ms <n>]',
+  '  dispatch preset <name> --target <sessionId>',
   '  dispatch proposal <proposalId>'
 ].join('\n')
 
@@ -89,6 +103,18 @@ function parseIntegerFlag(args: string[], name: string, fallback: number): numbe
 function parseFlagValue(args: string[], name: string): string | null {
   const index = args.indexOf(name)
   return index >= 0 ? args[index + 1] ?? null : null
+}
+
+function hasFlag(args: string[], name: string): boolean {
+  return args.includes(name)
+}
+
+function parseCapabilityLevel(args: string[], name: string, fallback: number): number {
+  const value = parseIntegerFlag(args, name, fallback)
+  if (value < 0 || value > 3) {
+    throw new CliUsageError(`Invalid value for ${name}`)
+  }
+  return value
 }
 
 async function readStdin(stdin: RunDependencies['stdin']): Promise<string> {
@@ -177,12 +203,102 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
       return 0
     }
 
+    if (group === 'whoami' && action === undefined) {
+      const { response, text } = await request(resolvedDeps, '/ctl/whoami')
+      if (!response.ok) {
+        resolvedDeps.stderr.write(`${text}\n`)
+        return mapFailureExitCode(response, text)
+      }
+      resolvedDeps.stdout.write(text)
+      return 0
+    }
+
+    if (group === 'capabilities' && action === undefined) {
+      const { response, text } = await request(resolvedDeps, '/ctl/capabilities')
+      if (!response.ok) {
+        resolvedDeps.stderr.write(`${text}\n`)
+        return mapFailureExitCode(response, text)
+      }
+      resolvedDeps.stdout.write(text)
+      return 0
+    }
+
     if (!action) {
       throw new CliUsageError('Missing action')
     }
 
     if (group === 'state' && action === 'brief') {
       const { response, text } = await request(resolvedDeps, '/ctl/state/brief')
+      if (!response.ok) {
+        resolvedDeps.stderr.write(`${text}\n`)
+        return mapFailureExitCode(response, text)
+      }
+      resolvedDeps.stdout.write(text)
+      return 0
+    }
+
+    if (group === 'state' && action === 'attention-queue') {
+      const { response, text } = await request(resolvedDeps, '/ctl/state/attention-queue')
+      if (!response.ok) {
+        resolvedDeps.stderr.write(`${text}\n`)
+        return mapFailureExitCode(response, text)
+      }
+      resolvedDeps.stdout.write(text)
+      return 0
+    }
+
+    if (group === 'state' && action === 'conflicts') {
+      const { response, text } = await request(resolvedDeps, '/ctl/state/conflicts')
+      if (!response.ok) {
+        resolvedDeps.stderr.write(`${text}\n`)
+        return mapFailureExitCode(response, text)
+      }
+      resolvedDeps.stdout.write(text)
+      return 0
+    }
+
+    if (group === 'work-sessions' && action === 'list') {
+      const { response, text } = await request(resolvedDeps, '/ctl/work-sessions')
+      if (!response.ok) {
+        resolvedDeps.stderr.write(`${text}\n`)
+        return mapFailureExitCode(response, text)
+      }
+      resolvedDeps.stdout.write(text)
+      return 0
+    }
+
+    if (group === 'work-sessions' && action === 'get') {
+      const sessionId = rest[0]
+      if (!sessionId) {
+        throw new CliUsageError('Missing session id')
+      }
+
+      const { response, text } = await request(resolvedDeps, `/ctl/work-sessions/${sessionId}`)
+      if (!response.ok) {
+        resolvedDeps.stderr.write(`${text}\n`)
+        return mapFailureExitCode(response, text)
+      }
+      resolvedDeps.stdout.write(text)
+      return 0
+    }
+
+    if (group === 'work-sessions' && action === 'events') {
+      const sessionId = rest[0]
+      if (!sessionId) {
+        throw new CliUsageError('Missing session id')
+      }
+
+      const params = new URLSearchParams()
+      params.set('limit', String(parseIntegerFlag(rest, '--limit', 50)))
+      const cursor = parseFlagValue(rest, '--cursor')
+      if (cursor) {
+        params.set('cursor', cursor)
+      }
+      if (hasFlag(rest, '--include-ephemeral')) {
+        params.set('includeEphemeral', '1')
+      }
+
+      const { response, text } = await request(resolvedDeps, `/ctl/work-sessions/${sessionId}/events?${params.toString()}`)
       if (!response.ok) {
         resolvedDeps.stderr.write(`${text}\n`)
         return mapFailureExitCode(response, text)
@@ -249,6 +365,87 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
       return 0
     }
 
+    if (group === 'hermes-sessions' && action === 'list') {
+      const { response, text } = await request(resolvedDeps, '/ctl/hermes-sessions')
+      if (!response.ok) {
+        resolvedDeps.stderr.write(`${text}\n`)
+        return mapFailureExitCode(response, text)
+      }
+      resolvedDeps.stdout.write(text)
+      return 0
+    }
+
+    if (group === 'hermes-sessions' && action === 'create') {
+      const title = parseFlagValue(rest, '--title')
+      if (!title || title.trim().length === 0) {
+        throw new CliUsageError('Missing Hermes session title')
+      }
+
+      const capabilityLevel = parseCapabilityLevel(rest, '--capability-level', 3)
+      const { response, text } = await request(resolvedDeps, '/ctl/hermes-sessions', {
+        method: 'POST',
+        body: JSON.stringify({
+          title,
+          capabilityLevel
+        })
+      })
+      if (!response.ok) {
+        resolvedDeps.stderr.write(`${text}\n`)
+        return mapFailureExitCode(response, text)
+      }
+      resolvedDeps.stdout.write(text)
+      return 0
+    }
+
+    if (group === 'hermes-sessions' && action === 'get') {
+      const hermesSessionId = rest[0]
+      if (!hermesSessionId) {
+        throw new CliUsageError('Missing Hermes session id')
+      }
+
+      const { response, text } = await request(resolvedDeps, `/ctl/hermes-sessions/${hermesSessionId}`)
+      if (!response.ok) {
+        resolvedDeps.stderr.write(`${text}\n`)
+        return mapFailureExitCode(response, text)
+      }
+      resolvedDeps.stdout.write(text)
+      return 0
+    }
+
+    if (group === 'hermes-sessions' && action === 'close') {
+      const hermesSessionId = rest[0]
+      if (!hermesSessionId) {
+        throw new CliUsageError('Missing Hermes session id')
+      }
+
+      const { response, text } = await request(resolvedDeps, `/ctl/hermes-sessions/${hermesSessionId}/close`, {
+        method: 'POST'
+      })
+      if (!response.ok) {
+        resolvedDeps.stderr.write(`${text}\n`)
+        return mapFailureExitCode(response, text)
+      }
+      resolvedDeps.stdout.write(text)
+      return 0
+    }
+
+    if (group === 'hermes-sessions' && action === 'activate') {
+      const hermesSessionId = rest[0]
+      if (!hermesSessionId) {
+        throw new CliUsageError('Missing Hermes session id')
+      }
+
+      const { response, text } = await request(resolvedDeps, `/ctl/hermes-sessions/${hermesSessionId}/activate`, {
+        method: 'POST'
+      })
+      if (!response.ok) {
+        resolvedDeps.stderr.write(`${text}\n`)
+        return mapFailureExitCode(response, text)
+      }
+      resolvedDeps.stdout.write(text)
+      return 0
+    }
+
     if (group === 'proposals' && action === 'list') {
       const { response, text } = await request(resolvedDeps, '/ctl/proposals')
       if (!response.ok) {
@@ -256,6 +453,34 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
         return mapFailureExitCode(response, text)
       }
       resolvedDeps.stdout.write(text)
+      return 0
+    }
+
+    if (group === 'proposals' && action === 'create') {
+      const kind = rest[0]
+      if (kind !== 'prompt') {
+        throw new CliUsageError('Unsupported proposal kind')
+      }
+
+      const targetSessionId = parseFlagValue(rest, '--target')
+      const text = parseFlagValue(rest, '--text')
+      if (!targetSessionId || !text || text.trim().length === 0) {
+        throw new CliUsageError('Missing proposal target or text')
+      }
+
+      const { response, text: responseText } = await request(resolvedDeps, '/ctl/proposals', {
+        method: 'POST',
+        body: JSON.stringify({
+          kind: 'prompt',
+          targetSessionId,
+          text
+        })
+      })
+      if (!response.ok) {
+        resolvedDeps.stderr.write(`${responseText}\n`)
+        return mapFailureExitCode(response, responseText)
+      }
+      resolvedDeps.stdout.write(responseText)
       return 0
     }
 
@@ -318,6 +543,27 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
       }
       const { response, text } = await request(resolvedDeps, `/ctl/dispatch/proposal/${proposalId}`, {
         method: 'POST'
+      })
+      if (!response.ok) {
+        resolvedDeps.stderr.write(`${text}\n`)
+        return mapFailureExitCode(response, text)
+      }
+      resolvedDeps.stdout.write(text)
+      return 0
+    }
+
+    if (group === 'dispatch' && action === 'preset') {
+      const presetName = rest[0]
+      const targetSessionId = parseFlagValue(rest, '--target')
+      if (!presetName || !targetSessionId) {
+        throw new CliUsageError('Missing preset name or target session id')
+      }
+
+      const { response, text } = await request(resolvedDeps, `/ctl/dispatch/preset/${presetName}`, {
+        method: 'POST',
+        body: JSON.stringify({
+          targetSessionId
+        })
       })
       if (!response.ok) {
         resolvedDeps.stderr.write(`${text}\n`)

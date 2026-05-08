@@ -9,7 +9,9 @@ import { ProjectSessionManager } from '@core/project-session-manager'
 import { HermesCommandDispatcher } from '@core/hermes-command-dispatcher'
 import { HermesContextAssembler } from '@core/hermes-context-assembler'
 import { createHermesControlServer } from '@core/hermes-control-server'
+import { HermesManager } from '@core/hermes-manager'
 import { HermesProposalStore } from '@core/hermes-proposal-store'
+import { resolveHermesStateFilePath } from '@core/hermes-state-store'
 import { TurnMaintenanceRunner } from '@core/memory/turn-maintenance-runner'
 import type { CanonicalSessionEvent, SessionStatePatchEvent } from '@shared/project-session'
 import type { MemoryNotificationEvent } from '@shared/project-session'
@@ -239,6 +241,10 @@ describe('SessionEventBridge', () => {
       applyProviderStatePatch: vi.fn(async () => {})
     }
     const proposalStore = new HermesProposalStore()
+    const hermesStateDir = await createTestTempDir('session-event-bridge-hermes-state-')
+    const hermesManager = await HermesManager.create({
+      statePath: resolveHermesStateFilePath(join(hermesStateDir, 'global.json'))
+    })
     const assembler = new HermesContextAssembler({
       snapshotSource: manager,
       getSessionPresence() {
@@ -266,6 +272,7 @@ describe('SessionEventBridge', () => {
           getSessionSecret(sessionId) {
             return bridge.debugSnapshotSessionSecrets()[sessionId] ?? null
           },
+          hermesSessionSource: hermesManager,
           snapshotSource: manager,
           getSessionPresence() {
             return null

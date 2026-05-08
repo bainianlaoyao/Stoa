@@ -1,4 +1,4 @@
-import type { ListObservationEventsResult } from './observation-store'
+import type { ListObservationEventsOptions, ListObservationEventsResult } from './observation-store'
 import { appendSection, stripAnsi, trimTextToMaxChars } from './context/full-text-context'
 import type { SessionPresenceSnapshot } from '@shared/observability'
 import type { BootstrapState, SessionSummary } from '@shared/project-session'
@@ -10,7 +10,7 @@ interface SnapshotSource {
 interface HermesContextAssemblerOptions {
   snapshotSource: SnapshotSource
   getSessionPresence: (sessionId: string) => SessionPresenceSnapshot | null
-  listSessionEvents: (sessionId: string) => ListObservationEventsResult
+  listSessionEvents: (sessionId: string, options?: ListObservationEventsOptions) => ListObservationEventsResult
   getTerminalReplay: (sessionId: string) => Promise<string>
 }
 
@@ -59,6 +59,19 @@ function readableTextFromPayload(payload: Record<string, unknown>): Array<{ labe
 export class HermesContextAssembler {
   constructor(private readonly options: HermesContextAssemblerOptions) {}
 
+  getEvents(
+    sessionId: string,
+    options: Partial<ListObservationEventsOptions> = {}
+  ): ListObservationEventsResult {
+    this.requireSession(sessionId)
+    return this.options.listSessionEvents(sessionId, {
+      limit: options.limit ?? 50,
+      cursor: options.cursor,
+      categories: options.categories,
+      includeEphemeral: options.includeEphemeral ?? false
+    })
+  }
+
   getStatus(sessionId: string): { level: 'status'; session: SessionSummary; presence: SessionPresenceSnapshot | null } {
     const session = this.requireSession(sessionId)
     return {
@@ -79,7 +92,10 @@ export class HermesContextAssembler {
       level: 'bundle',
       session,
       presence: this.options.getSessionPresence(sessionId),
-      events: this.options.listSessionEvents(sessionId).events
+      events: this.getEvents(sessionId, {
+        limit: 100,
+        includeEphemeral: true
+      }).events
     }
   }
 
@@ -93,7 +109,10 @@ export class HermesContextAssembler {
 
     appendSection(lines, 'Session', sessionHeading(session, presence))
 
-    for (const event of this.options.listSessionEvents(sessionId).events) {
+    for (const event of this.getEvents(sessionId, {
+      limit: 100,
+      includeEphemeral: true
+    }).events) {
       for (const entry of readableTextFromPayload(event.payload)) {
         appendSection(lines, entry.label, entry.text)
       }

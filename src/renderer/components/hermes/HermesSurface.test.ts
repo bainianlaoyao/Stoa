@@ -94,6 +94,9 @@ function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
     dismissUpdate: vi.fn().mockResolvedValue(undefined),
     onUpdateState: vi.fn().mockReturnValue(() => {}),
     uninstallSidecars: vi.fn().mockResolvedValue(undefined),
+    listSessionEvidence: vi.fn().mockResolvedValue([]),
+    contextExportFullText: vi.fn().mockResolvedValue({ text: '', truncated: false, totalTurns: 0 }),
+    contextExportSlimText: vi.fn().mockResolvedValue({ text: '', truncated: false, totalTurns: 0 }),
     getHermesBootstrapState: vi.fn().mockResolvedValue({
       activeHermesSessionId: 'hermes_1',
       sessions: [{

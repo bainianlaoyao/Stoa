@@ -6,6 +6,7 @@ import type {
   SessionPresenceSnapshot
 } from './observability'
 import type { MemoryRuntimeEvidence } from './memory-runtime'
+import type { SessionEvidenceSnapshot } from './memory-runtime'
 import type { BlockingReason } from '@shared/observability'
 import type { TerminalSettings } from './terminal-settings'
 import type {

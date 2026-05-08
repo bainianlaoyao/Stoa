@@ -1,3 +1,5 @@
+import type { SessionStatePatchPayload } from './project-session'
+
 export type ObservedEventProvider = 'claude-code' | 'codex' | 'opencode'
 export type ObservedEventChannel = 'hook' | 'notify'
 export type Consumer = ObservedEventProvider | 'opencode' | 'generic'
@@ -79,6 +81,26 @@ export interface EvidenceRef {
   path: string
   createdAt: string
   toolName: string | null
+}
+
+export interface SessionEvidenceSnapshot {
+  eventId: string
+  eventType: string
+  sessionId: string
+  projectId: string
+  timestamp: string
+  provider: MemoryRuntimeEvidenceProvider
+  providerSessionId: string | null
+  turnId: string | null
+  evidenceKey: string
+  payload: SessionStatePatchPayload
+  evidence: MemoryRuntimeEvidence
+  snapshot: {
+    kind: 'provider-transcript' | 'turn-slice'
+    fileName: string
+    content: string
+    sourceTranscriptPath?: string | null
+  }
 }
 
 export interface SealedTurnRecord {

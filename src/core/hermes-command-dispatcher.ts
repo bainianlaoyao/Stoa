@@ -20,6 +20,17 @@ export type PromptDispatchResult =
   | { kind: 'dispatched' }
   | { kind: 'approval_required'; proposal: HermesProposal }
 
+export interface PresetDispatchInput {
+  hermesSessionId: string
+  targetSessionId: string
+  presetName: 'run-tests-only' | 'summarize-failures' | 'pause-and-generate-summary'
+}
+
+export type PresetDispatchResult = {
+  kind: 'dispatched'
+  presetName: PresetDispatchInput['presetName']
+}
+
 interface HermesCommandDispatcherOptions {
   snapshotSource: SnapshotSource
   sessionInput: SessionInputLike
@@ -28,7 +39,7 @@ interface HermesCommandDispatcherOptions {
 
 export class HermesDispatchError extends Error {
   constructor(
-    readonly code: 'unknown_session' | 'unknown_proposal' | 'stale_proposal' | 'proposal_not_approved' | 'proposal_invalid',
+    readonly code: 'unknown_session' | 'unknown_proposal' | 'stale_proposal' | 'proposal_not_approved' | 'proposal_invalid' | 'unknown_preset',
     message: string
   ) {
     super(message)
@@ -56,6 +67,19 @@ function proposalSnapshotMatches(
   })
 }
 
+function resolvePresetPrompt(presetName: PresetDispatchInput['presetName']): string {
+  switch (presetName) {
+    case 'run-tests-only':
+      return 'Continue by running the project test command only. Do not modify code. Summarize failures and likely causes.'
+    case 'summarize-failures':
+      return 'Do not modify code. Summarize the current failing tests, error messages, and the most likely root causes.'
+    case 'pause-and-generate-summary':
+      return 'Pause implementation. Generate a concise re-entry summary covering current goal, status, risks, and next recommended step.'
+    default:
+      throw new HermesDispatchError('unknown_preset', `Unknown preset: ${presetName satisfies never}`)
+  }
+}
+
 export class HermesCommandDispatcher {
   constructor(private readonly options: HermesCommandDispatcherOptions) {}
 
@@ -77,6 +101,32 @@ export class HermesCommandDispatcher {
 
     await this.options.sessionInput.send(input.targetSessionId, `${input.text}\r`)
     return { kind: 'dispatched' }
+  }
+
+  createPromptProposal(input: PromptDispatchInput): HermesProposal {
+    const session = this.options.snapshotSource.snapshot().sessions.find((candidate) => candidate.id === input.targetSessionId)
+    if (!session) {
+      throw new HermesDispatchError('unknown_session', `Unknown session: ${input.targetSessionId}`)
+    }
+
+    return this.options.proposals.createPromptProposal({
+      ...input,
+      targetSession: session
+    })
+  }
+
+  async dispatchPreset(input: PresetDispatchInput): Promise<PresetDispatchResult> {
+    const session = this.options.snapshotSource.snapshot().sessions.find((candidate) => candidate.id === input.targetSessionId)
+    if (!session) {
+      throw new HermesDispatchError('unknown_session', `Unknown session: ${input.targetSessionId}`)
+    }
+
+    const prompt = resolvePresetPrompt(input.presetName)
+    await this.options.sessionInput.send(input.targetSessionId, `${prompt}\r`)
+    return {
+      kind: 'dispatched',
+      presetName: input.presetName
+    }
   }
 
   async dispatchProposal(proposalId: string): Promise<{ kind: 'dispatched' }> {

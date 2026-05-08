@@ -12,6 +12,7 @@ import type {
   SessionSummaryEvent,
   TerminalDataChunk
 } from '@shared/project-session'
+import type { SessionEvidenceSnapshot } from '@shared/memory-runtime'
 import type {
   AppObservabilitySnapshot,
   ObservationEvent,
