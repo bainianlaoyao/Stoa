@@ -1,0 +1,13 @@
+<svg height="1em" viewBox="0 0 24 24" width="1em" xmlns="http://www.w3.org/2000/svg">
+  <title>Hermes</title>
+  <defs>
+    <linearGradient id="hermes-agent-gradient" x1="5" x2="19" y1="4" y2="20" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F59E0B" />
+      <stop offset="1" stop-color="#EA580C" />
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="16" height="16" rx="4" fill="none" stroke="url(#hermes-agent-gradient)" stroke-width="1.5" />
+  <path d="M8 8v8" fill="none" stroke="url(#hermes-agent-gradient)" stroke-linecap="round" stroke-width="1.5" />
+  <path d="M16 8v8" fill="none" stroke="url(#hermes-agent-gradient)" stroke-linecap="round" stroke-width="1.5" />
+  <path d="M8 12h8" fill="none" stroke="url(#hermes-agent-gradient)" stroke-linecap="round" stroke-width="1.5" />
+</svg>
