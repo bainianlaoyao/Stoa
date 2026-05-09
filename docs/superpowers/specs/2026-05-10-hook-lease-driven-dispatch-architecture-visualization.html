@@ -1,0 +1,1096 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>STOA Hook Lease-Driven Dispatch Architecture</title>
+  <style>
+    :root {
+      --color-canvas: #f4f5f8;
+      --color-surface: rgba(255, 255, 255, 0.75);
+      --color-surface-solid: #ffffff;
+      --color-surface-soft: rgba(255, 255, 255, 0.42);
+      --color-line: rgba(0, 0, 0, 0.06);
+      --color-line-strong: rgba(0, 0, 0, 0.1);
+      --color-text-strong: #111418;
+      --color-text: #373c44;
+      --color-muted: #808792;
+      --color-subtle: #a6acb5;
+      --color-accent: #0055ff;
+      --color-success: #10b981;
+      --color-warning: #f59e0b;
+      --color-attention: #d97706;
+      --color-error: #ef4444;
+      --color-black-soft: rgba(0, 0, 0, 0.04);
+      --color-black-faint: rgba(0, 0, 0, 0.02);
+      --color-white-strong: rgba(255, 255, 255, 0.9);
+      --radius-lg: 18px;
+      --radius-md: 12px;
+      --radius-sm: 8px;
+      --shadow-premium: 0 24px 48px -12px rgba(0, 0, 0, 0.08), 0 8px 16px -4px rgba(0, 0, 0, 0.03), 0 1px 2px rgba(0, 0, 0, 0.02);
+      --shadow-soft: 0 2px 8px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
+      --shadow-card: 0 2px 6px rgba(0, 0, 0, 0.02), 0 1px 2px rgba(0, 0, 0, 0.02);
+      --font-ui: 'SF Pro Text', 'Segoe UI Variable', 'Segoe UI', Inter, 'Noto Sans SC', 'Microsoft YaHei UI', sans-serif;
+      --font-mono: 'JetBrains Mono', 'Cascadia Mono', 'Cascadia Code', 'SF Mono', Consolas, monospace;
+      --text-caption: 11px;
+      --text-meta: 12px;
+      --text-body-sm: 13px;
+      --text-body: 14px;
+      --text-title-sm: 15px;
+      --text-title: 18px;
+
+      /* Design-language aliases */
+      --canvas: var(--color-canvas);
+      --surface: var(--color-surface);
+      --surface-solid: var(--color-surface-solid);
+      --line: var(--color-line);
+      --line-strong: var(--color-line-strong);
+      --text-strong: var(--color-text-strong);
+      --text: var(--color-text);
+      --muted: var(--color-muted);
+      --subtle: var(--color-subtle);
+      --accent: var(--color-accent);
+      --shadow-glass: 0 12px 32px -4px rgba(0, 0, 0, 0.08), 0 4px 12px rgba(0, 0, 0, 0.03), inset 0 1px 0 rgba(255, 255, 255, 0.85);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      color-scheme: light;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: var(--font-ui);
+      font-size: var(--text-body);
+      color: var(--text);
+      line-height: 1.5;
+      background:
+        radial-gradient(circle at top left, rgba(255, 255, 255, 0.92), transparent 35%),
+        radial-gradient(circle at top right, rgba(0, 85, 255, 0.08), transparent 28%),
+        radial-gradient(circle at bottom left, rgba(255, 255, 255, 0.84), transparent 30%),
+        var(--canvas);
+    }
+
+    code {
+      font-family: var(--font-mono);
+      font-size: 0.95em;
+    }
+
+    .page {
+      width: min(1440px, calc(100vw - 48px));
+      margin: 0 auto;
+      padding: 32px 0 48px;
+    }
+
+    .hero,
+    .section,
+    .glass-card,
+    .lane,
+    .state-card,
+    .timeline-step,
+    .invariant,
+    .ownership-card {
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.84), rgba(255, 255, 255, 0.72));
+      backdrop-filter: blur(40px) saturate(120%);
+      -webkit-backdrop-filter: blur(40px) saturate(120%);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow-premium);
+    }
+
+    .hero {
+      border-radius: var(--radius-lg);
+      padding: 28px 28px 22px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: auto -10% -60% auto;
+      width: 340px;
+      height: 340px;
+      background: radial-gradient(circle, rgba(0, 85, 255, 0.16), transparent 62%);
+      pointer-events: none;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+      color: var(--muted);
+      font-size: var(--text-caption);
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .eyebrow::before {
+      content: "";
+      width: 18px;
+      height: 1px;
+      background: var(--accent);
+      box-shadow: 0 0 0 3px rgba(0, 85, 255, 0.08);
+    }
+
+    h1,
+    h2,
+    h3,
+    h4,
+    p {
+      margin: 0;
+    }
+
+    h1 {
+      max-width: 980px;
+      color: var(--text-strong);
+      font-size: 30px;
+      line-height: 1.18;
+      letter-spacing: -0.04em;
+    }
+
+    .hero-copy {
+      max-width: 980px;
+      margin-top: 12px;
+      color: var(--text);
+      font-size: var(--text-body);
+    }
+
+    .meta-row,
+    .chip-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .meta-row {
+      margin-top: 18px;
+    }
+
+    .chip-row {
+      margin-top: 18px;
+    }
+
+    .meta-pill,
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 32px;
+      padding: 0 12px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.66);
+      color: var(--text-strong);
+      box-shadow: var(--shadow-card);
+      transition: all 0.2s ease;
+    }
+
+    .meta-pill span:first-child,
+    .chip span:first-child {
+      color: var(--muted);
+      font-size: var(--text-caption);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-weight: 700;
+    }
+
+    .meta-pill code,
+    .chip code {
+      color: var(--text-strong);
+    }
+
+    .chip--accent {
+      background: rgba(0, 85, 255, 0.08);
+      color: var(--accent);
+      border-color: rgba(0, 85, 255, 0.12);
+    }
+
+    .chip--success {
+      background: rgba(16, 185, 129, 0.08);
+      color: var(--color-success);
+      border-color: rgba(16, 185, 129, 0.12);
+    }
+
+    .chip--warning {
+      background: rgba(217, 119, 6, 0.08);
+      color: var(--color-attention);
+      border-color: rgba(217, 119, 6, 0.12);
+    }
+
+    .section {
+      border-radius: var(--radius-lg);
+      margin-top: 22px;
+      padding: 24px;
+    }
+
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: flex-start;
+      margin-bottom: 18px;
+    }
+
+    .section-head > div:first-child {
+      max-width: 880px;
+    }
+
+    .section-head h2 {
+      color: var(--text-strong);
+      font-size: 22px;
+      line-height: 1.2;
+      letter-spacing: -0.03em;
+    }
+
+    .section-head p {
+      margin-top: 8px;
+      color: var(--muted);
+    }
+
+    .section-kicker {
+      color: var(--accent);
+      font-size: var(--text-caption);
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .stack {
+      display: grid;
+      gap: 16px;
+    }
+
+    .broken-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+
+    .glass-card {
+      border-radius: var(--radius-md);
+      padding: 16px;
+    }
+
+    .glass-card h3 {
+      color: var(--text-strong);
+      font-size: var(--text-title-sm);
+      margin-bottom: 8px;
+    }
+
+    .glass-card p {
+      color: var(--muted);
+      font-size: var(--text-body-sm);
+    }
+
+    .glass-card--error {
+      background: linear-gradient(180deg, rgba(255, 248, 248, 0.94), rgba(255, 255, 255, 0.74));
+      border-color: rgba(239, 68, 68, 0.12);
+    }
+
+    .glass-card--accent {
+      background: linear-gradient(180deg, rgba(244, 248, 255, 0.94), rgba(255, 255, 255, 0.74));
+      border-color: rgba(0, 85, 255, 0.12);
+    }
+
+    .flow-row {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      align-items: stretch;
+    }
+
+    .flow-node {
+      position: relative;
+      border-radius: var(--radius-md);
+      padding: 16px;
+      background: var(--surface-solid);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow-card);
+      min-height: 168px;
+    }
+
+    .flow-node:not(:last-child)::after {
+      content: "→";
+      position: absolute;
+      top: 50%;
+      right: -16px;
+      transform: translateY(-50%);
+      width: 32px;
+      height: 32px;
+      display: grid;
+      place-items: center;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.84);
+      border: 1px solid var(--line);
+      color: var(--accent);
+      box-shadow: var(--shadow-soft);
+      font-weight: 700;
+    }
+
+    .node-label {
+      color: var(--muted);
+      font-size: var(--text-caption);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-weight: 700;
+    }
+
+    .flow-node h4 {
+      margin-top: 8px;
+      color: var(--text-strong);
+      font-size: 17px;
+      line-height: 1.25;
+    }
+
+    .flow-node p {
+      margin-top: 10px;
+      color: var(--text);
+      font-size: var(--text-body-sm);
+    }
+
+    .failure-list {
+      margin-top: 12px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .failure-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--color-error);
+      font-size: var(--text-body-sm);
+      font-weight: 600;
+    }
+
+    .failure-item::before {
+      content: "×";
+      display: grid;
+      place-items: center;
+      width: 18px;
+      height: 18px;
+      border-radius: 999px;
+      background: rgba(239, 68, 68, 0.08);
+      border: 1px solid rgba(239, 68, 68, 0.12);
+      font-size: 12px;
+    }
+
+    .target-lanes {
+      display: grid;
+      gap: 14px;
+    }
+
+    .lane-grid {
+      display: grid;
+      grid-template-columns: 240px 92px minmax(0, 1fr);
+      gap: 14px;
+      align-items: stretch;
+    }
+
+    .lane {
+      border-radius: var(--radius-md);
+      padding: 16px;
+    }
+
+    .lane h3 {
+      color: var(--text-strong);
+      font-size: var(--text-title-sm);
+      margin-bottom: 6px;
+    }
+
+    .lane p {
+      color: var(--muted);
+      font-size: var(--text-body-sm);
+    }
+
+    .lane-rail {
+      display: grid;
+      place-items: center;
+      position: relative;
+    }
+
+    .lane-rail::before,
+    .lane-rail::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 2px;
+      background: linear-gradient(180deg, rgba(0, 85, 255, 0.14), rgba(0, 85, 255, 0.42), rgba(0, 85, 255, 0.14));
+      border-radius: 999px;
+    }
+
+    .lane-rail::before {
+      top: 16px;
+      bottom: 16px;
+    }
+
+    .lane-rail::after {
+      display: none;
+    }
+
+    .rail-chip {
+      position: relative;
+      z-index: 1;
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: rgba(255, 255, 255, 0.84);
+      border: 1px solid rgba(0, 85, 255, 0.12);
+      box-shadow: var(--shadow-premium);
+      color: var(--accent);
+      font-weight: 700;
+      letter-spacing: 0.04em;
+    }
+
+    .runtime-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .state-card {
+      border-radius: var(--radius-md);
+      padding: 14px;
+      min-height: 150px;
+    }
+
+    .state-card h4 {
+      color: var(--text-strong);
+      font-size: 16px;
+      margin-bottom: 8px;
+    }
+
+    .state-card p {
+      color: var(--muted);
+      font-size: var(--text-body-sm);
+    }
+
+    .state-card code {
+      display: block;
+      margin-top: 8px;
+      color: var(--text-strong);
+      font-size: var(--text-caption);
+      line-height: 1.55;
+      word-break: break-word;
+    }
+
+    .timeline {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 12px;
+      align-items: stretch;
+    }
+
+    .timeline-step {
+      position: relative;
+      border-radius: var(--radius-md);
+      padding: 16px;
+      min-height: 190px;
+    }
+
+    .timeline-step:not(:last-child)::after {
+      content: "";
+      position: absolute;
+      top: 40px;
+      right: -8px;
+      width: 16px;
+      height: 2px;
+      background: linear-gradient(90deg, rgba(0, 85, 255, 0.2), rgba(0, 85, 255, 0.46));
+    }
+
+    .timeline-index {
+      width: 30px;
+      height: 30px;
+      display: grid;
+      place-items: center;
+      border-radius: 999px;
+      background: rgba(0, 85, 255, 0.08);
+      border: 1px solid rgba(0, 85, 255, 0.12);
+      color: var(--accent);
+      font-size: var(--text-caption);
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+
+    .timeline-step h4 {
+      color: var(--text-strong);
+      font-size: 16px;
+      margin-bottom: 8px;
+    }
+
+    .timeline-step p {
+      color: var(--muted);
+      font-size: var(--text-body-sm);
+      margin-bottom: 10px;
+    }
+
+    .mono-note {
+      display: inline-block;
+      padding: 6px 8px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.72);
+      color: var(--text-strong);
+      font-family: var(--font-mono);
+      font-size: var(--text-caption);
+      line-height: 1.45;
+    }
+
+    .ownership {
+      display: grid;
+      grid-template-columns: 1.05fr 1.3fr;
+      gap: 16px;
+    }
+
+    .ownership-card {
+      border-radius: var(--radius-md);
+      padding: 18px;
+    }
+
+    .ownership-card h3 {
+      color: var(--text-strong);
+      font-size: var(--text-title-sm);
+      margin-bottom: 8px;
+    }
+
+    .ownership-card p {
+      color: var(--muted);
+      font-size: var(--text-body-sm);
+    }
+
+    .workspace-shell {
+      margin-top: 14px;
+      border-radius: var(--radius-md);
+      background: var(--surface-solid);
+      border: 1px solid var(--line);
+      padding: 14px;
+      box-shadow: var(--shadow-card);
+    }
+
+    .workspace-shell code {
+      display: block;
+      font-size: var(--text-caption);
+      color: var(--text-strong);
+      line-height: 1.6;
+    }
+
+    .instance-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    .instance {
+      border-radius: var(--radius-md);
+      background: var(--surface-solid);
+      border: 1px solid var(--line);
+      padding: 14px;
+      box-shadow: var(--shadow-card);
+    }
+
+    .instance header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .instance h4 {
+      color: var(--text-strong);
+      font-size: 16px;
+    }
+
+    .instance-badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      padding: 0 8px;
+      border-radius: 999px;
+      background: rgba(0, 85, 255, 0.08);
+      border: 1px solid rgba(0, 85, 255, 0.12);
+      color: var(--accent);
+      font-size: var(--text-caption);
+      font-family: var(--font-mono);
+    }
+
+    .lease-box {
+      border-radius: var(--radius-sm);
+      background: linear-gradient(180deg, rgba(245, 248, 255, 0.94), rgba(255, 255, 255, 0.84));
+      border: 1px solid rgba(0, 85, 255, 0.12);
+      padding: 12px;
+      margin-bottom: 10px;
+    }
+
+    .lease-box h5 {
+      margin: 0 0 6px;
+      color: var(--text-strong);
+      font-size: var(--text-body-sm);
+    }
+
+    .lease-box code {
+      display: block;
+      color: var(--text-strong);
+      font-size: var(--text-caption);
+      line-height: 1.55;
+    }
+
+    .blocked-claim {
+      margin-top: 12px;
+      display: grid;
+      place-items: center;
+      min-height: 54px;
+      border-radius: var(--radius-sm);
+      border: 1px dashed rgba(239, 68, 68, 0.18);
+      background: rgba(239, 68, 68, 0.04);
+      color: var(--color-error);
+      font-size: var(--text-body-sm);
+      font-weight: 600;
+    }
+
+    .invariants {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .invariant {
+      border-radius: var(--radius-md);
+      padding: 16px;
+      min-height: 144px;
+    }
+
+    .invariant h4 {
+      color: var(--text-strong);
+      font-size: 16px;
+      margin-bottom: 8px;
+    }
+
+    .invariant p {
+      color: var(--muted);
+      font-size: var(--text-body-sm);
+    }
+
+    .footer-note {
+      margin-top: 18px;
+      color: var(--subtle);
+      font-size: var(--text-meta);
+    }
+
+    @media (max-width: 1220px) {
+      .broken-grid,
+      .flow-row,
+      .runtime-grid,
+      .timeline,
+      .invariants {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .lane-grid,
+      .ownership {
+        grid-template-columns: 1fr;
+      }
+
+      .lane-rail {
+        min-height: 88px;
+      }
+
+      .lane-rail::before {
+        top: 50%;
+        left: 16px;
+        right: 16px;
+        bottom: auto;
+        width: auto;
+        height: 2px;
+        transform: translateY(-50%);
+      }
+
+      .flow-node:not(:last-child)::after,
+      .timeline-step:not(:last-child)::after {
+        display: none;
+      }
+    }
+
+    @media (max-width: 760px) {
+      .page {
+        width: min(100vw - 24px, 100%);
+        padding-top: 16px;
+      }
+
+      .broken-grid,
+      .flow-row,
+      .runtime-grid,
+      .timeline,
+      .invariants,
+      .instance-grid {
+        grid-template-columns: 1fr;
+      }
+
+      h1 {
+        font-size: 24px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="hero">
+      <div class="eyebrow">Architecture Review Board</div>
+      <h1>STOA Hook Lease-Driven Dispatch</h1>
+      <p class="hero-copy">
+        Final-form architecture for resilient Claude Code, Codex, and OpenCode hooks. The design removes webhook routing truth from workspace files, moves it into session leases, and resolves hook delivery at dispatch time instead of sidecar install time.
+      </p>
+      <div class="meta-row">
+        <div class="meta-pill"><span>Date</span><code>2026-05-10</code></div>
+        <div class="meta-pill"><span>Spec</span><code>hook-lease-driven-dispatch-architecture-design.md</code></div>
+        <div class="meta-pill"><span>Boundary</span><code>multi-STOA safe, not multi-writer collaborative</code></div>
+      </div>
+      <div class="chip-row">
+        <div class="chip chip--accent"><span>Core Move</span><code>workspace static / session runtime</code></div>
+        <div class="chip chip--success"><span>Result</span><code>restart self-heals without sidecar reload</code></div>
+        <div class="chip chip--warning"><span>Policy</span><code>silent-safe no-op for unmanaged manual CLI</code></div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">Current Failure</div>
+          <h2>Why the present model is structurally fragile</h2>
+          <p>The current system stores runtime facts in workspace hook artifacts. That makes port rebinding, session ownership, and secret validity impossible to keep coherent once STOA restarts or another instance touches the same workspace.</p>
+        </div>
+      </div>
+
+      <div class="broken-grid">
+        <article class="glass-card glass-card--error">
+          <h3>RC-1</h3>
+          <p>Claude HTTP sidecars hardcode a concrete localhost port. Restarting STOA turns the hook URL stale immediately.</p>
+        </article>
+        <article class="glass-card glass-card--error">
+          <h3>RC-2</h3>
+          <p>Manual terminal launches do not carry STOA runtime env. Hooks either fail loudly or disappear silently.</p>
+        </article>
+        <article class="glass-card glass-card--error">
+          <h3>RC-3</h3>
+          <p>One workspace file can express only one owner route. The last sidecar rewrite wins, even if another STOA still owns live sessions.</p>
+        </article>
+        <article class="glass-card glass-card--error">
+          <h3>RC-4</h3>
+          <p>Webhook binding uses an OS-assigned port. Every restart changes the address, but running agents keep using old assumptions.</p>
+        </article>
+      </div>
+
+      <div class="flow-row">
+        <article class="flow-node">
+          <div class="node-label">Workspace Files</div>
+          <h4>Static sidecars carry runtime truth</h4>
+          <p><code>.claude/settings.json</code> and related artifacts embed the current webhook route even though it belongs to a live session owner.</p>
+        </article>
+        <article class="flow-node">
+          <div class="node-label">Launch-Time Binding</div>
+          <h4>Route chosen too early</h4>
+          <p>The destination port and secret assumptions are fixed when sidecars are written or when an agent process first starts.</p>
+        </article>
+        <article class="flow-node">
+          <div class="node-label">Webhook Server</div>
+          <h4>Receiver moves, files do not</h4>
+          <p>STOA can restart cleanly and bind a fresh port, but the workspace files and already-running agents do not share the same view anymore.</p>
+        </article>
+        <article class="flow-node">
+          <div class="node-label">Observed Result</div>
+          <h4>Broken paths become inevitable</h4>
+          <div class="failure-list">
+            <div class="failure-item">stale localhost port</div>
+            <div class="failure-item">mass terminal hook errors</div>
+            <div class="failure-item">silent Codex no-op</div>
+            <div class="failure-item">multi-STOA route overwrite</div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">Target Topology</div>
+          <h2>Final lease-driven dispatch architecture</h2>
+          <p>Workspace hook artifacts stop owning routing state. They only invoke a stable dispatcher. The dispatcher reads the current session lease, discovers the active STOA owner, and posts to the correct webhook receiver in real time.</p>
+        </div>
+      </div>
+
+      <div class="target-lanes">
+        <div class="lane-grid">
+          <article class="lane">
+            <h3>Workspace Hook Surface</h3>
+            <p>Long-lived, provider-facing trigger files. Stable across STOA restart.</p>
+            <code class="mono-note">.claude/settings.json
+.codex/hooks.json
+.opencode/plugins/stoa-status.ts
+.stoa/hook-dispatch.mjs</code>
+          </article>
+          <div class="lane-rail">
+            <div class="rail-chip">CLI</div>
+          </div>
+          <div class="runtime-grid">
+            <article class="state-card">
+              <h4>Claude Code</h4>
+              <p>Command hooks only. No HTTP URL in workspace config.</p>
+              <code>node .stoa/hook-dispatch.mjs claude-code &lt;event&gt;</code>
+            </article>
+            <article class="state-card">
+              <h4>Codex</h4>
+              <p>Unified dispatcher replaces provider-private hook script.</p>
+              <code>node .stoa/hook-dispatch.mjs codex &lt;event&gt;</code>
+            </article>
+            <article class="state-card">
+              <h4>OpenCode</h4>
+              <p>Plugin still exists, but routing is lease-aware and late-bound.</p>
+              <code>dispatch contract shared with CLI bridge</code>
+            </article>
+            <article class="state-card">
+              <h4>Guaranteed Constraint</h4>
+              <p>Workspace artifacts never carry live port, owner, or secret.</p>
+              <code>runtime truth removed from workspace</code>
+            </article>
+          </div>
+        </div>
+
+        <div class="lane-grid">
+          <article class="lane">
+            <h3>Unified Hook Dispatcher</h3>
+            <p>Stateless late-binding bridge. Reads stdin, reads lease, derives provider route, posts to active STOA owner, exits.</p>
+            <code class="mono-note">input: stdin + STOA_HOOK_LEASE_PATH
+provider path: /hooks/&lt;provider&gt;
+mode: silent-safe default</code>
+          </article>
+          <div class="lane-rail">
+            <div class="rail-chip">READ</div>
+          </div>
+          <div class="runtime-grid">
+            <article class="state-card">
+              <h4>Lease Lookup</h4>
+              <p>Current webhook base URL and secret are read fresh on every hook invocation.</p>
+              <code>&lt;userData&gt;/runtime/hook-leases/&lt;session&gt;.json</code>
+            </article>
+            <article class="state-card">
+              <h4>Provider Mapping</h4>
+              <p>The dispatcher owns path derivation. Leases store only the webhook base URL, never provider-specific paths.</p>
+              <code>claude-code / codex / opencode</code>
+            </article>
+            <article class="state-card">
+              <h4>Failure Semantics</h4>
+              <p>No lease, expired lease, invalid lease, unreachable receiver, or unauthorized receiver all degrade to exit 0 by default.</p>
+              <code>silent-safe no-op</code>
+            </article>
+            <article class="state-card">
+              <h4>Debug Mode</h4>
+              <p>Diagnostics are opt-in so unmanaged manual CLI use does not spam the user terminal.</p>
+              <code>STOA_HOOK_DEBUG=1</code>
+            </article>
+          </div>
+        </div>
+
+        <div class="lane-grid">
+          <article class="lane">
+            <h3>Runtime Ownership Layer</h3>
+            <p>Session-scoped lease registry, owner identity, receiver auth, and canonical event ingestion live here. This is the actual routing truth.</p>
+          </article>
+          <div class="lane-rail">
+            <div class="rail-chip">OWN</div>
+          </div>
+          <div class="runtime-grid">
+            <article class="state-card">
+              <h4>Lease Registry</h4>
+              <p>Stores owner instance, generation, webhook base URL, secret, heartbeat, and expiry.</p>
+              <code>session-scoped runtime truth</code>
+            </article>
+            <article class="state-card">
+              <h4>Instance Identity</h4>
+              <p>Every STOA process gets one instance id. Ownership is per session, never per workspace.</p>
+              <code>one fresh owner per session</code>
+            </article>
+            <article class="state-card">
+              <h4>Webhook Receiver</h4>
+              <p>Still exposes provider endpoints, but now validates secrets against the active lease, not stale sidecar assumptions.</p>
+              <code>/hooks/claude-code
+/hooks/codex
+/hooks/opencode</code>
+            </article>
+            <article class="state-card">
+              <h4>Event Bridge</h4>
+              <p>Adapts raw hook payloads into canonical session events and observability facts.</p>
+              <code>receiver remains local, discovery becomes lease-driven</code>
+            </article>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">Lifecycle</div>
+          <h2>Session hook lease lifecycle</h2>
+          <p>The session lease is the only moving routing artifact. That is why STOA restart becomes survivable without rewriting workspace hook files or relying on agents to hot-reload configuration.</p>
+        </div>
+      </div>
+
+      <div class="timeline">
+        <article class="timeline-step">
+          <div class="timeline-index">01</div>
+          <h4>Acquire</h4>
+          <p>STOA claims the session lease before spawning the provider runtime.</p>
+          <code class="mono-note">ownerInstanceId
+generation
+webhookBaseUrl
+sessionSecret</code>
+        </article>
+        <article class="timeline-step">
+          <div class="timeline-index">02</div>
+          <h4>Spawn</h4>
+          <p>The provider receives only a stable lease pointer, not live routing state.</p>
+          <code class="mono-note">STOA_HOOK_LEASE_PATH</code>
+        </article>
+        <article class="timeline-step">
+          <div class="timeline-index">03</div>
+          <h4>Dispatch</h4>
+          <p>Every hook invocation reads the current lease and discovers the live STOA owner at that moment.</p>
+          <code class="mono-note">late-bound route resolution</code>
+        </article>
+        <article class="timeline-step">
+          <div class="timeline-index">04</div>
+          <h4>Heartbeat</h4>
+          <p>The owner refreshes <code>heartbeatAt</code> and <code>expiresAt</code> on a short cadence.</p>
+          <code class="mono-note">suggested: 5s / 20s</code>
+        </article>
+        <article class="timeline-step">
+          <div class="timeline-index">05</div>
+          <h4>Reclaim</h4>
+          <p>After expiry, a new STOA owner reclaims the same session with a new secret and incremented generation.</p>
+          <code class="mono-note">generation + 1
+secret rotates</code>
+        </article>
+        <article class="timeline-step">
+          <div class="timeline-index">06</div>
+          <h4>Release</h4>
+          <p>On clean stop, archive, delete, or session exit, the lease is deleted or forced stale.</p>
+          <code class="mono-note">dead lease = dead route</code>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">Ownership Boundary</div>
+          <h2>How multi-STOA stays safe on one workspace</h2>
+          <p>Shared workspace artifacts are intentionally stable and boring. The real isolation boundary is session ownership. Multiple STOA instances may coexist on the same workspace, but one live session still gets only one fresh owner.</p>
+        </div>
+      </div>
+
+      <div class="ownership">
+        <article class="ownership-card">
+          <h3>Shared workspace stays static</h3>
+          <p>The workspace can be touched by multiple STOA instances because the hook surface no longer encodes live port or owner information.</p>
+          <div class="workspace-shell">
+            <code>.claude/settings.json  -> command hook only</code>
+            <code>.codex/hooks.json      -> command hook only</code>
+            <code>.opencode plugin       -> dispatcher contract only</code>
+            <code>.stoa/hook-dispatch.mjs -> stable bridge artifact</code>
+          </div>
+        </article>
+
+        <article class="ownership-card">
+          <h3>Session ownership stays exclusive</h3>
+          <p>Each session lease names the current owner instance. A fresh lease blocks another STOA from taking over the same session until the lease expires or is released.</p>
+          <div class="instance-grid">
+            <section class="instance">
+              <header>
+                <h4>STOA-A</h4>
+                <span class="instance-badge">instance_A</span>
+              </header>
+              <div class="lease-box">
+                <h5>session_alpha</h5>
+                <code>owner: instance_A
+generation: 4
+expiresAt: fresh</code>
+              </div>
+              <div class="lease-box">
+                <h5>session_gamma</h5>
+                <code>owner: instance_A
+generation: 2
+expiresAt: fresh</code>
+              </div>
+            </section>
+            <section class="instance">
+              <header>
+                <h4>STOA-B</h4>
+                <span class="instance-badge">instance_B</span>
+              </header>
+              <div class="lease-box">
+                <h5>session_beta</h5>
+                <code>owner: instance_B
+generation: 1
+expiresAt: fresh</code>
+              </div>
+              <div class="blocked-claim">attempted claim of <code>session_alpha</code> is rejected while lease is fresh</div>
+            </section>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">Invariants</div>
+          <h2>The rules this architecture refuses to break</h2>
+          <p>These are the properties that make the system robust instead of merely patched. If any one of them is violated in implementation, the design regresses toward the current stale-port model.</p>
+        </div>
+      </div>
+
+      <div class="invariants">
+        <article class="invariant">
+          <h4>No runtime truth in workspace</h4>
+          <p>Sidecar artifacts may express events and commands, but never port, secret, lease freshness, or owner identity.</p>
+        </article>
+        <article class="invariant">
+          <h4>Dispatch is always late-bound</h4>
+          <p>Route resolution happens at hook fire time, not sidecar install time and not process boot time.</p>
+        </article>
+        <article class="invariant">
+          <h4>One fresh owner per session</h4>
+          <p>Session control is exclusive. Workspace access can be shared; live session ownership cannot.</p>
+        </article>
+        <article class="invariant">
+          <h4>Secret rotates on reclaim</h4>
+          <p>New ownership means new authorization. Old secrets must stop being valid immediately after reclaim.</p>
+        </article>
+        <article class="invariant">
+          <h4>Manual CLI stays quiet</h4>
+          <p>Unmanaged terminal launches should degrade to safe no-op rather than visually broken hook noise.</p>
+        </article>
+        <article class="invariant">
+          <h4>Restart self-heals through lease refresh</h4>
+          <p>Running agents keep the same dispatcher path. Future hook invocations read the new lease and find the new STOA owner automatically.</p>
+        </article>
+      </div>
+
+      <p class="footer-note">
+        Visual language follows the repository's Modern Minimalist Glassmorphism + Clean UI direction and uses the shared token vocabulary from the renderer token system.
+      </p>
+    </section>
+  </main>
+</body>
+</html>
