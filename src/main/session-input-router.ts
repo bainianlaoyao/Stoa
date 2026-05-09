@@ -92,5 +92,5 @@ function isAgentSessionType(sessionType: SessionType | null): sessionType is Exc
 }
 
 function isUserInterruptInput(data: string): boolean {
-  return data.includes('\u0003')
+  return data === ''
 }
