@@ -5,6 +5,7 @@ import type { SessionRuntimeManager, StartSessionRuntimeOptions } from '@core/se
 import { startSessionRuntime } from '@core/session-runtime'
 import type { PtyHost } from '@core/pty-host'
 import type { SessionEventBridge } from './session-event-bridge'
+import type { createHookLeaseManager } from './hook-lease-manager'
 
 interface RuntimePaths {
   shellPath: string | null
@@ -19,12 +20,14 @@ interface LaunchTrackedSessionRuntimeOptions {
   ptyHost: PtyHost
   runtimeController: SessionRuntimeManager
   sessionEventBridge: SessionEventBridge
+  hookLeaseManager: ReturnType<typeof createHookLeaseManager>
   resolveRuntimePaths: (
     sessionType: StartSessionRuntimeOptions['session']['type']
   ) => Promise<RuntimePaths>
   getProvider?: typeof getProvider
   startRuntime?: typeof startSessionRuntime
   initialDimensions?: { cols: number; rows: number }
+  commandEnv?: Record<string, string>
 }
 
 export async function launchTrackedSessionRuntime(options: LaunchTrackedSessionRuntimeOptions): Promise<boolean> {
@@ -41,8 +44,17 @@ export async function launchTrackedSessionRuntime(options: LaunchTrackedSessionR
 
   const descriptor = getProviderDescriptorBySessionType(session.type)
   const provider = (options.getProvider ?? getProvider)(descriptor.providerId)
-  const sessionSecret = options.sessionEventBridge.issueSessionSecret(session.id)
   const { shellPath, providerPath, claudeDangerouslySkipPermissions } = await options.resolveRuntimePaths(session.type)
+  const hookLease = await options.hookLeaseManager.ensureLease({
+    sessionId: session.id,
+    projectId: session.projectId,
+    sessionType: session.type,
+    webhookBaseUrl: `http://127.0.0.1:${options.webhookPort}`
+  })
+
+  if (hookLease?.lease.sessionSecret) {
+    options.sessionEventBridge.registerSessionSecret(session.id, hookLease.lease.sessionSecret)
+  }
 
   await (options.startRuntime ?? startSessionRuntime)({
     session: {
@@ -54,7 +66,10 @@ export async function launchTrackedSessionRuntime(options: LaunchTrackedSessionR
       runtimeState: session.runtimeState,
       turnState: session.turnState,
       externalSessionId: session.externalSessionId,
-      sessionSecret
+      sessionSecret: hookLease?.lease.sessionSecret ?? null,
+      hookLeasePath: hookLease?.path ?? null,
+      hookSpawnOwnerInstanceId: hookLease?.lease.ownerInstanceId ?? null,
+      hookSpawnGeneration: hookLease?.lease.generation ?? null
     },
     webhookPort: options.webhookPort,
     provider,
@@ -63,7 +78,8 @@ export async function launchTrackedSessionRuntime(options: LaunchTrackedSessionR
     shellPath,
     providerPath,
     claudeDangerouslySkipPermissions,
-    initialDimensions: options.initialDimensions
+    initialDimensions: options.initialDimensions,
+    commandEnv: options.commandEnv
   })
 
   return true

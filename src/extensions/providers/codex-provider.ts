@@ -6,6 +6,7 @@ import { createInterface } from 'node:readline'
 import type { CanonicalSessionEvent, ProviderCommand, ProviderCommandContext } from '@shared/project-session'
 import type { ProviderDefinition, ProviderRuntimeTarget } from './index'
 import { installManagedSidecar, uninstallManagedSidecar } from './managed-sidecar-installer'
+import { buildSharedHookArtifacts } from './shared-hook-dispatch'
 
 const DISCOVERY_ATTEMPTS = 20
 const DISCOVERY_DELAY_MS = 500
@@ -20,14 +21,39 @@ function codexCommand(context: ProviderCommandContext): string {
 }
 
 function createProviderEnv(target: ProviderRuntimeTarget, context: ProviderCommandContext): Record<string, string> {
-  return {
+  const env: Record<string, string> = {
     ...process.env as Record<string, string>,
-    STOA_SESSION_ID: target.session_id,
-    STOA_PROJECT_ID: target.project_id,
-    STOA_SESSION_SECRET: context.sessionSecret,
-    STOA_WEBHOOK_PORT: String(context.webhookPort),
     STOA_PROVIDER_PORT: String(context.providerPort)
   }
+
+  delete env.STOA_SESSION_ID
+  delete env.STOA_PROJECT_ID
+  delete env.STOA_SESSION_SECRET
+  delete env.STOA_WEBHOOK_PORT
+
+  if (context.hookLeasePath) {
+    env.STOA_HOOK_LEASE_PATH = context.hookLeasePath
+  }
+  if (context.hookManaged) {
+    env.STOA_HOOK_MANAGED = '1'
+  }
+  if (context.hookSessionId) {
+    env.STOA_HOOK_SESSION_ID = context.hookSessionId
+  }
+  if (context.hookProjectId) {
+    env.STOA_HOOK_PROJECT_ID = context.hookProjectId
+  }
+  if (context.hookProvider) {
+    env.STOA_HOOK_PROVIDER = context.hookProvider
+  }
+  if (context.hookSpawnOwnerInstanceId) {
+    env.STOA_HOOK_SPAWN_OWNER_INSTANCE_ID = context.hookSpawnOwnerInstanceId
+  }
+  if (context.hookSpawnGeneration !== null && context.hookSpawnGeneration !== undefined) {
+    env.STOA_HOOK_SPAWN_GENERATION = String(context.hookSpawnGeneration)
+  }
+
+  return env
 }
 
 function createCommand(target: ProviderRuntimeTarget, context: ProviderCommandContext, args: string[]): ProviderCommand {
@@ -45,78 +71,34 @@ async function writeSharedHookSidecar(target: ProviderRuntimeTarget): Promise<vo
       SessionStart: [
         {
           matcher: '*',
-          hooks: [{ type: 'command', command: 'node .codex/hook-stoa.mjs SessionStart', timeout_sec: 5 }]
+          hooks: [{ type: 'command', command: '.stoa/hook-dispatch codex SessionStart', timeout_sec: 5 }]
         }
       ],
       UserPromptSubmit: [
         {
-          hooks: [{ type: 'command', command: 'node .codex/hook-stoa.mjs UserPromptSubmit', timeout_sec: 5 }]
+          hooks: [{ type: 'command', command: '.stoa/hook-dispatch codex UserPromptSubmit', timeout_sec: 5 }]
         }
       ],
       PreToolUse: [
         {
           matcher: '*',
-          hooks: [{ type: 'command', command: 'node .codex/hook-stoa.mjs PreToolUse', timeout_sec: 5 }]
+          hooks: [{ type: 'command', command: '.stoa/hook-dispatch codex PreToolUse', timeout_sec: 5 }]
         }
       ],
       PostToolUse: [
         {
           matcher: '*',
-          hooks: [{ type: 'command', command: 'node .codex/hook-stoa.mjs PostToolUse', timeout_sec: 5 }]
+          hooks: [{ type: 'command', command: '.stoa/hook-dispatch codex PostToolUse', timeout_sec: 5 }]
         }
       ],
       Stop: [
         {
-          hooks: [{ type: 'command', command: 'node .codex/hook-stoa.mjs Stop', timeout_sec: 5 }]
+          hooks: [{ type: 'command', command: '.stoa/hook-dispatch codex Stop', timeout_sec: 5 }]
         }
       ]
     }
   }
-  const hookSidecarContent = `import { createInterface } from 'node:readline'
-
-const sessionId = process.env.STOA_SESSION_ID
-const projectId = process.env.STOA_PROJECT_ID
-const sessionSecret = process.env.STOA_SESSION_SECRET
-const webhookPort = process.env.STOA_WEBHOOK_PORT
-const hookEventName = process.argv[2]
-
-if (!sessionId || !projectId || !sessionSecret || !webhookPort || !hookEventName) {
-  process.exit(0)
-}
-
-let input = ''
-for await (const line of createInterface({ input: process.stdin })) {
-  input += line
-}
-
-let body = {}
-if (input.trim()) {
-  try {
-    body = JSON.parse(input)
-  } catch {
-    body = {}
-  }
-}
-if (!('hook_event_name' in body)) {
-  body = { hook_event_name: hookEventName, ...body }
-}
-
-const response = await fetch(\`http://127.0.0.1:\${webhookPort}/hooks/codex\`, {
-  method: 'POST',
-  headers: {
-    'content-type': 'application/json',
-    'x-stoa-session-id': sessionId,
-    'x-stoa-project-id': projectId,
-    'x-stoa-secret': sessionSecret
-  },
-  body: JSON.stringify(body)
-})
-
-const text = await response.text()
-if (response.ok && text.trim()) {
-  process.stdout.write(text.trim())
-}
-`
+  const sharedArtifacts = buildSharedHookArtifacts()
 
   await installManagedSidecar({
     rootDir: target.path,
@@ -124,6 +106,12 @@ if (response.ok && text.trim()) {
     currentArtifacts: [
       '.codex/config.toml',
       '.codex/hooks.json',
+      '.stoa/hook-contract.json',
+      '.stoa/hook-dispatch',
+      '.stoa/hook-dispatch.cmd',
+      '.stoa/hook-dispatch.mjs'
+    ],
+    legacyArtifacts: [
       '.codex/hook-stoa.mjs'
     ],
     writes: [
@@ -135,10 +123,7 @@ if (response.ok && text.trim()) {
         relativePath: '.codex/hooks.json',
         content: `${JSON.stringify(hooksConfig, null, 2)}\n`
       },
-      {
-        relativePath: '.codex/hook-stoa.mjs',
-        content: hookSidecarContent
-      }
+      ...sharedArtifacts
     ]
   })
 }

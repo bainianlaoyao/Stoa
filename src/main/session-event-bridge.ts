@@ -13,6 +13,7 @@ import type {
 } from '@shared/project-session'
 import type { EvidenceRef } from '@shared/memory-runtime'
 import type { ObservationCategory, ObservationEvent, ObservationRetention, ObservationSeverity } from '@shared/observability'
+import type { HookLeaseProvider, SessionHookLease } from './hook-lease-registry'
 
 interface SessionEventApplier {
   applyProviderStatePatch: (patch: SessionStatePatchEvent) => Promise<void>
@@ -43,6 +44,15 @@ interface SessionEventBridgeOptions {
   createRuntimeStateStore?: (projectPath: string) => RuntimeStateStoreLike
   captureEvidence?: boolean
   configureServerApp?: (app: Express) => void
+  authorizeHookRequest?: (input: {
+    sessionId: string
+    projectId: string
+    provider: HookLeaseProvider
+    secret: string | null
+  }) => Promise<
+    | { ok: true; lease: SessionHookLease }
+    | { ok: false; reason: 'invalid_secret' | 'invalid_hook_context' }
+  >
 }
 
 export class SessionEventBridge {
@@ -61,6 +71,7 @@ export class SessionEventBridge {
   private readonly createRuntimeStateStore: (projectPath: string) => RuntimeStateStoreLike
   private readonly captureEvidence: boolean
   private readonly configureServerApp?: (app: Express) => void
+  private readonly authorizeHookRequest?: SessionEventBridgeOptions['authorizeHookRequest']
   private server: ReturnType<typeof createLocalWebhookServer> | null = null
   private port: number | null = null
 
@@ -85,6 +96,7 @@ export class SessionEventBridge {
     this.createRuntimeStateStore = options.createRuntimeStateStore ?? ((projectPath) => new RuntimeStateStore(projectPath))
     this.captureEvidence = options.captureEvidence !== false
     this.configureServerApp = options.configureServerApp
+    this.authorizeHookRequest = options.authorizeHookRequest
   }
 
   async start(): Promise<number> {
@@ -97,6 +109,7 @@ export class SessionEventBridge {
         getSessionSecret: (sessionId) => {
           return this.sessionSecrets.get(sessionId) ?? null
         },
+        authorizeHookRequest: this.authorizeHookRequest,
         onEvent: async (event) => {
           return await this.enqueueSessionEvent(event)
         },
@@ -619,6 +632,10 @@ export class SessionEventBridge {
     const secret = `stoa-${randomUUID()}`
     this.sessionSecrets.set(sessionId, secret)
     return secret
+  }
+
+  registerSessionSecret(sessionId: string, secret: string): void {
+    this.sessionSecrets.set(sessionId, secret)
   }
 
   debugSnapshotSessionSecrets(): Record<string, string> {

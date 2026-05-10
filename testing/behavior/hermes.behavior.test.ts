@@ -13,6 +13,9 @@ describe('hermes behavior assets', () => {
       'hermes-terminal',
       'hermes-inspector'
     ])
+    expect(hermesSurfaceSessionFlowBehavior.goal).toContain('selecting a backend')
+    expect(hermesSurfaceSessionFlowBehavior.action).toBe('hermes.session.selectBackendCreateAndActivate')
+    expect(hermesSurfaceSessionFlowBehavior.expects).toContain('hermes.providerPickerVisible')
     expect(hermesSurfaceSessionFlowBehavior.expects).toContain('hermes.sessionCreated')
     expect(hermesSurfaceSessionFlowBehavior.expects).toContain('hermes.terminalDeckVisible')
     expect(hermesSurfaceSessionFlowBehavior.interruptions).toContain('hermes.runtime.failedToStart')

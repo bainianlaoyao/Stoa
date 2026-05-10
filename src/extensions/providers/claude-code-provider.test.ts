@@ -114,7 +114,7 @@ describe('claude-code provider', () => {
     expect(command.command).toBe('C:\\Users\\30280\\AppData\\Roaming\\npm\\claude.cmd')
   })
 
-  test('injects STOA_* environment variables into Claude command env', async () => {
+  test('injects lease-driven hook environment variables into Claude command env', async () => {
     const provider = createClaudeCodeProvider()
 
     const command = await provider.buildStartCommand({
@@ -127,16 +127,29 @@ describe('claude-code provider', () => {
     }, {
       webhookPort: 43127,
       sessionSecret: 'secret-env',
-      providerPort: 43128
+      providerPort: 43128,
+      hookLeasePath: 'D:/runtime/hook-leases/session_claude_env.json',
+      hookManaged: true,
+      hookSessionId: 'session_claude_env',
+      hookProjectId: 'project_alpha',
+      hookProvider: 'claude-code',
+      hookSpawnOwnerInstanceId: 'instance-a',
+      hookSpawnGeneration: 7
     })
 
-    expect(command.env.STOA_SESSION_ID).toBe('session_claude_env')
-    expect(command.env.STOA_PROJECT_ID).toBe('project_alpha')
-    expect(command.env.STOA_SESSION_SECRET).toBe('secret-env')
-    expect(command.env.STOA_WEBHOOK_PORT).toBe('43127')
+    expect(command.env.STOA_HOOK_LEASE_PATH).toBe('D:/runtime/hook-leases/session_claude_env.json')
+    expect(command.env.STOA_HOOK_MANAGED).toBe('1')
+    expect(command.env.STOA_HOOK_SESSION_ID).toBe('session_claude_env')
+    expect(command.env.STOA_HOOK_PROJECT_ID).toBe('project_alpha')
+    expect(command.env.STOA_HOOK_PROVIDER).toBe('claude-code')
+    expect(command.env.STOA_HOOK_SPAWN_OWNER_INSTANCE_ID).toBe('instance-a')
+    expect(command.env.STOA_HOOK_SPAWN_GENERATION).toBe('7')
+    expect(command.env.STOA_PROVIDER_PORT).toBe('43128')
+    expect(command.env.STOA_SESSION_SECRET).toBeUndefined()
+    expect(command.env.STOA_WEBHOOK_PORT).toBeUndefined()
   })
 
-  test('installSidecar writes shared Claude HTTP hooks without embedding secrets', async () => {
+  test('installSidecar writes shared Claude command hooks through the stable dispatcher launcher', async () => {
     const workspaceDir = await mkdtemp(join(tmpdir(), 'stoa-claude-sidecar-'))
     try {
       const provider = createClaudeCodeProvider()
@@ -163,24 +176,28 @@ describe('claude-code provider', () => {
         'Stop',
         'UserPromptSubmit'
       ])
-      expect(readHttpHook(content, 'SessionStart')).toMatchObject({
-        type: 'http',
-        url: 'http://127.0.0.1:43127/hooks/claude-code',
+      expect(readCommandHook(content, 'SessionStart')).toMatchObject({
+        type: 'command',
+        command: '.stoa/hook-dispatch claude-code SessionStart',
         timeout: 5,
-        headers: {
-          'x-stoa-session-id': '${STOA_SESSION_ID}',
-          'x-stoa-project-id': '${STOA_PROJECT_ID}',
-          'x-stoa-secret': '${STOA_SESSION_SECRET}'
-        },
-        allowedEnvVars: ['STOA_SESSION_ID', 'STOA_PROJECT_ID', 'STOA_SESSION_SECRET']
+        allowedEnvVars: [
+          'STOA_HOOK_LEASE_PATH',
+          'STOA_HOOK_MANAGED',
+          'STOA_HOOK_SESSION_ID',
+          'STOA_HOOK_PROJECT_ID',
+          'STOA_HOOK_PROVIDER',
+          'STOA_HOOK_SPAWN_OWNER_INSTANCE_ID',
+          'STOA_HOOK_SPAWN_GENERATION'
+        ]
       })
-      expect(readHttpHook(content, 'UserPromptSubmit')).toMatchObject({
-        type: 'http',
-        url: 'http://127.0.0.1:43127/hooks/claude-code',
+      expect(readCommandHook(content, 'UserPromptSubmit')).toMatchObject({
+        type: 'command',
+        command: '.stoa/hook-dispatch claude-code UserPromptSubmit',
         timeout: 5
       })
       expect(content).not.toContain('secret-env')
       expect(content).not.toContain('session_claude_env')
+      expect(content).not.toContain('http://127.0.0.1:')
     } finally {
       await rm(workspaceDir, { recursive: true, force: true })
     }
@@ -221,7 +238,13 @@ describe('claude-code provider', () => {
       const manifest = JSON.parse(await readFile(join(workspaceDir, '.claude', '.stoa-managed-sidecar.json'), 'utf8')) as {
         artifactPaths: string[]
       }
-      expect(manifest.artifactPaths).toEqual(['.claude/settings.json'])
+      expect(manifest.artifactPaths).toEqual([
+        '.claude/settings.json',
+        '.stoa/hook-contract.json',
+        '.stoa/hook-dispatch',
+        '.stoa/hook-dispatch.cmd',
+        '.stoa/hook-dispatch.mjs'
+      ])
     } finally {
       await rm(workspaceDir, { recursive: true, force: true })
     }
@@ -262,9 +285,9 @@ describe('claude-code provider', () => {
 
       await expect(readFile(join(workspaceDir, '.claude', 'settings.local.json'), 'utf8')).rejects.toThrow()
       const content = await readFile(join(workspaceDir, '.claude', 'settings.json'), 'utf8')
-      expect(readHttpHook(content, 'Stop')).toMatchObject({
-        type: 'http',
-        url: 'http://127.0.0.1:43127/hooks/claude-code'
+      expect(readCommandHook(content, 'Stop')).toMatchObject({
+        type: 'command',
+        command: '.stoa/hook-dispatch claude-code Stop'
       })
     } finally {
       await rm(workspaceDir, { recursive: true, force: true })
@@ -272,11 +295,11 @@ describe('claude-code provider', () => {
   })
 })
 
-function readHttpHook(settingsJson: string, eventName: string): {
+function readCommandHook(settingsJson: string, eventName: string): {
   type?: string
-  url?: string
+  command?: string
   timeout?: number
-  headers?: Record<string, string>
+  timeout_sec?: number
   allowedEnvVars?: string[]
 } {
   const settings = JSON.parse(settingsJson) as {
@@ -289,9 +312,9 @@ function readHttpHook(settingsJson: string, eventName: string): {
 
   return hook as {
     type?: string
-    url?: string
+    command?: string
     timeout?: number
-    headers?: Record<string, string>
+    timeout_sec?: number
     allowedEnvVars?: string[]
   }
 }

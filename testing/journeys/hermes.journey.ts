@@ -5,8 +5,14 @@ export const hermesSurfaceSessionFlowJourney = defineJourney({
   behavior: 'hermes.surface.session-flow',
   usageMode: 'active_workflow',
   setup: ['app.launch', 'select.hermes.surface'],
-  act: ['click.hermes.createSession', 'click.hermes.sessionItem'],
-  assert: ['hermes.sessionCreated', 'hermes.sessionActivated', 'hermes.terminalDeckVisible', 'hermes.inspectorVisible'],
+  act: ['click.hermes.createSession', 'select.hermes.backendProvider', 'click.hermes.sessionItem'],
+  assert: [
+    'hermes.providerPickerVisible',
+    'hermes.sessionCreated',
+    'hermes.sessionActivated',
+    'hermes.terminalDeckVisible',
+    'hermes.inspectorVisible'
+  ],
   variants: ['single-session']
 })
 

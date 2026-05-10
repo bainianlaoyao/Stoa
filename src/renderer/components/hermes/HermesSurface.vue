@@ -1,13 +1,18 @@
 <script setup lang="ts">
+import type { SessionType } from '@shared/project-session'
 import HermesInspectorPanel from './HermesInspectorPanel.vue'
 import HermesSessionList from './HermesSessionList.vue'
 import HermesTerminalDeck from './HermesTerminalDeck.vue'
+
+const emit = defineEmits<{
+  createWorkspaceSession: [payload: { projectId: string; type: SessionType; title: string }]
+}>()
 </script>
 
 <template>
   <section class="hermes-surface" data-surface="hermes" data-testid="surface.hermes" aria-label="Hermes surface">
     <div class="hermes-surface__layout">
-      <HermesSessionList />
+      <HermesSessionList @create-workspace-session="emit('createWorkspaceSession', $event)" />
       <HermesTerminalDeck />
       <HermesInspectorPanel />
     </div>
@@ -25,7 +30,7 @@ import HermesTerminalDeck from './HermesTerminalDeck.vue'
   height: 100%;
   min-height: 0;
   display: grid;
-  grid-template-columns: 260px minmax(0, 1fr) 320px;
+  grid-template-columns: 240px minmax(0, 1fr) 320px;
   gap: 12px;
 }
 </style>

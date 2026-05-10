@@ -156,6 +156,21 @@ describe('E2E: Main Process Config Guard', () => {
     it('main/index.ts does not hardcode shell/opencode provider ternary routing anymore', () => {
       expect(mainSource).not.toContain("session.type === 'shell' ? 'local-shell' : 'opencode'")
     })
+
+    it('main/index.ts wires shared runtime-root hook lease management into session launch', () => {
+      expect(mainSource).toMatch(/resolveDefaultStoaRuntimeRoot\(/)
+      expect(mainSource).toMatch(/createHookLeaseManager\(/)
+      expect(mainSource).toMatch(/hookLeaseManager\s*:/)
+      expect(mainSource).toMatch(/launchTrackedSessionRuntime\(\{/)
+    })
+
+    it('packaged smoke validates Claude command-hook dispatcher contract instead of legacy HTTP hooks', () => {
+      expect(mainSource).toContain("claude-session-start-hook-verified")
+      expect(mainSource).toContain(".stoa/hook-dispatch claude-code SessionStart")
+      expect(mainSource).not.toContain('Packaged smoke Claude SessionStart hook must be HTTP')
+      expect(mainSource).not.toContain('/hooks/claude-code')
+      expect(mainSource).not.toContain('${STOA_SESSION_SECRET}')
+    })
   })
 
   describe('IPC handler registration completeness', () => {

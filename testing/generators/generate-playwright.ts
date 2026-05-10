@@ -343,6 +343,8 @@ test('journey.hermes.surface.session-flow', async () => {
     await expect(app.page.getByTestId('hermes-inspector-panel')).toBeVisible()
     const initialCount = await app.page.getByTestId('hermes.session.item').count()
     await app.page.getByTestId('hermes.session.create').click()
+    await expect(app.page.getByTestId('provider-card')).toBeVisible()
+    await app.page.locator('[data-testid="provider-card.item"][data-provider-type="claude-code"]').click()
     await expect(app.page.getByTestId('hermes.session.item')).toHaveCount(initialCount + 1)
     await expect(app.page.locator('[data-testid="hermes.session.item"][data-session-id]')).toHaveCount(initialCount + 1)
   } finally {

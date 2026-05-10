@@ -2,6 +2,7 @@ import { join } from 'node:path'
 import type { CanonicalSessionEvent, ProviderCommand, ProviderCommandContext } from '@shared/project-session'
 import type { ProviderDefinition, ProviderRuntimeTarget } from './index'
 import { installManagedSidecar, uninstallManagedSidecar } from './managed-sidecar-installer'
+import { buildSharedHookArtifacts } from './shared-hook-dispatch'
 
 function opencodeCommand(context: ProviderCommandContext): string {
   const configuredPath = context.providerPath?.trim()
@@ -9,14 +10,39 @@ function opencodeCommand(context: ProviderCommandContext): string {
 }
 
 function createProviderEnv(target: ProviderRuntimeTarget, context: ProviderCommandContext): Record<string, string> {
-  return {
+  const env: Record<string, string> = {
     ...process.env as Record<string, string>,
-    STOA_SESSION_ID: target.session_id,
-    STOA_PROJECT_ID: target.project_id,
-    STOA_SESSION_SECRET: context.sessionSecret,
-    STOA_WEBHOOK_PORT: String(context.webhookPort),
     STOA_PROVIDER_PORT: String(context.providerPort)
   }
+
+  delete env.STOA_SESSION_ID
+  delete env.STOA_PROJECT_ID
+  delete env.STOA_SESSION_SECRET
+  delete env.STOA_WEBHOOK_PORT
+
+  if (context.hookLeasePath) {
+    env.STOA_HOOK_LEASE_PATH = context.hookLeasePath
+  }
+  if (context.hookManaged) {
+    env.STOA_HOOK_MANAGED = '1'
+  }
+  if (context.hookSessionId) {
+    env.STOA_HOOK_SESSION_ID = context.hookSessionId
+  }
+  if (context.hookProjectId) {
+    env.STOA_HOOK_PROJECT_ID = context.hookProjectId
+  }
+  if (context.hookProvider) {
+    env.STOA_HOOK_PROVIDER = context.hookProvider
+  }
+  if (context.hookSpawnOwnerInstanceId) {
+    env.STOA_HOOK_SPAWN_OWNER_INSTANCE_ID = context.hookSpawnOwnerInstanceId
+  }
+  if (context.hookSpawnGeneration !== null && context.hookSpawnGeneration !== undefined) {
+    env.STOA_HOOK_SPAWN_GENERATION = String(context.hookSpawnGeneration)
+  }
+
+  return env
 }
 
 function createCommand(target: ProviderRuntimeTarget, context: ProviderCommandContext, args: string[]): ProviderCommand {
@@ -30,10 +56,33 @@ function createCommand(target: ProviderRuntimeTarget, context: ProviderCommandCo
 
 async function writeSidecarPlugin(target: ProviderRuntimeTarget, context: ProviderCommandContext): Promise<void> {
   const pluginPath = join('.opencode', 'plugins', 'stoa-status.ts')
-  const pluginContent = `const sessionId = process.env.STOA_SESSION_ID
-const projectId = process.env.STOA_PROJECT_ID
-const sessionSecret = process.env.STOA_SESSION_SECRET
-const webhookPort = process.env.STOA_WEBHOOK_PORT
+  const pluginContent = `const hookLeasePath = process.env.STOA_HOOK_LEASE_PATH
+const hookManaged = process.env.STOA_HOOK_MANAGED
+
+function hookCommand(eventName) {
+  if (process.platform === 'win32') {
+    return ['cmd.exe', '/d', '/s', '/c', \`.stoa\\\\hook-dispatch.cmd opencode \${eventName}\`]
+  }
+  return ['sh', '-c', \`exec ./.stoa/hook-dispatch opencode \${eventName}\`]
+}
+
+async function dispatchEvent(eventName, body) {
+  if (!hookLeasePath || hookManaged !== '1') {
+    return
+  }
+
+  try {
+    const json = JSON.stringify(body)
+    const proc = Bun.spawn(hookCommand(eventName), {
+      cwd: '.',
+      stdin: new Blob([json + '\\n']),
+      stdout: 'ignore',
+      stderr: 'ignore',
+      env: process.env
+    })
+    await proc.exited
+  } catch {}
+}
 
 function toFailureReason(event) {
   const raw = event.properties?.error ?? event.properties?.reason ?? null
@@ -75,25 +124,6 @@ async function enrichWithMessages(client, event, body) {
   }
 }
 
-async function sendEvent(body) {
-  if (!sessionId || !projectId || !sessionSecret) {
-    return
-  }
-
-  try {
-    await fetch('http://127.0.0.1:${context.webhookPort}/hooks/opencode', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-stoa-session-id': sessionId,
-        'x-stoa-project-id': projectId,
-        'x-stoa-secret': sessionSecret
-      },
-      body: JSON.stringify(body)
-    })
-  } catch {}
-}
-
 function buildEventBody(event) {
   return {
     hook_event_name: event.type,
@@ -112,33 +142,33 @@ function buildEventBody(event) {
 export const StoaStatusPlugin = async ({ client }) => ({
   'tool.execute.before': async ({ event }) => {
     const body = buildEventBody(event)
-    await sendEvent(body)
+    await dispatchEvent(event.type, body)
   },
   'tool.execute.after': async ({ event }) => {
     const body = buildEventBody(event)
-    await sendEvent(body)
+    await dispatchEvent(event.type, body)
   },
   'session.created': async ({ event }) => {
     const body = buildEventBody(event)
-    await sendEvent(body)
+    await dispatchEvent(event.type, body)
   },
   'session.idle': async ({ event }) => {
     const body = buildEventBody(event)
     await enrichWithMessages(client, event, body)
-    await sendEvent(body)
+    await dispatchEvent(event.type, body)
   },
   'session.error': async ({ event }) => {
     const body = buildEventBody(event)
     body.error = toFailureReason(event)
-    await sendEvent(body)
+    await dispatchEvent(event.type, body)
   },
   'message.updated': async ({ event }) => {
     const body = buildEventBody(event)
-    await sendEvent(body)
+    await dispatchEvent(event.type, body)
   },
   'permission.asked': async ({ event }) => {
     const body = buildEventBody(event)
-    await sendEvent(body)
+    await dispatchEvent(event.type, body)
   },
   'permission.replied': async ({ event }) => {
     const body = buildEventBody(event)
@@ -146,19 +176,29 @@ export const StoaStatusPlugin = async ({ client }) => ({
     if (failed) {
       body.error = toFailureReason(event)
     }
-    await sendEvent(body)
+    await dispatchEvent(event.type, body)
   }
 })
 `
 
+  const sharedArtifacts = buildSharedHookArtifacts()
   await installManagedSidecar({
     rootDir: target.path,
     manifestRelativePath: '.opencode/.stoa-managed-sidecar.json',
-    currentArtifacts: [pluginPath],
-    writes: [{
-      relativePath: pluginPath,
-      content: pluginContent
-    }]
+    currentArtifacts: [
+      pluginPath,
+      '.stoa/hook-contract.json',
+      '.stoa/hook-dispatch',
+      '.stoa/hook-dispatch.cmd',
+      '.stoa/hook-dispatch.mjs'
+    ],
+    writes: [
+      {
+        relativePath: pluginPath,
+        content: pluginContent
+      },
+      ...sharedArtifacts
+    ]
   })
 }
 

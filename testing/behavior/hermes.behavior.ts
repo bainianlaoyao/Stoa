@@ -3,13 +3,14 @@ import { defineBehavior } from '../contracts/testing-contracts'
 export const hermesSurfaceSessionFlowBehavior = defineBehavior({
   id: 'hermes.surface.session-flow',
   actor: 'user',
-  goal: 'use the Hermes surface to create and switch between Hermes sessions while preserving the embedded terminal workspace',
+  goal: 'use the Hermes surface to create a Hermes session by selecting a backend and switch between Hermes sessions while preserving the embedded terminal workspace',
   entities: ['hermes-session', 'hermes-surface', 'hermes-terminal', 'hermes-inspector'],
   usageModes: ['active_workflow'],
   preconditions: ['hermes.surface.available', 'bridge.hermes.bootstrap.ready'],
-  action: 'hermes.session.createAndActivate',
+  action: 'hermes.session.selectBackendCreateAndActivate',
   expects: [
     'activity.hermesVisible',
+    'hermes.providerPickerVisible',
     'hermes.sessionCreated',
     'hermes.sessionActivated',
     'hermes.terminalDeckVisible',

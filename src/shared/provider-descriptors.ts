@@ -83,3 +83,11 @@ export function getProviderDescriptorByProviderId(providerId: string): ProviderD
 export function listProviderDescriptors(): ProviderDescriptor[] {
   return SESSION_PROVIDER_ORDER.map(getProviderDescriptorBySessionType)
 }
+
+export function isMetaSessionProvider(descriptor: ProviderDescriptor): boolean {
+  return descriptor.supportsResume && descriptor.supportsStructuredEvents
+}
+
+export function listMetaSessionProviderDescriptors(): ProviderDescriptor[] {
+  return listProviderDescriptors().filter(isMetaSessionProvider)
+}

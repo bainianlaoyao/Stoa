@@ -173,7 +173,10 @@ function setupTerminal() {
 
   const helperTextarea = terminalContainer.value.querySelector('.xterm-helper-textarea')
   if (helperTextarea) {
-    helperTextarea.addEventListener('keydown', (e: KeyboardEvent) => {
+    helperTextarea.addEventListener('keydown', (e: Event) => {
+      if (!(e instanceof KeyboardEvent)) {
+        return
+      }
       if (e.ctrlKey && (e.key === 'c' || e.key === 'C') && !e.code) {
         e.stopImmediatePropagation()
       }

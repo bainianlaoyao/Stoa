@@ -1228,7 +1228,7 @@ describe('E2E: Backend Full User Lifecycle', () => {
       expect(content.length).toBeGreaterThan(0)
     })
 
-    test('sidecar plugin contains webhook URL with correct port', async () => {
+    test('sidecar plugin uses lease-driven shared dispatcher contract', async () => {
       const workspaceDir = await createTestWorkspace('stoa-e2e-sidecar-')
       const provider = getProvider('opencode')
 
@@ -1239,10 +1239,13 @@ describe('E2E: Backend Full User Lifecycle', () => {
 
       const pluginPath = join(workspaceDir, '.opencode', 'plugins', 'stoa-status.ts')
       const content = await readFile(pluginPath, 'utf-8')
-      expect(content).toContain('127.0.0.1:43127')
-      expect(content).toContain('process.env.STOA_SESSION_ID')
-      expect(content).toContain('process.env.STOA_PROJECT_ID')
-      expect(content).toContain('process.env.STOA_SESSION_SECRET')
+      expect(content).toContain('.stoa/hook-dispatch opencode')
+      expect(content).toContain('process.env.STOA_HOOK_LEASE_PATH')
+      expect(content).toContain('process.env.STOA_HOOK_MANAGED')
+      expect(content).not.toContain('127.0.0.1:43127')
+      expect(content).not.toContain('process.env.STOA_SESSION_ID')
+      expect(content).not.toContain('process.env.STOA_PROJECT_ID')
+      expect(content).not.toContain('process.env.STOA_SESSION_SECRET')
       expect(content).not.toContain('test-secret')
     })
 

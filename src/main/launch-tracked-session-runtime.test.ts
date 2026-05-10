@@ -27,7 +27,27 @@ describe('launchTrackedSessionRuntime', () => {
       providerPath: null,
       claudeDangerouslySkipPermissions: false
     }))
-    const issueSessionSecret = vi.fn(() => 'secret-1')
+    const ensureLease = vi.fn(async () => ({
+      path: 'D:/tmp/runtime/hook-leases/session.json',
+      lease: {
+        version: 1,
+        sessionId: session.id,
+        projectId: project.id,
+        provider: 'opencode',
+        leaseState: 'active',
+        ownerInstanceId: 'instance-a',
+        generation: 1,
+        webhookBaseUrl: 'http://127.0.0.1:43127',
+        sessionSecret: 'secret-1',
+        commitLockNonce: 'nonce-1',
+        commitToken: 'token-1',
+        createdAt: '2026-05-10T12:00:00.000Z',
+        updatedAt: '2026-05-10T12:00:00.000Z',
+        heartbeatAt: '2026-05-10T12:00:00.000Z',
+        expiresAt: '2026-05-10T12:00:20.000Z'
+      }
+    }))
+    const registerSessionSecret = vi.fn()
     const startRuntime = vi.fn(async () => {})
 
     const launched = await launchTrackedSessionRuntime({
@@ -43,7 +63,10 @@ describe('launchTrackedSessionRuntime', () => {
         appendTerminalData: vi.fn(async () => {})
       },
       sessionEventBridge: {
-        issueSessionSecret
+        registerSessionSecret
+      } as never,
+      hookLeaseManager: {
+        ensureLease
       } as never,
       resolveRuntimePaths,
       getProvider: getProvider as never,
@@ -52,8 +75,14 @@ describe('launchTrackedSessionRuntime', () => {
 
     expect(launched).toBe(true)
     expect(resolveRuntimePaths).toHaveBeenCalledWith('shell')
-    expect(issueSessionSecret).toHaveBeenCalledWith(session.id)
     expect(getProvider).toHaveBeenCalledWith('local-shell')
+    expect(ensureLease).toHaveBeenCalledWith({
+      sessionId: session.id,
+      projectId: project.id,
+      sessionType: 'shell',
+      webhookBaseUrl: 'http://127.0.0.1:43127'
+    })
+    expect(registerSessionSecret).toHaveBeenCalledWith(session.id, 'secret-1')
     expect(startRuntime).toHaveBeenCalledWith(
       expect.objectContaining({
         session: expect.objectContaining({
@@ -65,7 +94,10 @@ describe('launchTrackedSessionRuntime', () => {
           runtimeState: 'created',
           turnState: 'idle',
           externalSessionId: null,
-          sessionSecret: 'secret-1'
+          sessionSecret: 'secret-1',
+          hookLeasePath: 'D:/tmp/runtime/hook-leases/session.json',
+          hookSpawnOwnerInstanceId: 'instance-a',
+          hookSpawnGeneration: 1
         }),
         webhookPort: 43127,
         provider,
@@ -95,8 +127,9 @@ describe('launchTrackedSessionRuntime', () => {
         markRuntimeFailedToStart: vi.fn(async () => {}),
         appendTerminalData: vi.fn(async () => {})
       },
-      sessionEventBridge: {
-        issueSessionSecret: vi.fn(() => 'secret-1')
+      sessionEventBridge: {} as never,
+      hookLeaseManager: {
+        ensureLease: vi.fn(async () => null)
       } as never,
       resolveRuntimePaths: vi.fn(async () => ({
         shellPath: null,
@@ -140,8 +173,9 @@ describe('launchTrackedSessionRuntime', () => {
         markRuntimeFailedToStart: vi.fn(async () => {}),
         appendTerminalData: vi.fn(async () => {})
       },
-      sessionEventBridge: {
-        issueSessionSecret: vi.fn(() => 'secret-1')
+      sessionEventBridge: {} as never,
+      hookLeaseManager: {
+        ensureLease: vi.fn(async () => null)
       } as never,
       resolveRuntimePaths: vi.fn(async () => ({
         shellPath: null,
@@ -163,7 +197,7 @@ describe('launchTrackedSessionRuntime', () => {
       providerPath: 'hermes-agent',
       claudeDangerouslySkipPermissions: false
     }))
-    const issueSessionSecret = vi.fn(() => 'secret-hermes')
+    const ensureLease = vi.fn(async () => null)
     const startRuntime = vi.fn(async () => {})
 
     const launched = await launchTrackedSessionRuntime({
@@ -216,8 +250,9 @@ describe('launchTrackedSessionRuntime', () => {
         markRuntimeFailedToStart: vi.fn(async () => {}),
         appendTerminalData: vi.fn(async () => {})
       },
-      sessionEventBridge: {
-        issueSessionSecret
+      sessionEventBridge: {} as never,
+      hookLeaseManager: {
+        ensureLease
       } as never,
       resolveRuntimePaths,
       getProvider: getProvider as never,
@@ -227,13 +262,20 @@ describe('launchTrackedSessionRuntime', () => {
     expect(launched).toBe(true)
     expect(resolveRuntimePaths).toHaveBeenCalledWith('hermes-agent')
     expect(getProvider).toHaveBeenCalledWith('hermes-agent')
+    expect(ensureLease).toHaveBeenCalledWith({
+      sessionId: 'hermes_session_1',
+      projectId: 'stoa-hermes',
+      sessionType: 'hermes-agent',
+      webhookBaseUrl: 'http://127.0.0.1:43127'
+    })
     expect(startRuntime).toHaveBeenCalledWith(
       expect.objectContaining({
         session: expect.objectContaining({
           id: 'hermes_session_1',
           type: 'hermes-agent',
           externalSessionId: 'resume-hermes-1',
-          sessionSecret: 'secret-hermes'
+          sessionSecret: null,
+          hookLeasePath: null
         }),
         providerPath: 'hermes-agent'
       })

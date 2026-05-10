@@ -478,6 +478,7 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
     test('createHermesSession / setActiveHermesSession / closeHermesSession round-trip updates isolated Hermes state', async () => {
       const created = await api.createHermesSession?.({
         title: 'global-triage',
+        backendSessionType: 'claude-code',
         capabilityLevel: 2
       })
 
@@ -506,6 +507,7 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
       })
       const hermesSession = await api.createHermesSession?.({
         title: 'global-triage',
+        backendSessionType: 'claude-code',
         capabilityLevel: 3
       })
 

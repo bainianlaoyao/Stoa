@@ -15,6 +15,7 @@ function makeSession(patch: Partial<HermesSessionSummary> = {}): HermesSessionSu
     id: 'hermes_1',
     title: 'global-triage',
     status: 'running',
+    backendSessionType: 'claude-code',
     capabilityLevel: 2,
     pendingProposalCount: 1,
     activeTargetCount: 3,
@@ -164,6 +165,7 @@ function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
       return makeSession({
         id: 'hermes_2',
         title: request.title,
+        backendSessionType: request.backendSessionType,
         capabilityLevel: request.capabilityLevel
       })
     }),
@@ -279,6 +281,7 @@ describe('hermes renderer store', () => {
 
     const created = await store.createSession({
       title: 'review-debt',
+      backendSessionType: 'codex',
       capabilityLevel: 3
     })
     await store.setActiveSession(created.id)
@@ -286,6 +289,7 @@ describe('hermes renderer store', () => {
 
     expect(window.stoa.createHermesSession).toHaveBeenCalledWith({
       title: 'review-debt',
+      backendSessionType: 'codex',
       capabilityLevel: 3
     })
     expect(window.stoa.setActiveHermesSession).toHaveBeenCalledWith(created.id)

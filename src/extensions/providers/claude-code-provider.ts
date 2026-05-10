@@ -8,14 +8,39 @@ function claudeCommand(context: ProviderCommandContext): string {
 }
 
 function createProviderEnv(target: ProviderRuntimeTarget, context: ProviderCommandContext): Record<string, string> {
-  return {
+  const env: Record<string, string> = {
     ...process.env as Record<string, string>,
-    STOA_SESSION_ID: target.session_id,
-    STOA_PROJECT_ID: target.project_id,
-    STOA_SESSION_SECRET: context.sessionSecret,
-    STOA_WEBHOOK_PORT: String(context.webhookPort),
     STOA_PROVIDER_PORT: String(context.providerPort)
   }
+
+  delete env.STOA_SESSION_ID
+  delete env.STOA_PROJECT_ID
+  delete env.STOA_SESSION_SECRET
+  delete env.STOA_WEBHOOK_PORT
+
+  if (context.hookLeasePath) {
+    env.STOA_HOOK_LEASE_PATH = context.hookLeasePath
+  }
+  if (context.hookManaged) {
+    env.STOA_HOOK_MANAGED = '1'
+  }
+  if (context.hookSessionId) {
+    env.STOA_HOOK_SESSION_ID = context.hookSessionId
+  }
+  if (context.hookProjectId) {
+    env.STOA_HOOK_PROJECT_ID = context.hookProjectId
+  }
+  if (context.hookProvider) {
+    env.STOA_HOOK_PROVIDER = context.hookProvider
+  }
+  if (context.hookSpawnOwnerInstanceId) {
+    env.STOA_HOOK_SPAWN_OWNER_INSTANCE_ID = context.hookSpawnOwnerInstanceId
+  }
+  if (context.hookSpawnGeneration !== null && context.hookSpawnGeneration !== undefined) {
+    env.STOA_HOOK_SPAWN_GENERATION = String(context.hookSpawnGeneration)
+  }
+
+  return env
 }
 
 function createCommand(target: ProviderRuntimeTarget, context: ProviderCommandContext, args: string[]): ProviderCommand {
@@ -58,7 +83,7 @@ export function createClaudeCodeProvider(): ProviderDefinition {
     async installSidecar(target, context) {
       await installClaudeHooks({
         projectRoot: target.path,
-        webhookPort: context.webhookPort
+        managedArtifacts: true
       })
     },
     async uninstallSidecar(projectPath) {

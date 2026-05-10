@@ -1,16 +1,16 @@
 import { installManagedSidecar, uninstallManagedSidecar } from './managed-sidecar-installer'
+import { buildSharedHookArtifacts } from './shared-hook-dispatch'
 
-interface ClaudeHttpHook {
-  type: 'http'
-  url: string
-  headers: Record<string, string>
+interface ClaudeCommandHook {
+  type: 'command'
+  command: string
   allowedEnvVars: string[]
   timeout: number
 }
 
 interface ClaudeHookMatcher {
   matcher?: string
-  hooks: ClaudeHttpHook[]
+  hooks: ClaudeCommandHook[]
 }
 
 interface ClaudeHookSettings {
@@ -19,16 +19,24 @@ interface ClaudeHookSettings {
 
 interface InstallClaudeHooksOptions {
   projectRoot: string
-  webhookPort: number
+  managedArtifacts: true
 }
 
 const STOA_HOOK_ALLOWED_ENV_VARS = [
-  'STOA_SESSION_ID',
-  'STOA_PROJECT_ID',
-  'STOA_SESSION_SECRET'
+  'STOA_HOOK_LEASE_PATH',
+  'STOA_HOOK_MANAGED',
+  'STOA_HOOK_SESSION_ID',
+  'STOA_HOOK_PROJECT_ID',
+  'STOA_HOOK_PROVIDER',
+  'STOA_HOOK_SPAWN_OWNER_INSTANCE_ID',
+  'STOA_HOOK_SPAWN_GENERATION'
 ] as const
 const CURRENT_ARTIFACTS = [
-  '.claude/settings.json'
+  '.claude/settings.json',
+  '.stoa/hook-contract.json',
+  '.stoa/hook-dispatch',
+  '.stoa/hook-dispatch.cmd',
+  '.stoa/hook-dispatch.mjs'
 ] as const
 const LEGACY_ARTIFACTS = [
   '.stoa-managed-sidecar.json',
@@ -50,23 +58,27 @@ const LEGACY_ARTIFACTS = [
 export async function installClaudeHooks(options: InstallClaudeHooksOptions): Promise<void> {
   const settings: ClaudeHookSettings = {
     hooks: {
-      SessionStart: [createStoaHttpHook(options.webhookPort)],
-      UserPromptSubmit: [createStoaHttpHook(options.webhookPort)],
-      PostToolUse: [createStoaHttpHook(options.webhookPort)],
-      Stop: [createStoaHttpHook(options.webhookPort)],
-      PermissionRequest: [createStoaHttpHook(options.webhookPort)]
+      SessionStart: [createStoaCommandHook('SessionStart')],
+      UserPromptSubmit: [createStoaCommandHook('UserPromptSubmit')],
+      PostToolUse: [createStoaCommandHook('PostToolUse')],
+      Stop: [createStoaCommandHook('Stop')],
+      PermissionRequest: [createStoaCommandHook('PermissionRequest')]
     }
   }
 
+  const sharedArtifacts = buildSharedHookArtifacts()
   await installManagedSidecar({
     rootDir: options.projectRoot,
     manifestRelativePath: '.claude/.stoa-managed-sidecar.json',
     currentArtifacts: [...CURRENT_ARTIFACTS],
     legacyArtifacts: [...LEGACY_ARTIFACTS],
-    writes: [{
-      relativePath: '.claude/settings.json',
-      content: `${JSON.stringify(settings, null, 2)}\n`
-    }]
+    writes: [
+      {
+        relativePath: '.claude/settings.json',
+        content: `${JSON.stringify(settings, null, 2)}\n`
+      },
+      ...sharedArtifacts
+    ]
   })
 }
 
@@ -78,17 +90,12 @@ export async function uninstallClaudeHooks(projectRoot: string): Promise<void> {
   })
 }
 
-function createStoaHttpHook(webhookPort: number, matcher?: string): ClaudeHookMatcher {
+function createStoaCommandHook(eventName: string, matcher?: string): ClaudeHookMatcher {
   return {
     ...(matcher ? { matcher } : {}),
     hooks: [{
-      type: 'http',
-      url: `http://127.0.0.1:${webhookPort}/hooks/claude-code`,
-      headers: {
-        'x-stoa-session-id': '${STOA_SESSION_ID}',
-        'x-stoa-project-id': '${STOA_PROJECT_ID}',
-        'x-stoa-secret': '${STOA_SESSION_SECRET}'
-      },
+      type: 'command',
+      command: `.stoa/hook-dispatch claude-code ${eventName}`,
       allowedEnvVars: [...STOA_HOOK_ALLOWED_ENV_VARS],
       timeout: 5
     }]

@@ -1,4 +1,5 @@
 export type HermesCapabilityLevel = 0 | 1 | 2 | 3
+export type HermesBackendSessionType = 'claude-code' | 'codex' | 'opencode'
 
 export type HermesSessionStatus =
   | 'created'
@@ -13,6 +14,7 @@ export interface HermesSessionSummary {
   id: string
   title: string
   status: HermesSessionStatus
+  backendSessionType: HermesBackendSessionType
   capabilityLevel: HermesCapabilityLevel
   pendingProposalCount: number
   activeTargetCount: number
@@ -28,6 +30,7 @@ export interface PersistedHermesSession {
   session_id: string
   title: string
   status: HermesSessionStatus
+  backend_session_type: HermesBackendSessionType
   capability_level: HermesCapabilityLevel
   pending_proposal_count: number
   active_target_count: number
@@ -177,6 +180,7 @@ export interface HermesBootstrapState {
 
 export interface CreateHermesSessionRequest {
   title: string
+  backendSessionType: HermesBackendSessionType
   capabilityLevel: HermesCapabilityLevel
 }
 

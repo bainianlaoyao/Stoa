@@ -7,7 +7,7 @@ import { ProjectSessionManager } from '@core/project-session-manager'
 import { syncManagedSidecars } from './managed-sidecar-maintenance'
 
 describe('managed-sidecar-maintenance', () => {
-  test('refreshes legacy Claude artifacts into managed HTTP hooks during main boot maintenance', async () => {
+  test('refreshes legacy Claude artifacts into managed command hooks during main boot maintenance', async () => {
     const projectDir = await mkdtemp(join(tmpdir(), 'stoa-managed-sidecar-main-'))
     try {
       await mkdir(join(projectDir, '.claude', 'hooks'), { recursive: true })
@@ -27,13 +27,15 @@ describe('managed-sidecar-maintenance', () => {
       })
 
       const settings = JSON.parse(await readFile(join(project.path, '.claude', 'settings.json'), 'utf8')) as {
-        hooks?: Record<string, Array<{ hooks?: Array<{ type?: string; url?: string }> }>>
+        hooks?: Record<string, Array<{ hooks?: Array<{ type?: string; command?: string; allowedEnvVars?: string[] }> }>>
       }
       const sessionStartHook = settings.hooks?.SessionStart?.[0]?.hooks?.[0]
       expect(sessionStartHook).toMatchObject({
-        type: 'http',
-        url: 'http://127.0.0.1:43127/hooks/claude-code'
+        type: 'command',
+        command: '.stoa/hook-dispatch claude-code SessionStart',
+        allowedEnvVars: expect.arrayContaining(['STOA_HOOK_LEASE_PATH', 'STOA_HOOK_MANAGED'])
       })
+      await expect(readFile(join(projectDir, '.stoa', 'hook-dispatch.mjs'), 'utf8')).resolves.toContain('readLease')
       await expect(readFile(join(projectDir, '.claude', 'hooks', 'evolver-session-end.cjs'), 'utf8')).rejects.toThrow()
     } finally {
       await rm(projectDir, { recursive: true, force: true })
@@ -69,7 +71,10 @@ describe('managed-sidecar-maintenance', () => {
         'Stop',
         'UserPromptSubmit'
       ])
-      expect(await readFile(join(projectDir, '.codex', 'hook-stoa.mjs'), 'utf8')).toContain('/hooks/codex')
+      const dispatcher = await readFile(join(projectDir, '.stoa', 'hook-dispatch.mjs'), 'utf8')
+      expect(dispatcher).toContain('/hooks/codex')
+      expect(dispatcher).not.toContain('../src/extensions/providers/shared-hook-dispatch.ts')
+      await expect(readFile(join(projectDir, '.codex', 'hook-stoa.mjs'), 'utf8')).rejects.toThrow()
       expect(await readFile(join(projectDir, '.codex', 'config.toml'), 'utf8')).toContain('hooks = true')
     } finally {
       await rm(projectDir, { recursive: true, force: true })
@@ -96,9 +101,12 @@ describe('managed-sidecar-maintenance', () => {
       })
 
       const plugin = await readFile(join(projectDir, '.opencode', 'plugins', 'stoa-status.ts'), 'utf8')
-      expect(plugin).toContain('http://127.0.0.1:43127/hooks/opencode')
+      expect(plugin).toContain('.stoa/hook-dispatch opencode')
+      expect(plugin).toContain('STOA_HOOK_LEASE_PATH')
+      expect(plugin).toContain('STOA_HOOK_MANAGED')
       expect(plugin).toContain("'session.idle'")
-      expect(plugin).toContain("'x-stoa-secret': sessionSecret")
+      expect(plugin).not.toContain('http://127.0.0.1:43127/hooks/opencode')
+      expect(plugin).not.toContain('STOA_SESSION_SECRET')
     } finally {
       await rm(projectDir, { recursive: true, force: true })
     }

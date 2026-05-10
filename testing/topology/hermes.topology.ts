@@ -7,6 +7,8 @@ export const hermesTopology = defineTopology({
     sessionList: 'hermes-session-list',
     sessionCreate: 'hermes.session.create',
     sessionItem: 'hermes.session.item',
+    providerCard: 'provider-card',
+    providerCardItem: 'provider-card.item',
     terminalDeck: 'hermes-terminal-deck',
     inspectorPanel: 'hermes-inspector-panel',
     actionPanel: 'hermes-action-panel'

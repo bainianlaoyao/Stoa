@@ -7,18 +7,27 @@ const { t } = useI18n()
 import { getProviderDescriptorBySessionType } from '@shared/provider-descriptors'
 import { PROVIDER_ICONS } from '@renderer/composables/provider-icons'
 
-const props = defineProps<{
+interface ProviderIcon {
+  type: SessionType
+  label: string
+  src: string
+}
+
+const props = withDefaults(defineProps<{
   visible: boolean
   projectId: string
   position: { x: number; y: number; width: number; height: number }
-}>()
+  providers?: ProviderIcon[]
+}>(), {
+  providers: () => PROVIDER_ICONS
+})
 
 const emit = defineEmits<{
   create: [payload: { type: SessionType }]
   close: []
 }>()
 
-const providerButtons = computed(() => PROVIDER_ICONS.map((provider) => ({
+const providerButtons = computed(() => props.providers.map((provider) => ({
   ...provider,
   providerName: getProviderDescriptorBySessionType(provider.type).displayName
 })))

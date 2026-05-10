@@ -32,7 +32,7 @@ describe('stoa-ctl command surface', () => {
     expect(module.USAGE_TEXT).toContain('state attention-queue')
     expect(module.USAGE_TEXT).toContain('state conflicts')
     expect(module.USAGE_TEXT).toContain('hermes-sessions list')
-    expect(module.USAGE_TEXT).toContain('hermes-sessions create --title "..."')
+    expect(module.USAGE_TEXT).toContain('hermes-sessions create --title "..." --backend <claude-code|codex|opencode>')
     expect(module.USAGE_TEXT).toContain('proposals create prompt --target <sessionId> --text "..."')
     expect(module.USAGE_TEXT).toContain('proposals list')
     expect(module.USAGE_TEXT).toContain('proposals get <proposalId>')
@@ -113,13 +113,49 @@ describe('stoa-ctl command surface', () => {
     expect(writes.join('')).toContain('"evt_1"')
   })
 
+  test('defaults work-session context reads to slim text', async () => {
+    const module = await import('./index')
+    const writes: string[] = []
+    const fetchImpl = vi.fn(async (input: string | URL | Request) => {
+      expect(String(input)).toBe('http://127.0.0.1:43129/ctl/work-sessions/session_1/context?level=slim')
+      return createResponse({
+        body: '[User]\nSummarize the failure.\n[Assistant]\nThe resume pointer is stale.'
+      })
+    })
+
+    const exitCode = await module.run([
+      'work-sessions',
+      'context',
+      'session_1'
+    ], {
+      fetch: fetchImpl,
+      env: {
+        STOA_CTL_BASE_URL: 'http://127.0.0.1:43129',
+        STOA_CTL_TOKEN: 'secret-1',
+        STOA_HERMES_SESSION_ID: 'hermes_1'
+      },
+      stdout: {
+        write(chunk: string) {
+          writes.push(chunk)
+        }
+      },
+      stderr: {
+        write() {}
+      },
+      sleep: async () => {}
+    })
+
+    expect(exitCode).toBe(0)
+    expect(writes.join('')).toContain('resume pointer is stale')
+  })
+
   test('creates Hermes sessions through the control plane', async () => {
     const module = await import('./index')
     const writes: string[] = []
     const fetchImpl = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
       expect(String(_input)).toBe('http://127.0.0.1:43129/ctl/hermes-sessions')
       expect(init?.method).toBe('POST')
-      expect(init?.body).toBe('{"title":"global-triage","capabilityLevel":3}')
+      expect(init?.body).toBe('{"title":"global-triage","backendSessionType":"claude-code","capabilityLevel":3}')
       return createResponse({
         body: '{"ok":true,"data":{"id":"hermes_2","title":"global-triage"},"error":null}'
       })
@@ -130,6 +166,8 @@ describe('stoa-ctl command surface', () => {
       'create',
       '--title',
       'global-triage',
+      '--backend',
+      'claude-code',
       '--capability-level',
       '3'
     ], {

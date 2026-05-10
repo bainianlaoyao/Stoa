@@ -20,17 +20,6 @@ type FullContextResult = {
   nextCursor: string | null
 }
 
-function sessionHeading(session: SessionSummary, presence: SessionPresenceSnapshot | null): string {
-  const parts = [
-    `Session: ${session.title}`,
-    `Type: ${session.type}`,
-    `State: ${presence?.phase ?? session.runtimeState}`,
-    `Summary: ${session.summary}`
-  ]
-
-  return parts.join('\n')
-}
-
 function readableTextFromPayload(payload: Record<string, unknown>): Array<{ label: string; text: string }> {
   const evidence = (payload.evidence && typeof payload.evidence === 'object')
     ? payload.evidence as Record<string, unknown>
@@ -103,11 +92,8 @@ export class HermesContextAssembler {
     sessionId: string,
     input: { maxChars?: number; cursor?: string | null } = {}
   ): Promise<FullContextResult> {
-    const session = this.requireSession(sessionId)
-    const presence = this.options.getSessionPresence(sessionId)
     const lines: string[] = []
-
-    appendSection(lines, 'Session', sessionHeading(session, presence))
+    this.requireSession(sessionId)
 
     for (const event of this.getEvents(sessionId, {
       limit: 100,
@@ -119,6 +105,44 @@ export class HermesContextAssembler {
     }
 
     appendSection(lines, 'Terminal', stripAnsi(await this.options.getTerminalReplay(sessionId)))
+
+    const rawText = lines.join('\n').trim()
+    const { text, truncated } = trimTextToMaxChars(rawText, input.maxChars ?? 100_000)
+    return {
+      text,
+      truncated,
+      nextCursor: truncated ? 'tail-truncated' : null
+    }
+  }
+
+  async getSlimContext(
+    sessionId: string,
+    input: { maxChars?: number; cursor?: string | null } = {}
+  ): Promise<FullContextResult> {
+    this.requireSession(sessionId)
+    const lines: string[] = []
+
+    for (const event of this.getEvents(sessionId, {
+      limit: 100,
+      includeEphemeral: true
+    }).events) {
+      const payload = event.payload as Record<string, unknown>
+      const evidence = (payload.evidence && typeof payload.evidence === 'object')
+        ? payload.evidence as Record<string, unknown>
+        : null
+
+      if (evidence && typeof evidence.promptText === 'string' && evidence.promptText.trim()) {
+        appendSection(lines, 'User', evidence.promptText)
+      }
+
+      const assistantText = (evidence && typeof evidence.lastAssistantMessage === 'string' && evidence.lastAssistantMessage.trim())
+        ? evidence.lastAssistantMessage
+        : (typeof payload.snippet === 'string' && payload.snippet.trim() ? payload.snippet : null)
+
+      if (assistantText) {
+        appendSection(lines, 'Assistant', assistantText)
+      }
+    }
 
     const rawText = lines.join('\n').trim()
     const { text, truncated } = trimTextToMaxChars(rawText, input.maxChars ?? 100_000)

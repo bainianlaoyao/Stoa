@@ -2,6 +2,7 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
+import { defineComponent } from 'vue'
 import HermesSurface from './HermesSurface.vue'
 import type { RendererApi } from '@shared/project-session'
 import { useHermesStore } from '@renderer/stores/hermes'
@@ -103,6 +104,7 @@ function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
         id: 'hermes_1',
         title: 'global-triage',
         status: 'running',
+        backendSessionType: 'claude-code',
         capabilityLevel: 2,
         pendingProposalCount: 1,
         activeTargetCount: 3,
@@ -199,5 +201,73 @@ describe('HermesSurface', () => {
     expect(wrapper.get('[data-testid="hermes.action.approve"]').text()).toContain('Approve')
     expect(wrapper.get('[data-testid="hermes.action.reject"]').text()).toContain('Reject')
     expect(wrapper.get('[data-testid="hermes.action.dispatch"]').text()).toContain('Approve and Execute')
+  })
+
+  test('creating a Hermes session from the left rail targets the Hermes store with an explicit backendSessionType', async () => {
+    const createHermesSession = vi.fn().mockResolvedValue({
+      id: 'hermes_2',
+      title: 'hermes-2',
+      status: 'created',
+      backendSessionType: 'codex',
+      capabilityLevel: 3,
+      pendingProposalCount: 0,
+      activeTargetCount: 0,
+      lastSummary: 'Waiting for Hermes to start',
+      lastRisk: null,
+      resumeSessionId: 'resume-hermes-2',
+      createdAt: '2026-05-07T08:10:00.000Z',
+      updatedAt: '2026-05-07T08:10:00.000Z',
+      lastActivatedAt: null
+    })
+    window.stoa = createStoaMock({ createHermesSession })
+    const store = useHermesStore()
+    await store.bootstrapFromBridge()
+
+    const ProviderFloatingCardStub = defineComponent({
+      name: 'ProviderFloatingCard',
+      emits: ['create', 'close'],
+      template: '<div data-testid="provider-card-stub" />'
+    })
+
+    const wrapper = mount(HermesSurface, {
+      global: {
+        plugins: [pinia],
+        stubs: {
+          TerminalViewport: defineComponent({
+            name: 'TerminalViewport',
+            template: '<div data-testid="terminal-viewport-stub" />'
+          })
+        }
+      }
+    })
+
+    await wrapper.get('[data-testid="hermes.session.create"]').trigger('mousedown')
+    const sessionList = wrapper.findComponent({ name: 'HermesSessionList' })
+    sessionList.findComponent({ name: 'ProviderFloatingCard' }).vm.$emit('create', { type: 'codex' })
+    await flushPromises()
+
+    expect(createHermesSession).toHaveBeenCalledWith({
+      title: 'hermes-2',
+      backendSessionType: 'codex',
+      capabilityLevel: 3
+    })
+  })
+
+  test('Hermes backend picker only exposes supported meta backends', async () => {
+    const wrapper = mount(HermesSurface, {
+      global: {
+        plugins: [pinia]
+      }
+    })
+
+    await wrapper.get('[data-testid="hermes.session.create"]').trigger('mousedown')
+    await flushPromises()
+
+    const providerButtons = Array.from(document.body.querySelectorAll('[data-testid="provider-card.item"]'))
+      .map((node) => node.getAttribute('data-provider-type'))
+
+    expect(providerButtons).toEqual(['opencode', 'codex', 'claude-code'])
+    expect(providerButtons).not.toContain('hermes-agent')
+    expect(providerButtons).not.toContain('shell')
   })
 })

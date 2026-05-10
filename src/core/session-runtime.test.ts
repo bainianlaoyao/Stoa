@@ -627,6 +627,68 @@ describe('session runtime', () => {
     expect(markRuntimeAlive).toHaveBeenCalledWith('session_codex_3', 'codex-known-123')
   })
 
+  test('merges commandEnv into the provider command before spawning the runtime', async () => {
+    const buildStartCommand = vi.fn(async () => ({
+      command: 'claude',
+      args: ['--session-id', 'claude-meta-1'],
+      cwd: 'D:/demo',
+      env: {
+        TEST_ENV: '1',
+        PATH: 'C:/Windows/System32'
+      }
+    }))
+    const provider = createProvider({
+      providerId: 'claude-code',
+      buildStartCommand
+    })
+    const start = vi.fn(() => ({ runtimeId: 'session_claude_meta_1' }))
+
+    await startSessionRuntime({
+      session: {
+        id: 'session_claude_meta_1',
+        projectId: 'project_alpha',
+        path: 'D:/demo',
+        title: 'Claude Meta',
+        type: 'claude-code',
+        runtimeState: 'created',
+        turnState: 'idle',
+        externalSessionId: 'claude-meta-1',
+        sessionSecret: 'secret-1',
+        providerPort: 43128
+      },
+      webhookPort: 43127,
+      provider,
+      ptyHost: { start } as never,
+      manager: {
+        markRuntimeStarting: vi.fn(async () => {}),
+        markRuntimeAlive: vi.fn(async () => {}),
+        markRuntimeExited: vi.fn(async () => {}),
+        markRuntimeFailedToStart: vi.fn(async () => {}),
+        appendTerminalData: vi.fn(async () => {})
+      } as never,
+      commandEnv: {
+        STOA_HERMES: '1',
+        STOA_CTL_BASE_URL: 'http://127.0.0.1:43127',
+        PATH: 'D:/stoa/bin;C:/Windows/System32'
+      }
+    })
+
+    expect(start).toHaveBeenCalledWith(
+      'session_claude_meta_1',
+      expect.objectContaining({
+        env: expect.objectContaining({
+          TEST_ENV: '1',
+          STOA_HERMES: '1',
+          STOA_CTL_BASE_URL: 'http://127.0.0.1:43127',
+          PATH: 'D:/stoa/bin;C:/Windows/System32'
+        })
+      }),
+      expect.any(Function),
+      expect.any(Function),
+      undefined
+    )
+  })
+
   test('does not run discovery when an externalSessionId exists but resume is suppressed by status', async () => {
     const buildStartCommand = vi.fn(async () => ({
       command: 'claude',

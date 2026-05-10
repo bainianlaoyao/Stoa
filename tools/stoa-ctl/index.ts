@@ -46,12 +46,12 @@ export const USAGE_TEXT = [
   '  work-sessions list',
   '  work-sessions get <id>',
   '  work-sessions events <id> [--limit <n>] [--cursor <token>] [--include-ephemeral]',
-  '  work-sessions context <id> --level <status|bundle|full> [--max-chars <n>] [--cursor <token>]',
+  '  work-sessions context <id> [--level <slim|status|bundle|full>] [--max-chars <n>] [--cursor <token>]',
   '  work-sessions prompt <id> --text "..."',
   '  work-sessions prompt <id> --file <path>',
   '  work-sessions prompt <id> --stdin',
   '  hermes-sessions list',
-  '  hermes-sessions create --title "..." [--capability-level <0|1|2|3>]',
+  '  hermes-sessions create --title "..." --backend <claude-code|codex|opencode> [--capability-level <0|1|2|3>]',
   '  hermes-sessions get <id>',
   '  hermes-sessions close <id>',
   '  hermes-sessions activate <id>',
@@ -313,7 +313,7 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
         throw new CliUsageError('Missing session id')
       }
 
-      const level = parseFlagValue(rest, '--level') ?? 'status'
+      const level = parseFlagValue(rest, '--level') ?? 'slim'
       const maxChars = parseFlagValue(rest, '--max-chars')
       const cursor = parseFlagValue(rest, '--cursor')
       const params = new URLSearchParams({ level })
@@ -377,8 +377,12 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
 
     if (group === 'hermes-sessions' && action === 'create') {
       const title = parseFlagValue(rest, '--title')
+      const backendSessionType = parseFlagValue(rest, '--backend')
       if (!title || title.trim().length === 0) {
         throw new CliUsageError('Missing Hermes session title')
+      }
+      if (!backendSessionType || !['claude-code', 'codex', 'opencode'].includes(backendSessionType)) {
+        throw new CliUsageError('Missing Hermes backend session type')
       }
 
       const capabilityLevel = parseCapabilityLevel(rest, '--capability-level', 3)
@@ -386,6 +390,7 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
         method: 'POST',
         body: JSON.stringify({
           title,
+          backendSessionType,
           capabilityLevel
         })
       })

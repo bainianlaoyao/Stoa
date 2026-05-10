@@ -8,7 +8,7 @@
   "main": "out/main/index.cjs",
   "scripts": {
     "dev": "electron-vite dev",
-    "build": "electron-vite build",
+    "build": "electron-vite build && node scripts/build-stoa-ctl.mjs",
     "build:entire-bridge": "node scripts/build-entire-bridge.mjs --build",
     "test:entire-bridge": "node scripts/build-entire-bridge.mjs --test",
     "verify:entire-bridge": "node scripts/build-entire-bridge.mjs",

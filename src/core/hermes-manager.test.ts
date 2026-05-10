@@ -27,11 +27,13 @@ describe('HermesManager', () => {
 
     const created = await manager.createSession({
       title: 'global-triage',
+      backendSessionType: 'claude-code',
       capabilityLevel: 2
     })
 
     expect(created.title).toBe('global-triage')
     expect(created.status).toBe('created')
+    expect(created.backendSessionType).toBe('claude-code')
     expect(created.resumeSessionId).not.toBeNull()
     expect((await manager.listSessions())).toHaveLength(1)
   })
@@ -40,13 +42,14 @@ describe('HermesManager', () => {
     const manager = await HermesManager.create({
       statePath: await createTempHermesStatePath()
     })
-    const first = await manager.createSession({ title: 'triage-a', capabilityLevel: 1 })
-    const second = await manager.createSession({ title: 'triage-b', capabilityLevel: 3 })
+    const first = await manager.createSession({ title: 'triage-a', backendSessionType: 'claude-code', capabilityLevel: 1 })
+    const second = await manager.createSession({ title: 'triage-b', backendSessionType: 'codex', capabilityLevel: 3 })
 
     await manager.setActiveSession(second.id)
 
     const snapshot = manager.snapshot()
     expect(snapshot.activeHermesSessionId).toBe(second.id)
+    expect(snapshot.sessions.find((session) => session.id === second.id)?.backendSessionType).toBe('codex')
     expect(snapshot.sessions.map((session) => session.id)).toEqual([first.id, second.id])
   })
 
@@ -54,8 +57,8 @@ describe('HermesManager', () => {
     const manager = await HermesManager.create({
       statePath: await createTempHermesStatePath()
     })
-    const first = await manager.createSession({ title: 'triage-a', capabilityLevel: 1 })
-    const second = await manager.createSession({ title: 'triage-b', capabilityLevel: 3 })
+    const first = await manager.createSession({ title: 'triage-a', backendSessionType: 'claude-code', capabilityLevel: 1 })
+    const second = await manager.createSession({ title: 'triage-b', backendSessionType: 'codex', capabilityLevel: 3 })
 
     await manager.closeSession(first.id)
 

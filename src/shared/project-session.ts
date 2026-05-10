@@ -354,6 +354,13 @@ export interface ProviderCommandContext {
   webhookPort: number
   sessionSecret: string
   providerPort: number
+  hookLeasePath?: string | null
+  hookManaged?: boolean
+  hookSessionId?: string | null
+  hookProjectId?: string | null
+  hookProvider?: 'claude-code' | 'codex' | 'opencode' | null
+  hookSpawnOwnerInstanceId?: string | null
+  hookSpawnGeneration?: number | null
   providerPath?: string | null
   claudeDangerouslySkipPermissions?: boolean
   startedAt?: number

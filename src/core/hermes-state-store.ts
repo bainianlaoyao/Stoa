@@ -4,6 +4,8 @@ import { homedir } from 'node:os'
 import { createAtomicTempFilePath } from './state-store'
 import type { PersistedHermesStateV1 } from '@shared/hermes'
 
+const DEFAULT_HERMES_BACKEND_SESSION_TYPE = 'claude-code' as const
+
 export const DEFAULT_HERMES_STATE: PersistedHermesStateV1 = {
   version: 1,
   active_hermes_session_id: null,
@@ -74,6 +76,8 @@ function isValidPersistedHermesSession(value: unknown): value is PersistedHermes
     && typeof value.title === 'string'
     && 'status' in value
     && isValidStatus(value.status)
+    && 'backend_session_type' in value
+    && isValidBackendSessionType(value.backend_session_type)
     && 'capability_level' in value
     && isValidCapabilityLevel(value.capability_level)
     && 'pending_proposal_count' in value
@@ -92,6 +96,12 @@ function isValidPersistedHermesSession(value: unknown): value is PersistedHermes
     && typeof value.updated_at === 'string'
     && 'last_activated_at' in value
     && (value.last_activated_at === null || typeof value.last_activated_at === 'string')
+}
+
+function isValidBackendSessionType(value: unknown): value is PersistedHermesStateV1['sessions'][number]['backend_session_type'] {
+  return value === 'claude-code'
+    || value === 'codex'
+    || value === 'opencode'
 }
 
 function isValidProposalStatus(value: unknown): value is PersistedHermesStateV1['proposals'][number]['status'] {
@@ -306,13 +316,18 @@ function toNormalizedHermesState(value: unknown): PersistedHermesStateV1 | null 
   }
 
   const inspectorTarget = 'inspector_target' in value && isValidInspectorTarget(value.inspector_target)
-    ? value.inspector_target
+    ? value.inspector_target as PersistedHermesStateV1['inspector_target']
     : structuredClone(DEFAULT_HERMES_STATE.inspector_target)
 
   return {
     version: 1,
     active_hermes_session_id: value.active_hermes_session_id,
-    sessions: value.sessions,
+    sessions: value.sessions.map((session) => ({
+      ...session,
+      backend_session_type: isValidBackendSessionType((session as Partial<typeof session>).backend_session_type)
+        ? (session as typeof session).backend_session_type
+        : DEFAULT_HERMES_BACKEND_SESSION_TYPE
+    })),
     proposals: 'proposals' in value && Array.isArray(value.proposals) && value.proposals.every(isValidPersistedHermesProposal)
       ? value.proposals
       : [],

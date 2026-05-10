@@ -66,7 +66,7 @@ const archivedSessions = computed(() => {
           @archive-session="emit('archiveSession', $event)"
           @open-workspace="emit('openWorkspace', $event)"
         />
-        <HermesSurface v-if="activeSurface === 'hermes'" aria-label="Hermes surface" />
+        <HermesSurface v-if="activeSurface === 'hermes'" aria-label="Hermes surface" @create-workspace-session="emit('createSession', $event)" />
         <ArchiveSurface
           v-if="activeSurface === 'archive'"
           :archived-sessions="archivedSessions"

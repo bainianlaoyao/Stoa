@@ -11,8 +11,10 @@ describe('hermes journey assets', () => {
     expect(hermesSurfaceSessionFlowJourney.setup).toContain('select.hermes.surface')
     expect(hermesSurfaceSessionFlowJourney.act).toEqual([
       'click.hermes.createSession',
+      'select.hermes.backendProvider',
       'click.hermes.sessionItem'
     ])
+    expect(hermesSurfaceSessionFlowJourney.assert).toContain('hermes.providerPickerVisible')
     expect(hermesSurfaceSessionFlowJourney.assert).toContain('hermes.terminalDeckVisible')
     expect(hermesSurfaceSessionFlowJourney.variants).toEqual(['single-session'])
   })

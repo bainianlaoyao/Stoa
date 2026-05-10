@@ -12,6 +12,7 @@ extraResources:
 asarUnpack:
   - node_modules/node-pty/**
   - out/tools/entire-bridge/**
+  - out/tools/stoa-ctl/**
 publish:
   provider: github
   owner: "${env.GH_OWNER}"

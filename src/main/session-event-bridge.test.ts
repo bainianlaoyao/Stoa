@@ -585,6 +585,79 @@ describe('SessionEventBridge', () => {
     expect(response.body).toBe('')
   })
 
+  test('claude hook acceptance can be driven by lease-authoritative hook authorization without issuing a bridge secret', async () => {
+    const stateDir = await createTestTempDir('session-event-bridge-lease-auth-state-')
+    const workspaceDir = await createTestTempDir('session-event-bridge-lease-auth-workspace-')
+    tempDirs.push(stateDir, workspaceDir)
+    const manager = await ProjectSessionManager.create({
+      webhookPort: null,
+      globalStatePath: join(stateDir, 'global.json')
+    })
+    const project = await manager.createProject({
+      name: 'P1',
+      path: workspaceDir,
+      defaultSessionType: 'claude-code'
+    })
+    const session = await manager.createSession({
+      projectId: project.id,
+      type: 'claude-code',
+      title: 'Claude Session'
+    })
+    await manager.markRuntimeAlive(session.id, session.externalSessionId)
+
+    const controller = {
+      applyProviderStatePatch: vi.fn(async () => {})
+    }
+    const bridge = new SessionEventBridge(manager, controller, undefined, {
+      authorizeHookRequest: async (input) => {
+        if (
+          input.sessionId !== session.id
+          || input.projectId !== project.id
+          || input.provider !== 'claude-code'
+          || input.secret !== 'lease-secret-1'
+        ) {
+          return { ok: false, reason: 'invalid_secret' }
+        }
+
+        return {
+          ok: true,
+          lease: {
+            version: 1,
+            sessionId: session.id,
+            projectId: project.id,
+            provider: 'claude-code',
+            leaseState: 'active',
+            ownerInstanceId: 'instance-a',
+            generation: 1,
+            webhookBaseUrl: 'http://127.0.0.1:43127',
+            sessionSecret: 'lease-secret-1',
+            createdAt: '2026-05-10T12:00:00.000Z',
+            updatedAt: '2026-05-10T12:00:00.000Z',
+            heartbeatAt: '2026-05-10T12:00:00.000Z',
+            expiresAt: '2099-05-10T12:00:20.000Z',
+            commitLockNonce: 'nonce-lease-1',
+            commitToken: 'token-lease-1'
+          }
+        }
+      }
+    })
+    bridges.push(bridge)
+
+    const port = await bridge.start()
+    const response = await postClaudeHook(
+      port,
+      { hook_event_name: 'SessionStart' },
+      {
+        'x-stoa-secret': 'lease-secret-1',
+        'x-stoa-session-id': session.id,
+        'x-stoa-project-id': project.id
+      }
+    )
+
+    expect(response.statusCode).toBe(204)
+    expect(response.body).toBe('')
+  })
+
   test('claude SessionStart does not flip an alive session into running before any prompt', async () => {
     const stateDir = await createTestTempDir('session-event-bridge-session-start-stateful-')
     const workspaceDir = await createTestTempDir('session-event-bridge-session-start-stateful-workspace-')

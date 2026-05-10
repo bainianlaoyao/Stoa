@@ -169,9 +169,9 @@ try {
 
   const sessionLiveRecord = records.find((record) => record.step === 'session-live')
   const markerRecord = records.find((record) => record.step === 'terminal-marker-observed')
-  const claudeHookRecord = records.find((record) => record.step === 'claude-session-start-verified')
+  const claudeHookRecord = records.find((record) => record.step === 'claude-session-start-hook-verified')
   if (!claudeHookRecord) {
-    throw new Error(`Packaged smoke never recorded claude-session-start-verified. Records: ${JSON.stringify(records)}`)
+    throw new Error(`Packaged smoke never recorded claude-session-start-hook-verified. Records: ${JSON.stringify(records)}`)
   }
   console.log(
     `Packaged release smoke verified: ${packagedExecutable} booted, reached ${sessionLiveRecord?.status ?? 'live'} session state, observed ${markerRecord?.marker ?? smokeMarker}, and executed the Claude SessionStart memory hook.`

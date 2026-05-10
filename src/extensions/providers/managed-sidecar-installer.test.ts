@@ -2,7 +2,6 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, test } from 'vitest'
-import { installManagedSidecar, uninstallManagedSidecar } from './managed-sidecar-installer'
 
 const tempDirs: string[] = []
 
@@ -15,6 +14,7 @@ async function createTempDir(prefix: string): Promise<string> {
   tempDirs.push(dir)
   return dir
 }
+import { installManagedSidecar, uninstallManagedSidecar } from './managed-sidecar-installer'
 
 describe('managed-sidecar-installer', () => {
   test('writes a provider-scoped manifest instead of sharing the project-root manifest', async () => {
@@ -39,6 +39,27 @@ describe('managed-sidecar-installer', () => {
       artifactPaths: string[]
     }
     expect(manifest.artifactPaths).toEqual(['.claude/settings.json'])
+  })
+
+  test('applies explicit executable modes after writing managed artifacts', async () => {
+    const rootDir = await createTempDir('stoa-managed-sidecar-mode-')
+
+    await installManagedSidecar({
+      rootDir,
+      manifestRelativePath: '.codex/.stoa-managed-sidecar.json',
+      currentArtifacts: ['.stoa/hook-dispatch'],
+      writes: [{
+        relativePath: '.stoa/hook-dispatch',
+        content: '#!/usr/bin/env sh\nexit 0\n',
+        mode: 0o755
+      }]
+    })
+
+    const dispatcher = await stat(join(rootDir, '.stoa', 'hook-dispatch'))
+    expect(dispatcher.isFile()).toBe(true)
+    if (process.platform !== 'win32') {
+      expect(dispatcher.mode & 0o777).toBe(0o755)
+    }
   })
 
   test('cleanup-only mode removes the previously managed artifact and deletes the scoped manifest', async () => {

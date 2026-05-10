@@ -321,6 +321,15 @@ export function createHermesControlServer(options: HermesControlServerOptions): 
     const sessionId = request.params.sessionId
 
     try {
+      if (level === 'slim') {
+        const result = await options.contextAssembler.getSlimContext(sessionId, {
+          maxChars: request.query.maxChars ? Number(request.query.maxChars) : undefined,
+          cursor: typeof request.query.cursor === 'string' ? request.query.cursor : null
+        })
+        response.type('text/plain; charset=utf-8').send(result.text)
+        return
+      }
+
       if (level === 'full') {
         const result = await options.contextAssembler.getFullContext(sessionId, {
           maxChars: request.query.maxChars ? Number(request.query.maxChars) : undefined,
@@ -378,10 +387,16 @@ export function createHermesControlServer(options: HermesControlServerOptions): 
 
   app.post('/ctl/hermes-sessions', async (request, response) => {
     const title = typeof request.body?.title === 'string' ? request.body.title.trim() : ''
+    const backendSessionType = request.body?.backendSessionType
     const capabilityLevel = request.body?.capabilityLevel
 
     if (!title) {
       invalidRequest(response, 'Missing Hermes session title.')
+      return
+    }
+
+    if (!['claude-code', 'codex', 'opencode'].includes(backendSessionType)) {
+      invalidRequest(response, 'Invalid backendSessionType.')
       return
     }
 
@@ -392,6 +407,7 @@ export function createHermesControlServer(options: HermesControlServerOptions): 
 
     const created = await options.hermesSessionSource.createSession({
       title,
+      backendSessionType,
       capabilityLevel
     })
     response.json(jsonEnvelope(created))

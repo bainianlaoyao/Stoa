@@ -97,6 +97,8 @@ describe('playwright skeleton generator', () => {
     expect(generated).toContain("app.page.getByTestId('surface.hermes')")
     expect(generated).toContain("const initialCount = await app.page.getByTestId('hermes.session.item').count()")
     expect(generated).toContain("app.page.getByTestId('hermes.session.create').click()")
+    expect(generated).toContain("app.page.getByTestId('provider-card')).toBeVisible()")
+    expect(generated).toContain("[data-testid=\"provider-card.item\"][data-provider-type=\"claude-code\"]")
     expect(generated).toContain("app.page.getByTestId('hermes.session.item')).toHaveCount(initialCount + 1)")
   })
 })

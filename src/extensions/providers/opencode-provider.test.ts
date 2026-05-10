@@ -17,14 +17,27 @@ describe('opencode provider', () => {
     }, {
       webhookPort: 43127,
       sessionSecret: 'secret-1',
-      providerPort: 43128
+      providerPort: 43128,
+      hookLeasePath: 'D:/runtime/hook-leases/session_demo_001.json',
+      hookManaged: true,
+      hookSessionId: 'session_demo_001',
+      hookProjectId: 'project_demo',
+      hookProvider: 'opencode',
+      hookSpawnOwnerInstanceId: 'instance-opencode',
+      hookSpawnGeneration: 2
     })
 
     expect(command.command).toBe('opencode')
     expect(command.args).toEqual([])
     expect(command.cwd).toBe('D:/demo')
-    expect(command.env.STOA_SESSION_ID).toBe('session_demo_001')
-    expect(command.env.STOA_SESSION_SECRET).toBe('secret-1')
+    expect(command.env.STOA_HOOK_LEASE_PATH).toBe('D:/runtime/hook-leases/session_demo_001.json')
+    expect(command.env.STOA_HOOK_MANAGED).toBe('1')
+    expect(command.env.STOA_HOOK_SESSION_ID).toBe('session_demo_001')
+    expect(command.env.STOA_HOOK_PROJECT_ID).toBe('project_demo')
+    expect(command.env.STOA_HOOK_PROVIDER).toBe('opencode')
+    expect(command.env.STOA_HOOK_SPAWN_OWNER_INSTANCE_ID).toBe('instance-opencode')
+    expect(command.env.STOA_HOOK_SPAWN_GENERATION).toBe('2')
+    expect(command.env.STOA_SESSION_SECRET).toBeUndefined()
   })
 
   test('builds a resume command from canonical external session id', async () => {
@@ -66,7 +79,7 @@ describe('opencode provider', () => {
     expect(command.args).toEqual([])
   })
 
-  test('sidecar sends raw hook events to /hooks/opencode with SDK client', async () => {
+  test('sidecar routes OpenCode events through the shared dispatcher contract', async () => {
     const workspaceDir = await mkdtemp(join(tmpdir(), 'stoa-opencode-sidecar-'))
     const provider = createOpenCodeProvider()
 
@@ -87,7 +100,12 @@ describe('opencode provider', () => {
       const manifest = JSON.parse(await readFile(join(workspaceDir, '.opencode', '.stoa-managed-sidecar.json'), 'utf8')) as {
         artifactPaths: string[]
       }
-      expect(content).toContain('/hooks/opencode')
+      expect(content).toContain('.stoa/hook-dispatch')
+      expect(content).toContain("process.platform === 'win32'")
+      expect(content).toContain("return ['cmd.exe', '/d', '/s', '/c'")
+      expect(content).toContain("hook-dispatch.cmd opencode")
+      expect(content).toContain('STOA_HOOK_LEASE_PATH')
+      expect(content).toContain('STOA_HOOK_MANAGED')
       expect(content).toContain('hook_event_name: event.type')
       expect(content).toContain('session_id: event.properties?.sessionID')
       expect(content).toContain('turn_id: event.properties?.messageID')
@@ -104,10 +122,10 @@ describe('opencode provider', () => {
       expect(content).toContain("'message.updated'")
       expect(content).toContain("'permission.asked'")
       expect(content).toContain("'permission.replied'")
-      expect(content).toContain("'x-stoa-session-id': sessionId")
-      expect(content).toContain("'x-stoa-project-id': projectId")
-      expect(content).toContain("'x-stoa-secret': sessionSecret")
       expect(content).toContain('toFailureReason(event)')
+      expect(content).not.toContain('http://127.0.0.1:')
+      expect(content).not.toContain('STOA_WEBHOOK_PORT')
+      expect(content).not.toContain('STOA_SESSION_SECRET')
       expect(content).not.toContain('event_version:')
       expect(content).not.toContain('event_id:')
       expect(content).not.toContain('event_type:')
@@ -116,7 +134,13 @@ describe('opencode provider', () => {
       expect(content).not.toContain('intent:')
       expect(content).not.toContain('agentState:')
       expect(content).not.toContain('hasUnseenCompletion:')
-      expect(manifest.artifactPaths).toEqual([join('.opencode', 'plugins', 'stoa-status.ts')])
+      expect(manifest.artifactPaths).toEqual([
+        join('.opencode', 'plugins', 'stoa-status.ts'),
+        '.stoa/hook-contract.json',
+        '.stoa/hook-dispatch',
+        '.stoa/hook-dispatch.cmd',
+        '.stoa/hook-dispatch.mjs'
+      ])
     } finally {
       await rm(workspaceDir, { recursive: true, force: true })
     }

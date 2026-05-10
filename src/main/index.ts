@@ -16,7 +16,10 @@ import { createHermesControlServer } from '@core/hermes-control-server'
 import { HermesManager } from '@core/hermes-manager'
 import { SessionEvidenceStore } from '@core/memory/session-evidence-store'
 import { HermesProposalStore } from '@core/hermes-proposal-store'
+import { deriveHermesProviderSessionPatch } from '@core/hermes-provider-patch'
+import { buildHermesCommandEnv } from '@core/hermes-command-env'
 import { resolveHermesStateFilePath } from '@core/hermes-state-store'
+import { ensureStoaCtlShim } from '@core/stoa-ctl-shim'
 import { openWorkspace } from '@core/workspace-launcher'
 import { resolveRuntimePaths as resolveProviderRuntimePaths } from '@core/provider-path-resolver'
 import { getProvider } from '@extensions/providers'
@@ -29,6 +32,8 @@ import { launchTrackedSessionRuntime } from './launch-tracked-session-runtime'
 import { syncObservabilitySessionsFromManager } from './observability-sync'
 import { syncManagedSidecars } from './managed-sidecar-maintenance'
 import { UpdateService } from './update-service'
+import { resolveDefaultStoaRuntimeRoot } from './stoa-runtime-root'
+import { createHookLeaseManager } from './hook-lease-manager'
 import { DEFAULT_SETTINGS } from '@shared/project-session'
 import type {
   CreateProjectRequest,
@@ -50,6 +55,7 @@ let observabilityService: ObservabilityService | null = null
 let updateService: UpdateService | null = null
 let hermesManager: HermesManager | null = null
 let evidenceStore: SessionEvidenceStore | null = null
+let hookLeaseManager: ReturnType<typeof createHookLeaseManager> | null = null
 const e2eWorkspaceOpenRequests: OpenWorkspaceRequest[] = []
 let isQuittingAfterBridgeStop = false
 const pendingE2EPickFolders: Array<string | null> = []
@@ -170,7 +176,7 @@ function installMainE2EDebugApi(): void {
     getDebugState() {
       return {
         webhookPort: projectSessionManager?.snapshot().terminalWebhookPort ?? null,
-        sessionSecrets: sessionEventBridge?.debugSnapshotSessionSecrets() ?? {},
+        sessionSecrets: hookLeaseManager?.debugSnapshotSessionSecrets() ?? sessionEventBridge?.debugSnapshotSessionSecrets() ?? {},
         snapshot: projectSessionManager?.snapshot() ?? null
       }
     },
@@ -314,6 +320,8 @@ async function prepareForQuitAndInstall(): Promise<void> {
   sessionInputRouter?.dispose()
   sessionInputRouter = null
   await stopSessionEventBridge()
+  await hookLeaseManager?.stop()
+  hookLeaseManager = null
 }
 
 function createDisabledUpdateState(): UpdateState {
@@ -451,7 +459,12 @@ app.whenReady().then(async () => {
   sessionInputRouter = new SessionInputRouter(
     {
       getSessionType(sessionId) {
-        return projectSessionManager?.snapshot().sessions.find((candidate) => candidate.id === sessionId)?.type ?? null
+        const projectSessionType = projectSessionManager?.snapshot().sessions.find((candidate) => candidate.id === sessionId)?.type ?? null
+        if (projectSessionType) {
+          return projectSessionType
+        }
+
+        return hermesManager?.hasSession(sessionId) ? 'hermes-agent' : null
       }
     },
     {
@@ -499,6 +512,12 @@ app.whenReady().then(async () => {
   const activeObservabilityService = observabilityService
   const activeSessionInputRouter = sessionInputRouter
   const activeHermesManager = hermesManager
+  const runtimeRoot = resolveDefaultStoaRuntimeRoot()
+  hookLeaseManager = createHookLeaseManager({
+    runtimeRoot,
+    instanceId: `stoa-${process.pid}-${Date.now()}`
+  })
+  const activeHookLeaseManager = hookLeaseManager
   const hermesProposalStore = await HermesProposalStore.create({
     statePath: resolveHermesStateFilePath(e2eGlobalStatePath)
   })
@@ -531,13 +550,40 @@ app.whenReady().then(async () => {
     },
     proposals: hermesProposalStore
   })
-  sessionEventBridge = new SessionEventBridge(activeProjectSessionManager, activeRuntimeController, activeObservabilityService, {
+  const compositeRuntimeController = {
+    async applyProviderStatePatch(patch: import('@shared/project-session').SessionStatePatchEvent) {
+      if (activeHermesManager?.hasSession(patch.sessionId)) {
+        const hermesSession = activeHermesManager.getSession(patch.sessionId)
+        if (!hermesSession) {
+          return
+        }
+
+        await activeHermesManager.updateSession(
+          patch.sessionId,
+          deriveHermesProviderSessionPatch(hermesSession, patch)
+        )
+        const next = activeHermesManager.getSession(patch.sessionId)
+        if (next) {
+          pushHermesSessionEvent(next)
+        }
+        return
+      }
+
+      await activeRuntimeController.applyProviderStatePatch(patch)
+    }
+  }
+  sessionEventBridge = new SessionEventBridge(activeProjectSessionManager, compositeRuntimeController, activeObservabilityService, {
     captureEvidence: false,
+    authorizeHookRequest: activeHookLeaseManager
+      ? async (input) => await activeHookLeaseManager.authorizeHookRequest(input)
+      : undefined,
     configureServerApp(app) {
       const hermesControlServer = createHermesControlServer({
         app,
         getSessionSecret(sessionId) {
-          return sessionEventBridge?.debugSnapshotSessionSecrets()[sessionId] ?? null
+          return activeHookLeaseManager?.debugSnapshotSessionSecrets()[sessionId]
+            ?? sessionEventBridge?.debugSnapshotSessionSecrets()[sessionId]
+            ?? null
         },
         hermesSessionSource: activeHermesManager!,
         snapshotSource: activeProjectSessionManager,
@@ -629,6 +675,7 @@ app.whenReady().then(async () => {
         ptyHost,
         runtimeController,
         sessionEventBridge,
+      hookLeaseManager: activeHookLeaseManager,
         resolveRuntimePaths,
         initialDimensions
       })
@@ -660,6 +707,16 @@ app.whenReady().then(async () => {
       return false
     }
 
+    const sessionSecret = activeHookLeaseManager?.debugSnapshotSessionSecrets()[sessionId]
+      ?? sessionEventBridge.issueSessionSecret(sessionId)
+    const hermesBinDir = join(app.getPath('userData'), 'bin')
+    const stoaCtlShim = await ensureStoaCtlShim({
+      binDir: hermesBinDir,
+      appRootPath: app.getAppPath(),
+      appExecutablePath: process.execPath,
+      isPackaged: app.isPackaged
+    })
+
     const workingDirectory = projectSessionManager.snapshot().projects[0]?.path ?? process.cwd()
     const runtimeManager = {
       snapshot() {
@@ -677,7 +734,7 @@ app.whenReady().then(async () => {
           sessions: [{
             id: hermesSession.id,
             projectId: 'stoa-hermes',
-            type: 'hermes-agent' as const,
+            type: hermesSession.backendSessionType,
             runtimeState: hermesSession.status === 'failed'
               ? 'failed_to_start'
               : hermesSession.status === 'closed'
@@ -764,8 +821,15 @@ app.whenReady().then(async () => {
       ptyHost,
       runtimeController: runtimeHooks as never,
       sessionEventBridge,
+      hookLeaseManager: activeHookLeaseManager,
       resolveRuntimePaths,
-      initialDimensions: { cols: 120, rows: 30 }
+      initialDimensions: { cols: 120, rows: 30 },
+      commandEnv: buildHermesCommandEnv({
+        sessionId,
+        sessionSecret,
+        webhookPort,
+        stoaCtlBinDir: stoaCtlShim.binDir
+      })
     })
 
     void source
@@ -877,20 +941,40 @@ app.whenReady().then(async () => {
       })
 
       const hookSettings = JSON.parse(await readFile(join(packagedSmokeProjectDir, '.claude', 'settings.json'), 'utf8')) as {
-        hooks?: Record<string, Array<{ hooks?: Array<{ type?: string; url?: string; headers?: Record<string, string> }> }>>
+        hooks?: Record<string, Array<{ hooks?: Array<{ type?: string; command?: string; allowedEnvVars?: string[]; timeout?: number }> }>>
       }
       const sessionStartHook = hookSettings.hooks?.SessionStart?.[0]?.hooks?.[0]
       if (!sessionStartHook) {
         throw new Error('Packaged smoke Claude SessionStart hook is missing.')
       }
-      if (sessionStartHook.type !== 'http') {
-        throw new Error(`Packaged smoke Claude SessionStart hook must be HTTP.\nHook: ${JSON.stringify(sessionStartHook)}`)
+      if (sessionStartHook.type !== 'command') {
+        throw new Error(`Packaged smoke Claude SessionStart hook must be a command hook.\nHook: ${JSON.stringify(sessionStartHook)}`)
       }
-      if (sessionStartHook.url !== `http://127.0.0.1:${webhookPort}/hooks/claude-code`) {
-        throw new Error(`Packaged smoke Claude SessionStart hook points to the wrong URL.\nHook: ${JSON.stringify(sessionStartHook)}`)
+      if (sessionStartHook.command !== '.stoa/hook-dispatch claude-code SessionStart') {
+        throw new Error(`Packaged smoke Claude SessionStart hook points to the wrong command.\nHook: ${JSON.stringify(sessionStartHook)}`)
       }
-      if (sessionStartHook.headers?.['x-stoa-secret'] !== '${STOA_SESSION_SECRET}') {
-        throw new Error(`Packaged smoke Claude SessionStart hook headers are invalid.\nHook: ${JSON.stringify(sessionStartHook)}`)
+      const expectedAllowedEnvVars = [
+        'STOA_HOOK_LEASE_PATH',
+        'STOA_HOOK_MANAGED',
+        'STOA_HOOK_SESSION_ID',
+        'STOA_HOOK_PROJECT_ID',
+        'STOA_HOOK_PROVIDER',
+        'STOA_HOOK_SPAWN_OWNER_INSTANCE_ID',
+        'STOA_HOOK_SPAWN_GENERATION'
+      ]
+      if (JSON.stringify(sessionStartHook.allowedEnvVars ?? []) !== JSON.stringify(expectedAllowedEnvVars)) {
+        throw new Error(`Packaged smoke Claude SessionStart hook allowedEnvVars are invalid.\nHook: ${JSON.stringify(sessionStartHook)}`)
+      }
+      if (sessionStartHook.timeout !== 5) {
+        throw new Error(`Packaged smoke Claude SessionStart hook timeout is invalid.\nHook: ${JSON.stringify(sessionStartHook)}`)
+      }
+      for (const artifact of [
+        '.stoa/hook-dispatch',
+        '.stoa/hook-dispatch.cmd',
+        '.stoa/hook-dispatch.mjs',
+        '.stoa/hook-contract.json'
+      ]) {
+        await readFile(join(packagedSmokeProjectDir, artifact), 'utf8')
       }
       await recordPackagedSmoke('claude-session-start-hook-verified', {
         hook: sessionStartHook
@@ -932,6 +1016,7 @@ app.whenReady().then(async () => {
     for (const session of projectSessions) {
       sessionInputRouter?.resetSession(session.id)
       ptyHost?.kill(session.id)
+      await hookLeaseManager?.releaseLease(session.id)
     }
 
     if (project) {
@@ -1122,6 +1207,7 @@ app.whenReady().then(async () => {
     if (!projectSessionManager || !ptyHost) return
     sessionInputRouter?.resetSession(sessionId)
     ptyHost.kill(sessionId)
+    await hookLeaseManager?.releaseLease(sessionId)
     await projectSessionManager.archiveSession(sessionId)
     syncObservabilitySessions()
     pushObservabilitySnapshotsForSession(sessionId)
@@ -1174,6 +1260,7 @@ app.whenReady().then(async () => {
 
   ipcMain.handle(IPC_CHANNELS.hermesSessionClose, async (_event, sessionId: string) => {
     ptyHost?.kill(sessionId)
+    await hookLeaseManager?.releaseLease(sessionId)
     await hermesManager?.closeSession(sessionId)
     const session = hermesManager?.getSession(sessionId)
     if (session) {

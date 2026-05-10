@@ -12,7 +12,7 @@ export interface ProviderIcon {
   src: string
 }
 
-const ICONS: Record<SessionType, ProviderIcon> = {
+export const ICONS: Record<SessionType, ProviderIcon> = {
   opencode: {
     type: 'opencode',
     label: 'OC',

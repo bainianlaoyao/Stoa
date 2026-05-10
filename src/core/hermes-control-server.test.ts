@@ -113,6 +113,7 @@ function createHermesSession(id = 'hermes_1') {
     id,
     title: id === 'hermes_1' ? 'Global Triage' : 'Second Hermes',
     status: 'running' as const,
+    backendSessionType: 'claude-code' as const,
     capabilityLevel: 3 as const,
     pendingProposalCount: 1,
     activeTargetCount: 2,
@@ -130,7 +131,7 @@ describe('Hermes control server', () => {
     await Promise.allSettled(servers.splice(0).map((server) => server.stop()))
   })
 
-  test('serves /ctl/work-sessions/:id/context?level=full as plain text and /ctl/state/brief as json', async () => {
+  test('serves /ctl/work-sessions/:id/context?level=full as plain text, supports slim text context, and /ctl/state/brief as json', async () => {
     const server = createHermesControlServer({
       getSessionSecret(sessionId) {
         return sessionId === 'hermes_1' ? 'secret-1' : null
@@ -173,6 +174,13 @@ describe('Hermes control server', () => {
         async getBundle() {
           return { level: 'bundle', sessionId: 'session_1' }
         },
+        async getSlimContext() {
+          return {
+            text: '[User]\nSummarize the failure.\n[Assistant]\nThe resume pointer is stale.',
+            truncated: false,
+            nextCursor: null
+          }
+        },
         async getFullContext() {
           return {
             text: '[Assistant]\nReview the failing tests.\n[Terminal]\nnpm test',
@@ -206,9 +214,13 @@ describe('Hermes control server', () => {
       'x-stoa-secret': 'secret-1'
     }
 
+    const slim = await get(port, '/ctl/work-sessions/session_1/context?level=slim', authHeaders)
     const full = await get(port, '/ctl/work-sessions/session_1/context?level=full', authHeaders)
     const brief = await get(port, '/ctl/state/brief', authHeaders)
 
+    expect(slim.statusCode).toBe(200)
+    expect(slim.body).toContain('[User]')
+    expect(slim.contentType).toContain('text/plain')
     expect(full.statusCode).toBe(200)
     expect(full.body).toContain('[Assistant]')
     expect(full.contentType).toContain('text/plain')
@@ -270,6 +282,13 @@ describe('Hermes control server', () => {
             session: createWorkSession(),
             presence: null,
             events: [{ eventId: 'evt_1' }]
+          }
+        },
+        async getSlimContext() {
+          return {
+            text: '[User]\nSummarize the failure.',
+            truncated: false,
+            nextCursor: null
           }
         },
         async getFullContext() {
@@ -394,6 +413,7 @@ describe('Hermes control server', () => {
           const created = {
             ...createHermesSession('hermes_2'),
             title: request.title,
+            backendSessionType: request.backendSessionType,
             capabilityLevel: request.capabilityLevel
           }
           hermesSessions.push(created)
@@ -430,6 +450,9 @@ describe('Hermes control server', () => {
         getBundle() {
           return { level: 'bundle', session: createWorkSession(), presence: null, events: [] }
         },
+        async getSlimContext() {
+          return { text: '', truncated: false, nextCursor: null }
+        },
         async getFullContext() {
           return { text: '', truncated: false, nextCursor: null }
         }
@@ -459,7 +482,7 @@ describe('Hermes control server', () => {
       'x-stoa-secret': 'secret-1'
     }
 
-    const created = await post(port, '/ctl/hermes-sessions', authHeaders, '{"title":"global-triage","capabilityLevel":3}')
+    const created = await post(port, '/ctl/hermes-sessions', authHeaders, '{"title":"global-triage","backendSessionType":"claude-code","capabilityLevel":3}')
     const activated = await post(port, '/ctl/hermes-sessions/hermes_2/activate', authHeaders)
     const closed = await post(port, '/ctl/hermes-sessions/hermes_2/close', authHeaders)
 
@@ -563,6 +586,9 @@ describe('Hermes control server', () => {
         },
         getBundle() {
           return { level: 'bundle', session: createWorkSession(), presence: null, events: [] }
+        },
+        async getSlimContext() {
+          return { text: '', truncated: false, nextCursor: null }
         },
         async getFullContext() {
           return { text: '', truncated: false, nextCursor: null }

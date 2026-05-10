@@ -33,6 +33,9 @@ export interface StartSessionRuntimeOptions {
     externalSessionId: string | null
     sessionSecret?: string | null
     providerPort?: number | null
+    hookLeasePath?: string | null
+    hookSpawnOwnerInstanceId?: string | null
+    hookSpawnGeneration?: number | null
   }
   webhookPort: number
   provider: ProviderDefinition
@@ -42,6 +45,7 @@ export interface StartSessionRuntimeOptions {
   providerPath?: string | null
   claudeDangerouslySkipPermissions?: boolean
   initialDimensions?: { cols: number; rows: number }
+  commandEnv?: Record<string, string>
 }
 
 function toProviderTarget(session: StartSessionRuntimeOptions['session']): ProviderRuntimeTarget {
@@ -65,6 +69,16 @@ export async function startSessionRuntime(options: StartSessionRuntimeOptions): 
     webhookPort,
     sessionSecret,
     providerPort,
+    hookLeasePath: session.hookLeasePath ?? null,
+    hookManaged: session.hookLeasePath !== undefined && session.hookLeasePath !== null,
+    hookSessionId: session.id,
+    hookProjectId: session.projectId,
+    hookProvider:
+      session.type === 'claude-code' || session.type === 'codex' || session.type === 'opencode'
+        ? session.type
+        : null,
+    hookSpawnOwnerInstanceId: session.hookSpawnOwnerInstanceId ?? null,
+    hookSpawnGeneration: session.hookSpawnGeneration ?? null,
     providerPath: options.providerPath ?? null,
     claudeDangerouslySkipPermissions: options.claudeDangerouslySkipPermissions === true,
     startedAt: Date.now()
@@ -93,6 +107,13 @@ export async function startSessionRuntime(options: StartSessionRuntimeOptions): 
     : canFallbackResume
       ? await provider.buildFallbackResumeCommand!(target, context) ?? await provider.buildStartCommand(target, context)
       : await provider.buildStartCommand(target, context)
+
+  if (options.commandEnv) {
+    providerCommand.env = {
+      ...providerCommand.env,
+      ...options.commandEnv
+    }
+  }
 
   const command =
     descriptor.prefersShellWrap && options.shellPath

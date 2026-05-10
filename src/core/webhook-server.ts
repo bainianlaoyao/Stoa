@@ -6,6 +6,7 @@ import type {
   MemoryNotificationKind,
   MemoryNotificationStatus
 } from '@shared/project-session'
+import type { SessionHookLease } from '../main/hook-lease-registry'
 import { adaptClaudeCodeHook, adaptCodexHook, adaptOpenCodeHook, InvalidHookEvidenceError } from './hook-event-adapter'
 
 const WEBHOOK_DEBUG = process.env.VIBECODING_E2E === '1'
@@ -68,6 +69,18 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0
 }
 
+interface HookAuthorizationSuccess {
+  ok: true
+  lease: SessionHookLease
+}
+
+interface HookAuthorizationFailure {
+  ok: false
+  reason: 'invalid_secret' | 'invalid_hook_context'
+}
+
+type HookAuthorizationResult = HookAuthorizationSuccess | HookAuthorizationFailure
+
 export interface LocalWebhookServerOptions {
   onEvent?: (event: CanonicalSessionEvent) => Promise<unknown> | unknown
   onMemoryNotification?: (notification: {
@@ -79,6 +92,12 @@ export interface LocalWebhookServerOptions {
     message: string
   }) => Promise<unknown> | unknown
   getSessionSecret?: (sessionId: string) => string | null
+  authorizeHookRequest?: (input: {
+    sessionId: string
+    projectId: string
+    provider: 'claude-code' | 'codex' | 'opencode'
+    secret: string | null
+  }) => Promise<HookAuthorizationResult> | HookAuthorizationResult
   configureApp?: (app: Express) => void
   port?: number
 }
@@ -285,7 +304,7 @@ export function createLocalWebhookServer(options: LocalWebhookServerOptions = {}
 
   function createHookEndpoint(
     adapt: (body: Record<string, unknown>, context: { sessionId: string; projectId: string }) => CanonicalSessionEvent | null,
-    debugLabel: string
+    debugLabel: 'claude-code' | 'codex' | 'opencode'
   ): express.RequestHandler {
     return async (request, response) => {
       const sessionId = request.header('x-stoa-session-id')
@@ -307,13 +326,35 @@ export function createLocalWebhookServer(options: LocalWebhookServerOptions = {}
         return
       }
 
-      const expectedSecret = options.getSessionSecret?.(sessionId) ?? null
-      if (!expectedSecret || request.header('x-stoa-secret') !== expectedSecret) {
-        if (WEBHOOK_DEBUG) {
-          console.log(`[webhook-debug] ${debugLabel} hook secret rejected`, { sessionId, projectId })
+      const hookSecret = request.header('x-stoa-secret') ?? null
+      const authorization = await options.authorizeHookRequest?.({
+        sessionId,
+        projectId,
+        provider: debugLabel,
+        secret: hookSecret
+      })
+      if (authorization) {
+        if (!authorization.ok) {
+          response.status(authorization.reason === 'invalid_hook_context' ? 400 : 401).json({
+            accepted: false,
+            reason: authorization.reason
+          })
+          return
         }
-        response.status(401).json({ accepted: false, reason: 'invalid_secret' })
-        return
+
+        if (authorization.lease.projectId !== projectId || authorization.lease.provider !== debugLabel) {
+          response.status(401).json({ accepted: false, reason: 'invalid_secret' })
+          return
+        }
+      } else {
+        const expectedSecret = options.getSessionSecret?.(sessionId) ?? null
+        if (!expectedSecret || hookSecret !== expectedSecret) {
+          if (WEBHOOK_DEBUG) {
+            console.log(`[webhook-debug] ${debugLabel} hook secret rejected`, { sessionId, projectId })
+          }
+          response.status(401).json({ accepted: false, reason: 'invalid_secret' })
+          return
+        }
       }
 
       const body = request.body

@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 
 const MANIFEST_FILE_NAME = '.stoa-managed-sidecar.json'
@@ -16,6 +16,7 @@ export interface ManagedSidecarInstallPlan {
   writes: Array<{
     relativePath: string
     content: string
+    mode?: number
   }>
 }
 
@@ -38,6 +39,9 @@ export async function installManagedSidecar(plan: ManagedSidecarInstallPlan): Pr
     const absolutePath = join(plan.rootDir, file.relativePath)
     await mkdir(dirname(absolutePath), { recursive: true })
     await writeFile(absolutePath, file.content, 'utf8')
+    if (file.mode !== undefined) {
+      await chmod(absolutePath, file.mode)
+    }
   }
 
   if (plan.currentArtifacts.length === 0 && plan.writes.length === 0) {
