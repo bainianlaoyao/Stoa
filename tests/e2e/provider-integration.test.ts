@@ -822,7 +822,7 @@ describe('E2E: Provider Integration', () => {
       const configPath = join(workspaceDir, '.codex', 'config.toml')
       const configContent = await readFile(configPath, 'utf8')
 
-      expect(configContent).toContain('hooks = true')
+      expect(configContent).toContain('codex_hooks = true')
       expect(configContent).toContain('[features]')
       expect(configContent).not.toContain('notify =')
     })

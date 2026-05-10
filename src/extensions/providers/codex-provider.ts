@@ -71,29 +71,29 @@ async function writeSharedHookSidecar(target: ProviderRuntimeTarget): Promise<vo
       SessionStart: [
         {
           matcher: '*',
-          hooks: [{ type: 'command', command: '.stoa/hook-dispatch codex SessionStart', timeout_sec: 5 }]
+          hooks: [{ type: 'command', command: '.stoa/hook-dispatch codex SessionStart', timeout: 5 }]
         }
       ],
       UserPromptSubmit: [
         {
-          hooks: [{ type: 'command', command: '.stoa/hook-dispatch codex UserPromptSubmit', timeout_sec: 5 }]
+          hooks: [{ type: 'command', command: '.stoa/hook-dispatch codex UserPromptSubmit', timeout: 5 }]
         }
       ],
       PreToolUse: [
         {
           matcher: '*',
-          hooks: [{ type: 'command', command: '.stoa/hook-dispatch codex PreToolUse', timeout_sec: 5 }]
+          hooks: [{ type: 'command', command: '.stoa/hook-dispatch codex PreToolUse', timeout: 5 }]
         }
       ],
       PostToolUse: [
         {
           matcher: '*',
-          hooks: [{ type: 'command', command: '.stoa/hook-dispatch codex PostToolUse', timeout_sec: 5 }]
+          hooks: [{ type: 'command', command: '.stoa/hook-dispatch codex PostToolUse', timeout: 5 }]
         }
       ],
       Stop: [
         {
-          hooks: [{ type: 'command', command: '.stoa/hook-dispatch codex Stop', timeout_sec: 5 }]
+          hooks: [{ type: 'command', command: '.stoa/hook-dispatch codex Stop', timeout: 5 }]
         }
       ]
     }
@@ -117,7 +117,7 @@ async function writeSharedHookSidecar(target: ProviderRuntimeTarget): Promise<vo
     writes: [
       {
         relativePath: '.codex/config.toml',
-        content: '[features]\nhooks = true\n'
+        content: '[features]\ncodex_hooks = true\n'
       },
       {
         relativePath: '.codex/hooks.json',
@@ -191,10 +191,12 @@ async function readCodexSessionMeta(path: string): Promise<{ id: string; cwd: st
 
   try {
     const parsed = JSON.parse(firstLine) as {
-      meta?: { id?: string; cwd?: string }
+      type?: string
+      payload?: { id?: string; cwd?: string }
     }
-    if (!parsed.meta?.id || !parsed.meta?.cwd) return null
-    return { id: parsed.meta.id, cwd: parsed.meta.cwd }
+    if (parsed.type !== 'session_meta') return null
+    if (!parsed.payload?.id || !parsed.payload?.cwd) return null
+    return { id: parsed.payload.id, cwd: parsed.payload.cwd }
   } catch {
     return null
   }

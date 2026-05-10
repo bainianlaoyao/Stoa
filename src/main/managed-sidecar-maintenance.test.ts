@@ -75,7 +75,7 @@ describe('managed-sidecar-maintenance', () => {
       expect(dispatcher).toContain('/hooks/codex')
       expect(dispatcher).not.toContain('../src/extensions/providers/shared-hook-dispatch.ts')
       await expect(readFile(join(projectDir, '.codex', 'hook-stoa.mjs'), 'utf8')).rejects.toThrow()
-      expect(await readFile(join(projectDir, '.codex', 'config.toml'), 'utf8')).toContain('hooks = true')
+      expect(await readFile(join(projectDir, '.codex', 'config.toml'), 'utf8')).toContain('codex_hooks = true')
     } finally {
       await rm(projectDir, { recursive: true, force: true })
     }
