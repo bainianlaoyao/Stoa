@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import GlobalActivityBar from './GlobalActivityBar.vue'
 import TitleBar from './TitleBar.vue'
 import CommandSurface from './command/CommandSurface.vue'
-import HermesSurface from './hermes/HermesSurface.vue'
+import MetaSessionSurface from './meta-session/MetaSessionSurface.vue'
 import ArchiveSurface from './archive/ArchiveSurface.vue'
 import SettingsSurface from './settings/SettingsSurface.vue'
 import type { OpenWorkspaceRequest, ProjectSummary, SessionSummary } from '@shared/project-session'
@@ -66,7 +66,11 @@ const archivedSessions = computed(() => {
           @archive-session="emit('archiveSession', $event)"
           @open-workspace="emit('openWorkspace', $event)"
         />
-        <HermesSurface v-if="activeSurface === 'hermes'" aria-label="Hermes surface" @create-workspace-session="emit('createSession', $event)" />
+        <MetaSessionSurface
+          v-if="activeSurface === 'meta-session'"
+          aria-label="Meta session surface"
+          @create-workspace-session="emit('createSession', $event)"
+        />
         <ArchiveSurface
           v-if="activeSurface === 'archive'"
           :archived-sessions="archivedSessions"

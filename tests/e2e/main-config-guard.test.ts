@@ -194,16 +194,16 @@ describe('E2E: Main Process Config Guard', () => {
         ['archiveSession', 'sessionArchive'],
         ['restoreSession', 'sessionRestore'],
         ['listArchivedSessions', 'sessionListArchived'],
-        ['getHermesBootstrapState', 'hermesBootstrap'],
-        ['createHermesSession', 'hermesSessionCreate'],
-        ['setActiveHermesSession', 'hermesSessionSetActive'],
-        ['closeHermesSession', 'hermesSessionClose'],
-        ['listHermesProposals', 'hermesProposalList'],
-        ['getHermesProposal', 'hermesProposalGet'],
-        ['approveHermesProposal', 'hermesProposalApprove'],
-        ['rejectHermesProposal', 'hermesProposalReject'],
-        ['dispatchHermesProposal', 'hermesProposalDispatch'],
-        ['setHermesInspectorTarget', 'hermesInspectorSetTarget'],
+        ['getMetaSessionBootstrapState', 'metaSessionBootstrap'],
+        ['createMetaSession', 'metaSessionCreate'],
+        ['setActiveMetaSession', 'metaSessionSetActive'],
+        ['closeMetaSession', 'metaSessionClose'],
+        ['listMetaSessionProposals', 'metaSessionProposalList'],
+        ['getMetaSessionProposal', 'metaSessionProposalGet'],
+        ['approveMetaSessionProposal', 'metaSessionProposalApprove'],
+        ['rejectMetaSessionProposal', 'metaSessionProposalReject'],
+        ['dispatchMetaSessionProposal', 'metaSessionProposalDispatch'],
+        ['setMetaSessionInspectorTarget', 'metaSessionInspectorSetTarget'],
         ['getSettings', 'settingsGet'],
         ['setSetting', 'settingsSet'],
         ['pickFolder', 'dialogPickFolder'],
@@ -336,16 +336,16 @@ describe('E2E: Main Process Config Guard', () => {
         'archiveSession',
         'restoreSession',
         'listArchivedSessions',
-        'getHermesBootstrapState',
-        'createHermesSession',
-        'setActiveHermesSession',
-        'closeHermesSession',
-        'listHermesProposals',
-        'getHermesProposal',
-        'approveHermesProposal',
-        'rejectHermesProposal',
-        'dispatchHermesProposal',
-        'setHermesInspectorTarget',
+        'getMetaSessionBootstrapState',
+        'createMetaSession',
+        'setActiveMetaSession',
+        'closeMetaSession',
+        'listMetaSessionProposals',
+        'getMetaSessionProposal',
+        'approveMetaSessionProposal',
+        'rejectMetaSessionProposal',
+        'dispatchMetaSessionProposal',
+        'setMetaSessionInspectorTarget',
         'getUpdateState',
         'checkForUpdates',
         'downloadUpdate',
@@ -421,16 +421,16 @@ describe('E2E: Main Process Config Guard', () => {
       expect(invMap.get('archiveSession')).toBe('session:archive')
       expect(invMap.get('restoreSession')).toBe('session:restore')
       expect(invMap.get('listArchivedSessions')).toBe('session:list-archived')
-      expect(invMap.get('getHermesBootstrapState')).toBe('hermes:bootstrap')
-      expect(invMap.get('createHermesSession')).toBe('hermes:session-create')
-      expect(invMap.get('setActiveHermesSession')).toBe('hermes:session-set-active')
-      expect(invMap.get('closeHermesSession')).toBe('hermes:session-close')
-      expect(invMap.get('listHermesProposals')).toBe('hermes:proposal-list')
-      expect(invMap.get('getHermesProposal')).toBe('hermes:proposal-get')
-      expect(invMap.get('approveHermesProposal')).toBe('hermes:proposal-approve')
-      expect(invMap.get('rejectHermesProposal')).toBe('hermes:proposal-reject')
-      expect(invMap.get('dispatchHermesProposal')).toBe('hermes:proposal-dispatch')
-      expect(invMap.get('setHermesInspectorTarget')).toBe('hermes:inspector-set-target')
+      expect(invMap.get('getMetaSessionBootstrapState')).toBe('meta-session:bootstrap')
+      expect(invMap.get('createMetaSession')).toBe('meta-session:create')
+      expect(invMap.get('setActiveMetaSession')).toBe('meta-session:set-active')
+      expect(invMap.get('closeMetaSession')).toBe('meta-session:close')
+      expect(invMap.get('listMetaSessionProposals')).toBe('meta-session:proposal-list')
+      expect(invMap.get('getMetaSessionProposal')).toBe('meta-session:proposal-get')
+      expect(invMap.get('approveMetaSessionProposal')).toBe('meta-session:proposal-approve')
+      expect(invMap.get('rejectMetaSessionProposal')).toBe('meta-session:proposal-reject')
+      expect(invMap.get('dispatchMetaSessionProposal')).toBe('meta-session:proposal-dispatch')
+      expect(invMap.get('setMetaSessionInspectorTarget')).toBe('meta-session:inspector-set-target')
       expect(invMap.get('getUpdateState')).toBe('update:get-state')
       expect(invMap.get('checkForUpdates')).toBe('update:check')
       expect(invMap.get('downloadUpdate')).toBe('update:download')
@@ -483,8 +483,8 @@ describe('E2E: Main Process Config Guard', () => {
       expect(preloadSource).toMatch(/ipcRenderer\.on\(\s*IPC_CHANNELS\.updateState/)
     })
 
-    it('preload registers listener for hermes:session-event channel', () => {
-      expect(preloadSource).toMatch(/ipcRenderer\.on\(\s*IPC_CHANNELS\.hermesSessionEvent/)
+    it('preload registers listener for meta-session:event channel', () => {
+      expect(preloadSource).toMatch(/ipcRenderer\.on\(\s*IPC_CHANNELS\.metaSessionEvent/)
     })
 
     it('preload registers listener for memory:notification channel', () => {

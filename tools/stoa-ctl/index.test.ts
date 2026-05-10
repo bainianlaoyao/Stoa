@@ -16,12 +16,18 @@ function createResponse(init: MockResponseInit = {}): Response {
   } as Response
 }
 
+const metaSessionEnv = {
+  STOA_CTL_BASE_URL: 'http://127.0.0.1:43129',
+  STOA_CTL_TOKEN: 'secret-1',
+  STOA_META_SESSION_ID: 'meta_session_1'
+}
+
 describe('stoa-ctl command surface', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
   })
 
-  test('declares Hermes discovery, session, proposal, and dispatch commands in the usage text', async () => {
+  test('declares meta session discovery, session, proposal, and dispatch commands in the usage text', async () => {
     const module = await import('./index')
 
     expect(module.USAGE_TEXT).toContain('whoami')
@@ -31,8 +37,8 @@ describe('stoa-ctl command surface', () => {
     expect(module.USAGE_TEXT).toContain('work-sessions events <id>')
     expect(module.USAGE_TEXT).toContain('state attention-queue')
     expect(module.USAGE_TEXT).toContain('state conflicts')
-    expect(module.USAGE_TEXT).toContain('hermes-sessions list')
-    expect(module.USAGE_TEXT).toContain('hermes-sessions create --title "..." --backend <claude-code|codex|opencode>')
+    expect(module.USAGE_TEXT).toContain('meta-sessions list')
+    expect(module.USAGE_TEXT).toContain('meta-sessions create --title "..." --backend <claude-code|codex|opencode>')
     expect(module.USAGE_TEXT).toContain('proposals create prompt --target <sessionId> --text "..."')
     expect(module.USAGE_TEXT).toContain('proposals list')
     expect(module.USAGE_TEXT).toContain('proposals get <proposalId>')
@@ -46,17 +52,13 @@ describe('stoa-ctl command surface', () => {
     const fetchImpl = vi.fn(async (input: string | URL | Request) => {
       expect(String(input)).toBe('http://127.0.0.1:43129/ctl/whoami')
       return createResponse({
-        body: '{"ok":true,"data":{"sessionId":"hermes_1","title":"Global Triage"},"error":null}'
+        body: '{"ok":true,"data":{"sessionId":"meta_session_1","title":"Global Triage"},"error":null}'
       })
     })
 
     const exitCode = await module.run(['whoami'], {
       fetch: fetchImpl,
-      env: {
-        STOA_CTL_BASE_URL: 'http://127.0.0.1:43129',
-        STOA_CTL_TOKEN: 'secret-1',
-        STOA_HERMES_SESSION_ID: 'hermes_1'
-      },
+      env: metaSessionEnv,
       stdout: {
         write(chunk: string) {
           writes.push(chunk)
@@ -93,11 +95,7 @@ describe('stoa-ctl command surface', () => {
       '--include-ephemeral'
     ], {
       fetch: fetchImpl,
-      env: {
-        STOA_CTL_BASE_URL: 'http://127.0.0.1:43129',
-        STOA_CTL_TOKEN: 'secret-1',
-        STOA_HERMES_SESSION_ID: 'hermes_1'
-      },
+      env: metaSessionEnv,
       stdout: {
         write(chunk: string) {
           writes.push(chunk)
@@ -129,11 +127,7 @@ describe('stoa-ctl command surface', () => {
       'session_1'
     ], {
       fetch: fetchImpl,
-      env: {
-        STOA_CTL_BASE_URL: 'http://127.0.0.1:43129',
-        STOA_CTL_TOKEN: 'secret-1',
-        STOA_HERMES_SESSION_ID: 'hermes_1'
-      },
+      env: metaSessionEnv,
       stdout: {
         write(chunk: string) {
           writes.push(chunk)
@@ -149,20 +143,20 @@ describe('stoa-ctl command surface', () => {
     expect(writes.join('')).toContain('resume pointer is stale')
   })
 
-  test('creates Hermes sessions through the control plane', async () => {
+  test('creates meta sessions through the control plane', async () => {
     const module = await import('./index')
     const writes: string[] = []
     const fetchImpl = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
-      expect(String(_input)).toBe('http://127.0.0.1:43129/ctl/hermes-sessions')
+      expect(String(_input)).toBe('http://127.0.0.1:43129/ctl/meta-sessions')
       expect(init?.method).toBe('POST')
       expect(init?.body).toBe('{"title":"global-triage","backendSessionType":"claude-code","capabilityLevel":3}')
       return createResponse({
-        body: '{"ok":true,"data":{"id":"hermes_2","title":"global-triage"},"error":null}'
+        body: '{"ok":true,"data":{"id":"meta_session_2","title":"global-triage"},"error":null}'
       })
     })
 
     const exitCode = await module.run([
-      'hermes-sessions',
+      'meta-sessions',
       'create',
       '--title',
       'global-triage',
@@ -172,11 +166,7 @@ describe('stoa-ctl command surface', () => {
       '3'
     ], {
       fetch: fetchImpl,
-      env: {
-        STOA_CTL_BASE_URL: 'http://127.0.0.1:43129',
-        STOA_CTL_TOKEN: 'secret-1',
-        STOA_HERMES_SESSION_ID: 'hermes_1'
-      },
+      env: metaSessionEnv,
       stdout: {
         write(chunk: string) {
           writes.push(chunk)
@@ -189,7 +179,7 @@ describe('stoa-ctl command surface', () => {
     })
 
     expect(exitCode).toBe(0)
-    expect(writes.join('')).toContain('"hermes_2"')
+    expect(writes.join('')).toContain('"meta_session_2"')
   })
 
   test('reads the attention queue through the control plane', async () => {
@@ -204,11 +194,7 @@ describe('stoa-ctl command surface', () => {
 
     const exitCode = await module.run(['state', 'attention-queue'], {
       fetch: fetchImpl,
-      env: {
-        STOA_CTL_BASE_URL: 'http://127.0.0.1:43129',
-        STOA_CTL_TOKEN: 'secret-1',
-        STOA_HERMES_SESSION_ID: 'hermes_1'
-      },
+      env: metaSessionEnv,
       stdout: {
         write(chunk: string) {
           writes.push(chunk)
@@ -246,11 +232,7 @@ describe('stoa-ctl command surface', () => {
       'Review the diff only.'
     ], {
       fetch: fetchImpl,
-      env: {
-        STOA_CTL_BASE_URL: 'http://127.0.0.1:43129',
-        STOA_CTL_TOKEN: 'secret-1',
-        STOA_HERMES_SESSION_ID: 'hermes_1'
-      },
+      env: metaSessionEnv,
       stdout: {
         write(chunk: string) {
           writes.push(chunk)
@@ -286,11 +268,7 @@ describe('stoa-ctl command surface', () => {
       'session_1'
     ], {
       fetch: fetchImpl,
-      env: {
-        STOA_CTL_BASE_URL: 'http://127.0.0.1:43129',
-        STOA_CTL_TOKEN: 'secret-1',
-        STOA_HERMES_SESSION_ID: 'hermes_1'
-      },
+      env: metaSessionEnv,
       stdout: {
         write(chunk: string) {
           writes.push(chunk)
@@ -318,11 +296,7 @@ describe('stoa-ctl command surface', () => {
 
     const exitCode = await module.run(['proposals', 'list'], {
       fetch: fetchImpl,
-      env: {
-        STOA_CTL_BASE_URL: 'http://127.0.0.1:43129',
-        STOA_CTL_TOKEN: 'secret-1',
-        STOA_HERMES_SESSION_ID: 'hermes_1'
-      },
+      env: metaSessionEnv,
       stdout: {
         write(chunk: string) {
           writes.push(chunk)
@@ -352,11 +326,7 @@ describe('stoa-ctl command surface', () => {
     const sleep = vi.fn(async () => {})
     const exitCode = await module.run(['proposals', 'wait', 'proposal_1', '--interval-ms', '1', '--timeout-ms', '10'], {
       fetch: fetchImpl,
-      env: {
-        STOA_CTL_BASE_URL: 'http://127.0.0.1:43129',
-        STOA_CTL_TOKEN: 'secret-1',
-        STOA_HERMES_SESSION_ID: 'hermes_1'
-      },
+      env: metaSessionEnv,
       stdout: {
         write(chunk: string) {
           writes.push(chunk)
@@ -385,11 +355,7 @@ describe('stoa-ctl command surface', () => {
 
     const exitCode = await module.run(['dispatch', 'proposal', 'proposal_1'], {
       fetch: fetchImpl,
-      env: {
-        STOA_CTL_BASE_URL: 'http://127.0.0.1:43129',
-        STOA_CTL_TOKEN: 'secret-1',
-        STOA_HERMES_SESSION_ID: 'hermes_1'
-      },
+      env: metaSessionEnv,
       stdout: {
         write() {}
       },

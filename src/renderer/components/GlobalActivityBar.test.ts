@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import GlobalActivityBar from './GlobalActivityBar.vue'
 
-type AppSurface = 'command' | 'hermes' | 'archive' | 'settings'
+type AppSurface = 'command' | 'meta-session' | 'archive' | 'settings'
 
 function mountBar(props: { activeSurface?: AppSurface } = {}) {
   return mount(GlobalActivityBar, {
@@ -24,7 +24,7 @@ describe('GlobalActivityBar', () => {
     const items = wrapper.findAll('[data-activity-item]')
     expect(items).toHaveLength(4)
     const ids = items.map((el) => el.attributes('data-activity-item'))
-    expect(ids).toEqual(['command', 'hermes', 'archive', 'settings'])
+    expect(ids).toEqual(['command', 'meta-session', 'archive', 'settings'])
   })
 
   it('renders one stable svg icon for each activity item', () => {
@@ -32,16 +32,16 @@ describe('GlobalActivityBar', () => {
 
     expect(wrapper.findAll('[data-activity-icon]')).toHaveLength(4)
     expect(wrapper.get('[data-activity-item="command"]').find('[data-activity-icon]').exists()).toBe(true)
-    expect(wrapper.get('[data-activity-item="hermes"]').find('[data-activity-icon]').exists()).toBe(true)
+    expect(wrapper.get('[data-activity-item="meta-session"]').find('[data-activity-icon]').exists()).toBe(true)
     expect(wrapper.get('[data-activity-item="archive"]').find('[data-activity-icon]').exists()).toBe(true)
     expect(wrapper.get('[data-activity-item="settings"]').find('[data-activity-icon]').exists()).toBe(true)
   })
 
-  it('uses semantic sidebar icons for command, hermes, archive, and settings', () => {
+  it('uses semantic sidebar icons for command, meta-session, archive, and settings', () => {
     const wrapper = mountBar()
 
     expect(wrapper.get('[data-activity-item="command"]').find('[data-icon-kind="terminal-command"]').exists()).toBe(true)
-    expect(wrapper.get('[data-activity-item="hermes"]').find('[data-icon-kind="hermes-orbit"]').exists()).toBe(true)
+    expect(wrapper.get('[data-activity-item="meta-session"]').find('[data-icon-kind="meta-session-orbit"]').exists()).toBe(true)
     expect(wrapper.get('[data-activity-item="archive"]').find('[data-icon-kind="archive-box"]').exists()).toBe(true)
     expect(wrapper.get('[data-activity-item="settings"]').find('[data-icon-kind="settings-sliders"]').exists()).toBe(true)
     expect(wrapper.get('[data-activity-item="settings"]').findAll('circle')).toHaveLength(0)
@@ -75,12 +75,12 @@ describe('GlobalActivityBar', () => {
     expect(wrapper.emitted('select')![0]).toEqual(['command'])
   })
 
-  it('renders command and hermes in top cluster and archive above settings in bottom cluster', () => {
+  it('renders command and meta-session in top cluster and archive above settings in bottom cluster', () => {
     const wrapper = mountBar()
     const topCluster = wrapper.find('[data-testid="activity-cluster-top"]')
     const bottomCluster = wrapper.find('[data-testid="activity-cluster-bottom"]')
     expect(topCluster.find('[data-activity-item="command"]').exists()).toBe(true)
-    expect(topCluster.find('[data-activity-item="hermes"]').exists()).toBe(true)
+    expect(topCluster.find('[data-activity-item="meta-session"]').exists()).toBe(true)
     expect(bottomCluster.find('[data-activity-item="archive"]').exists()).toBe(true)
     expect(bottomCluster.find('[data-activity-item="settings"]').exists()).toBe(true)
     expect(bottomCluster.findAll('[data-activity-item]').map((node) => node.attributes('data-activity-item'))).toEqual(['archive', 'settings'])

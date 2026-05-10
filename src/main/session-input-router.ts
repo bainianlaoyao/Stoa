@@ -88,7 +88,6 @@ function isAgentSessionType(sessionType: SessionType | null): sessionType is Exc
   return sessionType === 'codex'
     || sessionType === 'claude-code'
     || sessionType === 'opencode'
-    || sessionType === 'hermes-agent'
 }
 
 function isUserInterruptInput(data: string): boolean {

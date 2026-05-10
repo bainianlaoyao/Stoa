@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { ProjectSessionManager } from '@core/project-session-manager'
-import { useHermesStore } from '@renderer/stores/hermes'
+import { useMetaSessionStore } from '@renderer/stores/meta-session'
 import { useWorkspaceStore } from '@renderer/stores/workspaces'
 import { DEFAULT_SETTINGS } from '@shared/project-session'
 import { buildSessionPresenceSnapshot } from '@shared/observability-projection'
 import type { BootstrapState, ProjectSummary, RendererApi, SessionSummary } from '@shared/project-session'
 import type { SessionPresenceSnapshot } from '@shared/observability'
+import type { MetaSessionBootstrapState, MetaSessionProposal, MetaSessionSummary } from '@shared/meta-session'
 import type { UpdateState } from '@shared/update-state'
 import { createTestWorkspace, createTestGlobalStatePath, tempDirs } from './helpers'
 
@@ -80,14 +81,14 @@ describe('E2E: Frontend Store Projection', () => {
     Reflect.deleteProperty(window, 'stoa')
   })
 
-  describe('Hermes surface store projection', () => {
-    test('Hermes store hydrates independently from work-session hierarchy', async () => {
-      const store = useHermesStore()
+  describe('Meta session surface store projection', () => {
+    test('meta session store hydrates independently from work-session hierarchy', async () => {
+      const store = useMetaSessionStore()
 
-      store.hydrate({
-        activeHermesSessionId: 'hermes_1',
+      const bootstrap: MetaSessionBootstrapState = {
+        activeMetaSessionId: 'meta_session_1',
         sessions: [{
-          id: 'hermes_1',
+          id: 'meta_session_1',
           title: 'global-triage',
           status: 'running',
           backendSessionType: 'claude-code',
@@ -96,7 +97,7 @@ describe('E2E: Frontend Store Projection', () => {
           activeTargetCount: 4,
           lastSummary: 'Collecting blocked sessions.',
           lastRisk: 'Two sessions are editing the same module.',
-          resumeSessionId: 'resume-hermes-1',
+          backendSessionId: 'resume-meta-session-1',
           createdAt: '2026-05-07T08:00:00.000Z',
           updatedAt: '2026-05-07T08:05:00.000Z',
           lastActivatedAt: '2026-05-07T08:05:00.000Z'
@@ -104,20 +105,22 @@ describe('E2E: Frontend Store Projection', () => {
         inspectorTarget: {
           kind: 'app'
         }
-      })
+      }
 
-      expect(store.activeHermesSession?.id).toBe('hermes_1')
+      store.hydrate(bootstrap)
+
+      expect(store.activeMetaSession?.id).toBe('meta_session_1')
       expect(store.sessions).toHaveLength(1)
       expect(store.inspectorTarget).toEqual({ kind: 'app' })
     })
 
-    test('Hermes proposal hydration updates pending counts and selected proposal projection independently from work-session hierarchy', async () => {
-      const store = useHermesStore()
+    test('meta session proposal hydration updates pending counts and selected proposal projection independently from work-session hierarchy', async () => {
+      const store = useMetaSessionStore()
 
-      store.hydrate({
-        activeHermesSessionId: 'hermes_1',
+      const bootstrap: MetaSessionBootstrapState = {
+        activeMetaSessionId: 'meta_session_1',
         sessions: [{
-          id: 'hermes_1',
+          id: 'meta_session_1',
           title: 'global-triage',
           status: 'running',
           backendSessionType: 'claude-code',
@@ -126,7 +129,7 @@ describe('E2E: Frontend Store Projection', () => {
           activeTargetCount: 4,
           lastSummary: 'Collecting blocked sessions.',
           lastRisk: 'Two sessions are editing the same module.',
-          resumeSessionId: 'resume-hermes-1',
+          backendSessionId: 'resume-meta-session-1',
           createdAt: '2026-05-07T08:00:00.000Z',
           updatedAt: '2026-05-07T08:05:00.000Z',
           lastActivatedAt: '2026-05-07T08:05:00.000Z'
@@ -135,11 +138,13 @@ describe('E2E: Frontend Store Projection', () => {
           kind: 'proposal',
           proposalId: 'proposal_1'
         }
-      })
+      }
 
-      store.hydrateProposals([{
+      store.hydrate(bootstrap)
+
+      const proposals: MetaSessionProposal[] = [{
         id: 'proposal_1',
-        hermesSessionId: 'hermes_1',
+        metaSessionId: 'meta_session_1',
         kind: 'prompt',
         targetSessionIds: ['session_1'],
         riskLevel: 3,
@@ -162,10 +167,11 @@ describe('E2E: Frontend Store Projection', () => {
         rejectedAt: null,
         executedAt: null,
         executionResult: null
-      }])
+      }]
+      store.hydrateProposals(proposals)
 
       expect(store.selectedProposal?.id).toBe('proposal_1')
-      expect(store.activeHermesSession?.pendingProposalCount).toBe(1)
+      expect(store.activeMetaSession?.pendingProposalCount).toBe(1)
       expect(store.pendingProposals).toHaveLength(1)
     })
   })

@@ -147,7 +147,7 @@ function isValidPersistedSession(value: unknown): value is PersistedSession {
     && value !== null
     && hasString(value, 'session_id')
     && hasString(value, 'project_id')
-    && hasEnumValue<SessionType>(value, 'type', ['shell', 'opencode', 'codex', 'claude-code', 'hermes-agent'])
+    && hasEnumValue<SessionType>(value, 'type', ['shell', 'opencode', 'codex', 'claude-code'])
     && hasString(value, 'title')
     && hasEnumValue<SessionRuntimeState>(value, 'runtime_state', ['created', 'starting', 'alive', 'exited', 'failed_to_start'])
     && hasEnumValue(value, 'turn_state', ['idle', 'running'])

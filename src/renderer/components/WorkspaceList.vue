@@ -49,7 +49,6 @@ function updateSessionTitle(event: Event): void {
 }
 
 const sessionTypeOptions = listProviderDescriptors()
-  .filter((descriptor) => descriptor.sessionType !== 'hermes-agent')
   .map((descriptor) => ({
     value: descriptor.sessionType,
     label: descriptor.displayName

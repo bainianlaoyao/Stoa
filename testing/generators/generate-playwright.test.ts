@@ -4,7 +4,7 @@ import { sessionRestoreJourney } from '../journeys/session-restore.journey'
 import { archiveTopology } from '../topology/archive.topology'
 import {
   generateClaudeLifecyclePlaywrightSkeleton,
-  generateHermesSurfaceSessionFlowPlaywrightSkeleton,
+  generateMetaSessionSurfaceSessionFlowPlaywrightSkeleton,
   generatePlaywrightSkeleton,
   generateWorkspaceQuickAccessPlaywrightSkeleton
 } from './generate-playwright'
@@ -87,18 +87,18 @@ describe('playwright skeleton generator', () => {
     expect(generated).toContain("{ sessionId, target: 'file-manager' }")
   })
 
-  it('generates a deterministic Hermes surface session flow skeleton', () => {
-    const generated = generateHermesSurfaceSessionFlowPlaywrightSkeleton()
+  it('generates a deterministic meta session surface session flow skeleton', () => {
+    const generated = generateMetaSessionSurfaceSessionFlowPlaywrightSkeleton()
 
     expect(generated).toContain('AUTO-GENERATED FILE. DO NOT EDIT.')
-    expect(generated).toContain("id: 'journey.hermes.surface.session-flow'")
-    expect(generated).toContain("behaviorIds: ['hermes.surface.session-flow']")
-    expect(generated).toContain("app.page.locator('[data-activity-item=\"hermes\"]').click()")
-    expect(generated).toContain("app.page.getByTestId('surface.hermes')")
-    expect(generated).toContain("const initialCount = await app.page.getByTestId('hermes.session.item').count()")
-    expect(generated).toContain("app.page.getByTestId('hermes.session.create').click()")
+    expect(generated).toContain("id: 'journey.meta-session.surface.session-flow'")
+    expect(generated).toContain("behaviorIds: ['meta-session.surface.session-flow']")
+    expect(generated).toContain("app.page.locator('[data-activity-item=\"meta-session\"]').click()")
+    expect(generated).toContain("app.page.getByTestId('surface.meta-session')")
+    expect(generated).toContain("const initialCount = await app.page.getByTestId('meta-session.session.item').count()")
+    expect(generated).toContain("app.page.getByTestId('meta-session.session.create').click()")
     expect(generated).toContain("app.page.getByTestId('provider-card')).toBeVisible()")
     expect(generated).toContain("[data-testid=\"provider-card.item\"][data-provider-type=\"claude-code\"]")
-    expect(generated).toContain("app.page.getByTestId('hermes.session.item')).toHaveCount(initialCount + 1)")
+    expect(generated).toContain("app.page.getByTestId('meta-session.session.item')).toHaveCount(initialCount + 1)")
   })
 })

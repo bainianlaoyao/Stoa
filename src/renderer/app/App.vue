@@ -5,14 +5,14 @@ import type { OpenWorkspaceRequest, SessionType } from '@shared/project-session'
 import AppShell from '@renderer/components/AppShell.vue'
 import MemoryToastHost from '@renderer/components/memory/MemoryToastHost.vue'
 import UpdatePrompt from '@renderer/components/update/UpdatePrompt.vue'
-import { useHermesStore } from '@renderer/stores/hermes'
+import { useMetaSessionStore } from '@renderer/stores/meta-session'
 import { useMemoryNotificationsStore } from '@renderer/stores/memory-notifications'
 import { useWorkspaceStore } from '@renderer/stores/workspaces'
 import { useSettingsStore } from '@renderer/stores/settings'
 import { useUpdateStore } from '@renderer/stores/update'
 
 const workspaceStore = useWorkspaceStore()
-const hermesStore = useHermesStore()
+const metaSessionStore = useMetaSessionStore()
 const settingsStore = useSettingsStore()
 const updateStore = useUpdateStore()
 const memoryNotificationsStore = useMemoryNotificationsStore()
@@ -117,7 +117,7 @@ async function handleOpenWorkspace(request: OpenWorkspaceRequest): Promise<void>
 
 let unsubscribeUpdateState: (() => void) | null = null
 let unsubscribeMemoryNotification: (() => void) | null = null
-let unsubscribeHermesEvents: (() => void) | null = null
+let unsubscribeMetaSessionEvents: (() => void) | null = null
 let isUnmounted = false
 
 onMounted(async () => {
@@ -143,10 +143,10 @@ onMounted(async () => {
     return
   }
 
-  unsubscribeHermesEvents = await hermesStore.bootstrapFromBridge()
+  unsubscribeMetaSessionEvents = await metaSessionStore.bootstrapFromBridge()
   if (isUnmounted) {
-    unsubscribeHermesEvents?.()
-    unsubscribeHermesEvents = null
+    unsubscribeMetaSessionEvents?.()
+    unsubscribeMetaSessionEvents = null
     workspaceStore.unsubscribeObservability()
     return
   }
@@ -169,9 +169,9 @@ onBeforeUnmount(() => {
   isUnmounted = true
   unsubscribeUpdateState?.()
   unsubscribeMemoryNotification?.()
-  unsubscribeHermesEvents?.()
+  unsubscribeMetaSessionEvents?.()
   memoryNotificationsStore.reset()
-  hermesStore.unsubscribe()
+  metaSessionStore.unsubscribe()
   workspaceStore.unsubscribeObservability()
 })
 </script>

@@ -50,11 +50,11 @@ export const USAGE_TEXT = [
   '  work-sessions prompt <id> --text "..."',
   '  work-sessions prompt <id> --file <path>',
   '  work-sessions prompt <id> --stdin',
-  '  hermes-sessions list',
-  '  hermes-sessions create --title "..." --backend <claude-code|codex|opencode> [--capability-level <0|1|2|3>]',
-  '  hermes-sessions get <id>',
-  '  hermes-sessions close <id>',
-  '  hermes-sessions activate <id>',
+  '  meta-sessions list',
+  '  meta-sessions create --title "..." --backend <claude-code|codex|opencode> [--capability-level <0|1|2|3>]',
+  '  meta-sessions get <id>',
+  '  meta-sessions close <id>',
+  '  meta-sessions activate <id>',
   '  proposals create prompt --target <sessionId> --text "..."',
   '  proposals list',
   '  proposals get <proposalId>',
@@ -76,9 +76,9 @@ function resolveBaseUrl(env: NodeJS.ProcessEnv): string {
 
 function resolveHeaders(env: NodeJS.ProcessEnv): Record<string, string> {
   const token = env.STOA_CTL_TOKEN?.trim()
-  const sessionId = env.STOA_HERMES_SESSION_ID?.trim() ?? env.STOA_SESSION_ID?.trim()
+  const sessionId = env.STOA_META_SESSION_ID?.trim() ?? env.STOA_SESSION_ID?.trim()
   if (!token || !sessionId) {
-    throw new CliConfigError('Missing STOA_CTL_TOKEN or STOA_HERMES_SESSION_ID')
+    throw new CliConfigError('Missing STOA_CTL_TOKEN or STOA_META_SESSION_ID')
   }
 
   return {
@@ -365,8 +365,8 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
       return 0
     }
 
-    if (group === 'hermes-sessions' && action === 'list') {
-      const { response, text } = await request(resolvedDeps, '/ctl/hermes-sessions')
+    if (group === 'meta-sessions' && action === 'list') {
+      const { response, text } = await request(resolvedDeps, '/ctl/meta-sessions')
       if (!response.ok) {
         resolvedDeps.stderr.write(`${text}\n`)
         return mapFailureExitCode(response, text)
@@ -375,18 +375,18 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
       return 0
     }
 
-    if (group === 'hermes-sessions' && action === 'create') {
+    if (group === 'meta-sessions' && action === 'create') {
       const title = parseFlagValue(rest, '--title')
       const backendSessionType = parseFlagValue(rest, '--backend')
       if (!title || title.trim().length === 0) {
-        throw new CliUsageError('Missing Hermes session title')
+          throw new CliUsageError('Missing meta session title')
       }
       if (!backendSessionType || !['claude-code', 'codex', 'opencode'].includes(backendSessionType)) {
-        throw new CliUsageError('Missing Hermes backend session type')
+        throw new CliUsageError('Missing meta session backend session type')
       }
 
       const capabilityLevel = parseCapabilityLevel(rest, '--capability-level', 3)
-      const { response, text } = await request(resolvedDeps, '/ctl/hermes-sessions', {
+      const { response, text } = await request(resolvedDeps, '/ctl/meta-sessions', {
         method: 'POST',
         body: JSON.stringify({
           title,
@@ -402,13 +402,13 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
       return 0
     }
 
-    if (group === 'hermes-sessions' && action === 'get') {
-      const hermesSessionId = rest[0]
-      if (!hermesSessionId) {
-        throw new CliUsageError('Missing Hermes session id')
-      }
+    if (group === 'meta-sessions' && action === 'get') {
+        const metaSessionId = rest[0]
+        if (!metaSessionId) {
+          throw new CliUsageError('Missing meta session id')
+        }
 
-      const { response, text } = await request(resolvedDeps, `/ctl/hermes-sessions/${hermesSessionId}`)
+      const { response, text } = await request(resolvedDeps, `/ctl/meta-sessions/${metaSessionId}`)
       if (!response.ok) {
         resolvedDeps.stderr.write(`${text}\n`)
         return mapFailureExitCode(response, text)
@@ -417,13 +417,13 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
       return 0
     }
 
-    if (group === 'hermes-sessions' && action === 'close') {
-      const hermesSessionId = rest[0]
-      if (!hermesSessionId) {
-        throw new CliUsageError('Missing Hermes session id')
-      }
+    if (group === 'meta-sessions' && action === 'close') {
+        const metaSessionId = rest[0]
+        if (!metaSessionId) {
+          throw new CliUsageError('Missing meta session id')
+        }
 
-      const { response, text } = await request(resolvedDeps, `/ctl/hermes-sessions/${hermesSessionId}/close`, {
+      const { response, text } = await request(resolvedDeps, `/ctl/meta-sessions/${metaSessionId}/close`, {
         method: 'POST'
       })
       if (!response.ok) {
@@ -434,13 +434,13 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
       return 0
     }
 
-    if (group === 'hermes-sessions' && action === 'activate') {
-      const hermesSessionId = rest[0]
-      if (!hermesSessionId) {
-        throw new CliUsageError('Missing Hermes session id')
-      }
+    if (group === 'meta-sessions' && action === 'activate') {
+        const metaSessionId = rest[0]
+        if (!metaSessionId) {
+          throw new CliUsageError('Missing meta session id')
+        }
 
-      const { response, text } = await request(resolvedDeps, `/ctl/hermes-sessions/${hermesSessionId}/activate`, {
+      const { response, text } = await request(resolvedDeps, `/ctl/meta-sessions/${metaSessionId}/activate`, {
         method: 'POST'
       })
       if (!response.ok) {

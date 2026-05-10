@@ -189,19 +189,19 @@ describe('launchTrackedSessionRuntime', () => {
     expect(startRuntime).toHaveBeenCalledTimes(1)
   })
 
-  test('launches Hermes sessions when the manager snapshot provides a Hermes-scoped entry', async () => {
-    const provider = { providerId: 'hermes-agent' }
+  test('launches codex sessions when the manager snapshot provides a codex-scoped entry', async () => {
+    const provider = { providerId: 'codex' }
     const getProvider = vi.fn(() => provider)
     const resolveRuntimePaths = vi.fn(async () => ({
       shellPath: 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
-      providerPath: 'hermes-agent',
+      providerPath: 'codex',
       claudeDangerouslySkipPermissions: false
     }))
     const ensureLease = vi.fn(async () => null)
     const startRuntime = vi.fn(async () => {})
 
     const launched = await launchTrackedSessionRuntime({
-      sessionId: 'hermes_session_1',
+      sessionId: 'session_codex_1',
       manager: {
         snapshot() {
           return {
@@ -209,16 +209,16 @@ describe('launchTrackedSessionRuntime', () => {
             activeSessionId: null,
             terminalWebhookPort: null,
             projects: [{
-              id: 'stoa-hermes',
-              name: 'Hermes',
+              id: 'stoa-codex',
+              name: 'Codex',
               path: 'D:/Data/DEV/ultra_simple_panel',
               createdAt: '2026-05-07T08:00:00.000Z',
               updatedAt: '2026-05-07T08:00:00.000Z'
             }],
             sessions: [{
-              id: 'hermes_session_1',
-              projectId: 'stoa-hermes',
-              type: 'hermes-agent',
+              id: 'session_codex_1',
+              projectId: 'stoa-codex',
+              type: 'codex',
               runtimeState: 'created',
               turnState: 'idle',
               turnEpoch: 0,
@@ -230,9 +230,9 @@ describe('launchTrackedSessionRuntime', () => {
               blockingReason: null,
               failureReason: null,
               title: 'global-triage',
-              summary: 'Waiting for Hermes to start',
+              summary: 'Waiting for Codex to start',
               recoveryMode: 'resume-external',
-              externalSessionId: 'resume-hermes-1',
+              externalSessionId: 'resume-codex-1',
               createdAt: '2026-05-07T08:00:00.000Z',
               updatedAt: '2026-05-07T08:00:00.000Z',
               lastActivatedAt: null,
@@ -242,7 +242,7 @@ describe('launchTrackedSessionRuntime', () => {
         }
       } as never,
       webhookPort: 43127,
-      ptyHost: { start: vi.fn(() => ({ runtimeId: 'hermes_session_1' })) } as never,
+      ptyHost: { start: vi.fn(() => ({ runtimeId: 'session_codex_1' })) } as never,
       runtimeController: {
         markRuntimeStarting: vi.fn(async () => {}),
         markRuntimeAlive: vi.fn(async () => {}),
@@ -260,24 +260,24 @@ describe('launchTrackedSessionRuntime', () => {
     })
 
     expect(launched).toBe(true)
-    expect(resolveRuntimePaths).toHaveBeenCalledWith('hermes-agent')
-    expect(getProvider).toHaveBeenCalledWith('hermes-agent')
+    expect(resolveRuntimePaths).toHaveBeenCalledWith('codex')
+    expect(getProvider).toHaveBeenCalledWith('codex')
     expect(ensureLease).toHaveBeenCalledWith({
-      sessionId: 'hermes_session_1',
-      projectId: 'stoa-hermes',
-      sessionType: 'hermes-agent',
+      sessionId: 'session_codex_1',
+      projectId: 'stoa-codex',
+      sessionType: 'codex',
       webhookBaseUrl: 'http://127.0.0.1:43127'
     })
     expect(startRuntime).toHaveBeenCalledWith(
       expect.objectContaining({
         session: expect.objectContaining({
-          id: 'hermes_session_1',
-          type: 'hermes-agent',
-          externalSessionId: 'resume-hermes-1',
+          id: 'session_codex_1',
+          type: 'codex',
+          externalSessionId: 'resume-codex-1',
           sessionSecret: null,
           hookLeasePath: null
         }),
-        providerPath: 'hermes-agent'
+        providerPath: 'codex'
       })
     )
   })

@@ -40,7 +40,7 @@ test.describe('Electron smoke sentinel', () => {
 
         await expect(icons).toHaveCount(4)
         await expect(app.page.locator('[data-activity-item="command"] [data-activity-icon]')).toBeVisible()
-        await expect(app.page.locator('[data-activity-item="hermes"] [data-activity-icon]')).toBeVisible()
+        await expect(app.page.locator('[data-activity-item="meta-session"] [data-activity-icon]')).toBeVisible()
         await expect(app.page.locator('[data-activity-item="archive"] [data-activity-icon]')).toBeVisible()
         await expect(app.page.locator('[data-activity-item="settings"] [data-activity-icon]')).toBeVisible()
       }

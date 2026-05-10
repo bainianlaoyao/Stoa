@@ -2,7 +2,6 @@ import type { SessionType } from '@shared/project-session'
 import { SESSION_PROVIDER_ORDER } from '@shared/provider-descriptors'
 import claudeCodeIcon from '@renderer/assets/providers/claude-code.svg'
 import codexIcon from '@renderer/assets/providers/codex.svg'
-import hermesAgentIcon from '@renderer/assets/providers/hermes-agent.svg'
 import opencodeIcon from '@renderer/assets/providers/opencode.svg'
 import shellIcon from '@renderer/assets/providers/shell.svg'
 
@@ -28,11 +27,6 @@ export const ICONS: Record<SessionType, ProviderIcon> = {
     label: 'CC',
     src: claudeCodeIcon
   },
-  'hermes-agent': {
-    type: 'hermes-agent',
-    label: 'Hermes',
-    src: hermesAgentIcon
-  },
   shell: {
     type: 'shell',
     label: 'Shell',
@@ -41,5 +35,4 @@ export const ICONS: Record<SessionType, ProviderIcon> = {
 }
 
 export const PROVIDER_ICONS: ProviderIcon[] = SESSION_PROVIDER_ORDER
-  .filter((type) => type !== 'hermes-agent')
   .map((type) => ICONS[type])

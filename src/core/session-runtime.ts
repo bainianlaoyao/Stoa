@@ -95,18 +95,9 @@ export async function startSessionRuntime(options: StartSessionRuntimeOptions): 
     && !!session.externalSessionId
     && hasResumeBoundary
 
-  const canFallbackResume =
-    descriptor.supportsResume
-    && provider.supportsResume()
-    && !session.externalSessionId
-    && hasResumeBoundary
-    && !!provider.buildFallbackResumeCommand
-
   const providerCommand = canResume
     ? await provider.buildResumeCommand(target, session.externalSessionId!, context)
-    : canFallbackResume
-      ? await provider.buildFallbackResumeCommand!(target, context) ?? await provider.buildStartCommand(target, context)
-      : await provider.buildStartCommand(target, context)
+    : await provider.buildStartCommand(target, context)
 
   if (options.commandEnv) {
     providerCommand.env = {

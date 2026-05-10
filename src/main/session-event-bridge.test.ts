@@ -6,12 +6,12 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 import { InMemoryObservationStore } from '@core/observation-store'
 import { ObservabilityService } from '@core/observability-service'
 import { ProjectSessionManager } from '@core/project-session-manager'
-import { HermesCommandDispatcher } from '@core/hermes-command-dispatcher'
-import { HermesContextAssembler } from '@core/hermes-context-assembler'
-import { createHermesControlServer } from '@core/hermes-control-server'
-import { HermesManager } from '@core/hermes-manager'
-import { HermesProposalStore } from '@core/hermes-proposal-store'
-import { resolveHermesStateFilePath } from '@core/hermes-state-store'
+import { MetaSessionCommandDispatcher } from '@core/meta-session-command-dispatcher'
+import { MetaSessionContextAssembler } from '@core/meta-session-context-assembler'
+import { createMetaSessionControlServer } from '@core/meta-session-control-server'
+import { MetaSessionManager } from '@core/meta-session-manager'
+import { MetaSessionProposalStore } from '@core/meta-session-proposal-store'
+import { resolveMetaSessionStateFilePath } from '@core/meta-session-state-store'
 import { TurnMaintenanceRunner } from '@core/memory/turn-maintenance-runner'
 import type { CanonicalSessionEvent, SessionStatePatchEvent } from '@shared/project-session'
 import type { MemoryNotificationEvent } from '@shared/project-session'
@@ -235,17 +235,17 @@ describe('SessionEventBridge', () => {
     })
   })
 
-  test('shared loopback server can expose Hermes control routes via configureServerApp', async () => {
+  test('shared loopback server can expose meta session control routes via configureServerApp', async () => {
     const manager = ProjectSessionManager.createForTest()
     const controller = {
       applyProviderStatePatch: vi.fn(async () => {})
     }
-    const proposalStore = new HermesProposalStore()
-    const hermesStateDir = await createTestTempDir('session-event-bridge-hermes-state-')
-    const hermesManager = await HermesManager.create({
-      statePath: resolveHermesStateFilePath(join(hermesStateDir, 'global.json'))
+    const proposalStore = new MetaSessionProposalStore()
+    const metaSessionStateDir = await createTestTempDir('session-event-bridge-meta-session-state-')
+    const metaSessionManager = await MetaSessionManager.create({
+      statePath: resolveMetaSessionStateFilePath(join(metaSessionStateDir, 'global.json'))
     })
-    const assembler = new HermesContextAssembler({
+    const assembler = new MetaSessionContextAssembler({
       snapshotSource: manager,
       getSessionPresence() {
         return null
@@ -260,19 +260,19 @@ describe('SessionEventBridge', () => {
 
     const bridge = new SessionEventBridge(manager, controller, undefined, {
       configureServerApp(app) {
-        const dispatcher = new HermesCommandDispatcher({
+        const dispatcher = new MetaSessionCommandDispatcher({
           snapshotSource: manager,
           sessionInput: {
             async send() {}
           },
           proposals: proposalStore
         })
-        createHermesControlServer({
+        createMetaSessionControlServer({
           app,
-          getSessionSecret(sessionId) {
+          getSessionSecret(sessionId: string) {
             return bridge.debugSnapshotSessionSecrets()[sessionId] ?? null
           },
-          hermesSessionSource: hermesManager,
+          metaSessionSource: metaSessionManager,
           snapshotSource: manager,
           getSessionPresence() {
             return null
@@ -286,9 +286,9 @@ describe('SessionEventBridge', () => {
     bridges.push(bridge)
 
     const port = await bridge.start()
-    const secret = bridge.issueSessionSecret('hermes_1')
+    const secret = bridge.issueSessionSecret('meta_session_1')
     const response = await getPath(port, '/ctl/state/brief', {
-      'x-stoa-session-id': 'hermes_1',
+      'x-stoa-session-id': 'meta_session_1',
       'x-stoa-secret': secret
     })
 

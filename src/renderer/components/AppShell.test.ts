@@ -75,19 +75,19 @@ const CommandSurfaceStub = defineComponent({
   }
 })
 
-const HermesSurfaceStub = defineComponent({
-  name: 'HermesSurface',
+const MetaSessionSurfaceStub = defineComponent({
+  name: 'MetaSessionSurface',
   inheritAttrs: false,
   setup(_props, { attrs }) {
     return () =>
       h(
         'section',
         mergeProps(attrs, {
-          'data-surface': 'hermes',
-          'data-testid': 'surface.hermes',
-          'aria-label': 'Hermes surface'
+          'data-surface': 'meta-session',
+          'data-testid': 'surface.meta-session',
+          'aria-label': 'Meta session surface'
         }),
-        [h('h2', 'Hermes')]
+        [h('h2', 'Meta Session')]
       )
   }
 })
@@ -153,7 +153,7 @@ function mountAppShell(props: {
       plugins: [createPinia()],
       stubs: {
         CommandSurface: CommandSurfaceStub,
-        HermesSurface: HermesSurfaceStub,
+        MetaSessionSurface: MetaSessionSurfaceStub,
         ArchiveSurface: ArchiveSurfaceStub,
         SettingsSurface: SettingsSurfaceStub
       }
@@ -279,14 +279,14 @@ describe('AppShell', () => {
     const labels = wrapper.findAll('[data-activity-item]').map((node) => node.attributes('data-activity-item'))
     const navigation = wrapper.get('nav[aria-label="Global activity"]')
     const commandButton = wrapper.get('button[aria-label="Command panel"]')
-    const hermesButton = wrapper.get('button[aria-label="Hermes"]')
+    const metaSessionButton = wrapper.get('button[aria-label="Meta Session"]')
     const archiveButton = wrapper.get('button[aria-label="Archive"]')
     const settingsButton = wrapper.get('button[aria-label="Settings"]')
 
-    expect(labels).toEqual(['command', 'hermes', 'archive', 'settings'])
+    expect(labels).toEqual(['command', 'meta-session', 'archive', 'settings'])
     expect(navigation).toBeTruthy()
     expect(commandButton.attributes('aria-current')).toBe('true')
-    expect(hermesButton.attributes('aria-current')).toBeUndefined()
+    expect(metaSessionButton.attributes('aria-current')).toBeUndefined()
     expect(archiveButton.attributes('aria-current')).toBeUndefined()
     expect(settingsButton.attributes('aria-current')).toBeUndefined()
     expect(wrapper.find('[data-command-surface="true"]').exists()).toBe(true)
@@ -318,7 +318,7 @@ describe('AppShell', () => {
     expect(wrapper.find('[data-testid="terminal-status-bar"]').exists()).toBe(false)
   })
 
-  it('keeps command surface mounted and hidden when the Hermes activity is selected', async () => {
+  it('keeps command surface mounted and hidden when the meta-session activity is selected', async () => {
     const wrapper = mountAppShell({
       hierarchy: [],
       activeProjectId: null,
@@ -329,10 +329,10 @@ describe('AppShell', () => {
 
     const commandSurface = wrapper.get('[data-surface="command"][aria-label="Command surface"]')
 
-    await wrapper.get('button[aria-label="Hermes"]').trigger('click')
+    await wrapper.get('button[aria-label="Meta Session"]').trigger('click')
 
-    expect(wrapper.get('[data-surface="hermes"][aria-label="Hermes surface"]')).toBeTruthy()
-    expect(wrapper.get('button[aria-label="Hermes"]').attributes('aria-current')).toBe('true')
+    expect(wrapper.get('[data-surface="meta-session"][aria-label="Meta session surface"]')).toBeTruthy()
+    expect(wrapper.get('button[aria-label="Meta Session"]').attributes('aria-current')).toBe('true')
     expect(wrapper.get('[data-surface="command"][aria-label="Command surface"]').element).toBe(commandSurface.element)
     expect(wrapper.get('[data-surface="command"][aria-label="Command surface"]').attributes('style')).toContain('display: none;')
     expect(wrapper.find('[data-surface="command"][aria-label="Command surface"]').exists()).toBe(true)
@@ -408,7 +408,7 @@ describe('AppShell', () => {
       expect(items).toHaveLength(4)
       expect(icons).toHaveLength(4)
       expect(wrapper.get('[data-activity-item="command"]').find('[data-activity-icon]').exists()).toBe(true)
-      expect(wrapper.get('[data-activity-item="hermes"]').find('[data-activity-icon]').exists()).toBe(true)
+      expect(wrapper.get('[data-activity-item="meta-session"]').find('[data-activity-icon]').exists()).toBe(true)
       expect(wrapper.get('[data-activity-item="archive"]').find('[data-activity-icon]').exists()).toBe(true)
       expect(wrapper.get('[data-activity-item="settings"]').find('[data-activity-icon]').exists()).toBe(true)
     }
@@ -418,7 +418,7 @@ describe('AppShell', () => {
     await wrapper.get('button[aria-label="Settings"]').trigger('click')
     expectStableIcons()
 
-    await wrapper.get('button[aria-label="Hermes"]').trigger('click')
+    await wrapper.get('button[aria-label="Meta Session"]').trigger('click')
     expectStableIcons()
 
     await wrapper.get('button[aria-label="Archive"]').trigger('click')

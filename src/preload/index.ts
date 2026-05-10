@@ -19,7 +19,7 @@ import type {
   ProjectObservabilitySnapshot,
   SessionPresenceSnapshot
 } from '@shared/observability'
-import type { HermesInspectorTarget, HermesProposal, HermesSessionEvent } from '@shared/hermes'
+import type { MetaSessionInspectorTarget, MetaSessionProposal, MetaSessionEvent } from '@shared/meta-session'
 import type { UpdateState } from '@shared/update-state'
 
 interface PreloadKeyboardEvent {
@@ -80,35 +80,35 @@ const api: RendererApi = {
   async listArchivedSessions() {
     return ipcRenderer.invoke(IPC_CHANNELS.sessionListArchived)
   },
-  async getHermesBootstrapState() {
-    return ipcRenderer.invoke(IPC_CHANNELS.hermesBootstrap)
+  async getMetaSessionBootstrapState() {
+    return ipcRenderer.invoke(IPC_CHANNELS.metaSessionBootstrap)
   },
-  async createHermesSession(request) {
-    return ipcRenderer.invoke(IPC_CHANNELS.hermesSessionCreate, request)
+  async createMetaSession(request) {
+    return ipcRenderer.invoke(IPC_CHANNELS.metaSessionCreate, request)
   },
-  async setActiveHermesSession(sessionId) {
-    return ipcRenderer.invoke(IPC_CHANNELS.hermesSessionSetActive, sessionId)
+  async setActiveMetaSession(sessionId) {
+    return ipcRenderer.invoke(IPC_CHANNELS.metaSessionSetActive, sessionId)
   },
-  async closeHermesSession(sessionId) {
-    return ipcRenderer.invoke(IPC_CHANNELS.hermesSessionClose, sessionId)
+  async closeMetaSession(sessionId) {
+    return ipcRenderer.invoke(IPC_CHANNELS.metaSessionClose, sessionId)
   },
-  async listHermesProposals() {
-    return ipcRenderer.invoke(IPC_CHANNELS.hermesProposalList) as Promise<HermesProposal[]>
+  async listMetaSessionProposals() {
+    return ipcRenderer.invoke(IPC_CHANNELS.metaSessionProposalList) as Promise<MetaSessionProposal[]>
   },
-  async getHermesProposal(proposalId: string) {
-    return ipcRenderer.invoke(IPC_CHANNELS.hermesProposalGet, proposalId) as Promise<HermesProposal | null>
+  async getMetaSessionProposal(proposalId: string) {
+    return ipcRenderer.invoke(IPC_CHANNELS.metaSessionProposalGet, proposalId) as Promise<MetaSessionProposal | null>
   },
-  async approveHermesProposal(proposalId: string) {
-    return ipcRenderer.invoke(IPC_CHANNELS.hermesProposalApprove, proposalId) as Promise<HermesProposal | null>
+  async approveMetaSessionProposal(proposalId: string) {
+    return ipcRenderer.invoke(IPC_CHANNELS.metaSessionProposalApprove, proposalId) as Promise<MetaSessionProposal | null>
   },
-  async rejectHermesProposal(proposalId: string, reason?: string) {
-    return ipcRenderer.invoke(IPC_CHANNELS.hermesProposalReject, proposalId, reason) as Promise<HermesProposal | null>
+  async rejectMetaSessionProposal(proposalId: string, reason?: string) {
+    return ipcRenderer.invoke(IPC_CHANNELS.metaSessionProposalReject, proposalId, reason) as Promise<MetaSessionProposal | null>
   },
-  async dispatchHermesProposal(proposalId: string) {
-    return ipcRenderer.invoke(IPC_CHANNELS.hermesProposalDispatch, proposalId) as Promise<HermesProposal | null>
+  async dispatchMetaSessionProposal(proposalId: string) {
+    return ipcRenderer.invoke(IPC_CHANNELS.metaSessionProposalDispatch, proposalId) as Promise<MetaSessionProposal | null>
   },
-  async setHermesInspectorTarget(target: HermesInspectorTarget | null) {
-    return ipcRenderer.invoke(IPC_CHANNELS.hermesInspectorSetTarget, target)
+  async setMetaSessionInspectorTarget(target: MetaSessionInspectorTarget | null) {
+    return ipcRenderer.invoke(IPC_CHANNELS.metaSessionInspectorSetTarget, target)
   },
   async getUpdateState() {
     return ipcRenderer.invoke(IPC_CHANNELS.updateGetState) as Promise<UpdateState>
@@ -152,10 +152,10 @@ const api: RendererApi = {
     ipcRenderer.on(IPC_CHANNELS.sessionEvent, handler)
     return () => ipcRenderer.removeListener(IPC_CHANNELS.sessionEvent, handler)
   },
-  onHermesSessionEvent(callback) {
-    const handler = (_event: Electron.IpcRendererEvent, event: HermesSessionEvent) => callback(event)
-    ipcRenderer.on(IPC_CHANNELS.hermesSessionEvent, handler)
-    return () => ipcRenderer.removeListener(IPC_CHANNELS.hermesSessionEvent, handler)
+  onMetaSessionEvent(callback) {
+    const handler = (_event: Electron.IpcRendererEvent, event: MetaSessionEvent) => callback(event)
+    ipcRenderer.on(IPC_CHANNELS.metaSessionEvent, handler)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.metaSessionEvent, handler)
   },
   async getSessionPresence(sessionId: string) {
     return ipcRenderer.invoke(IPC_CHANNELS.observabilityGetSessionPresence, sessionId) as Promise<SessionPresenceSnapshot | null>

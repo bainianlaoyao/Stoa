@@ -520,7 +520,7 @@ describe('session runtime', () => {
     })
   })
 
-  test('uses codex resume --last fallback when recovering without externalSessionId', async () => {
+  test('starts a fresh codex session when recovering without externalSessionId', async () => {
     const buildStartCommand = vi.fn(async () => ({
       command: 'codex',
       args: [],
@@ -567,8 +567,8 @@ describe('session runtime', () => {
       shellPath: 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe'
     })
 
-    expect(buildFallbackResumeCommand).toHaveBeenCalledOnce()
-    expect(buildStartCommand).not.toHaveBeenCalled()
+    expect(buildFallbackResumeCommand).not.toHaveBeenCalled()
+    expect(buildStartCommand).toHaveBeenCalledOnce()
     expect(start).toHaveBeenCalledWith(
       'session_codex_2',
       expect.objectContaining({
@@ -667,7 +667,7 @@ describe('session runtime', () => {
         appendTerminalData: vi.fn(async () => {})
       } as never,
       commandEnv: {
-        STOA_HERMES: '1',
+        STOA_META_SESSION: '1',
         STOA_CTL_BASE_URL: 'http://127.0.0.1:43127',
         PATH: 'D:/stoa/bin;C:/Windows/System32'
       }
@@ -678,7 +678,7 @@ describe('session runtime', () => {
       expect.objectContaining({
         env: expect.objectContaining({
           TEST_ENV: '1',
-          STOA_HERMES: '1',
+          STOA_META_SESSION: '1',
           STOA_CTL_BASE_URL: 'http://127.0.0.1:43127',
           PATH: 'D:/stoa/bin;C:/Windows/System32'
         })

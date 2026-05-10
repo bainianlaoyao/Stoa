@@ -512,7 +512,7 @@ describe('session runtime callbacks and defaults', () => {
       expect(buildResumeCommand).not.toHaveBeenCalled()
     })
 
-    test('codex without externalSessionId can use fallback resume command after bootstrap', async () => {
+    test('codex without externalSessionId starts fresh after bootstrap', async () => {
       const buildStartCommand = vi.fn(async () => ({
         command: 'codex', args: [], cwd: 'D:/demo', env: {}
       }))
@@ -538,8 +538,8 @@ describe('session runtime callbacks and defaults', () => {
         } as never
       })
 
-      expect(buildFallbackResumeCommand).toHaveBeenCalledOnce()
-      expect(buildStartCommand).not.toHaveBeenCalled()
+      expect(buildFallbackResumeCommand).not.toHaveBeenCalled()
+      expect(buildStartCommand).toHaveBeenCalledOnce()
     })
 
     test('opencode with provider that does not support resume does not resume', async () => {

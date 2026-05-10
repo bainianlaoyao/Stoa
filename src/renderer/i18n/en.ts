@@ -244,7 +244,7 @@ export default {
 
   activityBar: {
     command: 'Command panel',
-    hermes: 'Hermes',
+    metaSession: 'Meta Session',
     archive: 'Archive',
     settings: 'Settings'
   },

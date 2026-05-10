@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 
-export type AppSurface = 'command' | 'hermes' | 'archive' | 'settings'
+export type AppSurface = 'command' | 'meta-session' | 'archive' | 'settings'
 
 const { t } = useI18n()
 
@@ -39,9 +39,9 @@ const topItems: ActivityItem[] = [
     ]
   },
   {
-    id: 'hermes',
-    title: t('activityBar.hermes'),
-    iconKind: 'hermes-orbit',
+    id: 'meta-session',
+    title: t('activityBar.metaSession'),
+    iconKind: 'meta-session-orbit',
     iconPaths: [
       'M12 5.25v13.5',
       'M5.25 12h13.5',

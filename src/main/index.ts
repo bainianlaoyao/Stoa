@@ -10,15 +10,15 @@ import type { ListObservationEventsOptions } from '@core/observation-store'
 import { ObservabilityService } from '@core/observability-service'
 import { ProjectSessionManager } from '@core/project-session-manager'
 import { detectShell, detectProvider, detectVscode } from '@core/settings-detector'
-import { HermesCommandDispatcher } from '@core/hermes-command-dispatcher'
-import { HermesContextAssembler } from '@core/hermes-context-assembler'
-import { createHermesControlServer } from '@core/hermes-control-server'
-import { HermesManager } from '@core/hermes-manager'
+import { MetaSessionCommandDispatcher } from '@core/meta-session-command-dispatcher'
+import { MetaSessionContextAssembler } from '@core/meta-session-context-assembler'
+import { createMetaSessionControlServer } from '@core/meta-session-control-server'
+import { MetaSessionManager } from '@core/meta-session-manager'
 import { SessionEvidenceStore } from '@core/memory/session-evidence-store'
-import { HermesProposalStore } from '@core/hermes-proposal-store'
-import { deriveHermesProviderSessionPatch } from '@core/hermes-provider-patch'
-import { buildHermesCommandEnv } from '@core/hermes-command-env'
-import { resolveHermesStateFilePath } from '@core/hermes-state-store'
+import { MetaSessionProposalStore } from '@core/meta-session-proposal-store'
+import { deriveMetaSessionProviderSessionPatch } from '@core/meta-session-provider-patch'
+import { buildMetaSessionCommandEnv } from '@core/meta-session-command-env'
+import { resolveMetaSessionStateFilePath } from '@core/meta-session-state-store'
 import { ensureStoaCtlShim } from '@core/stoa-ctl-shim'
 import { openWorkspace } from '@core/workspace-launcher'
 import { resolveRuntimePaths as resolveProviderRuntimePaths } from '@core/provider-path-resolver'
@@ -40,7 +40,7 @@ import type {
   CreateSessionRequest,
   OpenWorkspaceRequest
 } from '@shared/project-session'
-import type { CreateHermesSessionRequest, HermesSessionSummary } from '@shared/hermes'
+import type { CreateMetaSessionRequest, MetaSessionSummary } from '@shared/meta-session'
 import type { UpdateState } from '@shared/update-state'
 import type { PtyHost } from '@core/pty-host'
 
@@ -53,7 +53,7 @@ let sessionInputRouter: SessionInputRouter | null = null
 let observationStore: InMemoryObservationStore | null = null
 let observabilityService: ObservabilityService | null = null
 let updateService: UpdateService | null = null
-let hermesManager: HermesManager | null = null
+let metaSessionManager: MetaSessionManager | null = null
 let evidenceStore: SessionEvidenceStore | null = null
 let hookLeaseManager: ReturnType<typeof createHookLeaseManager> | null = null
 const e2eWorkspaceOpenRequests: OpenWorkspaceRequest[] = []
@@ -344,13 +344,13 @@ function pushUpdateState(state: UpdateState): void {
   }
 }
 
-function pushHermesSessionEvent(session: HermesSessionSummary): void {
+function pushMetaSessionEvent(session: MetaSessionSummary): void {
   const win = mainWindow
   if (!win || win.isDestroyed()) {
     return
   }
 
-  win.webContents.send(IPC_CHANNELS.hermesSessionEvent, { session })
+  win.webContents.send(IPC_CHANNELS.metaSessionEvent, { session })
 }
 
 function pushObservabilitySnapshotsForSession(sessionId: string): void {
@@ -445,8 +445,8 @@ app.whenReady().then(async () => {
     webhookPort: null,
     globalStatePath: e2eGlobalStatePath
   })
-  hermesManager = await HermesManager.create({
-    statePath: resolveHermesStateFilePath(e2eGlobalStatePath)
+  metaSessionManager = await MetaSessionManager.create({
+    statePath: resolveMetaSessionStateFilePath(e2eGlobalStatePath)
   })
   observationStore = new InMemoryObservationStore()
   observabilityService = new ObservabilityService(observationStore)
@@ -464,7 +464,8 @@ app.whenReady().then(async () => {
           return projectSessionType
         }
 
-        return hermesManager?.hasSession(sessionId) ? 'hermes-agent' : null
+        const metaSession = metaSessionManager?.getSession(sessionId)
+        return metaSession?.backendSessionType ?? null
       }
     },
     {
@@ -511,17 +512,17 @@ app.whenReady().then(async () => {
   const activeObservationStore = observationStore
   const activeObservabilityService = observabilityService
   const activeSessionInputRouter = sessionInputRouter
-  const activeHermesManager = hermesManager
+  const activeMetaSessionManager = metaSessionManager
   const runtimeRoot = resolveDefaultStoaRuntimeRoot()
   hookLeaseManager = createHookLeaseManager({
     runtimeRoot,
     instanceId: `stoa-${process.pid}-${Date.now()}`
   })
   const activeHookLeaseManager = hookLeaseManager
-  const hermesProposalStore = await HermesProposalStore.create({
-    statePath: resolveHermesStateFilePath(e2eGlobalStatePath)
+  const metaSessionProposalStore = await MetaSessionProposalStore.create({
+    statePath: resolveMetaSessionStateFilePath(e2eGlobalStatePath)
   })
-  const hermesContextAssembler = new HermesContextAssembler({
+  const metaSessionContextAssembler = new MetaSessionContextAssembler({
     snapshotSource: activeProjectSessionManager,
     getSessionPresence(sessionId) {
       return activeObservabilityService?.getSessionPresence(sessionId) ?? null
@@ -541,30 +542,30 @@ app.whenReady().then(async () => {
       return await activeRuntimeController?.getTerminalReplay(sessionId) ?? ''
     }
   })
-  const hermesCommandDispatcher = new HermesCommandDispatcher({
+  const metaSessionCommandDispatcher = new MetaSessionCommandDispatcher({
     snapshotSource: activeProjectSessionManager,
     sessionInput: {
       async send(sessionId, data) {
         await activeSessionInputRouter?.send(sessionId, data)
       }
     },
-    proposals: hermesProposalStore
+    proposals: metaSessionProposalStore
   })
   const compositeRuntimeController = {
     async applyProviderStatePatch(patch: import('@shared/project-session').SessionStatePatchEvent) {
-      if (activeHermesManager?.hasSession(patch.sessionId)) {
-        const hermesSession = activeHermesManager.getSession(patch.sessionId)
-        if (!hermesSession) {
+      if (activeMetaSessionManager?.hasSession(patch.sessionId)) {
+        const metaSession = activeMetaSessionManager.getSession(patch.sessionId)
+        if (!metaSession) {
           return
         }
 
-        await activeHermesManager.updateSession(
+        await activeMetaSessionManager.updateSession(
           patch.sessionId,
-          deriveHermesProviderSessionPatch(hermesSession, patch)
+          deriveMetaSessionProviderSessionPatch(metaSession, patch)
         )
-        const next = activeHermesManager.getSession(patch.sessionId)
+        const next = activeMetaSessionManager.getSession(patch.sessionId)
         if (next) {
-          pushHermesSessionEvent(next)
+          pushMetaSessionEvent(next)
         }
         return
       }
@@ -578,23 +579,23 @@ app.whenReady().then(async () => {
       ? async (input) => await activeHookLeaseManager.authorizeHookRequest(input)
       : undefined,
     configureServerApp(app) {
-      const hermesControlServer = createHermesControlServer({
+      const metaSessionControlServer = createMetaSessionControlServer({
         app,
         getSessionSecret(sessionId) {
           return activeHookLeaseManager?.debugSnapshotSessionSecrets()[sessionId]
             ?? sessionEventBridge?.debugSnapshotSessionSecrets()[sessionId]
             ?? null
         },
-        hermesSessionSource: activeHermesManager!,
+        metaSessionSource: activeMetaSessionManager!,
         snapshotSource: activeProjectSessionManager,
         getSessionPresence(sessionId) {
           return activeObservabilityService?.getSessionPresence(sessionId) ?? null
         },
-        contextAssembler: hermesContextAssembler,
-        dispatcher: hermesCommandDispatcher,
-        proposals: hermesProposalStore
+        contextAssembler: metaSessionContextAssembler,
+        dispatcher: metaSessionCommandDispatcher,
+        proposals: metaSessionProposalStore
       })
-      void hermesControlServer
+      void metaSessionControlServer
     }
   })
   updateService = new UpdateService({
@@ -694,24 +695,39 @@ app.whenReady().then(async () => {
     }
   }
 
-  async function launchHermesRuntimeWithGuard(
+  function buildMetaSessionBootstrapPrompt(): string {
+    return [
+      'You are running inside a Stoa meta session.',
+      'Use the `stoa-ctl` CLI for all Stoa-aware discovery and control instead of guessing the local architecture.',
+      'Start with these commands:',
+      '1. stoa-ctl whoami',
+      '2. stoa-ctl capabilities',
+      '3. stoa-ctl state brief',
+      '4. stoa-ctl work-sessions list',
+      'When you need deep session context, use `stoa-ctl work-sessions context <id> --level full`.',
+      'When you need to create, inspect, or switch meta sessions, use `stoa-ctl meta-sessions ...`.',
+      'Do not begin with blind repository exploration if Stoa state can answer the question first.'
+    ].join('\n')
+  }
+
+  async function launchMetaSessionRuntimeWithGuard(
     sessionId: string,
-    source: 'hermes-create' | 'hermes-restore'
+    source: 'meta-session-create' | 'meta-session-restore'
   ): Promise<boolean> {
-    if (!hermesManager || !ptyHost || !runtimeController || !sessionEventBridge || !projectSessionManager) {
+    if (!metaSessionManager || !ptyHost || !runtimeController || !sessionEventBridge || !projectSessionManager) {
       return false
     }
 
-    const hermesSession = hermesManager.getSession(sessionId)
-    if (!hermesSession) {
+    const metaSession = metaSessionManager.getSession(sessionId)
+    if (!metaSession) {
       return false
     }
 
     const sessionSecret = activeHookLeaseManager?.debugSnapshotSessionSecrets()[sessionId]
       ?? sessionEventBridge.issueSessionSecret(sessionId)
-    const hermesBinDir = join(app.getPath('userData'), 'bin')
+    const metaSessionBinDir = join(app.getPath('userData'), 'bin')
     const stoaCtlShim = await ensureStoaCtlShim({
-      binDir: hermesBinDir,
+      binDir: metaSessionBinDir,
       appRootPath: app.getAppPath(),
       appExecutablePath: process.execPath,
       isPackaged: app.isPackaged
@@ -721,45 +737,45 @@ app.whenReady().then(async () => {
     const runtimeManager = {
       snapshot() {
         return {
-          activeProjectId: 'stoa-hermes',
+          activeProjectId: 'stoa-meta-session',
           activeSessionId: sessionId,
           terminalWebhookPort: projectSessionManager?.snapshot().terminalWebhookPort ?? null,
           projects: [{
-            id: 'stoa-hermes',
-            name: 'Hermes',
+            id: 'stoa-meta-session',
+            name: 'Meta Session',
             path: workingDirectory,
-            createdAt: hermesSession.createdAt,
-            updatedAt: hermesSession.updatedAt
+            createdAt: metaSession.createdAt,
+            updatedAt: metaSession.updatedAt
           }],
           sessions: [{
-            id: hermesSession.id,
-            projectId: 'stoa-hermes',
-            type: hermesSession.backendSessionType,
-            runtimeState: hermesSession.status === 'failed'
+            id: metaSession.id,
+            projectId: 'stoa-meta-session',
+            type: metaSession.backendSessionType,
+            runtimeState: metaSession.status === 'failed'
               ? 'failed_to_start'
-              : hermesSession.status === 'closed'
+              : metaSession.status === 'closed'
                 ? 'exited'
-                : hermesSession.status === 'created'
+                : metaSession.status === 'created'
                   ? 'created'
-                  : hermesSession.status === 'starting'
+                  : metaSession.status === 'starting'
                     ? 'starting'
                     : 'alive',
-            turnState: hermesSession.status === 'running' ? 'running' : 'idle',
+            turnState: metaSession.status === 'running' ? 'running' : 'idle',
             turnEpoch: 0,
             lastTurnOutcome: 'none' as const,
             hasUnseenCompletion: false,
             runtimeExitCode: null,
-            runtimeExitReason: hermesSession.status === 'closed' ? 'clean' : null,
+            runtimeExitReason: metaSession.status === 'closed' ? 'clean' : null,
             lastStateSequence: 0,
-            blockingReason: hermesSession.status === 'waiting_approval' ? 'permission' : null,
-            failureReason: hermesSession.status === 'failed' ? 'failed_to_start' : null,
-            title: hermesSession.title,
-            summary: hermesSession.lastSummary,
+            blockingReason: metaSession.status === 'waiting_approval' ? 'permission' : null,
+            failureReason: metaSession.status === 'failed' ? 'failed_to_start' : null,
+            title: metaSession.title,
+            summary: metaSession.lastSummary,
             recoveryMode: 'resume-external' as const,
-            externalSessionId: hermesSession.resumeSessionId,
-            createdAt: hermesSession.createdAt,
-            updatedAt: hermesSession.updatedAt,
-            lastActivatedAt: hermesSession.lastActivatedAt,
+            externalSessionId: metaSession.backendSessionId,
+            createdAt: metaSession.createdAt,
+            updatedAt: metaSession.updatedAt,
+            lastActivatedAt: metaSession.lastActivatedAt,
             archived: false
           }]
         }
@@ -768,44 +784,44 @@ app.whenReady().then(async () => {
 
     const runtimeHooks = {
       async markRuntimeStarting(targetSessionId: string, summary: string, externalSessionId: string | null) {
-        await hermesManager?.updateSession(targetSessionId, {
+        await metaSessionManager?.updateSession(targetSessionId, {
           status: 'starting',
           lastSummary: summary,
-          resumeSessionId: externalSessionId
+          backendSessionId: externalSessionId
         })
-        const next = hermesManager?.getSession(targetSessionId)
+        const next = metaSessionManager?.getSession(targetSessionId)
         if (next) {
-          pushHermesSessionEvent(next)
+          pushMetaSessionEvent(next)
         }
       },
       async markRuntimeAlive(targetSessionId: string, externalSessionId: string | null) {
-        await hermesManager?.updateSession(targetSessionId, {
+        await metaSessionManager?.updateSession(targetSessionId, {
           status: 'running',
-          resumeSessionId: externalSessionId
+          backendSessionId: externalSessionId
         })
-        const next = hermesManager?.getSession(targetSessionId)
+        const next = metaSessionManager?.getSession(targetSessionId)
         if (next) {
-          pushHermesSessionEvent(next)
+          pushMetaSessionEvent(next)
         }
       },
       async markRuntimeExited(targetSessionId: string, _exitCode: number | null, summary: string) {
-        await hermesManager?.updateSession(targetSessionId, {
+        await metaSessionManager?.updateSession(targetSessionId, {
           status: 'idle',
           lastSummary: summary
         })
-        const next = hermesManager?.getSession(targetSessionId)
+        const next = metaSessionManager?.getSession(targetSessionId)
         if (next) {
-          pushHermesSessionEvent(next)
+          pushMetaSessionEvent(next)
         }
       },
       async markRuntimeFailedToStart(targetSessionId: string, summary: string) {
-        await hermesManager?.updateSession(targetSessionId, {
+        await metaSessionManager?.updateSession(targetSessionId, {
           status: 'failed',
           lastSummary: summary
         })
-        const next = hermesManager?.getSession(targetSessionId)
+        const next = metaSessionManager?.getSession(targetSessionId)
         if (next) {
-          pushHermesSessionEvent(next)
+          pushMetaSessionEvent(next)
         }
       },
       async appendTerminalData(chunk: { sessionId: string; data: string }) {
@@ -824,13 +840,18 @@ app.whenReady().then(async () => {
       hookLeaseManager: activeHookLeaseManager,
       resolveRuntimePaths,
       initialDimensions: { cols: 120, rows: 30 },
-      commandEnv: buildHermesCommandEnv({
+      commandEnv: buildMetaSessionCommandEnv({
         sessionId,
         sessionSecret,
         webhookPort,
         stoaCtlBinDir: stoaCtlShim.binDir
       })
     })
+
+    if (launched) {
+      const bootstrapPrompt = buildMetaSessionBootstrapPrompt()
+      await sessionInputRouter?.send(sessionId, `${bootstrapPrompt}\r`)
+    }
 
     void source
     return launched
@@ -1230,66 +1251,65 @@ app.whenReady().then(async () => {
     return projectSessionManager?.getArchivedSessions() ?? []
   })
 
-  ipcMain.handle(IPC_CHANNELS.hermesBootstrap, async () => {
-    const snapshot = hermesManager?.snapshot()
+  ipcMain.handle(IPC_CHANNELS.metaSessionBootstrap, async () => {
+    const snapshot = metaSessionManager?.snapshot()
     return {
-      activeHermesSessionId: snapshot?.activeHermesSessionId ?? null,
+      activeMetaSessionId: snapshot?.activeMetaSessionId ?? null,
       sessions: snapshot?.sessions ?? [],
       inspectorTarget: snapshot?.inspectorTarget ?? { kind: 'app' }
     }
   })
 
-  ipcMain.handle(IPC_CHANNELS.hermesSessionCreate, async (_event, payload: CreateHermesSessionRequest) => {
-    const created = await hermesManager?.createSession(payload)
+  ipcMain.handle(IPC_CHANNELS.metaSessionCreate, async (_event, payload: CreateMetaSessionRequest) => {
+    const created = await metaSessionManager?.createSession(payload)
     if (!created) {
       return null
     }
 
-    pushHermesSessionEvent(created)
-    void launchHermesRuntimeWithGuard(created.id, 'hermes-create')
+    pushMetaSessionEvent(created)
+    void launchMetaSessionRuntimeWithGuard(created.id, 'meta-session-create')
     return created
   })
 
-  ipcMain.handle(IPC_CHANNELS.hermesSessionSetActive, async (_event, sessionId: string) => {
-    await hermesManager?.setActiveSession(sessionId)
-    const session = hermesManager?.getSession(sessionId)
+  ipcMain.handle(IPC_CHANNELS.metaSessionSetActive, async (_event, sessionId: string) => {
+    await metaSessionManager?.setActiveSession(sessionId)
+    const session = metaSessionManager?.getSession(sessionId)
     if (session) {
-      pushHermesSessionEvent(session)
+      pushMetaSessionEvent(session)
     }
   })
 
-  ipcMain.handle(IPC_CHANNELS.hermesSessionClose, async (_event, sessionId: string) => {
+  ipcMain.handle(IPC_CHANNELS.metaSessionClose, async (_event, sessionId: string) => {
     ptyHost?.kill(sessionId)
     await hookLeaseManager?.releaseLease(sessionId)
-    await hermesManager?.closeSession(sessionId)
-    const session = hermesManager?.getSession(sessionId)
+    await metaSessionManager?.closeSession(sessionId)
+    const session = metaSessionManager?.getSession(sessionId)
     if (session) {
-      pushHermesSessionEvent(session)
+      pushMetaSessionEvent(session)
     }
   })
 
-  ipcMain.handle(IPC_CHANNELS.hermesProposalList, async () => {
-    return hermesProposalStore.list()
+  ipcMain.handle(IPC_CHANNELS.metaSessionProposalList, async () => {
+    return metaSessionProposalStore.list()
   })
 
-  ipcMain.handle(IPC_CHANNELS.hermesProposalGet, async (_event, proposalId: string) => {
-    return hermesProposalStore.get(proposalId)
+  ipcMain.handle(IPC_CHANNELS.metaSessionProposalGet, async (_event, proposalId: string) => {
+    return metaSessionProposalStore.get(proposalId)
   })
 
-  ipcMain.handle(IPC_CHANNELS.hermesProposalApprove, async (_event, proposalId: string) => {
-    const proposal = await hermesProposalStore.markApproved(proposalId)
-    const snapshot = hermesManager?.snapshot()
-    const hermesSessionId = proposal?.hermesSessionId
-    if (proposal && hermesSessionId) {
-      const nextCount = hermesProposalStore.list().filter((candidate) => {
-        return candidate.hermesSessionId === hermesSessionId && candidate.status === 'pending_approval'
+  ipcMain.handle(IPC_CHANNELS.metaSessionProposalApprove, async (_event, proposalId: string) => {
+    const proposal = await metaSessionProposalStore.markApproved(proposalId)
+    const metaSessionId = proposal?.metaSessionId
+    if (proposal && metaSessionId) {
+      const nextCount = metaSessionProposalStore.list().filter((candidate) => {
+        return candidate.metaSessionId === metaSessionId && candidate.status === 'pending_approval'
       }).length
-      await hermesManager?.updateSession(hermesSessionId, {
+      await metaSessionManager?.updateSession(metaSessionId, {
         pendingProposalCount: nextCount
       })
-      const session = snapshot?.sessions.find((candidate) => candidate.id === hermesSessionId)
+      const session = metaSessionManager?.getSession(metaSessionId)
       if (session) {
-        pushHermesSessionEvent({
+        pushMetaSessionEvent({
           ...session,
           pendingProposalCount: nextCount
         })
@@ -1298,20 +1318,19 @@ app.whenReady().then(async () => {
     return proposal
   })
 
-  ipcMain.handle(IPC_CHANNELS.hermesProposalReject, async (_event, proposalId: string, reason?: string) => {
-    const proposal = await hermesProposalStore.markRejected(proposalId, reason)
-    const snapshot = hermesManager?.snapshot()
-    const hermesSessionId = proposal?.hermesSessionId
-    if (proposal && hermesSessionId) {
-      const nextCount = hermesProposalStore.list().filter((candidate) => {
-        return candidate.hermesSessionId === hermesSessionId && candidate.status === 'pending_approval'
+  ipcMain.handle(IPC_CHANNELS.metaSessionProposalReject, async (_event, proposalId: string, reason?: string) => {
+    const proposal = await metaSessionProposalStore.markRejected(proposalId, reason)
+    const metaSessionId = proposal?.metaSessionId
+    if (proposal && metaSessionId) {
+      const nextCount = metaSessionProposalStore.list().filter((candidate) => {
+        return candidate.metaSessionId === metaSessionId && candidate.status === 'pending_approval'
       }).length
-      await hermesManager?.updateSession(hermesSessionId, {
+      await metaSessionManager?.updateSession(metaSessionId, {
         pendingProposalCount: nextCount
       })
-      const session = snapshot?.sessions.find((candidate) => candidate.id === hermesSessionId)
+      const session = metaSessionManager?.getSession(metaSessionId)
       if (session) {
-        pushHermesSessionEvent({
+        pushMetaSessionEvent({
           ...session,
           pendingProposalCount: nextCount
         })
@@ -1320,21 +1339,20 @@ app.whenReady().then(async () => {
     return proposal
   })
 
-  ipcMain.handle(IPC_CHANNELS.hermesProposalDispatch, async (_event, proposalId: string) => {
-    await hermesCommandDispatcher.dispatchProposal(proposalId)
-    const proposal = hermesProposalStore.get(proposalId)
-    const snapshot = hermesManager?.snapshot()
-    const hermesSessionId = proposal?.hermesSessionId
-    if (proposal && hermesSessionId) {
-      const nextCount = hermesProposalStore.list().filter((candidate) => {
-        return candidate.hermesSessionId === hermesSessionId && candidate.status === 'pending_approval'
+  ipcMain.handle(IPC_CHANNELS.metaSessionProposalDispatch, async (_event, proposalId: string) => {
+    await metaSessionCommandDispatcher.dispatchProposal(proposalId)
+    const proposal = metaSessionProposalStore.get(proposalId)
+    const metaSessionId = proposal?.metaSessionId
+    if (proposal && metaSessionId) {
+      const nextCount = metaSessionProposalStore.list().filter((candidate) => {
+        return candidate.metaSessionId === metaSessionId && candidate.status === 'pending_approval'
       }).length
-      await hermesManager?.updateSession(hermesSessionId, {
+      await metaSessionManager?.updateSession(metaSessionId, {
         pendingProposalCount: nextCount
       })
-      const session = snapshot?.sessions.find((candidate) => candidate.id === hermesSessionId)
+      const session = metaSessionManager?.getSession(metaSessionId)
       if (session) {
-        pushHermesSessionEvent({
+        pushMetaSessionEvent({
           ...session,
           pendingProposalCount: nextCount
         })
@@ -1343,8 +1361,8 @@ app.whenReady().then(async () => {
     return proposal
   })
 
-  ipcMain.handle(IPC_CHANNELS.hermesInspectorSetTarget, async (_event, target) => {
-    await hermesManager?.setInspectorTarget(target)
+  ipcMain.handle(IPC_CHANNELS.metaSessionInspectorSetTarget, async (_event, target) => {
+    await metaSessionManager?.setInspectorTarget(target)
   })
 
   ipcMain.handle(IPC_CHANNELS.updateGetState, async () => {
@@ -1435,8 +1453,8 @@ app.whenReady().then(async () => {
     void launchSessionRuntimeWithGuard(plan.sessionId, 'bootstrap-recovery')
   }
 
-  for (const plan of hermesManager.buildBootstrapRecoveryPlan()) {
-    void launchHermesRuntimeWithGuard(plan.sessionId, 'hermes-restore')
+  for (const plan of metaSessionManager?.buildBootstrapRecoveryPlan() ?? []) {
+    void launchMetaSessionRuntimeWithGuard(plan.sessionId, 'meta-session-restore')
   }
 
   app.on('activate', () => {

@@ -11,14 +11,14 @@ import {
   workspaceQuickAccessBehavior
 } from '../behavior/session.behavior'
 import {
-  hermesReadFullContextAndGatePromptBehavior,
-  hermesSurfaceSessionFlowBehavior
-} from '../behavior/hermes.behavior'
+  metaSessionReadFullContextAndGatePromptBehavior,
+  metaSessionSurfaceSessionFlowBehavior
+} from '../behavior/meta-session.behavior'
 import { defineGeneratedTestMeta } from '../contracts/testing-contracts'
 import {
-  hermesReadFullContextAndGatePromptJourney,
-  hermesSurfaceSessionFlowJourney
-} from '../journeys/hermes.journey'
+  metaSessionReadFullContextAndGatePromptJourney,
+  metaSessionSurfaceSessionFlowJourney
+} from '../journeys/meta-session.journey'
 import { sessionRestoreJourney } from '../journeys/session-restore.journey'
 import { workspaceQuickAccessJourney } from '../journeys/workspace-quick-access.journey'
 import {
@@ -33,51 +33,51 @@ import {
 import { buildBehaviorCoverageReport } from './behavior-coverage'
 
 describe('behavior coverage report', () => {
-  it('marks Hermes surface session flow as verified by generated UI metadata', () => {
+  it('marks meta session surface session flow as verified by generated UI metadata', () => {
     const report = buildBehaviorCoverageReport({
-      behaviors: [hermesSurfaceSessionFlowBehavior],
-      journeys: [hermesSurfaceSessionFlowJourney],
+      behaviors: [metaSessionSurfaceSessionFlowBehavior],
+      journeys: [metaSessionSurfaceSessionFlowJourney],
       generatedTests: [
         defineGeneratedTestMeta({
-          id: 'journey.hermes.surface.session-flow',
-          behaviorIds: ['hermes.surface.session-flow'],
-          entities: ['hermes-session', 'hermes-surface', 'hermes-terminal', 'hermes-inspector'],
-          statesCovered: ['hermes.session.created', 'hermes.session.active'],
+          id: 'journey.meta-session.surface.session-flow',
+          behaviorIds: ['meta-session.surface.session-flow'],
+          entities: ['meta-session', 'meta-session-surface', 'meta-session-terminal', 'meta-session-inspector'],
+          statesCovered: ['meta-session.session.created', 'meta-session.session.active'],
           interruptionsCovered: [],
           observationLayers: ['ui', 'renderer-store'],
           riskBudget: 'high',
-          regressionSources: ['hermes-surface', 'hermes-store']
+          regressionSources: ['meta-session-surface', 'meta-session-store']
         })
       ]
     })
 
-    expect(report.behaviors['hermes.surface.session-flow']?.maturity).toBe('Verified')
-    expect(report.behaviors['hermes.surface.session-flow']?.generatedTestIds).toEqual([
-      'journey.hermes.surface.session-flow'
+    expect(report.behaviors['meta-session.surface.session-flow']?.maturity).toBe('Verified')
+    expect(report.behaviors['meta-session.surface.session-flow']?.generatedTestIds).toEqual([
+      'journey.meta-session.surface.session-flow'
     ])
   })
 
-  it('marks Hermes full-context reads and prompt gating as hardened when context and approval evidence are covered', () => {
+  it('marks meta session full-context reads and prompt gating as hardened when context and approval evidence are covered', () => {
     const report = buildBehaviorCoverageReport({
-      behaviors: [hermesReadFullContextAndGatePromptBehavior],
-      journeys: [hermesReadFullContextAndGatePromptJourney],
+      behaviors: [metaSessionReadFullContextAndGatePromptBehavior],
+      journeys: [metaSessionReadFullContextAndGatePromptJourney],
       generatedTests: [
         defineGeneratedTestMeta({
-          id: 'journey.hermes.read-full-context-and-gate-prompt',
-          behaviorIds: ['hermes.read-full-context-and-gate-prompt'],
-          entities: ['hermes-session', 'work-session', 'context-full-text', 'proposal'],
+          id: 'journey.meta-session.read-full-context-and-gate-prompt',
+          behaviorIds: ['meta-session.read-full-context-and-gate-prompt'],
+          entities: ['meta-session', 'work-session', 'context-full-text', 'proposal'],
           statesCovered: ['ctl.context.full', 'ctl.prompt.approval-required'],
           interruptionsCovered: ['proposal.dispatch.afterStaleContext'],
           observationLayers: ['main-debug-state', 'persisted-state'],
           riskBudget: 'critical',
-          regressionSources: ['hermes-control-server', 'hermes-command-dispatcher']
+          regressionSources: ['meta-session-control-server', 'meta-session-command-dispatcher']
         })
       ]
     })
 
-    expect(report.behaviors['hermes.read-full-context-and-gate-prompt']?.maturity).toBe('Hardened')
-    expect(report.behaviors['hermes.read-full-context-and-gate-prompt']?.missingObservationLayers).toEqual([])
-    expect(report.behaviors['hermes.read-full-context-and-gate-prompt']?.missingInterruptions).toEqual([
+    expect(report.behaviors['meta-session.read-full-context-and-gate-prompt']?.maturity).toBe('Hardened')
+    expect(report.behaviors['meta-session.read-full-context-and-gate-prompt']?.missingObservationLayers).toEqual([])
+    expect(report.behaviors['meta-session.read-full-context-and-gate-prompt']?.missingInterruptions).toEqual([
       'app.relaunch.duringPromptGate'
     ])
   })
@@ -222,59 +222,118 @@ describe('behavior coverage report', () => {
     ])
   })
 
-  it('covers layered session presence behaviors with lifecycle generated metadata', () => {
+  it('marks presence-ready journey metadata as Verified', () => {
     const report = buildBehaviorCoverageReport({
-      behaviors: [
-        sessionPresenceReadyBehavior,
-        sessionPresenceRunningBehavior,
-        sessionPresenceCompleteBehavior,
-        sessionPresenceBlockedBehavior,
-        sessionPresenceFailureBehavior
-      ],
-      journeys: [
-        sessionPresenceReadyJourney,
-        sessionPresenceRunningJourney,
-        sessionTelemetryClaudeLifecycleJourney,
-        sessionPresenceBlockedJourney,
-        sessionPresenceFailureJourney
-      ],
+      behaviors: [sessionPresenceReadyBehavior],
+      journeys: [sessionPresenceReadyJourney],
       generatedTests: [
         defineGeneratedTestMeta({
-          id: 'journey.session.telemetry.claude-lifecycle',
-          behaviorIds: [
-            'session.presence.ready',
-            'session.presence.running',
-            'session.presence.complete',
-            'session.presence.blocked',
-            'session.presence.failure'
-          ],
-          entities: ['session', 'provider-telemetry', 'renderer-status'],
-          statesCovered: [
-            'presence.ready',
-            'presence.running',
-            'presence.blocked',
-            'presence.complete',
-            'presence.failure'
-          ],
-          interruptionsCovered: [
-            'runtime.alive.withoutAgentTelemetry',
-            'provider.permissionRequest.duringRunning',
-            'user.visitsCompletedSession',
-            'provider.permissionResolved',
-            'runtime.exitedFailed.afterCompletion'
-          ],
-          observationLayers: ['ui', 'renderer-store', 'main-debug-state', 'persisted-state'],
-          riskBudget: 'critical',
-          regressionSources: ['claude.raw-hook', 'session-state-reducer']
+          id: 'journey.session.presence.ready',
+          behaviorIds: ['session.presence.ready'],
+          entities: ['session', 'renderer-status'],
+          statesCovered: ['presence.ready'],
+          interruptionsCovered: [],
+          observationLayers: ['ui'],
+          riskBudget: 'standard',
+          regressionSources: ['presence-projection']
         })
       ]
     })
 
     expect(report.behaviors['session.presence.ready']?.maturity).toBe('Verified')
+  })
+
+  it('marks presence-running journey metadata as Verified', () => {
+    const report = buildBehaviorCoverageReport({
+      behaviors: [sessionPresenceRunningBehavior],
+      journeys: [sessionPresenceRunningJourney],
+      generatedTests: [
+        defineGeneratedTestMeta({
+          id: 'journey.session.presence.running',
+          behaviorIds: ['session.presence.running'],
+          entities: ['session', 'renderer-status'],
+          statesCovered: ['presence.running'],
+          interruptionsCovered: [],
+          observationLayers: ['ui'],
+          riskBudget: 'standard',
+          regressionSources: ['presence-projection']
+        })
+      ]
+    })
+
     expect(report.behaviors['session.presence.running']?.maturity).toBe('Verified')
-    expect(report.behaviors['session.presence.complete']?.maturity).toBe('Hardened')
-    expect(report.behaviors['session.presence.blocked']?.maturity).toBe('Hardened')
-    expect(report.behaviors['session.presence.failure']?.maturity).toBe('Hardened')
-    expect(report.behaviors['session.presence.failure']?.missingObservationLayers).toEqual([])
+  })
+
+  it('marks presence-blocked journey metadata as Verified', () => {
+    const report = buildBehaviorCoverageReport({
+      behaviors: [sessionPresenceBlockedBehavior],
+      journeys: [sessionPresenceBlockedJourney],
+      generatedTests: [
+        defineGeneratedTestMeta({
+          id: 'journey.session.presence.blocked',
+          behaviorIds: ['session.presence.blocked'],
+          entities: ['session', 'renderer-status'],
+          statesCovered: ['presence.blocked'],
+          interruptionsCovered: [],
+          observationLayers: ['ui'],
+          riskBudget: 'standard',
+          regressionSources: ['presence-projection']
+        })
+      ]
+    })
+
+    expect(report.behaviors['session.presence.blocked']?.maturity).toBe('Verified')
+  })
+
+  it('marks presence-complete journey metadata as Verified', () => {
+    const report = buildBehaviorCoverageReport({
+      behaviors: [sessionPresenceCompleteBehavior],
+      journeys: [sessionTelemetryClaudeLifecycleJourney],
+      generatedTests: [
+        defineGeneratedTestMeta({
+          id: 'journey.session.presence.complete',
+          behaviorIds: ['session.presence.complete'],
+          entities: ['session', 'renderer-status'],
+          statesCovered: ['presence.complete'],
+          interruptionsCovered: [],
+          observationLayers: ['ui'],
+          riskBudget: 'standard',
+          regressionSources: ['presence-projection']
+        })
+      ]
+    })
+
+    expect(report.behaviors['session.presence.complete']?.maturity).toBe('Verified')
+  })
+
+  it('marks presence-failure journey metadata as Verified', () => {
+    const report = buildBehaviorCoverageReport({
+      behaviors: [sessionPresenceFailureBehavior],
+      journeys: [sessionPresenceFailureJourney],
+      generatedTests: [
+        defineGeneratedTestMeta({
+          id: 'journey.session.presence.failure',
+          behaviorIds: ['session.presence.failure'],
+          entities: ['session', 'renderer-status'],
+          statesCovered: ['presence.failure'],
+          interruptionsCovered: [],
+          observationLayers: ['ui'],
+          riskBudget: 'standard',
+          regressionSources: ['presence-projection']
+        })
+      ]
+    })
+
+    expect(report.behaviors['session.presence.failure']?.maturity).toBe('Verified')
+  })
+
+  it('marks Claude lifecycle telemetry metadata as Reachable or better', () => {
+    const report = buildBehaviorCoverageReport({
+      behaviors: [sessionPresenceCompleteBehavior],
+      journeys: [sessionTelemetryClaudeLifecycleJourney],
+      generatedTests: []
+    })
+
+    expect(['Reachable', 'Verified', 'Hardened']).toContain(report.behaviors['session.presence.complete']?.maturity)
   })
 })

@@ -241,9 +241,6 @@ export function createCodexProvider(): ProviderDefinition {
     async buildStartCommand(target, context) {
       return createCommand(target, context, [])
     },
-    async buildFallbackResumeCommand(target, context) {
-      return createCommand(target, context, ['resume', '--last'])
-    },
     async buildResumeCommand(target, externalSessionId, context) {
       return createCommand(target, context, ['resume', externalSessionId])
     },

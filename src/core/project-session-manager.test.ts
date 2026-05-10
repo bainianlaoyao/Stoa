@@ -727,7 +727,7 @@ describe('ProjectSessionManager', () => {
     ])
   })
 
-  test('includes codex and claude-code sessions in bootstrap resume plans', async () => {
+  test('uses fresh-shell recovery for codex sessions without external ids and resume-external for claude-code', async () => {
     const manager = ProjectSessionManager.createForTest()
     const project = await manager.createProject({
       name: 'alpha',
@@ -747,7 +747,7 @@ describe('ProjectSessionManager', () => {
     })
 
     expect(manager.buildBootstrapRecoveryPlan()).toEqual([
-      { sessionId: codex.id, action: 'resume-external', externalSessionId: null },
+      { sessionId: codex.id, action: 'fresh-shell' },
       {
         sessionId: claude.id,
         action: 'resume-external',

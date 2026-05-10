@@ -10,14 +10,15 @@ import type { SessionEvidenceSnapshot } from './memory-runtime'
 import type { BlockingReason } from '@shared/observability'
 import type { TerminalSettings } from './terminal-settings'
 import type {
-  CreateHermesSessionRequest,
-  HermesBootstrapState,
-  HermesInspectorTarget,
-  HermesProposal,
-  HermesSessionEvent,
-} from './hermes'
+  CreateMetaSessionRequest,
+  MetaSessionBootstrapState,
+  MetaSessionInspectorTarget,
+  MetaSessionProposal,
+  MetaSessionEvent,
+  MetaSessionSummary,
+} from './meta-session'
 
-export type SessionType = 'shell' | 'opencode' | 'codex' | 'claude-code' | 'hermes-agent'
+export type SessionType = 'shell' | 'opencode' | 'codex' | 'claude-code'
 export type EvolverInferenceProvider = 'claude-code'
 export type EvolverExecutionMode = 'workspace-shell'
 export type SessionRecoveryMode = 'fresh-shell' | 'resume-external'
@@ -324,17 +325,17 @@ export interface RendererApi {
   contextExportFullText: (sessionId: string, options: { includeThinking?: boolean; includeToolDetails?: boolean; maxChars?: number; cursor?: string }) => Promise<{ text: string; nextCursor?: string; truncated: boolean; totalTurns: number }>
   contextExportSlimText: (sessionId: string, options: { maxChars?: number; cursor?: string }) => Promise<{ text: string; nextCursor?: string; truncated: boolean; totalTurns: number }>
   onUpdateState: (callback: (state: UpdateState) => void) => () => void
-  getHermesBootstrapState?: () => Promise<HermesBootstrapState>
-  createHermesSession?: (request: CreateHermesSessionRequest) => Promise<import('./hermes').HermesSessionSummary>
-  setActiveHermesSession?: (sessionId: string) => Promise<void>
-  closeHermesSession?: (sessionId: string) => Promise<void>
-  listHermesProposals?: () => Promise<HermesProposal[]>
-  getHermesProposal?: (proposalId: string) => Promise<HermesProposal | null>
-  approveHermesProposal?: (proposalId: string) => Promise<HermesProposal | null>
-  rejectHermesProposal?: (proposalId: string, reason?: string) => Promise<HermesProposal | null>
-  dispatchHermesProposal?: (proposalId: string) => Promise<HermesProposal | null>
-  setHermesInspectorTarget?: (target: HermesInspectorTarget | null) => Promise<void>
-  onHermesSessionEvent?: (callback: (event: HermesSessionEvent) => void) => () => void
+  getMetaSessionBootstrapState?: () => Promise<MetaSessionBootstrapState>
+  createMetaSession?: (request: CreateMetaSessionRequest) => Promise<MetaSessionSummary>
+  setActiveMetaSession?: (sessionId: string) => Promise<void>
+  closeMetaSession?: (sessionId: string) => Promise<void>
+  listMetaSessionProposals?: () => Promise<MetaSessionProposal[]>
+  getMetaSessionProposal?: (proposalId: string) => Promise<MetaSessionProposal | null>
+  approveMetaSessionProposal?: (proposalId: string) => Promise<MetaSessionProposal | null>
+  rejectMetaSessionProposal?: (proposalId: string, reason?: string) => Promise<MetaSessionProposal | null>
+  dispatchMetaSessionProposal?: (proposalId: string) => Promise<MetaSessionProposal | null>
+  setMetaSessionInspectorTarget?: (target: MetaSessionInspectorTarget | null) => Promise<void>
+  onMetaSessionEvent?: (callback: (event: MetaSessionEvent) => void) => () => void
 }
 
 export interface CanonicalSessionEvent {

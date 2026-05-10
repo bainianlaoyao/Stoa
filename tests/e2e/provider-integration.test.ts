@@ -86,15 +86,14 @@ function createContext(overrides: Partial<ProviderCommandContext> = {}): Provide
 
 describe('E2E: Provider Integration', () => {
   describe('Provider registry', () => {
-    test('listProviders returns local-shell opencode codex claude-code and hermes-agent providers', () => {
+    test('listProviders returns local-shell opencode codex and claude-code providers', () => {
       const providers = listProviders()
       const ids = providers.map(p => p.providerId)
       expect(ids).toContain('local-shell')
       expect(ids).toContain('opencode')
       expect(ids).toContain('codex')
       expect(ids).toContain('claude-code')
-      expect(ids).toContain('hermes-agent')
-      expect(providers).toHaveLength(5)
+      expect(providers).toHaveLength(4)
     })
 
     test('getProvider returns local shell provider', () => {
@@ -115,11 +114,6 @@ describe('E2E: Provider Integration', () => {
     test('getProvider returns claude-code provider', () => {
       const provider = getProvider('claude-code')
       expect(provider.providerId).toBe('claude-code')
-    })
-
-    test('getProvider returns hermes-agent provider', () => {
-      const provider = getProvider('hermes-agent')
-      expect(provider.providerId).toBe('hermes-agent')
     })
 
     test('getProvider falls back to local-shell for unknown provider', () => {
@@ -320,14 +314,14 @@ describe('E2E: Provider Integration', () => {
       expect(command.args).toEqual(['resume', '019c75d6-5db6-7c21-8d2f-f0602da4f64d'])
     })
 
-    test('buildFallbackResumeCommand falls back to resume --last when external session id is unavailable', async () => {
+    test('buildFallbackResumeCommand is unavailable when external session id is unavailable', async () => {
       const provider = getProvider('codex')
       const target = createTarget({ type: 'codex' })
       const context = createContext()
 
       const command = await provider.buildFallbackResumeCommand?.(target, context)
 
-      expect(command?.args).toEqual(['resume', '--last'])
+      expect(command).toBeUndefined()
     })
 
     test('supportsStructuredEvents() returns true', () => {

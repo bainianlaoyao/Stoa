@@ -124,6 +124,18 @@ function createSessionRecoveryMode(type: SessionType) {
   return type === 'shell' ? 'fresh-shell' : 'resume-external'
 }
 
+function shouldResumeViaExternalSession(session: Pick<SessionSummary, 'type' | 'externalSessionId'>): boolean {
+  if (session.type === 'shell') {
+    return false
+  }
+
+  if (session.type === 'codex') {
+    return !!session.externalSessionId
+  }
+
+  return true
+}
+
 function createSessionExternalId(type: SessionType, externalSessionId?: string | null): string | null {
   if (externalSessionId !== undefined && externalSessionId !== null) {
     return externalSessionId
@@ -279,7 +291,7 @@ export class ProjectSessionManager {
 
   buildBootstrapRecoveryPlan() {
     return this.state.sessions.filter(s => !s.archived).map((session) => {
-      if (session.type === 'shell') {
+      if (!shouldResumeViaExternalSession(session)) {
         return { sessionId: session.id, action: 'fresh-shell' as const }
       }
 
