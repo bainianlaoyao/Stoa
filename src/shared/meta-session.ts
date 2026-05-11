@@ -24,6 +24,7 @@ export interface MetaSessionSummary {
   createdAt: string
   updatedAt: string
   lastActivatedAt: string | null
+  archived: boolean
 }
 
 export interface PersistedMetaSession {
@@ -40,6 +41,7 @@ export interface PersistedMetaSession {
   created_at: string
   updated_at: string
   last_activated_at: string | null
+  archived: boolean
 }
 
 export type MetaSessionProposalKind = 'prompt'
