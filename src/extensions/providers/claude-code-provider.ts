@@ -44,11 +44,12 @@ function createProviderEnv(target: ProviderRuntimeTarget, context: ProviderComma
 }
 
 function createCommand(target: ProviderRuntimeTarget, context: ProviderCommandContext, args: string[]): ProviderCommand {
+  const baseArgs = context.claudeDangerouslySkipPermissions === true
+    ? [...args, '--dangerously-skip-permissions']
+    : args
   return {
     command: claudeCommand(context),
-    args: context.claudeDangerouslySkipPermissions === true
-      ? [...args, '--dangerously-skip-permissions']
-      : args,
+    args: context.initialPrompt ? [...baseArgs, context.initialPrompt] : baseArgs,
     cwd: target.path,
     env: createProviderEnv(target, context)
   }

@@ -34,8 +34,28 @@ describe('MetaSessionManager', () => {
     expect(created.title).toBe('global-triage')
     expect(created.status).toBe('created')
     expect(created.backendSessionType).toBe('claude-code')
-    expect(created.backendSessionId).toBeNull()
+    expect(created.backendSessionId).toBeTruthy()
     expect((await manager.listSessions())).toHaveLength(1)
+  })
+
+  test('does not seed backendSessionId for providers without seedsExternalSessionId', async () => {
+    const manager = await MetaSessionManager.create({
+      statePath: await createTempMetaSessionStatePath()
+    })
+
+    const codexSession = await manager.createSession({
+      title: 'codex-meta',
+      backendSessionType: 'codex',
+      capabilityLevel: 1
+    })
+    expect(codexSession.backendSessionId).toBeNull()
+
+    const opencodeSession = await manager.createSession({
+      title: 'opencode-meta',
+      backendSessionType: 'opencode',
+      capabilityLevel: 1
+    })
+    expect(opencodeSession.backendSessionId).toBeNull()
   })
 
   test('tracks active meta session independently from work-session state', async () => {

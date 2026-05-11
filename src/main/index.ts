@@ -578,6 +578,16 @@ app.whenReady().then(async () => {
     authorizeHookRequest: activeHookLeaseManager
       ? async (input) => await activeHookLeaseManager.authorizeHookRequest(input)
       : undefined,
+    getSessionBootstrapPrompt(sessionId: string) {
+      if (!activeMetaSessionManager?.hasSession(sessionId)) {
+        return null
+      }
+      const session = activeMetaSessionManager.getSession(sessionId)
+      if (!session || session.backendSessionType !== 'codex') {
+        return null
+      }
+      return buildMetaSessionBootstrapPrompt()
+    },
     configureServerApp(app) {
       const metaSessionControlServer = createMetaSessionControlServer({
         app,
@@ -830,6 +840,10 @@ app.whenReady().then(async () => {
     }
 
     sessionInputRouter?.resetSession(sessionId)
+    const bootstrapPrompt = buildMetaSessionBootstrapPrompt()
+    const isClaudeCode = metaSession.backendSessionType === 'claude-code'
+    const isOpenCode = metaSession.backendSessionType === 'opencode'
+
     const launched = await launchTrackedSessionRuntime({
       sessionId,
       manager: runtimeManager as never,
@@ -845,12 +859,14 @@ app.whenReady().then(async () => {
         sessionSecret,
         webhookPort,
         stoaCtlBinDir: stoaCtlShim.binDir
-      })
+      }),
+      initialPrompt: isClaudeCode ? bootstrapPrompt : undefined
     })
 
-    if (launched) {
-      const bootstrapPrompt = buildMetaSessionBootstrapPrompt()
-      await sessionInputRouter?.send(sessionId, `${bootstrapPrompt}\r`)
+    if (launched && isOpenCode) {
+      setTimeout(() => {
+        void sessionInputRouter?.send(sessionId, `${bootstrapPrompt}\r`)
+      }, 2000)
     }
 
     void source

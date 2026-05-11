@@ -28,6 +28,7 @@ interface LaunchTrackedSessionRuntimeOptions {
   startRuntime?: typeof startSessionRuntime
   initialDimensions?: { cols: number; rows: number }
   commandEnv?: Record<string, string>
+  initialPrompt?: string
 }
 
 export async function launchTrackedSessionRuntime(options: LaunchTrackedSessionRuntimeOptions): Promise<boolean> {
@@ -79,7 +80,8 @@ export async function launchTrackedSessionRuntime(options: LaunchTrackedSessionR
     providerPath,
     claudeDangerouslySkipPermissions,
     initialDimensions: options.initialDimensions,
-    commandEnv: options.commandEnv
+    commandEnv: options.commandEnv,
+    initialPrompt: options.initialPrompt
   })
 
   return true

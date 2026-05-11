@@ -53,6 +53,7 @@ interface SessionEventBridgeOptions {
     | { ok: true; lease: SessionHookLease }
     | { ok: false; reason: 'invalid_secret' | 'invalid_hook_context' }
   >
+  getSessionBootstrapPrompt?: (sessionId: string) => string | null
 }
 
 export class SessionEventBridge {
@@ -72,6 +73,7 @@ export class SessionEventBridge {
   private readonly captureEvidence: boolean
   private readonly configureServerApp?: (app: Express) => void
   private readonly authorizeHookRequest?: SessionEventBridgeOptions['authorizeHookRequest']
+  private readonly getSessionBootstrapPrompt?: SessionEventBridgeOptions['getSessionBootstrapPrompt']
   private server: ReturnType<typeof createLocalWebhookServer> | null = null
   private port: number | null = null
 
@@ -97,6 +99,7 @@ export class SessionEventBridge {
     this.captureEvidence = options.captureEvidence !== false
     this.configureServerApp = options.configureServerApp
     this.authorizeHookRequest = options.authorizeHookRequest
+    this.getSessionBootstrapPrompt = options.getSessionBootstrapPrompt
   }
 
   async start(): Promise<number> {
@@ -135,11 +138,19 @@ export class SessionEventBridge {
     return this.port
   }
 
-  private async enqueueSessionEvent(event: CanonicalSessionEvent): Promise<null> {
+  async submitCanonicalEvent(event: CanonicalSessionEvent): Promise<void> {
+    await this.enqueueSessionEvent(event)
+  }
+
+  private async enqueueSessionEvent(event: CanonicalSessionEvent): Promise<Record<string, unknown> | null> {
     const previous = this.sessionEventQueues.get(event.session_id) ?? Promise.resolve(null)
+    const isSessionStart = event.event_type.endsWith('.SessionStart')
+    const bootstrapPrompt = isSessionStart
+      ? this.getSessionBootstrapPrompt?.(event.session_id) ?? null
+      : null
     const next = previous
       .catch(() => null)
-      .then(async () => {
+      .then(async (): Promise<Record<string, unknown> | null> => {
         const normalized = this.attachResolvedTurnId(event)
         const evidenceRef = await this.persistEvidenceIfPresent(normalized)
         this.trackTurnEvidence(normalized, evidenceRef)
@@ -147,10 +158,19 @@ export class SessionEventBridge {
         await this.controller.applyProviderStatePatch(this.toSessionStatePatch(normalized))
         await this.handleLifecycle(normalized, evidenceRef)
 
-        return null
+        if (!bootstrapPrompt) {
+          return null
+        }
+
+        return {
+          hookSpecificOutput: {
+            hookEventName: 'SessionStart',
+            additionalContext: bootstrapPrompt
+          }
+        }
       })
 
-    this.sessionEventQueues.set(event.session_id, next)
+    this.sessionEventQueues.set(event.session_id, next as Promise<null>)
     const cleanup = () => {
       if (this.sessionEventQueues.get(event.session_id) === next) {
         this.sessionEventQueues.delete(event.session_id)

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { getProviderDescriptorBySessionType } from '@shared/provider-descriptors'
 import type {
   MetaSessionBootstrapRecoveryEntry,
   MetaSessionInspectorTarget,
@@ -92,7 +93,9 @@ export class MetaSessionManager {
       activeTargetCount: 0,
       lastSummary: 'Waiting for meta session backend to start',
       lastRisk: null,
-      backendSessionId: null,
+      backendSessionId: getProviderDescriptorBySessionType(request.backendSessionType).seedsExternalSessionId
+        ? randomUUID()
+        : null,
       createdAt: nowIso,
       updatedAt: nowIso,
       lastActivatedAt: this.state.sessions.length === 0 ? nowIso : null

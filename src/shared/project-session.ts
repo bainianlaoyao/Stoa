@@ -365,6 +365,7 @@ export interface ProviderCommandContext {
   providerPath?: string | null
   claudeDangerouslySkipPermissions?: boolean
   startedAt?: number
+  initialPrompt?: string
 }
 
 export interface ProviderCommand {
