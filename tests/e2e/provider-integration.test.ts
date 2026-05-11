@@ -623,6 +623,7 @@ describe('E2E: Provider Integration', () => {
       expect(command.env.STOA_SESSION_SECRET).toBeUndefined()
       expect(command.env.STOA_WEBHOOK_PORT).toBeUndefined()
       expect(command.args).toEqual([])
+      expect(command.args).toEqual([])
     })
 
     test('installSidecar writes official Codex config files alongside shared dispatcher assets', async () => {
@@ -638,7 +639,6 @@ describe('E2E: Provider Integration', () => {
         const dispatcherPath = join(workspaceDir, '.stoa', 'hook-dispatch.mjs')
         const configContent = await readFile(join(workspaceDir, '.codex', 'config.toml'), 'utf8')
         const userConfigContent = await readFile(join(codexHomeDir, 'config.toml'), 'utf8')
-
         await expect(stat(manifestPath)).resolves.toMatchObject({ isFile: expect.any(Function) })
         await expect(stat(dispatcherPath)).resolves.toMatchObject({ isFile: expect.any(Function) })
         await expect(stat(join(workspaceDir, '.stoa', 'hook-dispatch'))).resolves.toMatchObject({ isFile: expect.any(Function) })
@@ -652,6 +652,9 @@ describe('E2E: Provider Integration', () => {
         expect(configContent).toContain(`command = ${JSON.stringify(expectedCodexHookCommand('SessionStart'))}`)
         expect(configContent).not.toContain('[hooks.state.')
         expect(configContent).not.toContain('trusted_hash = "sha256:')
+        expect(userConfigContent).toContain('trust_level = "trusted"')
+        expect(userConfigContent).toContain('[hooks.state.')
+        expect(userConfigContent).toContain('trusted_hash = "sha256:')
         expect(userConfigContent).toContain('trust_level = "trusted"')
         expect(userConfigContent).toContain('[hooks.state.')
         expect(userConfigContent).toContain('trusted_hash = "sha256:')
@@ -1112,7 +1115,6 @@ describe('E2E: Provider Integration', () => {
 
       await withRealCodexHome(async (codexHomeDir) => {
         await provider.installSidecar(target, createContext())
-
         const hooks = await listCodexHooksThroughAppServer(workspaceDir, codexHomeDir)
         const stoaHooks = hooks.filter((hook) => {
           const command = typeof hook.command === 'string' ? hook.command : ''

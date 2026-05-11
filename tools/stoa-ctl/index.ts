@@ -85,6 +85,12 @@ function resolveHeaders(env: NodeJS.ProcessEnv): Record<string, string> {
   }
 }
 
+export function isDirectCliEntry(importMetaUrl: string, argvEntry: string | undefined): boolean {
+  const entryPath = argvEntry?.replace(/\\/g, '/')
+  const metaPath = importMetaUrl.replace(/^file:\/\//, '')
+  return !!entryPath && (entryPath.endsWith(metaPath) || metaPath.endsWith(entryPath))
+}
+
 function parseIntegerFlag(args: string[], name: string, fallback: number): number {
   const index = args.indexOf(name)
   if (index < 0) {
@@ -593,9 +599,7 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
   }
 }
 
-const entryPath = process.argv[1]?.replace(/\\/g, '/')
-const metaPath = import.meta.url.replace(/^file:\/\//, '')
-if (entryPath && (entryPath.endsWith(metaPath) || metaPath.endsWith(entryPath))) {
+if (isDirectCliEntry(import.meta.url, process.argv[1])) {
   const exitCode = await run(process.argv.slice(2))
   process.exit(exitCode)
 }
