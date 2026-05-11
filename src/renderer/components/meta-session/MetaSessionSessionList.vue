@@ -11,9 +11,23 @@ import ProviderFloatingCard from '../command/ProviderFloatingCard.vue'
 const metaSessionStore = useMetaSessionStore()
 const { sessions, activeMetaSessionId } = storeToRefs(metaSessionStore)
 
-const orderedSessions = computed(() => {
-  return [...sessions.value].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+const activeSessions = computed(() => {
+  return sessions.value.filter((s) => !s.archived)
 })
+
+const archivedSessions = computed(() => {
+  return sessions.value.filter((s) => s.archived)
+})
+
+const orderedActiveSessions = computed(() => {
+  return [...activeSessions.value].sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+})
+
+const orderedArchivedSessions = computed(() => {
+  return [...archivedSessions.value].sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+})
+
+const archivedSectionOpen = ref(false)
 
 const META_SESSION_BACKEND_TYPES = new Set<MetaSessionBackendSessionType>(['opencode', 'codex', 'claude-code'])
 
@@ -21,7 +35,6 @@ function isMetaSessionBackendType(type: SessionType): type is MetaSessionBackend
   return META_SESSION_BACKEND_TYPES.has(type as MetaSessionBackendSessionType)
 }
 
-// Only providers with meta-session capability (supportsResume + supportsStructuredEvents)
 const allProviderButtons = computed(() => {
   const metaTypes = new Set(
     listMetaSessionProviderDescriptors()
@@ -57,24 +70,14 @@ function statusTone(status: MetaSessionStatus): string {
   }
 }
 
-function statusPhase(status: MetaSessionStatus): string {
-  switch (status) {
-    case 'waiting_approval':
-      return 'blocked'
-    case 'created':
-    case 'closed':
-      return status
-    default:
-      return status
-  }
+function statusChipLabel(status: MetaSessionStatus): string {
+  return status.replace(/_/g, ' ')
 }
 
-function statusLabel(session: { status: MetaSessionStatus; pendingProposalCount: number }): string {
-  const parts: string[] = [session.status.replace(/_/g, ' ')]
-  if (session.pendingProposalCount > 0) {
-    parts.push(`${session.pendingProposalCount} pending`)
-  }
-  return parts.join(' · ')
+function relativeTime(updatedAt: string): string {
+  const elapsedMs = Date.now() - Date.parse(updatedAt)
+  if (!Number.isFinite(elapsedMs) || elapsedMs < 60_000) return 'Just now'
+  return `${Math.floor(elapsedMs / 60_000)}m ago`
 }
 
 function generateMetaSessionTitle(): string {
@@ -146,7 +149,7 @@ const emit = defineEmits<{
 
       <div class="meta-session-sidebar__items">
         <div
-          v-for="session in orderedSessions"
+          v-for="session in orderedActiveSessions"
           :key="session.id"
           class="route-session-row"
         >
@@ -158,26 +161,25 @@ const emit = defineEmits<{
             type="button"
             @click="void metaSessionStore.setActiveSession(session.id)"
           >
-            <div
-              class="route-dot"
-              :data-tone="statusTone(session.status)"
-              :data-phase="statusPhase(session.status)"
-            />
             <img class="route-provider-icon" :src="providerIcon(session.backendSessionType)" :alt="session.backendSessionType" />
-            <div class="route-copy route-copy--session">
-              <span class="route-session-label">{{ session.title }}</span>
-              <span class="route-session-label">{{ statusLabel(session) }}</span>
+            <div class="route-copy">
+              <span class="route-session-title">{{ session.title }}</span>
+              <div class="route-session-meta">
+                <span class="route-chip" :data-tone="statusTone(session.status)">{{ statusChipLabel(session.status) }}</span>
+                <span class="route-time">{{ relativeTime(session.updatedAt) }}</span>
+                <span v-if="session.pendingProposalCount > 0" class="route-pending">· {{ session.pendingProposalCount }} pending</span>
+              </div>
             </div>
           </button>
           <span class="route-row-actions">
             <button
               class="route-row-action route-icon-button"
               type="button"
-              data-testid="meta-session.session.close"
+              data-testid="meta-session.session.archive"
               :data-session-id="session.id"
-              :aria-label="`Close session ${session.title}`"
-              title="Close session"
-              @click.stop="void metaSessionStore.closeSession(session.id)"
+              :aria-label="`Archive session ${session.title}`"
+              title="Archive session"
+              @click.stop="void metaSessionStore.archiveSession(session.id)"
             >
               <svg
                 class="route-icon-button__icon"
@@ -186,39 +188,65 @@ const emit = defineEmits<{
                 xmlns="http://www.w3.org/2000/svg"
                 aria-hidden="true"
               >
-                <path
-                  d="M4 4H12L11.5 13H4.5L4 4Z"
-                  stroke="currentColor"
-                  stroke-width="1.25"
-                  stroke-linejoin="round"
-                />
-                <path
-                  d="M6.5 6.5V10.5"
-                  stroke="currentColor"
-                  stroke-width="1.25"
-                  stroke-linecap="round"
-                />
-                <path
-                  d="M9.5 6.5V10.5"
-                  stroke="currentColor"
-                  stroke-width="1.25"
-                  stroke-linecap="round"
-                />
-                <path
-                  d="M3 4H13"
-                  stroke="currentColor"
-                  stroke-width="1.25"
-                  stroke-linecap="round"
-                />
-                <path
-                  d="M6.5 2.5H9.5V4H6.5V2.5Z"
-                  stroke="currentColor"
-                  stroke-width="1.25"
-                  stroke-linejoin="round"
-                />
+                <path d="M2 4H14V12C14 13.1046 13.1046 14 12 14H4C2.89543 14 2 13.1046 2 12V4Z" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"/>
+                <path d="M6 8H10" stroke="currentColor" stroke-width="1.25" stroke-linecap="round"/>
+                <path d="M1 4H15" stroke="currentColor" stroke-width="1.25" stroke-linecap="round"/>
+                <path d="M6 1H10V4H6V1Z" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"/>
               </svg>
             </button>
           </span>
+        </div>
+      </div>
+
+      <div v-if="orderedArchivedSessions.length > 0" class="meta-session-sidebar__archived">
+        <button
+          class="route-archived-toggle"
+          type="button"
+          @click="archivedSectionOpen = !archivedSectionOpen"
+        >
+          <span class="route-archived-label">Archived ({{ orderedArchivedSessions.length }})</span>
+          <span class="route-archived-chevron" :class="{ 'route-archived-chevron--open': archivedSectionOpen }">&#9662;</span>
+        </button>
+        <div v-if="archivedSectionOpen" class="meta-session-sidebar__archived-items">
+          <div
+            v-for="session in orderedArchivedSessions"
+            :key="session.id"
+            class="route-session-row route-session-row--archived"
+          >
+            <button
+              class="route-item child"
+              data-testid="meta-session.session.archived-item"
+              :data-session-id="session.id"
+              type="button"
+              @click="void metaSessionStore.restoreSession(session.id)"
+            >
+              <img class="route-provider-icon" :src="providerIcon(session.backendSessionType)" :alt="session.backendSessionType" />
+              <div class="route-copy">
+                <span class="route-session-title">{{ session.title }}</span>
+                <div class="route-session-meta">
+                  <span class="route-chip" data-tone="neutral">{{ statusChipLabel(session.status) }}</span>
+                  <span class="route-time">{{ relativeTime(session.updatedAt) }}</span>
+                </div>
+              </div>
+            </button>
+            <span class="route-row-actions">
+              <button
+                class="route-row-action route-icon-button"
+                type="button"
+                data-testid="meta-session.session.restore"
+                :data-session-id="session.id"
+                :aria-label="`Restore session ${session.title}`"
+                title="Restore session"
+                @click.stop="void metaSessionStore.restoreSession(session.id)"
+              >
+                <svg class="route-icon-button__icon" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                  <path d="M2 8C2 4.68629 4.68629 2 8 2V2C11.3137 2 14 4.68629 14 8" stroke="currentColor" stroke-width="1.25" stroke-linecap="round"/>
+                  <path d="M14 8L12 6" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/>
+                  <path d="M14 8L12 10" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+            </span>
+          </div>
         </div>
       </div>
     </div>
@@ -327,9 +355,9 @@ const emit = defineEmits<{
 }
 
 .route-item.child {
-  grid-template-columns: 6px 18px minmax(0, 1fr);
-  gap: 6px;
-  padding: 2px 8px 2px 20px;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 8px;
+  padding: 6px 8px 6px 12px;
 }
 
 .route-item:hover:not(.route-item--active),
@@ -355,13 +383,12 @@ const emit = defineEmits<{
   background: var(--color-active-indicator);
 }
 
-.route-item--active .route-session-label {
+.route-item--active .route-session-title {
   color: var(--color-text);
-  font-weight: 500;
 }
 
-.route-item:not(.route-item--active) .route-session-label {
-  color: var(--color-subtle);
+.route-item:not(.route-item--active) .route-session-title {
+  color: var(--color-muted);
 }
 
 .route-copy {
@@ -370,10 +397,63 @@ const emit = defineEmits<{
   min-width: 0;
 }
 
-.route-copy--session {
+.route-session-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 500 var(--text-body-sm) / 1.2 var(--font-mono);
+}
+
+.route-session-meta {
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
+}
+
+.route-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  color: var(--color-text-strong);
+  font: 500 var(--text-caption) / 1.4 var(--font-mono);
+  white-space: nowrap;
+}
+
+.route-chip[data-tone='neutral'] {
+  color: var(--color-subtle);
+}
+
+.route-chip[data-tone='accent'] {
+  color: var(--color-accent);
+}
+
+.route-chip[data-tone='success'] {
+  color: var(--color-success);
+}
+
+.route-chip[data-tone='warning'] {
+  color: var(--color-warning);
+}
+
+.route-chip[data-tone='danger'] {
+  color: var(--color-error);
+}
+
+.route-time {
+  color: var(--color-subtle);
+  font: var(--text-caption) / 1.4 var(--font-mono);
+  white-space: nowrap;
+}
+
+.route-pending {
+  color: var(--color-muted);
+  font: var(--text-caption) / 1.4 var(--font-mono);
+  white-space: nowrap;
 }
 
 .route-row-actions {
@@ -429,49 +509,48 @@ const emit = defineEmits<{
   width: auto;
 }
 
-.route-session-label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.meta-session-sidebar__archived {
+  display: grid;
+  gap: 2px;
+  border-top: 1px solid var(--color-line);
+  padding-top: 8px;
+}
+
+.route-archived-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  cursor: pointer;
+  font-family: var(--font-ui);
+}
+
+.route-archived-toggle:hover {
+  background: var(--color-black-faint);
+}
+
+.route-archived-label {
   color: var(--color-muted);
-  font: var(--text-caption) var(--font-mono);
+  font-size: var(--text-caption);
+  font-weight: 600;
+  letter-spacing: 0.05em;
 }
 
-.route-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  border: 1px solid transparent;
-  background: var(--color-subtle);
-  opacity: 0.85;
+.route-archived-chevron {
+  color: var(--color-subtle);
+  font-size: 10px;
+  transition: transform 0.2s ease;
 }
 
-.route-dot[data-tone='neutral'] {
-  background: var(--color-subtle);
+.route-archived-chevron--open {
+  transform: rotate(180deg);
 }
 
-.route-dot[data-tone='success'] {
-  background: var(--color-success);
-  box-shadow: var(--shadow-success-ring);
-}
-
-.route-dot[data-tone='accent'] {
-  background: var(--color-accent);
-}
-
-.route-dot[data-tone='warning'] {
-  background: var(--color-warning);
-}
-
-.route-dot[data-phase='blocked'] {
-  border-color: var(--color-line);
-  box-shadow: inset 0 0 0 1px var(--color-surface-solid);
-  opacity: 1;
-}
-
-.route-dot[data-tone='danger'] {
-  background: var(--color-error);
+.route-session-row--archived .route-session-title {
+  color: var(--color-muted);
 }
 
 aside.meta-session-sidebar {
