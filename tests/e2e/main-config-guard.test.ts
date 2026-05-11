@@ -340,6 +340,8 @@ describe('E2E: Main Process Config Guard', () => {
         'createMetaSession',
         'setActiveMetaSession',
         'closeMetaSession',
+        'archiveMetaSession',
+        'restoreMetaSession',
         'listMetaSessionProposals',
         'getMetaSessionProposal',
         'approveMetaSessionProposal',

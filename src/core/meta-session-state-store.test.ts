@@ -98,7 +98,8 @@ describe('meta-session-state-store', () => {
           backend_session_id: 'backend-session-1',
           created_at: '2026-05-07T08:00:00.000Z',
           updated_at: '2026-05-07T08:05:00.000Z',
-          last_activated_at: '2026-05-07T08:05:00.000Z'
+          last_activated_at: '2026-05-07T08:05:00.000Z',
+          archived: false
         }
       ]
     }
@@ -152,7 +153,8 @@ describe('meta-session-state-store', () => {
           backend_session_id: 'backend-session-1',
           created_at: '2026-05-07T08:00:00.000Z',
           updated_at: '2026-05-07T08:05:00.000Z',
-          last_activated_at: null
+          last_activated_at: null,
+          archived: false
         }
       ],
       proposals: [],
