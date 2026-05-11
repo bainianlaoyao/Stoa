@@ -94,4 +94,61 @@ describe('MetaSessionManager', () => {
       })
     ])
   })
+
+  test('archives a meta session and excludes it from active sessions', async () => {
+    const manager = await MetaSessionManager.create({
+      statePath: await createTempMetaSessionStatePath()
+    })
+    const first = await manager.createSession({ title: 'triage-a', backendSessionType: 'claude-code', capabilityLevel: 1 })
+    const second = await manager.createSession({ title: 'triage-b', backendSessionType: 'codex', capabilityLevel: 3 })
+
+    await manager.archiveSession(first.id)
+
+    const snapshot = manager.snapshot()
+    expect(snapshot.sessions.find((s) => s.id === first.id)?.archived).toBe(true)
+    expect(snapshot.sessions.find((s) => s.id === second.id)?.archived).toBe(false)
+    expect(snapshot.activeMetaSessionId).toBe(second.id)
+  })
+
+  test('restore a meta session marks it as not archived', async () => {
+    const manager = await MetaSessionManager.create({
+      statePath: await createTempMetaSessionStatePath()
+    })
+    const session = await manager.createSession({ title: 'triage-a', backendSessionType: 'claude-code', capabilityLevel: 1 })
+
+    await manager.archiveSession(session.id)
+    await manager.restoreSession(session.id)
+
+    const snapshot = manager.snapshot()
+    expect(snapshot.sessions.find((s) => s.id === session.id)?.archived).toBe(false)
+  })
+
+  test('setActiveSession does not mutate updatedAt', async () => {
+    const manager = await MetaSessionManager.create({
+      statePath: await createTempMetaSessionStatePath()
+    })
+    const session = await manager.createSession({ title: 'triage-a', backendSessionType: 'claude-code', capabilityLevel: 1 })
+    const originalUpdatedAt = session.updatedAt
+
+    await manager.setActiveSession(session.id)
+
+    const snapshot = manager.snapshot()
+    const updated = snapshot.sessions.find((s) => s.id === session.id)!
+    expect(updated.updatedAt).toBe(originalUpdatedAt)
+    expect(updated.lastActivatedAt).not.toBeNull()
+  })
+
+  test('archiving the active session falls back to another non-archived session', async () => {
+    const manager = await MetaSessionManager.create({
+      statePath: await createTempMetaSessionStatePath()
+    })
+    const first = await manager.createSession({ title: 'triage-a', backendSessionType: 'claude-code', capabilityLevel: 1 })
+    const second = await manager.createSession({ title: 'triage-b', backendSessionType: 'codex', capabilityLevel: 3 })
+
+    await manager.setActiveSession(first.id)
+    await manager.archiveSession(first.id)
+
+    const snapshot = manager.snapshot()
+    expect(snapshot.activeMetaSessionId).toBe(second.id)
+  })
 })

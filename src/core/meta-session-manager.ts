@@ -28,7 +28,8 @@ function toSummary(session: PersistedMetaSession): MetaSessionSummary {
     backendSessionId: session.backend_session_id,
     createdAt: session.created_at,
     updatedAt: session.updated_at,
-    lastActivatedAt: session.last_activated_at
+    lastActivatedAt: session.last_activated_at,
+    archived: session.archived
   }
 }
 
@@ -46,7 +47,8 @@ function toPersisted(session: MetaSessionSummary): PersistedMetaSession {
     backend_session_id: session.backendSessionId,
     created_at: session.createdAt,
     updated_at: session.updatedAt,
-    last_activated_at: session.lastActivatedAt
+    last_activated_at: session.lastActivatedAt,
+    archived: session.archived
   }
 }
 
@@ -98,7 +100,8 @@ export class MetaSessionManager {
         : null,
       createdAt: nowIso,
       updatedAt: nowIso,
-      lastActivatedAt: this.state.sessions.length === 0 ? nowIso : null
+      lastActivatedAt: this.state.sessions.length === 0 ? nowIso : null,
+      archived: false
     }
 
     this.state = {
@@ -118,8 +121,7 @@ export class MetaSessionManager {
       sessions: this.state.sessions.map((session) => session.id === sessionId
         ? {
             ...session,
-            lastActivatedAt: nowIso,
-            updatedAt: nowIso
+            lastActivatedAt: nowIso
           }
         : session),
       inspectorTarget: this.state.inspectorTarget
@@ -148,6 +150,30 @@ export class MetaSessionManager {
     this.state = {
       activeMetaSessionId: nextActiveSessionId,
       sessions,
+      inspectorTarget: this.state.inspectorTarget
+    }
+    await this.persist()
+  }
+
+  async archiveSession(sessionId: string): Promise<void> {
+    this.state = {
+      activeMetaSessionId: this.state.activeMetaSessionId === sessionId
+        ? this.state.sessions.find((s) => s.id !== sessionId && !s.archived)?.id ?? null
+        : this.state.activeMetaSessionId,
+      sessions: this.state.sessions.map((session) => session.id === sessionId
+        ? { ...session, archived: true }
+        : session),
+      inspectorTarget: this.state.inspectorTarget
+    }
+    await this.persist()
+  }
+
+  async restoreSession(sessionId: string): Promise<void> {
+    this.state = {
+      activeMetaSessionId: this.state.activeMetaSessionId,
+      sessions: this.state.sessions.map((session) => session.id === sessionId
+        ? { ...session, archived: false }
+        : session),
       inspectorTarget: this.state.inspectorTarget
     }
     await this.persist()

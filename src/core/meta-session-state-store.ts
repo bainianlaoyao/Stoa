@@ -102,6 +102,7 @@ function isValidPersistedMetaSession(value: unknown): value is PersistedMetaSess
     && typeof value.updated_at === 'string'
     && 'last_activated_at' in value
     && (value.last_activated_at === null || typeof value.last_activated_at === 'string')
+    && (!('archived' in value) || typeof value.archived === 'boolean')
 }
 
 function isValidProposalStatus(value: unknown): value is PersistedMetaSessionStateV1['proposals'][number]['status'] {
@@ -324,6 +325,7 @@ function toNormalizedMetaSessionState(value: unknown): PersistedMetaSessionState
     active_meta_session_id: value.active_meta_session_id,
     sessions: value.sessions.map((session) => ({
       ...session,
+      archived: (session as Record<string, unknown>).archived === true,
       backend_session_type: isValidBackendSessionType((session as Partial<typeof session>).backend_session_type)
         ? (session as typeof session).backend_session_type
         : DEFAULT_META_SESSION_BACKEND_SESSION_TYPE
