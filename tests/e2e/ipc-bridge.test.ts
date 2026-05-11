@@ -483,7 +483,9 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
       })
 
       expect(created?.id).toMatch(/^meta_session_/)
-      expect(created?.backendSessionId).toBeNull()
+      expect(created?.backendSessionId).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+      )
 
       await api.setActiveMetaSession?.(created!.id)
       let bootstrap = await api.getMetaSessionBootstrapState?.()
