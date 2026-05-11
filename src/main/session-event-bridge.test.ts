@@ -245,6 +245,11 @@ describe('SessionEventBridge', () => {
     const metaSessionManager = await MetaSessionManager.create({
       statePath: resolveMetaSessionStateFilePath(join(metaSessionStateDir, 'global.json'))
     })
+    const metaSession = await metaSessionManager.createSession({
+      title: 'Global Triage',
+      backendSessionType: 'claude-code',
+      capabilityLevel: 3
+    })
     const assembler = new MetaSessionContextAssembler({
       snapshotSource: manager,
       getSessionPresence() {
@@ -269,9 +274,6 @@ describe('SessionEventBridge', () => {
         })
         createMetaSessionControlServer({
           app,
-          getSessionSecret(sessionId: string) {
-            return bridge.debugSnapshotSessionSecrets()[sessionId] ?? null
-          },
           metaSessionSource: metaSessionManager,
           snapshotSource: manager,
           getSessionPresence() {
@@ -286,10 +288,8 @@ describe('SessionEventBridge', () => {
     bridges.push(bridge)
 
     const port = await bridge.start()
-    const secret = bridge.issueSessionSecret('meta_session_1')
     const response = await getPath(port, '/ctl/state/brief', {
-      'x-stoa-session-id': 'meta_session_1',
-      'x-stoa-secret': secret
+      'x-stoa-session-id': metaSession.id
     })
 
     expect(response.statusCode).toBe(200)

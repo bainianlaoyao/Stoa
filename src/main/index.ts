@@ -591,11 +591,6 @@ app.whenReady().then(async () => {
     configureServerApp(app) {
       const metaSessionControlServer = createMetaSessionControlServer({
         app,
-        getSessionSecret(sessionId) {
-          return activeHookLeaseManager?.debugSnapshotSessionSecrets()[sessionId]
-            ?? sessionEventBridge?.debugSnapshotSessionSecrets()[sessionId]
-            ?? null
-        },
         metaSessionSource: activeMetaSessionManager!,
         snapshotSource: activeProjectSessionManager,
         getSessionPresence(sessionId) {
@@ -733,8 +728,6 @@ app.whenReady().then(async () => {
       return false
     }
 
-    const sessionSecret = activeHookLeaseManager?.debugSnapshotSessionSecrets()[sessionId]
-      ?? sessionEventBridge.issueSessionSecret(sessionId)
     const metaSessionBinDir = join(app.getPath('userData'), 'bin')
     const stoaCtlShim = await ensureStoaCtlShim({
       binDir: metaSessionBinDir,
@@ -843,6 +836,15 @@ app.whenReady().then(async () => {
     const bootstrapPrompt = buildMetaSessionBootstrapPrompt()
     const isClaudeCode = metaSession.backendSessionType === 'claude-code'
     const isOpenCode = metaSession.backendSessionType === 'opencode'
+    const hookLease = await activeHookLeaseManager?.ensureLease({
+      sessionId,
+      projectId: 'stoa-meta-session',
+      sessionType: metaSession.backendSessionType,
+      webhookBaseUrl: `http://127.0.0.1:${projectSessionManager.snapshot().terminalWebhookPort ?? webhookPort}`
+    })
+    const sessionSecret = hookLease?.lease.sessionSecret
+      ?? activeHookLeaseManager?.debugSnapshotSessionSecrets()[sessionId]
+      ?? sessionEventBridge.issueSessionSecret(sessionId)
 
     const launched = await launchTrackedSessionRuntime({
       sessionId,
@@ -856,7 +858,6 @@ app.whenReady().then(async () => {
       initialDimensions: { cols: 120, rows: 30 },
       commandEnv: buildMetaSessionCommandEnv({
         sessionId,
-        sessionSecret,
         webhookPort,
         stoaCtlBinDir: stoaCtlShim.binDir
       }),

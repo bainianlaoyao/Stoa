@@ -75,16 +75,20 @@ function resolveBaseUrl(env: NodeJS.ProcessEnv): string {
 }
 
 function resolveHeaders(env: NodeJS.ProcessEnv): Record<string, string> {
-  const token = env.STOA_CTL_TOKEN?.trim()
   const sessionId = env.STOA_META_SESSION_ID?.trim() ?? env.STOA_SESSION_ID?.trim()
-  if (!token || !sessionId) {
-    throw new CliConfigError('Missing STOA_CTL_TOKEN or STOA_META_SESSION_ID')
+  if (!sessionId) {
+    throw new CliConfigError('Missing STOA_META_SESSION_ID')
   }
 
   return {
-    'x-stoa-session-id': sessionId,
-    'x-stoa-secret': token
+    'x-stoa-session-id': sessionId
   }
+}
+
+export function isDirectCliEntry(importMetaUrl: string, argvEntry: string | undefined): boolean {
+  const entryPath = argvEntry?.replace(/\\/g, '/')
+  const metaPath = importMetaUrl.replace(/^file:\/\//, '')
+  return !!entryPath && (entryPath.endsWith(metaPath) || metaPath.endsWith(entryPath))
 }
 
 function parseIntegerFlag(args: string[], name: string, fallback: number): number {
@@ -595,7 +599,7 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]?.replace(/\\/g, '/')}`) {
+if (isDirectCliEntry(import.meta.url, process.argv[1])) {
   const exitCode = await run(process.argv.slice(2))
   process.exit(exitCode)
 }

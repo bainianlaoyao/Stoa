@@ -133,9 +133,6 @@ describe('meta session control server', () => {
 
   test('serves /ctl/work-sessions/:id/context?level=full as plain text, supports slim text context, and /ctl/state/brief as json', async () => {
     const server = createMetaSessionControlServer({
-      getSessionSecret(sessionId: string) {
-        return sessionId === 'meta_session_1' ? 'secret-1' : null
-      },
       metaSessionSource: {
         snapshot() {
           return {
@@ -210,8 +207,7 @@ describe('meta session control server', () => {
     const port = await server.start()
 
     const authHeaders = {
-      'x-stoa-session-id': 'meta_session_1',
-      'x-stoa-secret': 'secret-1'
+      'x-stoa-session-id': 'meta_session_1'
     }
 
     const slim = await get(port, '/ctl/work-sessions/session_1/context?level=slim', authHeaders)
@@ -232,9 +228,6 @@ describe('meta session control server', () => {
 
   test('serves whoami, capabilities, work-session collections, and meta session collections', async () => {
     const server = createMetaSessionControlServer({
-      getSessionSecret(sessionId: string) {
-        return sessionId === 'meta_session_1' ? 'secret-1' : null
-      },
       metaSessionSource: {
         snapshot() {
           return {
@@ -320,8 +313,7 @@ describe('meta session control server', () => {
     const port = await server.start()
 
     const authHeaders = {
-      'x-stoa-session-id': 'meta_session_1',
-      'x-stoa-secret': 'secret-1'
+      'x-stoa-session-id': 'meta_session_1'
     }
 
     const whoami = await get(port, '/ctl/whoami', authHeaders)
@@ -395,9 +387,6 @@ describe('meta session control server', () => {
     let activeMetaSessionId: string | null = 'meta_session_1'
 
     const server = createMetaSessionControlServer({
-      getSessionSecret(sessionId: string) {
-        return sessionId === 'meta_session_1' ? 'secret-1' : null
-      },
       metaSessionSource: {
         snapshot() {
           return {
@@ -478,8 +467,7 @@ describe('meta session control server', () => {
     const port = await server.start()
 
     const authHeaders = {
-      'x-stoa-session-id': 'meta_session_1',
-      'x-stoa-secret': 'secret-1'
+      'x-stoa-session-id': 'meta_session_1'
     }
 
     const created = await post(port, '/ctl/meta-sessions', authHeaders, '{"title":"global-triage","backendSessionType":"claude-code","capabilityLevel":3}')
@@ -512,9 +500,6 @@ describe('meta session control server', () => {
 
   test('serves attention queue and supports proposal creation plus preset dispatch routes', async () => {
     const server = createMetaSessionControlServer({
-      getSessionSecret(sessionId: string) {
-        return sessionId === 'meta_session_1' ? 'secret-1' : null
-      },
       metaSessionSource: {
         snapshot() {
           return {
@@ -633,8 +618,7 @@ describe('meta session control server', () => {
     const port = await server.start()
 
     const authHeaders = {
-      'x-stoa-session-id': 'meta_session_1',
-      'x-stoa-secret': 'secret-1'
+      'x-stoa-session-id': 'meta_session_1'
     }
 
     const attentionQueue = await get(port, '/ctl/state/attention-queue', authHeaders)

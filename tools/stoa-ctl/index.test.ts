@@ -18,7 +18,6 @@ function createResponse(init: MockResponseInit = {}): Response {
 
 const metaSessionEnv = {
   STOA_CTL_BASE_URL: 'http://127.0.0.1:43129',
-  STOA_CTL_TOKEN: 'secret-1',
   STOA_META_SESSION_ID: 'meta_session_1'
 }
 
@@ -369,5 +368,53 @@ describe('stoa-ctl command surface', () => {
 
     expect(exitCode).toBe(5)
     expect(stderr.join('')).toContain('Proposal is stale.')
+  })
+
+  test('accepts session-scoped control env without STOA_CTL_TOKEN', async () => {
+    const module = await import('./index')
+    const fetchImpl = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+      expect(init?.headers).toMatchObject({
+        'x-stoa-session-id': 'meta_session_1'
+      })
+      expect(init?.headers).not.toMatchObject({
+        'x-stoa-secret': expect.anything()
+      })
+      return createResponse({
+        body: '{"ok":true,"data":{"sessionId":"meta_session_1"},"error":null}'
+      })
+    })
+
+    const exitCode = await module.run(['whoami'], {
+      fetch: fetchImpl,
+      env: metaSessionEnv,
+      stdout: { write() {} },
+      stderr: { write() {} },
+      sleep: async () => {}
+    })
+
+    expect(exitCode).toBe(0)
+  })
+
+  test('detects direct entry when tsx passes its cli path as argv[1]', async () => {
+    const module = await import('./index')
+
+    expect(
+      module.isDirectCliEntry(
+        'file:///D:/Data/DEV/ultra_simple_panel/tools/stoa-ctl/index.ts',
+        'D:/Data/DEV/ultra_simple_panel/node_modules/tsx/dist/cli.mjs'
+      )
+    ).toBe(false)
+    expect(
+      module.isDirectCliEntry(
+        'file:///D:/Data/DEV/ultra_simple_panel/tools/stoa-ctl/index.ts',
+        'D:/Data/DEV/ultra_simple_panel/tools/stoa-ctl/index.ts'
+      )
+    ).toBe(true)
+    expect(
+      module.isDirectCliEntry(
+        'file:///D:/Data/DEV/ultra_simple_panel/tools/stoa-ctl/index.ts',
+        'file:/D:/Data/DEV/ultra_simple_panel/tools/stoa-ctl/index.ts'
+      )
+    ).toBe(true)
   })
 })

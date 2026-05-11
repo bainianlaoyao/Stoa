@@ -281,4 +281,114 @@ describe('launchTrackedSessionRuntime', () => {
       })
     )
   })
+
+  test('passes the lease-derived session secret through to startRuntime for meta sessions', async () => {
+    const provider = { providerId: 'claude-code' }
+    const getProvider = vi.fn(() => provider)
+    const resolveRuntimePaths = vi.fn(async () => ({
+      shellPath: null,
+      providerPath: 'claude',
+      claudeDangerouslySkipPermissions: false
+    }))
+    const ensureLease = vi.fn(async () => ({
+      path: 'D:/tmp/runtime/hook-leases/meta_session_1.json',
+      lease: {
+        version: 1,
+        sessionId: 'meta_session_1',
+        projectId: 'stoa-meta-session',
+        provider: 'claude-code',
+        leaseState: 'active',
+        ownerInstanceId: 'instance-a',
+        generation: 1,
+        webhookBaseUrl: 'http://127.0.0.1:43127',
+        sessionSecret: 'lease-secret-1',
+        commitLockNonce: 'nonce-1',
+        commitToken: 'token-1',
+        createdAt: '2026-05-10T12:00:00.000Z',
+        updatedAt: '2026-05-10T12:00:00.000Z',
+        heartbeatAt: '2026-05-10T12:00:00.000Z',
+        expiresAt: '2026-05-10T12:00:20.000Z'
+      }
+    }))
+    const registerSessionSecret = vi.fn()
+    const startRuntime = vi.fn(async () => {})
+
+    const launched = await launchTrackedSessionRuntime({
+      sessionId: 'meta_session_1',
+      manager: {
+        snapshot() {
+          return {
+            activeProjectId: 'stoa-meta-session',
+            activeSessionId: 'meta_session_1',
+            terminalWebhookPort: 43127,
+            projects: [{
+              id: 'stoa-meta-session',
+              name: 'Meta Session',
+              path: 'D:/Data/DEV/ultra_simple_panel',
+              createdAt: '2026-05-07T08:00:00.000Z',
+              updatedAt: '2026-05-07T08:00:00.000Z'
+            }],
+            sessions: [{
+              id: 'meta_session_1',
+              projectId: 'stoa-meta-session',
+              type: 'claude-code',
+              runtimeState: 'created',
+              turnState: 'idle',
+              turnEpoch: 0,
+              lastTurnOutcome: 'none',
+              hasUnseenCompletion: false,
+              runtimeExitCode: null,
+              runtimeExitReason: null,
+              lastStateSequence: 0,
+              blockingReason: null,
+              failureReason: null,
+              title: 'Global Triage',
+              summary: '',
+              recoveryMode: 'resume-external',
+              externalSessionId: 'backend-meta-session-1',
+              createdAt: '2026-05-07T08:00:00.000Z',
+              updatedAt: '2026-05-07T08:00:00.000Z',
+              lastActivatedAt: null,
+              archived: false
+            }]
+          }
+        }
+      } as never,
+      webhookPort: 43127,
+      ptyHost: { start: vi.fn(() => ({ runtimeId: 'meta_session_1' })) } as never,
+      runtimeController: {
+        markRuntimeStarting: vi.fn(async () => {}),
+        markRuntimeAlive: vi.fn(async () => {}),
+        markRuntimeExited: vi.fn(async () => {}),
+        markRuntimeFailedToStart: vi.fn(async () => {}),
+        appendTerminalData: vi.fn(async () => {})
+      },
+      sessionEventBridge: {
+        registerSessionSecret
+      } as never,
+      hookLeaseManager: {
+        ensureLease
+      } as never,
+      resolveRuntimePaths,
+      getProvider: getProvider as never,
+      startRuntime,
+      commandEnv: {}
+    })
+
+    expect(launched).toBe(true)
+    expect(ensureLease).toHaveBeenCalledWith({
+      sessionId: 'meta_session_1',
+      projectId: 'stoa-meta-session',
+      sessionType: 'claude-code',
+      webhookBaseUrl: 'http://127.0.0.1:43127'
+    })
+    expect(registerSessionSecret).toHaveBeenCalledWith('meta_session_1', 'lease-secret-1')
+    expect(startRuntime).toHaveBeenCalledWith(
+      expect.objectContaining({
+        session: expect.objectContaining({
+          sessionSecret: 'lease-secret-1'
+        })
+      })
+    )
+  })
 })
