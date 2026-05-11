@@ -83,7 +83,6 @@ export async function startSessionRuntime(options: StartSessionRuntimeOptions): 
     claudeDangerouslySkipPermissions: options.claudeDangerouslySkipPermissions === true,
     startedAt: Date.now()
   }
-
   console.log(`[session-runtime] installSidecar for ${session.id}`)
   await provider.installSidecar(target, context)
   console.log(`[session-runtime] installSidecar done for ${session.id}`)
@@ -158,19 +157,6 @@ export async function startSessionRuntime(options: StartSessionRuntimeOptions): 
 
   console.log(`[session-runtime] markRuntimeAlive for ${session.id} (runtimeId: ${started.runtimeId})`)
   await manager.markRuntimeAlive(session.id, activeExternalSessionId ?? null)
-
-  if (!session.externalSessionId && provider.discoverExternalSessionIdAfterStart) {
-    void provider.discoverExternalSessionIdAfterStart(target, context)
-      .then(async (discoveredExternalSessionId) => {
-        if (!discoveredExternalSessionId) {
-          return
-        }
-        await manager.markRuntimeAlive(session.id, discoveredExternalSessionId)
-      })
-      .catch((error) => {
-        console.error(`[session-runtime] Failed external session discovery for ${session.id}:`, error)
-      })
-  }
 
   console.log(`[session-runtime] markRuntimeAlive done for ${session.id}`)
 }

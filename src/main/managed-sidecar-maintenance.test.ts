@@ -6,6 +6,12 @@ import { describe, expect, test } from 'vitest'
 import { ProjectSessionManager } from '@core/project-session-manager'
 import { syncManagedSidecars } from './managed-sidecar-maintenance'
 
+function expectedCodexHookCommand(eventName: string): string {
+  return process.platform === 'win32'
+    ? `.\\.stoa\\hook-dispatch.cmd codex ${eventName}`
+    : `.stoa/hook-dispatch codex ${eventName}`
+}
+
 describe('managed-sidecar-maintenance', () => {
   test('refreshes legacy Claude artifacts into managed command hooks during main boot maintenance', async () => {
     const projectDir = await mkdtemp(join(tmpdir(), 'stoa-managed-sidecar-main-'))
@@ -42,9 +48,12 @@ describe('managed-sidecar-maintenance', () => {
     }
   })
 
-  test('refreshes codex managed sidecar during main boot maintenance when marker artifacts already exist', async () => {
+  test('refreshes codex managed sidecar into official config files during main boot maintenance', async () => {
     const projectDir = await mkdtemp(join(tmpdir(), 'stoa-managed-codex-main-'))
+    const codexHomeDir = await mkdtemp(join(tmpdir(), 'stoa-managed-codex-home-'))
+    const previousCodexHome = process.env.CODEX_HOME
     try {
+      process.env.CODEX_HOME = codexHomeDir
       await mkdir(join(projectDir, '.codex'), { recursive: true })
       await writeFile(join(projectDir, '.codex', 'hook-stoa.mjs'), 'legacy\n', 'utf8')
 
@@ -61,23 +70,28 @@ describe('managed-sidecar-maintenance', () => {
         logger: console
       })
 
-      const hooks = JSON.parse(await readFile(join(projectDir, '.codex', 'hooks.json'), 'utf8')) as {
-        hooks?: Record<string, unknown>
-      }
-      expect(Object.keys(hooks.hooks ?? {}).sort()).toEqual([
-        'PostToolUse',
-        'PreToolUse',
-        'SessionStart',
-        'Stop',
-        'UserPromptSubmit'
-      ])
       const dispatcher = await readFile(join(projectDir, '.stoa', 'hook-dispatch.mjs'), 'utf8')
+      const configToml = await readFile(join(projectDir, '.codex', 'config.toml'), 'utf8')
+      const userConfigToml = await readFile(join(codexHomeDir, 'config.toml'), 'utf8')
       expect(dispatcher).toContain('/hooks/codex')
       expect(dispatcher).not.toContain('../src/extensions/providers/shared-hook-dispatch.ts')
       await expect(readFile(join(projectDir, '.codex', 'hook-stoa.mjs'), 'utf8')).rejects.toThrow()
-      expect(await readFile(join(projectDir, '.codex', 'config.toml'), 'utf8')).toContain('codex_hooks = true')
+      await expect(readFile(join(projectDir, '.codex', 'hooks.json'), 'utf8')).rejects.toThrow()
+      expect(configToml).toContain('hooks = true')
+      expect(configToml).toContain('[[hooks.SessionStart]]')
+      expect(configToml).toContain(`command = ${JSON.stringify(expectedCodexHookCommand('Stop'))}`)
+      expect(configToml).not.toContain('trusted_hash = "sha256:')
+      expect(userConfigToml).toContain('trust_level = "trusted"')
+      expect(userConfigToml).toContain('[hooks.state.')
+      expect(userConfigToml).toContain('trusted_hash = "sha256:')
     } finally {
+      if (previousCodexHome === undefined) {
+        delete process.env.CODEX_HOME
+      } else {
+        process.env.CODEX_HOME = previousCodexHome
+      }
       await rm(projectDir, { recursive: true, force: true })
+      await rm(codexHomeDir, { recursive: true, force: true })
     }
   })
 
