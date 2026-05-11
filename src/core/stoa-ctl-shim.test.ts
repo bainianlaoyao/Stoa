@@ -44,6 +44,21 @@ describe('stoa-ctl shim', () => {
     ])
   })
 
+  test('resolves a dev invocation plan from an out/main app root back to the repository root', () => {
+    const plan = resolveStoaCtlInvocationPlan({
+      appRootPath: 'D:/Data/DEV/ultra_simple_panel/out/main',
+      appExecutablePath: 'C:/Program Files/Electron/electron.exe',
+      isPackaged: false
+    })
+
+    expect(plan.args.map(normalizePathSlashes)).toEqual([
+      'D:/Data/DEV/ultra_simple_panel/node_modules/tsx/dist/cli.mjs',
+      '--tsconfig',
+      'D:/Data/DEV/ultra_simple_panel/tsconfig.node.json',
+      'D:/Data/DEV/ultra_simple_panel/tools/stoa-ctl/index.ts'
+    ])
+  })
+
   test('resolves a packaged invocation plan against the unpacked CLI artifact', () => {
     const plan = resolveStoaCtlInvocationPlan({
       appRootPath: 'C:/Program Files/Stoa/resources/app.asar',
@@ -65,7 +80,7 @@ describe('stoa-ctl shim', () => {
 
     const shim = await ensureStoaCtlShim({
       binDir: shimDir,
-      appRootPath: 'D:/Data/DEV/ultra_simple_panel',
+      appRootPath: 'D:/Data/DEV/ultra_simple_panel/out/main',
       appExecutablePath: 'C:/Program Files/Electron/electron.exe',
       isPackaged: false,
       platform: 'win32'
@@ -73,10 +88,17 @@ describe('stoa-ctl shim', () => {
 
     expect(shim.commandPath).toBe(join(shimDir, 'stoa-ctl.cmd'))
 
-    const content = await readFile(shim.commandPath, 'utf8')
-    expect(content).toContain('set "ELECTRON_RUN_AS_NODE=1"')
-    expect(content).toContain('"C:/Program Files/Electron/electron.exe"')
-    expect(normalizePathSlashes(content)).toContain('D:/Data/DEV/ultra_simple_panel/node_modules/tsx/dist/cli.mjs')
-    expect(content).toContain('%*')
+    const cmdContent = await readFile(shim.commandPath, 'utf8')
+    expect(cmdContent).toContain('set "ELECTRON_RUN_AS_NODE=1"')
+    expect(cmdContent).toContain('"C:/Program Files/Electron/electron.exe"')
+    expect(normalizePathSlashes(cmdContent)).toContain('D:/Data/DEV/ultra_simple_panel/node_modules/tsx/dist/cli.mjs')
+    expect(cmdContent).toContain('%*')
+
+    const bashShimPath = join(shimDir, 'stoa-ctl')
+    const bashContent = await readFile(bashShimPath, 'utf8')
+    expect(bashContent).toContain('#!/usr/bin/env bash')
+    expect(bashContent).toContain('export ELECTRON_RUN_AS_NODE=')
+    expect(normalizePathSlashes(bashContent)).toContain('D:/Data/DEV/ultra_simple_panel/node_modules/tsx/dist/cli.mjs')
+    expect(bashContent).toContain('"$@"')
   })
 })

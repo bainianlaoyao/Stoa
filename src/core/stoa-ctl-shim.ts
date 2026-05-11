@@ -1,5 +1,5 @@
 import { mkdir, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 
 export interface StoaCtlInvocationPlan {
   executablePath: string
@@ -23,12 +23,23 @@ export interface StoaCtlShim {
   binDir: string
 }
 
+function resolveDevelopmentAppRoot(appRootPath: string): string {
+  const normalized = appRootPath.replaceAll('\\', '/')
+  return normalized.endsWith('/out/main')
+    ? resolve(appRootPath, '..', '..')
+    : appRootPath
+}
+
 function quoteCmdArg(value: string): string {
   if (!/[\s"]/u.test(value)) {
     return value
   }
 
   return `"${value.replaceAll('"', '""')}"`
+}
+
+function toPosixPath(value: string): string {
+  return value.replaceAll('\\', '/')
 }
 
 export function resolveStoaCtlInvocationPlan(options: ResolveStoaCtlInvocationPlanOptions): StoaCtlInvocationPlan {
@@ -44,13 +55,15 @@ export function resolveStoaCtlInvocationPlan(options: ResolveStoaCtlInvocationPl
     }
   }
 
+  const devAppRootPath = resolveDevelopmentAppRoot(options.appRootPath)
+
   return {
     executablePath: options.appExecutablePath,
     args: [
-      join(options.appRootPath, 'node_modules', 'tsx', 'dist', 'cli.mjs'),
+      join(devAppRootPath, 'node_modules', 'tsx', 'dist', 'cli.mjs'),
       '--tsconfig',
-      join(options.appRootPath, 'tsconfig.node.json'),
-      join(options.appRootPath, 'tools', 'stoa-ctl', 'index.ts')
+      join(devAppRootPath, 'tsconfig.node.json'),
+      join(devAppRootPath, 'tools', 'stoa-ctl', 'index.ts')
     ],
     env: {
       ELECTRON_RUN_AS_NODE: '1'
@@ -74,6 +87,19 @@ function renderWindowsShim(plan: StoaCtlInvocationPlan): string {
   ].join('\r\n')
 }
 
+function renderPosixShim(plan: StoaCtlInvocationPlan): string {
+  const envLines = Object.entries(plan.env)
+    .map(([key, value]) => `export ${key}=${JSON.stringify(value)}`)
+    .join('\n')
+  const args = plan.args.map((value) => JSON.stringify(toPosixPath(value))).join(' ')
+
+  return [
+    '#!/usr/bin/env bash',
+    envLines,
+    `exec ${JSON.stringify(toPosixPath(plan.executablePath))} ${args} "$@"`
+  ].join('\n')
+}
+
 export async function ensureStoaCtlShim(options: EnsureStoaCtlShimOptions): Promise<StoaCtlShim> {
   const plan = resolveStoaCtlInvocationPlan(options)
   const platform = options.platform ?? process.platform
@@ -84,17 +110,12 @@ export async function ensureStoaCtlShim(options: EnsureStoaCtlShimOptions): Prom
   await mkdir(options.binDir, { recursive: true })
 
   if (platform === 'win32') {
-    await writeFile(commandPath, renderWindowsShim(plan), 'utf8')
+    await Promise.all([
+      writeFile(commandPath, renderWindowsShim(plan), 'utf8'),
+      writeFile(join(options.binDir, 'stoa-ctl'), renderPosixShim(plan), 'utf8')
+    ])
   } else {
-    const envLines = Object.entries(plan.env)
-      .map(([key, value]) => `${key}=${JSON.stringify(value)} \\`)
-      .join('\n')
-    const args = plan.args.map((value) => JSON.stringify(value)).join(' ')
-    await writeFile(
-      commandPath,
-      `#!/usr/bin/env bash\n${envLines}\n${JSON.stringify(plan.executablePath)} ${args} "$@"\n`,
-      'utf8'
-    )
+    await writeFile(commandPath, `${renderPosixShim(plan)}\n`, 'utf8')
   }
 
   return {
