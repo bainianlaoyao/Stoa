@@ -177,6 +177,23 @@ export const useMetaSessionStore = defineStore('meta-session', () => {
     }
   }
 
+  async function archiveSession(sessionId: string): Promise<void> {
+    await window.stoa.archiveMetaSession?.(sessionId)
+    sessions.value = sessions.value.map((session) =>
+      session.id === sessionId ? { ...session, archived: true } : session
+    )
+    if (activeMetaSessionId.value === sessionId) {
+      activeMetaSessionId.value = sessions.value.find((s) => !s.archived)?.id ?? null
+    }
+  }
+
+  async function restoreSession(sessionId: string): Promise<void> {
+    await window.stoa.restoreMetaSession?.(sessionId)
+    sessions.value = sessions.value.map((session) =>
+      session.id === sessionId ? { ...session, archived: false } : session
+    )
+  }
+
   async function refreshProposals(): Promise<void> {
     const next = await window.stoa.listMetaSessionProposals?.()
     hydrateProposals(next ?? [])
@@ -251,6 +268,8 @@ export const useMetaSessionStore = defineStore('meta-session', () => {
     createSession,
     setActiveSession,
     closeSession,
+    archiveSession,
+    restoreSession,
     applySessionEvent,
     refreshProposals,
     refreshProposal,
