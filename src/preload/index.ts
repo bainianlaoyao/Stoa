@@ -92,6 +92,12 @@ const api: RendererApi = {
   async closeMetaSession(sessionId) {
     return ipcRenderer.invoke(IPC_CHANNELS.metaSessionClose, sessionId)
   },
+  async archiveMetaSession(sessionId: string) {
+    return ipcRenderer.invoke(IPC_CHANNELS.metaSessionArchive, sessionId)
+  },
+  async restoreMetaSession(sessionId: string) {
+    return ipcRenderer.invoke(IPC_CHANNELS.metaSessionRestore, sessionId)
+  },
   async listMetaSessionProposals() {
     return ipcRenderer.invoke(IPC_CHANNELS.metaSessionProposalList) as Promise<MetaSessionProposal[]>
   },

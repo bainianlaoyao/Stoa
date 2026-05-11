@@ -16,6 +16,8 @@ export const IPC_CHANNELS = {
   metaSessionCreate: 'meta-session:create',
   metaSessionSetActive: 'meta-session:set-active',
   metaSessionClose: 'meta-session:close',
+  metaSessionArchive: 'meta-session:archive',
+  metaSessionRestore: 'meta-session:restore',
   metaSessionEvent: 'meta-session:event',
   metaSessionProposalList: 'meta-session:proposal-list',
   metaSessionProposalGet: 'meta-session:proposal-get',

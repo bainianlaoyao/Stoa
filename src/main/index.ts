@@ -1306,6 +1306,24 @@ app.whenReady().then(async () => {
     }
   })
 
+  ipcMain.handle(IPC_CHANNELS.metaSessionArchive, async (_event, sessionId: string) => {
+    ptyHost?.kill(sessionId)
+    await hookLeaseManager?.releaseLease(sessionId)
+    await metaSessionManager?.archiveSession(sessionId)
+    const session = metaSessionManager?.getSession(sessionId)
+    if (session) {
+      pushMetaSessionEvent(session)
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.metaSessionRestore, async (_event, sessionId: string) => {
+    await metaSessionManager?.restoreSession(sessionId)
+    const session = metaSessionManager?.getSession(sessionId)
+    if (session) {
+      pushMetaSessionEvent(session)
+    }
+  })
+
   ipcMain.handle(IPC_CHANNELS.metaSessionProposalList, async () => {
     return metaSessionProposalStore.list()
   })
