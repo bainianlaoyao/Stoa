@@ -171,17 +171,12 @@ function setupTerminal() {
   fitAddon = localFitAddon
   localTerminal.open(terminalContainer.value)
 
-  const helperTextarea = terminalContainer.value.querySelector('.xterm-helper-textarea')
-  if (helperTextarea) {
-    helperTextarea.addEventListener('keydown', (e: Event) => {
-      if (!(e instanceof KeyboardEvent)) {
-        return
-      }
-      if (e.ctrlKey && (e.key === 'c' || e.key === 'C') && !e.code) {
-        e.stopImmediatePropagation()
-      }
-    }, true)
-  }
+  localTerminal.attachCustomKeyEventHandler((e: KeyboardEvent) => {
+    if (e.type === 'keydown' && e.ctrlKey && (e.key === 'c' || e.key === 'C') && !e.code) {
+      return false
+    }
+    return true
+  })
 
   if (props.visible) {
     localTerminal.focus()
