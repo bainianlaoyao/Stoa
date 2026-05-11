@@ -171,7 +171,8 @@ function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
       })
     }),
     setActiveMetaSession: vi.fn().mockResolvedValue(undefined),
-    closeMetaSession: vi.fn().mockResolvedValue(undefined),
+    archiveMetaSession: vi.fn().mockResolvedValue(undefined),
+    restoreMetaSession: vi.fn().mockResolvedValue(undefined),
     setMetaSessionInspectorTarget: vi.fn().mockResolvedValue(undefined),
     listMetaSessionProposals: vi.fn().mockResolvedValue([makeProposal()]),
     getMetaSessionProposal: vi.fn().mockImplementation(async (proposalId: string) => {
@@ -276,7 +277,7 @@ describe('meta session renderer store', () => {
     expect(store.activeMetaSession?.pendingProposalCount).toBe(2)
   })
 
-  test('creates, activates, and closes meta sessions through the renderer bridge', async () => {
+  test('creates, activates, archives, and restores meta sessions through the renderer bridge', async () => {
     const store = useMetaSessionStore()
     await store.bootstrapFromBridge()
 
@@ -286,7 +287,12 @@ describe('meta session renderer store', () => {
       capabilityLevel: 3
     })
     await store.setActiveSession(created.id)
-    await store.closeSession(created.id)
+    await store.archiveSession(created.id)
+
+    expect(store.sessions.find((session) => session.id === created.id)?.archived).toBe(true)
+    expect(store.activeMetaSessionId).toBe('meta_session_1')
+
+    await store.restoreSession(created.id)
 
     expect(window.stoa.createMetaSession).toHaveBeenCalledWith({
       title: 'review-debt',
@@ -294,7 +300,10 @@ describe('meta session renderer store', () => {
       capabilityLevel: 3
     })
     expect(window.stoa.setActiveMetaSession).toHaveBeenCalledWith(created.id)
-    expect(window.stoa.closeMetaSession).toHaveBeenCalledWith(created.id)
+    expect(window.stoa.archiveMetaSession).toHaveBeenCalledWith(created.id)
+    expect(window.stoa.restoreMetaSession).toHaveBeenCalledWith(created.id)
+    expect(store.sessions.find((session) => session.id === created.id)?.archived).toBe(false)
+    expect(store.activeMetaSessionId).toBe(created.id)
   })
 
   test('approves rejects and dispatches proposals through the native renderer bridge and persists inspector target', async () => {

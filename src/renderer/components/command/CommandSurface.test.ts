@@ -311,6 +311,34 @@ describe('CommandSurface', () => {
     expect(wrapper.emitted('archiveSession')).toEqual([['session_1']])
   })
 
+  it('forwards restartSession from WorkspaceHierarchyPanel', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const store = useWorkspaceStore(pinia)
+    store.hydrate({
+      activeProjectId: 'project_alpha',
+      activeSessionId: 'session_1',
+      terminalWebhookPort: 0,
+      projects: [activeProject],
+      sessions: [activeSession]
+    })
+
+    const wrapper = mount(CommandSurface, {
+      global: { plugins: [pinia] },
+      props: {
+        hierarchy,
+        activeProject,
+        activeSession,
+        activeProjectId: 'project_alpha',
+        activeSessionId: 'session_1'
+      }
+    })
+
+    await wrapper.findComponent(WorkspaceHierarchyPanel).vm.$emit('restartSession', 'session_1')
+
+    expect(wrapper.emitted('restartSession')).toEqual([['session_1']])
+  })
+
   it('keeps previously activated AI terminals mounted when switching sessions', async () => {
     const wrapper = mount(CommandSurface, {
       global: { plugins: [createPinia()] },

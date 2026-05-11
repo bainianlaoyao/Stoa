@@ -44,9 +44,9 @@ const { activeMetaSession, selectedProposal } = storeToRefs(metaSessionStore)
         class="meta-session-action-panel__action meta-session-action-panel__action--danger"
         type="button"
         :disabled="!activeMetaSession"
-        @click="activeMetaSession && void metaSessionStore.closeSession(activeMetaSession.id)"
+        @click="activeMetaSession && void metaSessionStore.archiveSession(activeMetaSession.id)"
       >
-        Close session
+        Archive session
       </button>
     </div>
   </section>

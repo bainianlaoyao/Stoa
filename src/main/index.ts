@@ -317,6 +317,8 @@ async function prepareForQuitAndInstall(): Promise<void> {
   }
 
   isQuittingAfterBridgeStop = true
+  await ptyHost?.disposeAndWait()
+  ptyHost = null
   sessionInputRouter?.dispose()
   sessionInputRouter = null
   await stopSessionEventBridge()
@@ -487,6 +489,17 @@ app.whenReady().then(async () => {
     resolve: (dims: { cols: number; rows: number }) => void
     timer: ReturnType<typeof setTimeout>
   }>()
+  const sessionLaunchTokens = new Map<string, number>()
+
+  function reserveSessionLaunchToken(sessionId: string): number {
+    const nextToken = (sessionLaunchTokens.get(sessionId) ?? 0) + 1
+    sessionLaunchTokens.set(sessionId, nextToken)
+    return nextToken
+  }
+
+  function isSessionLaunchTokenCurrent(sessionId: string, launchToken: number): boolean {
+    return sessionLaunchTokens.get(sessionId) === launchToken
+  }
 
   function waitForSessionDimensions(sessionId: string, timeoutMs: number): Promise<{ cols: number; rows: number }> {
     return new Promise((resolve) => {
@@ -591,7 +604,30 @@ app.whenReady().then(async () => {
     configureServerApp(app) {
       const metaSessionControlServer = createMetaSessionControlServer({
         app,
-        metaSessionSource: activeMetaSessionManager!,
+        metaSessionSource: {
+          snapshot() {
+            return activeMetaSessionManager!.snapshot()
+          },
+          getSession(sessionId: string) {
+            return activeMetaSessionManager!.getSession(sessionId)
+          },
+          async createSession(request: CreateMetaSessionRequest) {
+            const created = await createMetaSessionWithRuntime(request)
+            if (!created) {
+              throw new Error('Meta session creation is unavailable.')
+            }
+            return created
+          },
+          async setActiveSession(sessionId: string) {
+            await setActiveMetaSessionWithEvent(sessionId)
+          },
+          async archiveSession(sessionId: string) {
+            await archiveMetaSessionWithRuntime(sessionId)
+          },
+          async restoreSession(sessionId: string) {
+            await restoreMetaSessionWithRuntime(sessionId)
+          }
+        },
         snapshotSource: activeProjectSessionManager,
         getSessionPresence(sessionId) {
           return activeObservabilityService?.getSessionPresence(sessionId) ?? null
@@ -658,8 +694,12 @@ app.whenReady().then(async () => {
 
   async function launchSessionRuntimeWithGuard(
     sessionId: string,
-    source: 'session-create' | 'session-restore' | 'bootstrap-recovery' | 'packaged-smoke',
-    options?: { awaitDimensions?: boolean }
+    source: 'session-create' | 'session-restore' | 'session-restart' | 'bootstrap-recovery' | 'packaged-smoke',
+    options?: {
+      awaitDimensions?: boolean
+      launchToken?: number
+      requireExternalSessionIdForResume?: boolean
+    }
   ): Promise<boolean> {
     if (!projectSessionManager || !ptyHost || !runtimeController || !sessionEventBridge) {
       console.log(`[${source}] Aborted runtime launch for ${sessionId}: manager=${!!projectSessionManager} pty=${!!ptyHost} ctrl=${!!runtimeController} bridge=${!!sessionEventBridge}`)
@@ -667,6 +707,7 @@ app.whenReady().then(async () => {
     }
 
     try {
+      const launchToken = options?.launchToken ?? reserveSessionLaunchToken(sessionId)
       let initialDimensions: { cols: number; rows: number } | undefined
       if (options?.awaitDimensions) {
         initialDimensions = await waitForSessionDimensions(sessionId, 5000)
@@ -683,7 +724,10 @@ app.whenReady().then(async () => {
         sessionEventBridge,
       hookLeaseManager: activeHookLeaseManager,
         resolveRuntimePaths,
-        initialDimensions
+        initialDimensions,
+        launchToken,
+        isLaunchTokenCurrent: (candidateLaunchToken) => isSessionLaunchTokenCurrent(sessionId, candidateLaunchToken),
+        requireExternalSessionIdForResume: options?.requireExternalSessionIdForResume
       })
 
       if (launched) {
@@ -874,6 +918,48 @@ app.whenReady().then(async () => {
     return launched
   }
 
+  async function createMetaSessionWithRuntime(payload: CreateMetaSessionRequest): Promise<MetaSessionSummary | null> {
+    const created = await metaSessionManager?.createSession(payload)
+    if (!created) {
+      return null
+    }
+
+    pushMetaSessionEvent(created)
+    void launchMetaSessionRuntimeWithGuard(created.id, 'meta-session-create')
+    return created
+  }
+
+  async function setActiveMetaSessionWithEvent(sessionId: string): Promise<void> {
+    await metaSessionManager?.setActiveSession(sessionId)
+    const session = metaSessionManager?.getSession(sessionId)
+    if (session) {
+      pushMetaSessionEvent(session)
+    }
+  }
+
+  async function archiveMetaSessionWithRuntime(sessionId: string): Promise<MetaSessionSummary | null> {
+    sessionInputRouter?.resetSession(sessionId)
+    await ptyHost?.killAndWait(sessionId)
+    await hookLeaseManager?.releaseLease(sessionId)
+    await metaSessionManager?.archiveSession(sessionId)
+    const session = metaSessionManager?.getSession(sessionId) ?? null
+    if (session) {
+      pushMetaSessionEvent(session)
+    }
+    return session
+  }
+
+  async function restoreMetaSessionWithRuntime(sessionId: string): Promise<MetaSessionSummary | null> {
+    sessionInputRouter?.resetSession(sessionId)
+    await metaSessionManager?.restoreSession(sessionId)
+    const session = metaSessionManager?.getSession(sessionId) ?? null
+    if (session) {
+      pushMetaSessionEvent(session)
+      void launchMetaSessionRuntimeWithGuard(sessionId, 'meta-session-restore')
+    }
+    return session
+  }
+
   async function runPackagedSmoke(): Promise<void> {
     if (!isPackagedSmokeMode) {
       return
@@ -1018,7 +1104,7 @@ app.whenReady().then(async () => {
         hook: sessionStartHook
       })
 
-      ptyHost.kill(session.id)
+      await ptyHost.killAndWait(session.id)
       await recordPackagedSmoke('completed', {
         sessionId: session.id
       })
@@ -1053,7 +1139,7 @@ app.whenReady().then(async () => {
     const projectSessions = snapshot.sessions.filter(s => s.projectId === projectId)
     for (const session of projectSessions) {
       sessionInputRouter?.resetSession(session.id)
-      ptyHost?.kill(session.id)
+      await ptyHost?.killAndWait(session.id)
       await hookLeaseManager?.releaseLease(session.id)
     }
 
@@ -1244,7 +1330,7 @@ app.whenReady().then(async () => {
   ipcMain.handle(IPC_CHANNELS.sessionArchive, async (_event, sessionId: string) => {
     if (!projectSessionManager || !ptyHost) return
     sessionInputRouter?.resetSession(sessionId)
-    ptyHost.kill(sessionId)
+    await ptyHost.killAndWait(sessionId)
     await hookLeaseManager?.releaseLease(sessionId)
     await projectSessionManager.archiveSession(sessionId)
     syncObservabilitySessions()
@@ -1264,6 +1350,44 @@ app.whenReady().then(async () => {
     void launchSessionRuntimeWithGuard(sessionId, 'session-restore')
   })
 
+  ipcMain.handle(IPC_CHANNELS.sessionRestart, async (_event, sessionId: string) => {
+    if (!projectSessionManager || !ptyHost || !runtimeController || !sessionEventBridge) {
+      throw new Error('Unable to restart session: runtime dependencies are unavailable.')
+    }
+
+    const snapshot = projectSessionManager.snapshot()
+    const session = snapshot.sessions.find((candidate) => candidate.id === sessionId && !candidate.archived)
+    if (!session) {
+      throw new Error(`Unable to restart session: ${sessionId} was not found.`)
+    }
+
+    const descriptor = getProviderDescriptorBySessionType(session.type)
+    const provider = getProvider(descriptor.providerId)
+    if (descriptor.supportsResume && provider.supportsResume() && !session.externalSessionId) {
+      throw new Error(`Cannot restart ${session.type} session before its external session id is stored.`)
+    }
+
+    const launchToken = reserveSessionLaunchToken(sessionId)
+    await projectSessionManager.setActiveSession(sessionId)
+    syncObservabilitySessions()
+    pushObservabilitySnapshotsForSession(sessionId)
+
+    sessionInputRouter?.resetSession(sessionId)
+    await ptyHost.killAndWait(sessionId)
+    await activeHookLeaseManager.releaseLease(sessionId)
+
+    const launched = await launchSessionRuntimeWithGuard(sessionId, 'session-restart', {
+      launchToken,
+      requireExternalSessionIdForResume: true
+    })
+
+    if (!launched) {
+      throw new Error(`Unable to restart session ${sessionId}.`)
+    }
+
+    await syncUpdateStateToWindow()
+  })
+
   ipcMain.handle(IPC_CHANNELS.sessionListArchived, async () => {
     return projectSessionManager?.getArchivedSessions() ?? []
   })
@@ -1278,50 +1402,19 @@ app.whenReady().then(async () => {
   })
 
   ipcMain.handle(IPC_CHANNELS.metaSessionCreate, async (_event, payload: CreateMetaSessionRequest) => {
-    const created = await metaSessionManager?.createSession(payload)
-    if (!created) {
-      return null
-    }
-
-    pushMetaSessionEvent(created)
-    void launchMetaSessionRuntimeWithGuard(created.id, 'meta-session-create')
-    return created
+    return await createMetaSessionWithRuntime(payload)
   })
 
   ipcMain.handle(IPC_CHANNELS.metaSessionSetActive, async (_event, sessionId: string) => {
-    await metaSessionManager?.setActiveSession(sessionId)
-    const session = metaSessionManager?.getSession(sessionId)
-    if (session) {
-      pushMetaSessionEvent(session)
-    }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.metaSessionClose, async (_event, sessionId: string) => {
-    ptyHost?.kill(sessionId)
-    await hookLeaseManager?.releaseLease(sessionId)
-    await metaSessionManager?.closeSession(sessionId)
-    const session = metaSessionManager?.getSession(sessionId)
-    if (session) {
-      pushMetaSessionEvent(session)
-    }
+    await setActiveMetaSessionWithEvent(sessionId)
   })
 
   ipcMain.handle(IPC_CHANNELS.metaSessionArchive, async (_event, sessionId: string) => {
-    ptyHost?.kill(sessionId)
-    await hookLeaseManager?.releaseLease(sessionId)
-    await metaSessionManager?.archiveSession(sessionId)
-    const session = metaSessionManager?.getSession(sessionId)
-    if (session) {
-      pushMetaSessionEvent(session)
-    }
+    await archiveMetaSessionWithRuntime(sessionId)
   })
 
   ipcMain.handle(IPC_CHANNELS.metaSessionRestore, async (_event, sessionId: string) => {
-    await metaSessionManager?.restoreSession(sessionId)
-    const session = metaSessionManager?.getSession(sessionId)
-    if (session) {
-      pushMetaSessionEvent(session)
-    }
+    await restoreMetaSessionWithRuntime(sessionId)
   })
 
   ipcMain.handle(IPC_CHANNELS.metaSessionProposalList, async () => {

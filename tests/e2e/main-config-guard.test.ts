@@ -56,6 +56,24 @@ function extractReturnObjectBlock(source: string): string | null {
   return afterReturn.slice(1, i)
 }
 
+function extractNamedFunctionBody(source: string, functionName: string): string | null {
+  const idx = source.indexOf(`function ${functionName}`)
+  if (idx === -1) return null
+  const afterName = source.slice(idx)
+  const braceStart = afterName.indexOf('{')
+  if (braceStart === -1) return null
+  let depth = 0
+  let i = braceStart
+  for (; i < afterName.length; i++) {
+    if (afterName[i] === '{') depth++
+    else if (afterName[i] === '}') {
+      depth--
+      if (depth === 0) break
+    }
+  }
+  return afterName.slice(braceStart + 1, i)
+}
+
 function extractIpcMainHandlers(source: string): Map<string, string> {
   const handlers = new Map<string, string>()
   const pattern = /ipcMain\.handle\(([^,]+),\s*(?:async\s*)?\(([^)]*)\)\s*=>\s*\{?([^]*?)\)\s*\)/g
@@ -171,6 +189,16 @@ describe('E2E: Main Process Config Guard', () => {
       expect(mainSource).not.toContain('/hooks/claude-code')
       expect(mainSource).not.toContain('${STOA_SESSION_SECRET}')
     })
+
+    it('meta-session archive and restore helpers reset the session input router before changing runtime state', () => {
+      const archiveBody = extractNamedFunctionBody(mainSource, 'archiveMetaSessionWithRuntime')
+      const restoreBody = extractNamedFunctionBody(mainSource, 'restoreMetaSessionWithRuntime')
+
+      expect(archiveBody, 'Could not find archiveMetaSessionWithRuntime').not.toBeNull()
+      expect(restoreBody, 'Could not find restoreMetaSessionWithRuntime').not.toBeNull()
+      expect(archiveBody!).toMatch(/sessionInputRouter\?\.resetSession\(sessionId\)/)
+      expect(restoreBody!).toMatch(/sessionInputRouter\?\.resetSession\(sessionId\)/)
+    })
   })
 
   describe('IPC handler registration completeness', () => {
@@ -193,11 +221,13 @@ describe('E2E: Main Process Config Guard', () => {
         ['sendSessionResize', 'sessionResize'],
         ['archiveSession', 'sessionArchive'],
         ['restoreSession', 'sessionRestore'],
+        ['restartSession', 'sessionRestart'],
         ['listArchivedSessions', 'sessionListArchived'],
         ['getMetaSessionBootstrapState', 'metaSessionBootstrap'],
         ['createMetaSession', 'metaSessionCreate'],
         ['setActiveMetaSession', 'metaSessionSetActive'],
-        ['closeMetaSession', 'metaSessionClose'],
+        ['archiveMetaSession', 'metaSessionArchive'],
+        ['restoreMetaSession', 'metaSessionRestore'],
         ['listMetaSessionProposals', 'metaSessionProposalList'],
         ['getMetaSessionProposal', 'metaSessionProposalGet'],
         ['approveMetaSessionProposal', 'metaSessionProposalApprove'],
@@ -288,6 +318,10 @@ describe('E2E: Main Process Config Guard', () => {
       expect(match![1]).toMatch(/createSession/)
     })
 
+    it('IPC handler for session:restart exists', () => {
+      expect(mainSource).toMatch(/ipcMain\.handle\(\s*IPC_CHANNELS\.sessionRestart\b/)
+    })
+
     it('IPC handler for project:bootstrap calls snapshot', () => {
       const handlerPattern = /ipcMain\.handle\([^)]*projectBootstrap[^,]*,\s*(?:async\s*)?\([^)]*\)\s*=>\s*\{?([^}]*\})/s
       const match = mainSource.match(handlerPattern)
@@ -335,11 +369,11 @@ describe('E2E: Main Process Config Guard', () => {
         'detectVscode',
         'archiveSession',
         'restoreSession',
+        'restartSession',
         'listArchivedSessions',
         'getMetaSessionBootstrapState',
         'createMetaSession',
         'setActiveMetaSession',
-        'closeMetaSession',
         'archiveMetaSession',
         'restoreMetaSession',
         'listMetaSessionProposals',
@@ -422,11 +456,13 @@ describe('E2E: Main Process Config Guard', () => {
       expect(invMap.get('detectVscode')).toBe('settings:detect-vscode')
       expect(invMap.get('archiveSession')).toBe('session:archive')
       expect(invMap.get('restoreSession')).toBe('session:restore')
+      expect(invMap.get('restartSession')).toBe('session:restart')
       expect(invMap.get('listArchivedSessions')).toBe('session:list-archived')
       expect(invMap.get('getMetaSessionBootstrapState')).toBe('meta-session:bootstrap')
       expect(invMap.get('createMetaSession')).toBe('meta-session:create')
       expect(invMap.get('setActiveMetaSession')).toBe('meta-session:set-active')
-      expect(invMap.get('closeMetaSession')).toBe('meta-session:close')
+      expect(invMap.get('archiveMetaSession')).toBe('meta-session:archive')
+      expect(invMap.get('restoreMetaSession')).toBe('meta-session:restore')
       expect(invMap.get('listMetaSessionProposals')).toBe('meta-session:proposal-list')
       expect(invMap.get('getMetaSessionProposal')).toBe('meta-session:proposal-get')
       expect(invMap.get('approveMetaSessionProposal')).toBe('meta-session:proposal-approve')

@@ -6,10 +6,19 @@ import type { SessionType } from '@shared/project-session'
 import { getProviderDescriptorBySessionType } from '@shared/provider-descriptors'
 import type { ProjectHierarchyNode } from '@renderer/stores/workspaces'
 import NewProjectModal from './NewProjectModal.vue'
-
-const { t } = useI18n()
 import ProviderFloatingCard from './ProviderFloatingCard.vue'
 import ProviderRadialMenu from './ProviderRadialMenu.vue'
+import SessionContextMenu from './SessionContextMenu.vue'
+
+const { t } = useI18n()
+
+interface SessionContextMenuItem {
+  id: string
+  label: string
+  description?: string
+  danger?: boolean
+  disabled?: boolean
+}
 
 interface DetailState {
   kind: 'project' | 'session'
@@ -35,6 +44,7 @@ const emit = defineEmits<{
   createSession: [payload: { projectId: string; type: SessionType; title: string }]
   deleteProject: [projectId: string]
   archiveSession: [sessionId: string]
+  restartSession: [sessionId: string]
 }>()
 
 const showNewProject = ref(false)
@@ -51,6 +61,11 @@ const floatingCardPosition = ref({ x: 0, y: 0, width: 0, height: 0 })
 const radialMenuVisible = ref(false)
 const radialMenuProjectId = ref('')
 const radialMenuCenter = ref({ x: 0, y: 0 })
+
+const sessionContextMenuVisible = ref(false)
+const sessionContextMenuSessionId = ref('')
+const sessionContextMenuSessionTitle = ref('')
+const sessionContextMenuPosition = ref({ x: 0, y: 0 })
 
 let longPressTimer: ReturnType<typeof setTimeout> | null = null
 let longPressActivated = false
@@ -96,6 +111,39 @@ function closeFloatingCard() {
 
 function closeRadialMenu() {
   radialMenuVisible.value = false
+}
+
+function openSessionContextMenu(event: MouseEvent, session: ProjectHierarchyNode['sessions'][number]): void {
+  event.preventDefault()
+  sessionContextMenuSessionId.value = session.id
+  sessionContextMenuSessionTitle.value = session.title
+  sessionContextMenuPosition.value = { x: event.clientX, y: event.clientY }
+  sessionContextMenuVisible.value = true
+}
+
+function closeSessionContextMenu(): void {
+  sessionContextMenuVisible.value = false
+}
+
+function sessionContextMenuItems(): SessionContextMenuItem[] {
+  return [
+    {
+      id: 'restart',
+      label: t('workspace.restartSession')
+    }
+  ]
+}
+
+function handleSessionContextMenuSelect(actionId: string): void {
+  if (!sessionContextMenuVisible.value) {
+    return
+  }
+
+  if (actionId === 'restart') {
+    emit('restartSession', sessionContextMenuSessionId.value)
+  }
+
+  closeSessionContextMenu()
 }
 
 function sessionRowViewModel(sessionId: string): SessionRowViewModel | null {
@@ -371,7 +419,7 @@ onBeforeUnmount(() => {
               :data-session-type="session.type"
               type="button"
               @click="emit('selectSession', session.id)"
-              @contextmenu.prevent="openDetail($event, 'session', { title: session.title, type: session.type, phase: sessionPrimaryLabel(session) ?? sessionPhase(session) })"
+              @contextmenu="openSessionContextMenu($event, session)"
             >
               <div
                 class="route-dot"
@@ -440,6 +488,15 @@ onBeforeUnmount(() => {
     :center="radialMenuCenter"
     @create="handleRadialMenuCreate"
     @close="closeRadialMenu"
+  />
+
+  <SessionContextMenu
+    :visible="sessionContextMenuVisible"
+    :position="sessionContextMenuPosition"
+    :items="sessionContextMenuItems()"
+    :aria-label="t('workspace.sessionActions', { title: sessionContextMenuSessionTitle })"
+    @select="handleSessionContextMenuSelect"
+    @close="closeSessionContextMenu"
   />
 
   <Teleport to="body">

@@ -169,14 +169,6 @@ export const useMetaSessionStore = defineStore('meta-session', () => {
     await window.stoa.setActiveMetaSession?.(sessionId)
   }
 
-  async function closeSession(sessionId: string): Promise<void> {
-    await window.stoa.closeMetaSession?.(sessionId)
-    sessions.value = sessions.value.filter((session) => session.id !== sessionId)
-    if (activeMetaSessionId.value === sessionId) {
-      activeMetaSessionId.value = sessions.value[0]?.id ?? null
-    }
-  }
-
   async function archiveSession(sessionId: string): Promise<void> {
     await window.stoa.archiveMetaSession?.(sessionId)
     sessions.value = sessions.value.map((session) =>
@@ -192,6 +184,7 @@ export const useMetaSessionStore = defineStore('meta-session', () => {
     sessions.value = sessions.value.map((session) =>
       session.id === sessionId ? { ...session, archived: false } : session
     )
+    activeMetaSessionId.value = sessionId
   }
 
   async function refreshProposals(): Promise<void> {
@@ -267,7 +260,6 @@ export const useMetaSessionStore = defineStore('meta-session', () => {
     bootstrapFromBridge,
     createSession,
     setActiveSession,
-    closeSession,
     archiveSession,
     restoreSession,
     applySessionEvent,

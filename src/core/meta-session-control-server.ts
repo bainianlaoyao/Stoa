@@ -16,7 +16,8 @@ interface MetaSessionSource {
   getSession(sessionId: string): MetaSessionSummary | null
   createSession(request: CreateMetaSessionRequest): Promise<MetaSessionSummary>
   setActiveSession(sessionId: string): Promise<void>
-  closeSession(sessionId: string): Promise<void>
+  archiveSession(sessionId: string): Promise<void>
+  restoreSession(sessionId: string): Promise<void>
 }
 
 interface MetaSessionControlServerOptions {
@@ -452,13 +453,25 @@ export function createMetaSessionControlServer(options: MetaSessionControlServer
     }))
   })
 
-  app.post('/ctl/meta-sessions/:sessionId/close', async (request, response) => {
+  app.post('/ctl/meta-sessions/:sessionId/archive', async (request, response) => {
     const session = options.metaSessionSource.getSession(request.params.sessionId)
     if (!session) {
       notFound(response, 'unknown_session', `Unknown meta session: ${request.params.sessionId}`)
       return
     }
-    await options.metaSessionSource.closeSession(request.params.sessionId)
+    await options.metaSessionSource.archiveSession(request.params.sessionId)
+    response.json(jsonEnvelope({
+      session: options.metaSessionSource.getSession(request.params.sessionId)
+    }))
+  })
+
+  app.post('/ctl/meta-sessions/:sessionId/restore', async (request, response) => {
+    const session = options.metaSessionSource.getSession(request.params.sessionId)
+    if (!session) {
+      notFound(response, 'unknown_session', `Unknown meta session: ${request.params.sessionId}`)
+      return
+    }
+    await options.metaSessionSource.restoreSession(request.params.sessionId)
     response.json(jsonEnvelope({
       session: options.metaSessionSource.getSession(request.params.sessionId)
     }))

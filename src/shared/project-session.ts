@@ -314,6 +314,7 @@ export interface RendererApi {
   isWindowMaximized: () => Promise<boolean>
   onWindowMaximizeChange: (callback: (maximized: boolean) => void) => () => void
   restoreSession: (sessionId: string) => Promise<void>
+  restartSession?: (sessionId: string) => Promise<void>
   listArchivedSessions: () => Promise<SessionSummary[]>
   getUpdateState: () => Promise<UpdateState>
   checkForUpdates: () => Promise<UpdateState>
@@ -328,7 +329,6 @@ export interface RendererApi {
   getMetaSessionBootstrapState?: () => Promise<MetaSessionBootstrapState>
   createMetaSession?: (request: CreateMetaSessionRequest) => Promise<MetaSessionSummary>
   setActiveMetaSession?: (sessionId: string) => Promise<void>
-  closeMetaSession?: (sessionId: string) => Promise<void>
   archiveMetaSession?: (sessionId: string) => Promise<void>
   restoreMetaSession?: (sessionId: string) => Promise<void>
   listMetaSessionProposals?: () => Promise<MetaSessionProposal[]>

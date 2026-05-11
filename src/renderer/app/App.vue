@@ -106,6 +106,19 @@ async function handleRestoreSession(sessionId: string): Promise<void> {
   }
 }
 
+async function handleRestartSession(sessionId: string): Promise<void> {
+  workspaceStore.clearError()
+  workspaceStore.setActiveSession(sessionId)
+  try {
+    if (!window.stoa.restartSession) {
+      throw new Error('Restart is unavailable in the current preload bridge')
+    }
+    await window.stoa.restartSession(sessionId)
+  } catch (err) {
+    workspaceStore.lastError = err instanceof Error ? err.message : String(err)
+  }
+}
+
 async function handleOpenWorkspace(request: OpenWorkspaceRequest): Promise<void> {
   workspaceStore.clearError()
   try {
@@ -191,6 +204,7 @@ onBeforeUnmount(() => {
       @create-session="handleSessionCreate"
       @delete-project="handleProjectDelete"
       @archive-session="handleArchiveSession"
+      @restart-session="handleRestartSession"
       @restore-session="handleRestoreSession"
       @open-workspace="handleOpenWorkspace"
     />

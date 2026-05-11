@@ -55,7 +55,8 @@ export const USAGE_TEXT = [
   '  meta-sessions list',
   '  meta-sessions create --title "..." --backend <claude-code|codex|opencode> [--capability-level <0|1|2|3>]',
   '  meta-sessions get <id>',
-  '  meta-sessions close <id>',
+  '  meta-sessions archive <id>',
+  '  meta-sessions restore <id>',
   '  meta-sessions activate <id>',
   '  proposals create prompt --target <sessionId> --text "..."',
   '  proposals list',
@@ -449,13 +450,30 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
       return 0
     }
 
-    if (group === 'meta-sessions' && action === 'close') {
+    if (group === 'meta-sessions' && action === 'archive') {
         const metaSessionId = rest[0]
         if (!metaSessionId) {
           throw new CliUsageError('Missing meta session id')
         }
 
-      const { response, text } = await request(resolvedDeps, `/ctl/meta-sessions/${metaSessionId}/close`, {
+      const { response, text } = await request(resolvedDeps, `/ctl/meta-sessions/${metaSessionId}/archive`, {
+        method: 'POST'
+      })
+      if (!response.ok) {
+        resolvedDeps.stderr.write(`${text}\n`)
+        return mapFailureExitCode(response, text)
+      }
+      resolvedDeps.stdout.write(text)
+      return 0
+    }
+
+    if (group === 'meta-sessions' && action === 'restore') {
+        const metaSessionId = rest[0]
+        if (!metaSessionId) {
+          throw new CliUsageError('Missing meta session id')
+        }
+
+      const { response, text } = await request(resolvedDeps, `/ctl/meta-sessions/${metaSessionId}/restore`, {
         method: 'POST'
       })
       if (!response.ok) {

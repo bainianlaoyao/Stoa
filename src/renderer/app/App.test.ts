@@ -144,6 +144,7 @@ function setupStoa(overrides?: Partial<typeof window.stoa>) {
     setActiveSession: vi.fn().mockResolvedValue(undefined),
     archiveSession: vi.fn().mockResolvedValue(undefined),
     restoreSession: vi.fn().mockResolvedValue(undefined),
+    restartSession: vi.fn().mockResolvedValue(undefined),
     listArchivedSessions: vi.fn().mockResolvedValue([]),
 
     getTerminalReplay: vi.fn().mockResolvedValue(''),
@@ -664,6 +665,29 @@ describe('App (root)', () => {
       expect(store.sessions[0].archived).toBe(true)
       expect(store.activeSessionId).toBeNull()
       expect(store.lastError).toBe('restore failed')
+    })
+
+    it('restartSession event updates store and calls window.stoa.restartSession', async () => {
+      const hydratedState: BootstrapState = {
+        activeProjectId: 'p1',
+        activeSessionId: null,
+        terminalWebhookPort: 0,
+        projects: [{ id: 'p1', name: 'P', path: '/p', createdAt: 't', updatedAt: 't' }],
+        sessions: [createSessionSummary({ id: 's1', projectId: 'p1', type: 'opencode', externalSessionId: 'ext-1' })]
+      }
+      setupStoa({ getBootstrapState: vi.fn().mockResolvedValue(hydratedState) })
+
+      wrapper = await mountApp(pinia)
+      await flush()
+
+      const appShell = wrapper.findComponent({ name: 'AppShell' })
+      await appShell.vm.$emit('restartSession', 's1')
+      await flush()
+
+      const store = useWorkspaceStore(pinia)
+      expect(window.stoa.restartSession).toHaveBeenCalledWith('s1')
+      expect(store.activeProjectId).toBe('p1')
+      expect(store.activeSessionId).toBe('s1')
     })
   })
 

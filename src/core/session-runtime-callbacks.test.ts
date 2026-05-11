@@ -159,6 +159,31 @@ describe('session runtime callbacks and defaults', () => {
       expect(markRuntimeExited).toHaveBeenCalledWith('session_op_1', 137, 'opencode exited (137)')
     })
 
+    test('stale restart exits are ignored when a newer launch token is active', async () => {
+      const ptyHost = createCapturingPtyHost()
+      const markRuntimeExited = vi.fn(async () => {})
+
+      await startSessionRuntime({
+        session: createBaseSession(),
+        webhookPort: 43127,
+        provider: createProvider(),
+        ptyHost: ptyHost as never,
+        manager: {
+          markRuntimeStarting: vi.fn(async () => {}),
+          markRuntimeAlive: vi.fn(async () => {}),
+          markRuntimeExited,
+          appendTerminalData: vi.fn(async () => {})
+        } as never,
+        launchToken: 1,
+        isLaunchTokenCurrent: (launchToken) => launchToken === 2
+      })
+
+      const onExit = ptyHost.onExit!
+      onExit(0)
+
+      expect(markRuntimeExited).not.toHaveBeenCalled()
+    })
+
     test('onExit callback logs markRuntimeExited failures instead of leaving an unhandled rejection', async () => {
       const ptyHost = createCapturingPtyHost()
       const persistError = new Error('persist failed after exit')

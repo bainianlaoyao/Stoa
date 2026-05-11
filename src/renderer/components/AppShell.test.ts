@@ -57,6 +57,7 @@ const CommandSurfaceStub = defineComponent({
     'createSession',
     'deleteProject',
     'archiveSession',
+    'restartSession',
     'openWorkspace'
   ],
   setup(props, { attrs }) {
@@ -451,6 +452,28 @@ describe('AppShell', () => {
     await wrapper.get('[data-archive-restore="session-archived"]').trigger('click')
 
     expect(wrapper.emitted('restoreSession')).toEqual([['session-archived']])
+  })
+
+  it('forwards restartSession from command surface', async () => {
+    const wrapper = mountAppShell({
+      hierarchy: [{
+        ...baseProject,
+        active: true,
+        archivedSessions: [],
+        sessions: [{
+          ...baseSession,
+          active: true
+        }]
+      }],
+      activeProjectId: baseProject.id,
+      activeSessionId: baseSession.id,
+      activeProject: baseProject,
+      activeSession: baseSession
+    })
+
+    await wrapper.findComponent({ name: 'CommandSurface' }).vm.$emit('restartSession', 'session-1')
+
+    expect(wrapper.emitted('restartSession')).toEqual([['session-1']])
   })
 
   it('forwards openWorkspace from command surface', async () => {

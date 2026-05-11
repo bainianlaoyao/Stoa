@@ -1996,6 +1996,7 @@ describe('SessionEventBridge', () => {
 
     expect(indexSource).toMatch(/app\.on\('before-quit', async \(event\) => \{/)
     expect(indexSource).toMatch(/event\.preventDefault\(\)/)
+    expect(indexSource).toMatch(/await ptyHost\?\.disposeAndWait\(\)/)
     expect(indexSource).toMatch(/await stopSessionEventBridge\(\)/)
     expect(indexSource).toMatch(/app\.quit\(\)/)
   })

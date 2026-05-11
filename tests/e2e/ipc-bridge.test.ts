@@ -70,7 +70,8 @@ const RENDERER_API_INVOKE_CHANNELS = [
   IPC_CHANNELS.metaSessionBootstrap,
   IPC_CHANNELS.metaSessionCreate,
   IPC_CHANNELS.metaSessionSetActive,
-  IPC_CHANNELS.metaSessionClose,
+  IPC_CHANNELS.metaSessionArchive,
+  IPC_CHANNELS.metaSessionRestore,
   IPC_CHANNELS.metaSessionProposalList,
   IPC_CHANNELS.metaSessionProposalGet,
   IPC_CHANNELS.metaSessionProposalApprove,
@@ -82,7 +83,8 @@ const RENDERER_API_INVOKE_CHANNELS = [
   IPC_CHANNELS.observabilityGetApp,
   IPC_CHANNELS.observabilityListSessionEvents,
   IPC_CHANNELS.sessionTerminalReplay,
-  IPC_CHANNELS.sessionResize
+  IPC_CHANNELS.sessionResize,
+  IPC_CHANNELS.sessionRestart
 ] as const
 
 const RENDERER_API_SEND_CHANNELS = [
@@ -172,7 +174,9 @@ function createPreloadApi(bus: FakeIpcBus): RendererApi {
     getMetaSessionBootstrapState: () => bus.invoke(IPC_CHANNELS.metaSessionBootstrap),
     createMetaSession: (request: CreateMetaSessionRequest) => bus.invoke(IPC_CHANNELS.metaSessionCreate, request),
     setActiveMetaSession: (sessionId: string) => bus.invoke(IPC_CHANNELS.metaSessionSetActive, sessionId),
-    closeMetaSession: (sessionId: string) => bus.invoke(IPC_CHANNELS.metaSessionClose, sessionId),
+    archiveMetaSession: (sessionId: string) => bus.invoke(IPC_CHANNELS.metaSessionArchive, sessionId),
+    restoreMetaSession: (sessionId: string) => bus.invoke(IPC_CHANNELS.metaSessionRestore, sessionId),
+    restartSession: (sessionId: string) => bus.invoke(IPC_CHANNELS.sessionRestart, sessionId),
     listMetaSessionProposals: () => bus.invoke(IPC_CHANNELS.metaSessionProposalList),
     getMetaSessionProposal: (proposalId: string) => bus.invoke(IPC_CHANNELS.metaSessionProposalGet, proposalId),
     approveMetaSessionProposal: (proposalId: string) => bus.invoke(IPC_CHANNELS.metaSessionProposalApprove, proposalId),
@@ -257,8 +261,12 @@ async function registerMainHandlers(
     await metaSessionManager.setActiveSession(sessionId)
   })
 
-  bus.handle(IPC_CHANNELS.metaSessionClose, async (_event, sessionId: string) => {
-    await metaSessionManager.closeSession(sessionId)
+  bus.handle(IPC_CHANNELS.metaSessionArchive, async (_event, sessionId: string) => {
+    await metaSessionManager.archiveSession(sessionId)
+  })
+
+  bus.handle(IPC_CHANNELS.metaSessionRestore, async (_event, sessionId: string) => {
+    await metaSessionManager.restoreSession(sessionId)
   })
 
   bus.handle(IPC_CHANNELS.metaSessionProposalList, async (): Promise<MetaSessionProposal[]> => {
@@ -315,6 +323,15 @@ async function registerMainHandlers(
     return
   })
 
+  bus.handle(IPC_CHANNELS.sessionRestart, async (_event, sessionId: string) => {
+    const session = manager.snapshot().sessions.find((candidate) => candidate.id === sessionId)
+    if (!session) {
+      throw new Error(`Missing session ${sessionId}`)
+    }
+
+    await manager.setActiveSession(sessionId)
+  })
+
   return manager
 }
 
@@ -363,7 +380,8 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
       expect(IPC_CHANNELS.metaSessionBootstrap).toBe('meta-session:bootstrap')
       expect(IPC_CHANNELS.metaSessionCreate).toBe('meta-session:create')
       expect(IPC_CHANNELS.metaSessionSetActive).toBe('meta-session:set-active')
-      expect(IPC_CHANNELS.metaSessionClose).toBe('meta-session:close')
+      expect(IPC_CHANNELS.metaSessionArchive).toBe('meta-session:archive')
+      expect(IPC_CHANNELS.metaSessionRestore).toBe('meta-session:restore')
       expect(IPC_CHANNELS.metaSessionProposalList).toBe('meta-session:proposal-list')
       expect(IPC_CHANNELS.metaSessionProposalGet).toBe('meta-session:proposal-get')
       expect(IPC_CHANNELS.metaSessionProposalApprove).toBe('meta-session:proposal-approve')
@@ -378,6 +396,7 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
       expect(IPC_CHANNELS.sessionInput).toBe('session:input')
       expect(IPC_CHANNELS.sessionBinaryInput).toBe('session:binary-input')
       expect(IPC_CHANNELS.sessionResize).toBe('session:resize')
+      expect(IPC_CHANNELS.sessionRestart).toBe('session:restart')
       expect(IPC_CHANNELS.terminalData).toBe('terminal:data')
     })
   })
@@ -451,6 +470,24 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
       expect(session.recoveryMode).toBe('fresh-shell')
     })
 
+    test('restartSession round-trip reselects the target session', async () => {
+      const workspaceDir = await createTestWorkspace('ipc-restart-')
+      const project = await api.createProject({
+        name: 'restart_host',
+        path: workspaceDir
+      })
+
+      const session = await api.createSession({
+        projectId: project.id,
+        type: 'shell',
+        title: 'Shell Restart'
+      })
+
+      await api.restartSession?.(session.id)
+
+      expect(manager.snapshot().activeSessionId).toBe(session.id)
+    })
+
     test('full user workflow: bootstrap → create project → create session → verify state', async () => {
       const state0 = await api.getBootstrapState()
       expect(state0.projects).toHaveLength(0)
@@ -475,7 +512,7 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
       expect(state1.sessions[0]!.id).toBe(session.id)
     })
 
-    test('createMetaSession / setActiveMetaSession / closeMetaSession round-trip updates isolated meta session state', async () => {
+    test('createMetaSession / setActiveMetaSession / archiveMetaSession / restoreMetaSession round-trip updates isolated meta session state', async () => {
       const created = await api.createMetaSession?.({
         title: 'global-triage',
         backendSessionType: 'claude-code',
@@ -491,9 +528,15 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
       let bootstrap = await api.getMetaSessionBootstrapState?.()
       expect(bootstrap?.activeMetaSessionId).toBe(created!.id)
 
-      await api.closeMetaSession?.(created!.id)
+      await api.archiveMetaSession?.(created!.id)
       bootstrap = await api.getMetaSessionBootstrapState?.()
-      expect(bootstrap?.sessions.find((session) => session.id === created!.id)?.status).toBe('closed')
+      expect(bootstrap?.sessions.find((session) => session.id === created!.id)?.archived).toBe(true)
+      expect(bootstrap?.activeMetaSessionId).toBeNull()
+
+      await api.restoreMetaSession?.(created!.id)
+      bootstrap = await api.getMetaSessionBootstrapState?.()
+      expect(bootstrap?.sessions.find((session) => session.id === created!.id)?.archived).toBe(false)
+      expect(bootstrap?.activeMetaSessionId).toBe(created!.id)
     })
 
     test('meta session proposal and inspector IPC round-trip can list approve reject dispatch and persist inspector target', async () => {
@@ -756,7 +799,8 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
         getMetaSessionBootstrapState: IPC_CHANNELS.metaSessionBootstrap,
         createMetaSession: IPC_CHANNELS.metaSessionCreate,
         setActiveMetaSession: IPC_CHANNELS.metaSessionSetActive,
-        closeMetaSession: IPC_CHANNELS.metaSessionClose,
+        archiveMetaSession: IPC_CHANNELS.metaSessionArchive,
+        restoreMetaSession: IPC_CHANNELS.metaSessionRestore,
         listMetaSessionProposals: IPC_CHANNELS.metaSessionProposalList,
         getMetaSessionProposal: IPC_CHANNELS.metaSessionProposalGet,
         approveMetaSessionProposal: IPC_CHANNELS.metaSessionProposalApprove,
@@ -779,11 +823,11 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
       }
 
       const methods = Object.keys(apiMethodToChannel)
-      expect(methods).toHaveLength(29)
+      expect(methods).toHaveLength(30)
 
       const channelValues = Object.values(apiMethodToChannel)
       const uniqueChannels = new Set(channelValues)
-      expect(uniqueChannels.size).toBe(29)
+      expect(uniqueChannels.size).toBe(30)
 
       for (const channel of channelValues) {
         expect(typeof channel).toBe('string')

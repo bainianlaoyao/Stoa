@@ -26,6 +26,7 @@ const emit = defineEmits<{
   createSession: [payload: { projectId: string; type: string; title: string }]
   deleteProject: [projectId: string]
   archiveSession: [sessionId: string]
+  restartSession: [sessionId: string]
   openWorkspace: [request: OpenWorkspaceRequest]
 }>()
 
@@ -66,6 +67,7 @@ const sessionRowViewModels = computed(() => {
           @create-session="emit('createSession', $event)"
           @delete-project="emit('deleteProject', $event)"
           @archive-session="emit('archiveSession', $event)"
+          @restart-session="emit('restartSession', $event)"
         />
 
         <TerminalSessionDeck

@@ -122,7 +122,6 @@ function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
     }),
     createMetaSession: vi.fn().mockResolvedValue(null),
     setActiveMetaSession: vi.fn().mockResolvedValue(undefined),
-    closeMetaSession: vi.fn().mockResolvedValue(undefined),
     archiveMetaSession: vi.fn().mockResolvedValue(undefined),
     restoreMetaSession: vi.fn().mockResolvedValue(undefined),
     setMetaSessionInspectorTarget: vi.fn().mockResolvedValue(undefined),

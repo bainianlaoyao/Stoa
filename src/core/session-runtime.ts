@@ -47,6 +47,9 @@ export interface StartSessionRuntimeOptions {
   initialDimensions?: { cols: number; rows: number }
   commandEnv?: Record<string, string>
   initialPrompt?: string
+  launchToken?: number
+  isLaunchTokenCurrent?: (launchToken: number) => boolean
+  requireExternalSessionIdForResume?: boolean
 }
 
 function toProviderTarget(session: StartSessionRuntimeOptions['session']): ProviderRuntimeTarget {
@@ -96,6 +99,15 @@ export async function startSessionRuntime(options: StartSessionRuntimeOptions): 
     && !!session.externalSessionId
     && hasResumeBoundary
 
+  if (
+    options.requireExternalSessionIdForResume
+    && descriptor.supportsResume
+    && provider.supportsResume()
+    && !session.externalSessionId
+  ) {
+    throw new Error(`Cannot restart ${session.type} session without a stored external session id`)
+  }
+
   const providerCommand = canResume
     ? await provider.buildResumeCommand(target, session.externalSessionId!, context)
     : await provider.buildStartCommand(target, context)
@@ -137,6 +149,15 @@ export async function startSessionRuntime(options: StartSessionRuntimeOptions): 
         void manager.appendTerminalData({ sessionId: session.id, data })
       },
       (exitCode) => {
+        if (
+          options.launchToken !== undefined
+          && options.isLaunchTokenCurrent
+          && !options.isLaunchTokenCurrent(options.launchToken)
+        ) {
+          console.log(`[session-runtime] Ignoring stale exit for ${session.id} from launch token ${options.launchToken}`)
+          return
+        }
+
         exitObservedDuringStart = true
         console.log(`[session-runtime] Process exited for ${session.id} with code ${exitCode}`)
         void manager

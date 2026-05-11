@@ -214,7 +214,9 @@ export default {
     addSessionTo: 'Add session to {name}',
     addSessionTitle: 'Add session \u00B7 long-press for radial',
     archiveSession: 'Archive {title}',
-    archiveSessionTitle: 'Archive session'
+    archiveSessionTitle: 'Archive session',
+    restartSession: 'Restart session',
+    sessionActions: 'Session actions for {title}'
   },
 
   archive: {

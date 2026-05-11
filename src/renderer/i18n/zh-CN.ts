@@ -214,7 +214,9 @@ export default {
     addSessionTo: '\u5411 {name} \u6DFB\u52A0\u4F1A\u8BDD',
     addSessionTitle: '\u6DFB\u52A0\u4F1A\u8BDD \u00B7 \u957F\u6309\u663E\u793A\u73AF\u5F62\u83DC\u5355',
     archiveSession: '\u5F52\u6863 {title}',
-    archiveSessionTitle: '\u5F52\u6863\u4F1A\u8BDD'
+    archiveSessionTitle: '\u5F52\u6863\u4F1A\u8BDD',
+    restartSession: '\u91CD\u542F\u4F1A\u8BDD',
+    sessionActions: '{title} \u7684\u4F1A\u8BDD\u64CD\u4F5C'
   },
 
   archive: {

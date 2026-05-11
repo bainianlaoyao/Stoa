@@ -484,6 +484,24 @@ describe('WorkspaceHierarchyPanel', () => {
       expect(wrapper.emitted('archiveSession')).toEqual([['session_1']])
       expect(wrapper.emitted('selectSession')).toBeUndefined()
     })
+
+    it('right-clicking a session opens the context menu and emits restartSession', async () => {
+      const wrapper = mountPanel()
+      await wrapper.findAll('.route-item.child')[0]!.trigger('contextmenu', {
+        clientX: 144,
+        clientY: 200
+      })
+
+      const menu = document.querySelector('[data-testid="session-context-menu"]')
+      expect(menu).not.toBeNull()
+      expect(menu?.textContent).toContain('Restart session')
+
+      const restartButton = document.querySelector('[data-testid="session-context-menu.item.restart"]') as HTMLButtonElement | null
+      expect(restartButton).not.toBeNull()
+      restartButton!.click()
+
+      expect(wrapper.emitted('restartSession')).toEqual([['session_1']])
+    })
   })
 
   describe('add session button', () => {

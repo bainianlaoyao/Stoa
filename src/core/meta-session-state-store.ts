@@ -4,8 +4,6 @@ import { homedir } from 'node:os'
 import { createAtomicTempFilePath } from './state-store'
 import type { PersistedMetaSessionStateV1 } from '@shared/meta-session'
 
-const DEFAULT_META_SESSION_BACKEND_SESSION_TYPE = 'claude-code' as const
-
 export const DEFAULT_META_SESSION_STATE: PersistedMetaSessionStateV1 = {
   version: 1,
   active_meta_session_id: null,
@@ -102,7 +100,8 @@ function isValidPersistedMetaSession(value: unknown): value is PersistedMetaSess
     && typeof value.updated_at === 'string'
     && 'last_activated_at' in value
     && (value.last_activated_at === null || typeof value.last_activated_at === 'string')
-    && (!('archived' in value) || typeof value.archived === 'boolean')
+    && 'archived' in value
+    && typeof value.archived === 'boolean'
 }
 
 function isValidProposalStatus(value: unknown): value is PersistedMetaSessionStateV1['proposals'][number]['status'] {
@@ -312,30 +311,43 @@ function toNormalizedMetaSessionState(value: unknown): PersistedMetaSessionState
     return null
   }
 
-  if (!('sessions' in value) || !Array.isArray(value.sessions) || !value.sessions.every(isValidPersistedMetaSession)) {
+  if (!('sessions' in value) || !Array.isArray(value.sessions)) {
     return null
   }
 
-  const inspectorTarget = 'inspector_target' in value && isValidInspectorTarget(value.inspector_target)
+  const sessions = value.sessions.filter(isValidPersistedMetaSession)
+  const retainedSessionIds = new Set(sessions.map((session) => session.session_id))
+  const proposals = 'proposals' in value && Array.isArray(value.proposals)
+    ? value.proposals
+      .filter(isValidPersistedMetaSessionProposal)
+      .filter((proposal) => retainedSessionIds.has(proposal.meta_session_id))
+    : []
+  const retainedProposalIds = new Set(proposals.map((proposal) => proposal.proposal_id))
+  const actionLogs = 'action_logs' in value && Array.isArray(value.action_logs)
+    ? value.action_logs
+      .filter(isValidPersistedMetaSessionActionLog)
+      .filter((actionLog) => retainedSessionIds.has(actionLog.meta_session_id)
+        && (actionLog.proposal_id === null || retainedProposalIds.has(actionLog.proposal_id)))
+    : []
+
+  let inspectorTarget = 'inspector_target' in value && isValidInspectorTarget(value.inspector_target)
     ? value.inspector_target as PersistedMetaSessionStateV1['inspector_target']
     : structuredClone(DEFAULT_META_SESSION_STATE.inspector_target)
 
+  if (inspectorTarget?.kind === 'proposal' && !retainedProposalIds.has(inspectorTarget.proposalId)) {
+    inspectorTarget = structuredClone(DEFAULT_META_SESSION_STATE.inspector_target)
+  }
+
+  const activeMetaSessionId = value.active_meta_session_id !== null && retainedSessionIds.has(value.active_meta_session_id)
+    ? value.active_meta_session_id
+    : null
+
   return {
     version: 1,
-    active_meta_session_id: value.active_meta_session_id,
-    sessions: value.sessions.map((session) => ({
-      ...session,
-      archived: (session as unknown as { archived?: unknown }).archived === true,
-      backend_session_type: isValidBackendSessionType((session as Partial<typeof session>).backend_session_type)
-        ? (session as typeof session).backend_session_type
-        : DEFAULT_META_SESSION_BACKEND_SESSION_TYPE
-    })),
-    proposals: 'proposals' in value && Array.isArray(value.proposals) && value.proposals.every(isValidPersistedMetaSessionProposal)
-      ? value.proposals
-      : [],
-    action_logs: 'action_logs' in value && Array.isArray(value.action_logs) && value.action_logs.every(isValidPersistedMetaSessionActionLog)
-      ? value.action_logs
-      : [],
+    active_meta_session_id: activeMetaSessionId,
+    sessions,
+    proposals,
+    action_logs: actionLogs,
     inspector_target: inspectorTarget
   }
 }

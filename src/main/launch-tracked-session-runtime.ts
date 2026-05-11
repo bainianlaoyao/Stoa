@@ -29,6 +29,9 @@ interface LaunchTrackedSessionRuntimeOptions {
   initialDimensions?: { cols: number; rows: number }
   commandEnv?: Record<string, string>
   initialPrompt?: string
+  launchToken?: number
+  isLaunchTokenCurrent?: (launchToken: number) => boolean
+  requireExternalSessionIdForResume?: boolean
 }
 
 export async function launchTrackedSessionRuntime(options: LaunchTrackedSessionRuntimeOptions): Promise<boolean> {
@@ -81,7 +84,10 @@ export async function launchTrackedSessionRuntime(options: LaunchTrackedSessionR
     claudeDangerouslySkipPermissions,
     initialDimensions: options.initialDimensions,
     commandEnv: options.commandEnv,
-    initialPrompt: options.initialPrompt
+    initialPrompt: options.initialPrompt,
+    launchToken: options.launchToken,
+    isLaunchTokenCurrent: options.isLaunchTokenCurrent,
+    requireExternalSessionIdForResume: options.requireExternalSessionIdForResume
   })
 
   return true

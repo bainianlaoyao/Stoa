@@ -170,7 +170,7 @@ export class MetaSessionManager {
 
   async restoreSession(sessionId: string): Promise<void> {
     this.state = {
-      activeMetaSessionId: this.state.activeMetaSessionId,
+      activeMetaSessionId: sessionId,
       sessions: this.state.sessions.map((session) => session.id === sessionId
         ? { ...session, archived: false }
         : session),
@@ -223,7 +223,7 @@ export class MetaSessionManager {
 
   buildBootstrapRecoveryPlan(): MetaSessionBootstrapRecoveryEntry[] {
     return this.state.sessions
-      .filter((session) => session.status !== 'closed' && session.backendSessionId)
+      .filter((session) => !session.archived && session.status !== 'closed' && session.backendSessionId)
       .map((session) => ({
         sessionId: session.id,
         backendSessionId: session.backendSessionId!

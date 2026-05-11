@@ -39,6 +39,8 @@ describe('stoa-ctl command surface', () => {
     expect(module.USAGE_TEXT).toContain('state conflicts')
     expect(module.USAGE_TEXT).toContain('meta-sessions list')
     expect(module.USAGE_TEXT).toContain('meta-sessions create --title "..." --backend <claude-code|codex|opencode>')
+    expect(module.USAGE_TEXT).toContain('meta-sessions archive <id>')
+    expect(module.USAGE_TEXT).toContain('meta-sessions restore <id>')
     expect(module.USAGE_TEXT).toContain('proposals create prompt --target <sessionId> --text "..."')
     expect(module.USAGE_TEXT).toContain('proposals list')
     expect(module.USAGE_TEXT).toContain('proposals get <proposalId>')
@@ -180,6 +182,72 @@ describe('stoa-ctl command surface', () => {
 
     expect(exitCode).toBe(0)
     expect(writes.join('')).toContain('"meta_session_2"')
+  })
+
+  test('archives a meta session through the control plane', async () => {
+    const module = await import('./index')
+    const writes: string[] = []
+    const fetchImpl = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+      expect(String(_input)).toBe('http://127.0.0.1:43129/ctl/meta-sessions/meta_session_2/archive')
+      expect(init?.method).toBe('POST')
+      return createResponse({
+        body: '{"ok":true,"data":{"session":{"id":"meta_session_2","archived":true}},"error":null}'
+      })
+    })
+
+    const exitCode = await module.run([
+      'meta-sessions',
+      'archive',
+      'meta_session_2'
+    ], {
+      fetch: fetchImpl,
+      env: metaSessionEnv,
+      stdout: {
+        write(chunk: string) {
+          writes.push(chunk)
+        }
+      },
+      stderr: {
+        write() {}
+      },
+      sleep: async () => {}
+    })
+
+    expect(exitCode).toBe(0)
+    expect(writes.join('')).toContain('"archived":true')
+  })
+
+  test('restores a meta session through the control plane', async () => {
+    const module = await import('./index')
+    const writes: string[] = []
+    const fetchImpl = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+      expect(String(_input)).toBe('http://127.0.0.1:43129/ctl/meta-sessions/meta_session_2/restore')
+      expect(init?.method).toBe('POST')
+      return createResponse({
+        body: '{"ok":true,"data":{"session":{"id":"meta_session_2","archived":false}},"error":null}'
+      })
+    })
+
+    const exitCode = await module.run([
+      'meta-sessions',
+      'restore',
+      'meta_session_2'
+    ], {
+      fetch: fetchImpl,
+      env: metaSessionEnv,
+      stdout: {
+        write(chunk: string) {
+          writes.push(chunk)
+        }
+      },
+      stderr: {
+        write() {}
+      },
+      sleep: async () => {}
+    })
+
+    expect(exitCode).toBe(0)
+    expect(writes.join('')).toContain('"archived":false')
   })
 
   test('reads the attention queue through the control plane', async () => {

@@ -110,7 +110,7 @@ describe('MetaSessionManager', () => {
     expect(snapshot.activeMetaSessionId).toBe(second.id)
   })
 
-  test('restore a meta session marks it as not archived', async () => {
+  test('restore a meta session marks it as not archived and makes it active again', async () => {
     const manager = await MetaSessionManager.create({
       statePath: await createTempMetaSessionStatePath()
     })
@@ -121,6 +121,7 @@ describe('MetaSessionManager', () => {
 
     const snapshot = manager.snapshot()
     expect(snapshot.sessions.find((s) => s.id === session.id)?.archived).toBe(false)
+    expect(snapshot.activeMetaSessionId).toBe(session.id)
   })
 
   test('setActiveSession does not mutate updatedAt', async () => {
@@ -150,5 +151,22 @@ describe('MetaSessionManager', () => {
 
     const snapshot = manager.snapshot()
     expect(snapshot.activeMetaSessionId).toBe(second.id)
+  })
+
+  test('buildBootstrapRecoveryPlan skips archived meta sessions', async () => {
+    const manager = await MetaSessionManager.create({
+      statePath: await createTempMetaSessionStatePath()
+    })
+    const archived = await manager.createSession({ title: 'triage-a', backendSessionType: 'claude-code', capabilityLevel: 1 })
+    const active = await manager.createSession({ title: 'triage-b', backendSessionType: 'claude-code', capabilityLevel: 1 })
+
+    await manager.archiveSession(archived.id)
+
+    expect(manager.buildBootstrapRecoveryPlan()).toEqual([
+      expect.objectContaining({
+        sessionId: active.id,
+        backendSessionId: active.backendSessionId
+      })
+    ])
   })
 })

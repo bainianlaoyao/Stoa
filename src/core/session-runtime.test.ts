@@ -235,6 +235,43 @@ describe('session runtime', () => {
     expect(markRuntimeAlive).toHaveBeenCalledWith('session_op_1', 'ext-123')
   })
 
+  test('rejects restart when a resumable session has no stored external session id', async () => {
+    const provider = createProvider()
+    const buildStartCommand = vi.spyOn(provider, 'buildStartCommand')
+    const buildResumeCommand = vi.spyOn(provider, 'buildResumeCommand')
+    const start = vi.fn()
+
+    await expect(startSessionRuntime({
+      session: {
+        id: 'session_op_restart',
+        projectId: 'project_alpha',
+        path: 'D:/demo',
+        title: 'Restart me',
+        type: 'opencode',
+        runtimeState: 'alive',
+        turnState: 'idle',
+        externalSessionId: null,
+        sessionSecret: 'secret-1',
+        providerPort: 43128
+      },
+      webhookPort: 43127,
+      provider,
+      ptyHost: { start } as never,
+      manager: {
+        markRuntimeStarting: vi.fn(async () => {}),
+        markRuntimeAlive: vi.fn(async () => {}),
+        markRuntimeExited: vi.fn(async () => {}),
+        markRuntimeFailedToStart: vi.fn(async () => {}),
+        appendTerminalData: vi.fn(async () => {})
+      } as never,
+      requireExternalSessionIdForResume: true
+    })).rejects.toThrow('Cannot restart opencode session without a stored external session id')
+
+    expect(buildStartCommand).not.toHaveBeenCalled()
+    expect(buildResumeCommand).not.toHaveBeenCalled()
+    expect(start).not.toHaveBeenCalled()
+  })
+
   test('does not mark runtime alive after synchronous process exit during start', async () => {
     const provider = createProvider()
     const markRuntimeStarting = vi.fn(async () => {})

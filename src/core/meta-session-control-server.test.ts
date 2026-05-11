@@ -149,7 +149,8 @@ describe('meta session control server', () => {
           return createMetaSession('meta_session_created')
         },
         async setActiveSession() {},
-        async closeSession() {}
+        async archiveSession() {},
+        async restoreSession() {}
       },
       snapshotSource: {
         snapshot() {
@@ -244,7 +245,8 @@ describe('meta session control server', () => {
           return createMetaSession('meta_session_created')
         },
         async setActiveSession() {},
-        async closeSession() {}
+        async archiveSession() {},
+        async restoreSession() {}
       },
       snapshotSource: {
         snapshot() {
@@ -386,42 +388,51 @@ describe('meta session control server', () => {
     })
   })
 
-  test('creates activates and closes meta sessions through control routes', async () => {
+  test('creates activates archives and restores meta sessions through control routes', async () => {
     const metaSessions: MetaSessionSummary[] = [createMetaSession()]
     let activeMetaSessionId: string | null = 'meta_session_1'
-
-    const server = createMetaSessionControlServer({
-      metaSessionSource: {
-        snapshot() {
-          return {
-            activeMetaSessionId,
-            sessions: metaSessions.map((session) => ({ ...session })),
-            inspectorTarget: { kind: 'app' }
-          }
-        },
-        getSession(sessionId: string) {
-          return metaSessions.find((session) => session.id === sessionId) ?? null
-        },
-        async createSession(request: CreateMetaSessionRequest) {
-          const created: MetaSessionSummary = {
-            ...createMetaSession('meta_session_2'),
-            title: request.title,
-            backendSessionType: request.backendSessionType,
-            capabilityLevel: request.capabilityLevel
-          }
-          metaSessions.push(created)
-          return created
-        },
-        async setActiveSession(sessionId: string) {
-          activeMetaSessionId = sessionId
-        },
-        async closeSession(sessionId: string) {
-          const target = metaSessions.find((session) => session.id === sessionId)
-          if (target) {
-            target.status = 'closed'
-          }
+    const metaSessionSource = {
+      snapshot() {
+        return {
+          activeMetaSessionId,
+          sessions: metaSessions.map((session) => ({ ...session })),
+          inspectorTarget: { kind: 'app' as const }
         }
       },
+      getSession(sessionId: string) {
+        return metaSessions.find((session) => session.id === sessionId) ?? null
+      },
+      async createSession(request: CreateMetaSessionRequest) {
+        const created: MetaSessionSummary = {
+          ...createMetaSession('meta_session_2'),
+          title: request.title,
+          backendSessionType: request.backendSessionType,
+          capabilityLevel: request.capabilityLevel
+        }
+        metaSessions.push(created)
+        return created
+      },
+      async setActiveSession(sessionId: string) {
+        activeMetaSessionId = sessionId
+      },
+      async archiveSession(sessionId: string) {
+        const target = metaSessions.find((session) => session.id === sessionId)
+        if (target) {
+          target.archived = true
+          activeMetaSessionId = null
+        }
+      },
+      async restoreSession(sessionId: string) {
+        const target = metaSessions.find((session) => session.id === sessionId)
+        if (target) {
+          target.archived = false
+          activeMetaSessionId = sessionId
+        }
+      }
+    }
+
+    const server = createMetaSessionControlServer({
+      metaSessionSource,
       snapshotSource: {
         snapshot() {
           return {
@@ -476,7 +487,8 @@ describe('meta session control server', () => {
 
     const created = await post(port, '/ctl/meta-sessions', authHeaders, '{"title":"global-triage","backendSessionType":"claude-code","capabilityLevel":3}')
     const activated = await post(port, '/ctl/meta-sessions/meta_session_2/activate', authHeaders)
-    const closed = await post(port, '/ctl/meta-sessions/meta_session_2/close', authHeaders)
+    const archived = await post(port, '/ctl/meta-sessions/meta_session_2/archive', authHeaders)
+    const restored = await post(port, '/ctl/meta-sessions/meta_session_2/restore', authHeaders)
 
     expect(JSON.parse(created.body)).toMatchObject({
       ok: true,
@@ -491,12 +503,21 @@ describe('meta session control server', () => {
         activeMetaSessionId: 'meta_session_2'
       }
     })
-    expect(JSON.parse(closed.body)).toMatchObject({
+    expect(JSON.parse(archived.body)).toMatchObject({
       ok: true,
       data: {
         session: {
           id: 'meta_session_2',
-          status: 'closed'
+          archived: true
+        }
+      }
+    })
+    expect(JSON.parse(restored.body)).toMatchObject({
+      ok: true,
+      data: {
+        session: {
+          id: 'meta_session_2',
+          archived: false
         }
       }
     })
@@ -519,7 +540,8 @@ describe('meta session control server', () => {
           return createMetaSession('meta_session_created')
         },
         async setActiveSession() {},
-        async closeSession() {}
+        async archiveSession() {},
+        async restoreSession() {}
       },
       snapshotSource: {
         snapshot() {

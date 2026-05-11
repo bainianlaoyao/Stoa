@@ -77,6 +77,9 @@ const api: RendererApi = {
   async restoreSession(sessionId) {
     return ipcRenderer.invoke(IPC_CHANNELS.sessionRestore, sessionId)
   },
+  async restartSession(sessionId) {
+    return ipcRenderer.invoke(IPC_CHANNELS.sessionRestart, sessionId)
+  },
   async listArchivedSessions() {
     return ipcRenderer.invoke(IPC_CHANNELS.sessionListArchived)
   },
@@ -88,9 +91,6 @@ const api: RendererApi = {
   },
   async setActiveMetaSession(sessionId) {
     return ipcRenderer.invoke(IPC_CHANNELS.metaSessionSetActive, sessionId)
-  },
-  async closeMetaSession(sessionId) {
-    return ipcRenderer.invoke(IPC_CHANNELS.metaSessionClose, sessionId)
   },
   async archiveMetaSession(sessionId: string) {
     return ipcRenderer.invoke(IPC_CHANNELS.metaSessionArchive, sessionId)

@@ -3,6 +3,7 @@ import { PtyHost } from './pty-host'
 import type { ProviderCommand } from '@shared/project-session'
 
 interface MockTerminal {
+  pid: number
   onData: ReturnType<typeof vi.fn>
   onExit: ReturnType<typeof vi.fn>
   write: ReturnType<typeof vi.fn>
@@ -16,6 +17,7 @@ const mockTerminals: MockTerminal[] = []
 
 function createMockTerminal(): MockTerminal {
   const terminal: MockTerminal = {
+    pid: mockTerminals.length + 1,
     onData: vi.fn((cb: (data: string) => void) => {
       terminal._onData = cb
     }),
@@ -281,6 +283,18 @@ describe('PtyHost', () => {
       expect(() => host.kill('unknown')).not.toThrow()
       expect(lastTerminal().kill).not.toHaveBeenCalled()
     })
+
+    test('killAndWait resolves after the terminal exit arrives', async () => {
+      host.start('rt-1', defaultCommand, vi.fn(), vi.fn())
+      const mockTerm = lastTerminal()
+
+      const pending = host.killAndWait('rt-1')
+
+      expect(mockTerm.kill).toHaveBeenCalled()
+      mockTerm._onExit!({ exitCode: 0 })
+
+      await expect(pending).resolves.toBeUndefined()
+    })
   })
 
   describe('dispose()', () => {
@@ -309,6 +323,21 @@ describe('PtyHost', () => {
 
     test('handles empty sessions gracefully', () => {
       expect(() => new PtyHost().dispose()).not.toThrow()
+    })
+
+    test('disposeAndWait resolves after all exits arrive', async () => {
+      host.start('rt-1', defaultCommand, vi.fn(), vi.fn())
+      host.start('rt-2', defaultCommand, vi.fn(), vi.fn())
+
+      const pending = host.disposeAndWait()
+
+      expect(mockTerminals[0].kill).toHaveBeenCalled()
+      expect(mockTerminals[1].kill).toHaveBeenCalled()
+
+      mockTerminals[0]._onExit!({ exitCode: 0 })
+      mockTerminals[1]._onExit!({ exitCode: 0 })
+
+      await expect(pending).resolves.toBeUndefined()
     })
   })
 
