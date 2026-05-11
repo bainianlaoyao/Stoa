@@ -175,6 +175,14 @@ function setupTerminal() {
     if (e.type === 'keydown' && e.ctrlKey && (e.key === 'c' || e.key === 'C') && !e.code) {
       return false
     }
+    // On Windows ConPTY, CTRL+V leaks as raw \x16 to the PTY instead of
+    // triggering a browser paste event. Codex CLI intercepts that as
+    // fixed.paste_image (reads system clipboard for image data).
+    // Returning false lets the browser handle the paste as text.
+    // CTRL+ALT+V is intentionally NOT blocked so image paste still works.
+    if (e.type === 'keydown' && e.ctrlKey && !e.altKey && (e.key === 'v' || e.key === 'V')) {
+      return false
+    }
     return true
   })
 
