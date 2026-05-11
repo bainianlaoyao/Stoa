@@ -191,10 +191,11 @@ async function waitForCondition(
 
 async function listCodexHooksThroughAppServer(
   cwd: string,
-  codexHomeDir: string
+  codexHomeDir: string,
+  args: string[] = []
 ): Promise<Array<Record<string, unknown>>> {
   return await new Promise((resolve, reject) => {
-    const child = spawn('cmd.exe', ['/c', resolveCodexCliPath(), 'app-server'], {
+    const child = spawn('cmd.exe', ['/c', resolveCodexCliPath(), ...args, 'app-server'], {
       cwd,
       env: {
         ...process.env as Record<string, string | undefined>,
@@ -563,7 +564,11 @@ describe('E2E: Provider Integration', () => {
       const command = await provider.buildStartCommand(target, context)
 
       expect(command.command).toBe('codex')
-      expect(command.args).toEqual([])
+      expect(command.args).toEqual(expect.arrayContaining([
+        '--config',
+        'projects = { "d:\\\\test_workspace" = { trust_level = "trusted" } }'
+      ]))
+      expect(command.args.join('\n')).toContain('hooks.state = {')
     })
 
     test('buildResumeCommand resumes by external session id', async () => {
@@ -573,7 +578,11 @@ describe('E2E: Provider Integration', () => {
 
       const command = await provider.buildResumeCommand(target, '019c75d6-5db6-7c21-8d2f-f0602da4f64d', context)
 
-      expect(command.args).toEqual(['resume', '019c75d6-5db6-7c21-8d2f-f0602da4f64d'])
+      expect(command.args.slice(0, 2)).toEqual(['resume', '019c75d6-5db6-7c21-8d2f-f0602da4f64d'])
+      expect(command.args).toEqual(expect.arrayContaining([
+        '--config',
+        'projects = { "d:\\\\test_workspace" = { trust_level = "trusted" } }'
+      ]))
     })
 
     test('buildFallbackResumeCommand is unavailable when external session id is unavailable', async () => {
@@ -622,7 +631,10 @@ describe('E2E: Provider Integration', () => {
       expect(command.env.STOA_PROVIDER_PORT).toBe('47771')
       expect(command.env.STOA_SESSION_SECRET).toBeUndefined()
       expect(command.env.STOA_WEBHOOK_PORT).toBeUndefined()
-      expect(command.args).toEqual([])
+      expect(command.args).toEqual(expect.arrayContaining([
+        '--config',
+        'projects = { "d:\\\\test_workspace" = { trust_level = "trusted" } }'
+      ]))
     })
 
     test('installSidecar writes official Codex config files alongside shared dispatcher assets', async () => {
@@ -637,8 +649,6 @@ describe('E2E: Provider Integration', () => {
         const manifestPath = join(workspaceDir, '.codex', '.stoa-managed-sidecar.json')
         const dispatcherPath = join(workspaceDir, '.stoa', 'hook-dispatch.mjs')
         const configContent = await readFile(join(workspaceDir, '.codex', 'config.toml'), 'utf8')
-        const userConfigContent = await readFile(join(codexHomeDir, 'config.toml'), 'utf8')
-
         await expect(stat(manifestPath)).resolves.toMatchObject({ isFile: expect.any(Function) })
         await expect(stat(dispatcherPath)).resolves.toMatchObject({ isFile: expect.any(Function) })
         await expect(stat(join(workspaceDir, '.stoa', 'hook-dispatch'))).resolves.toMatchObject({ isFile: expect.any(Function) })
@@ -652,9 +662,7 @@ describe('E2E: Provider Integration', () => {
         expect(configContent).toContain(`command = ${JSON.stringify(expectedCodexHookCommand('SessionStart'))}`)
         expect(configContent).not.toContain('[hooks.state.')
         expect(configContent).not.toContain('trusted_hash = "sha256:')
-        expect(userConfigContent).toContain('trust_level = "trusted"')
-        expect(userConfigContent).toContain('[hooks.state.')
-        expect(userConfigContent).toContain('trusted_hash = "sha256:')
+        await expect(readFile(join(codexHomeDir, 'config.toml'), 'utf8')).rejects.toThrow()
       })
     })
 
@@ -1112,8 +1120,12 @@ describe('E2E: Provider Integration', () => {
 
       await withRealCodexHome(async (codexHomeDir) => {
         await provider.installSidecar(target, createContext())
+        const startCommand = await provider.buildStartCommand(target, createContext({
+          providerPath: resolveCodexCliPath(),
+          hookProvider: 'codex'
+        }))
 
-        const hooks = await listCodexHooksThroughAppServer(workspaceDir, codexHomeDir)
+        const hooks = await listCodexHooksThroughAppServer(workspaceDir, codexHomeDir, startCommand.args)
         const stoaHooks = hooks.filter((hook) => {
           const command = typeof hook.command === 'string' ? hook.command : ''
           const sourcePath = typeof hook.sourcePath === 'string' ? hook.sourcePath : ''
@@ -1656,7 +1668,9 @@ describe('E2E: Provider Integration', () => {
               commitToken: 'token-real-codex'
             }, null, 2)}\n`, 'utf8')
 
+            const startCommand = await provider.buildStartCommand(target, context)
             const { child, output } = spawnCodexCli([
+              ...startCommand.args,
               'exec',
               '--skip-git-repo-check',
               '--dangerously-bypass-approvals-and-sandbox',

@@ -1,6 +1,6 @@
 import type { ProviderCommandContext } from '@shared/project-session'
 import type { ProviderDefinition, ProviderRuntimeTarget } from './index'
-import { buildCodexProjectConfigToml, ensureCodexProjectTrusted } from './codex-project-config'
+import { buildCodexProjectConfigToml, buildCodexTrustConfigOverrides } from './codex-project-config'
 import { installManagedSidecar, uninstallManagedSidecar } from './managed-sidecar-installer'
 import { buildSharedHookArtifacts } from './shared-hook-dispatch'
 
@@ -45,10 +45,15 @@ function createProviderEnv(_target: ProviderRuntimeTarget, context: ProviderComm
   return env
 }
 
-function createCommand(target: ProviderRuntimeTarget, context: ProviderCommandContext, args: string[]) {
+async function createCommand(target: ProviderRuntimeTarget, context: ProviderCommandContext, args: string[]) {
+  const configOverrides = await buildCodexTrustConfigOverrides(target.path)
+  const configArgs = configOverrides.flatMap((override) => ['--config', override])
+  const commandArgs = args[0] === 'resume'
+    ? [args[0], args[1] ?? '', ...configArgs, ...args.slice(2)]
+    : [...configArgs, ...args]
   return {
     command: codexCommand(context),
-    args,
+    args: commandArgs,
     cwd: target.path,
     env: createProviderEnv(target, context)
   }
@@ -56,7 +61,6 @@ function createCommand(target: ProviderRuntimeTarget, context: ProviderCommandCo
 
 async function writeCodexHookSidecar(target: ProviderRuntimeTarget): Promise<void> {
   const sharedArtifacts = buildSharedHookArtifacts()
-  await ensureCodexProjectTrusted(target.path)
 
   await installManagedSidecar({
     rootDir: target.path,

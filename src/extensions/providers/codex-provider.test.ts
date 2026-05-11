@@ -11,7 +11,7 @@ function expectedCodexHookCommand(eventName: string): string {
 }
 
 describe('codex provider', () => {
-  test('buildStartCommand relies on project-managed hook config files instead of cli overrides', async () => {
+  test('buildStartCommand injects session trust overrides while keeping hook declarations in project config', async () => {
     const provider = createCodexProvider()
 
     const command = await provider.buildStartCommand({
@@ -36,10 +36,16 @@ describe('codex provider', () => {
     expect(command.command).toBe('codex')
     expect(command.cwd).toBe('D:/workspace/demo')
     expect(command.env.STOA_HOOK_LEASE_PATH).toBe('D:/runtime/hook-leases/session_demo_001.json')
-    expect(command.args).toEqual([])
+    expect(command.args).toEqual(expect.arrayContaining([
+      '--config',
+      'projects = { "d:\\\\workspace\\\\demo" = { trust_level = "trusted" } }'
+    ]))
+    expect(command.args.join('\n')).toContain('hooks.state = {')
+    expect(command.args.join('\n')).toContain('trusted_hash = "sha256:')
+    expect(command.args.join('\n')).toContain(':session_start:0:0')
   })
 
-  test('buildResumeCommand only adds resume arguments because hooks come from project config', async () => {
+  test('buildResumeCommand adds resume arguments plus session trust overrides', async () => {
     const provider = createCodexProvider()
 
     const command = await provider.buildResumeCommand({
@@ -54,7 +60,12 @@ describe('codex provider', () => {
       providerPort: 43128
     })
 
-    expect(command.args).toEqual(['resume', 'codex-external-1'])
+    expect(command.args.slice(0, 2)).toEqual(['resume', 'codex-external-1'])
+    expect(command.args).toEqual(expect.arrayContaining([
+      '--config',
+      'projects = { "d:\\\\workspace\\\\demo" = { trust_level = "trusted" } }'
+    ]))
+    expect(command.args.join('\n')).toContain('hooks.state = {')
   })
 
   test('installSidecar writes shared dispatcher artifacts and official Codex hook config files', async () => {
@@ -86,7 +97,6 @@ describe('codex provider', () => {
       await expect(stat(join(workspaceDir, '.codex', 'hooks.json'))).rejects.toThrow()
 
       const configContent = await readFile(join(workspaceDir, '.codex', 'config.toml'), 'utf8')
-      const userConfigContent = await readFile(join(codexHomeDir, 'config.toml'), 'utf8')
       const dispatcherContent = await readFile(join(workspaceDir, '.stoa', 'hook-dispatch.mjs'), 'utf8')
 
       expect(configContent).toContain('[features]')
@@ -97,10 +107,7 @@ describe('codex provider', () => {
       expect(configContent).not.toContain('[hooks.state.')
       expect(configContent).not.toContain('trusted_hash = "sha256:')
       expect(configContent).not.toContain('codex_hooks')
-      expect(userConfigContent).toContain('trust_level = "trusted"')
-      expect(userConfigContent).toContain('[hooks.state.')
-      expect(userConfigContent).toContain('trusted_hash = "sha256:')
-      expect(userConfigContent.toLowerCase().replaceAll('\\\\', '\\')).toContain(workspaceDir.toLowerCase())
+      await expect(readFile(join(codexHomeDir, 'config.toml'), 'utf8')).rejects.toThrow()
       expect(dispatcherContent).toContain('/hooks/codex')
       expect(dispatcherContent).toContain('STOA_HOOK_LEASE_PATH')
       expect(dispatcherContent).not.toContain('../src/extensions/providers/shared-hook-dispatch.ts')

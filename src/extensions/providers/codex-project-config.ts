@@ -1,7 +1,6 @@
 import { createHash } from 'node:crypto'
-import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises'
-import { homedir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { realpath } from 'node:fs/promises'
+import { resolve } from 'node:path'
 
 export type CodexHookEventName =
   | 'SessionStart'
@@ -33,7 +32,7 @@ const HOOK_EVENT_KEY_LABELS: Record<CodexHookEventName, string> = {
   Stop: 'stop'
 }
 
-export function buildCodexProjectConfigToml(projectRoot: string): string {
+export function buildCodexProjectConfigToml(_projectRoot: string): string {
   const lines = [
     '[features]',
     'hooks = true',
@@ -57,27 +56,17 @@ export function buildCodexProjectConfigToml(projectRoot: string): string {
   return `${lines.join('\n').trimEnd()}\n`
 }
 
-export async function ensureCodexProjectTrusted(projectRoot: string): Promise<void> {
-  const configPath = join(resolveCodexHome(), 'config.toml')
+export async function buildCodexTrustConfigOverrides(projectRoot: string): Promise<string[]> {
   const projectKey = await codexProjectTrustKey(projectRoot)
-  let content = ''
+  const hookStates = buildCodexHookStates(projectRoot)
+  const hooksStateInline = hookStates
+    .map((state) => `${tomlString(state.key)} = { trusted_hash = ${tomlString(state.trustedHash)} }`)
+    .join(', ')
 
-  try {
-    content = await readFile(configPath, 'utf8')
-  } catch {
-    content = ''
-  }
-
-  const nextContent = upsertHookStateBlocks(
-    upsertTrustedProjectBlock(content, projectKey),
-    buildCodexHookStates(projectRoot)
-  )
-  if (nextContent === content) {
-    return
-  }
-
-  await mkdir(dirname(configPath), { recursive: true })
-  await writeFile(configPath, nextContent, 'utf8')
+  return [
+    `projects = { ${tomlString(projectKey)} = { trust_level = "trusted" } }`,
+    `hooks.state = { ${hooksStateInline} }`
+  ]
 }
 
 function buildCodexHookStates(projectRoot: string): Array<{ key: string; trustedHash: string }> {
@@ -138,163 +127,6 @@ function normalizeCodexPath(path: string): string {
     return path.slice(4)
   }
   return path
-}
-
-function resolveCodexHome(): string {
-  const configuredHome = process.env.CODEX_HOME?.trim()
-  if (configuredHome) {
-    return resolve(configuredHome)
-  }
-  return join(homedir(), '.codex')
-}
-
-function upsertTrustedProjectBlock(content: string, projectKey: string): string {
-  const lines = content.length > 0 ? content.split(/\r?\n/) : []
-  const range = findProjectTableRange(lines, projectKey)
-
-  if (!range) {
-    const appended = [...lines]
-    if (appended.length > 0 && appended[appended.length - 1] !== '') {
-      appended.push('')
-    }
-    appended.push(projectTableHeader(projectKey))
-    appended.push('trust_level = "trusted"')
-    return `${appended.join('\n').replace(/\n+$/u, '\n')}`
-  }
-
-  const block = lines.slice(range.start, range.end)
-  const trustLineIndex = block.findIndex((line, index) => index > 0 && /^\s*trust_level\s*=/.test(line))
-  if (trustLineIndex >= 0) {
-    if (block[trustLineIndex] === 'trust_level = "trusted"') {
-      return content
-    }
-    block[trustLineIndex] = 'trust_level = "trusted"'
-  } else {
-    block.splice(1, 0, 'trust_level = "trusted"')
-  }
-
-  const nextLines = [...lines.slice(0, range.start), ...block, ...lines.slice(range.end)]
-  return `${nextLines.join('\n').replace(/\n+$/u, '\n')}`
-}
-
-function upsertHookStateBlocks(
-  content: string,
-  states: Array<{ key: string; trustedHash: string }>
-): string {
-  return states.reduce((currentContent, state) => upsertHookStateBlock(currentContent, state), content)
-}
-
-function upsertHookStateBlock(
-  content: string,
-  state: { key: string; trustedHash: string }
-): string {
-  const lines = content.length > 0 ? content.split(/\r?\n/) : []
-  const range = findHookStateTableRange(lines, state.key)
-
-  if (!range) {
-    const appended = [...lines]
-    if (appended.length > 0 && appended[appended.length - 1] !== '') {
-      appended.push('')
-    }
-    appended.push(hookStateTableHeader(state.key))
-    appended.push(`trusted_hash = ${tomlString(state.trustedHash)}`)
-    return `${appended.join('\n').replace(/\n+$/u, '\n')}`
-  }
-
-  const block = lines.slice(range.start, range.end)
-  const trustedHashLineIndex = block.findIndex((line, index) => index > 0 && /^\s*trusted_hash\s*=/.test(line))
-  const trustedHashLine = `trusted_hash = ${tomlString(state.trustedHash)}`
-  if (trustedHashLineIndex >= 0) {
-    if (block[trustedHashLineIndex] === trustedHashLine) {
-      return content
-    }
-    block[trustedHashLineIndex] = trustedHashLine
-  } else {
-    block.splice(1, 0, trustedHashLine)
-  }
-
-  const nextLines = [...lines.slice(0, range.start), ...block, ...lines.slice(range.end)]
-  return `${nextLines.join('\n').replace(/\n+$/u, '\n')}`
-}
-
-function findProjectTableRange(
-  lines: string[],
-  projectKey: string
-): { start: number; end: number } | null {
-  for (let index = 0; index < lines.length; index += 1) {
-    const headerKey = parseProjectTableHeader(lines[index] ?? '')
-    if (headerKey === projectKey) {
-      let end = index + 1
-      while (end < lines.length && !/^\s*\[/.test(lines[end] ?? '')) {
-        end += 1
-      }
-      return { start: index, end }
-    }
-  }
-
-  return null
-}
-
-function findHookStateTableRange(
-  lines: string[],
-  hookStateKey: string
-): { start: number; end: number } | null {
-  for (let index = 0; index < lines.length; index += 1) {
-    const headerKey = parseHookStateTableHeader(lines[index] ?? '')
-    if (headerKey === hookStateKey) {
-      let end = index + 1
-      while (end < lines.length && !/^\s*\[/.test(lines[end] ?? '')) {
-        end += 1
-      }
-      return { start: index, end }
-    }
-  }
-
-  return null
-}
-
-function parseProjectTableHeader(line: string): string | null {
-  const trimmed = line.trim()
-  if (!trimmed.startsWith('[projects.') || !trimmed.endsWith(']')) {
-    return null
-  }
-
-  const quotedKey = trimmed.slice('[projects.'.length, -1)
-  return parseTomlQuotedString(quotedKey)
-}
-
-function parseHookStateTableHeader(line: string): string | null {
-  const trimmed = line.trim()
-  if (!trimmed.startsWith('[hooks.state.') || !trimmed.endsWith(']')) {
-    return null
-  }
-
-  const quotedKey = trimmed.slice('[hooks.state.'.length, -1)
-  return parseTomlQuotedString(quotedKey)
-}
-
-function parseTomlQuotedString(value: string): string | null {
-  if (value.startsWith('"') && value.endsWith('"')) {
-    try {
-      return JSON.parse(value)
-    } catch {
-      return null
-    }
-  }
-
-  if (value.startsWith("'") && value.endsWith("'")) {
-    return value.slice(1, -1).replaceAll("''", "'")
-  }
-
-  return null
-}
-
-function projectTableHeader(projectKey: string): string {
-  return `[projects.${tomlString(projectKey)}]`
-}
-
-function hookStateTableHeader(hookStateKey: string): string {
-  return `[hooks.state.${tomlString(hookStateKey)}]`
 }
 
 function tomlString(value: string): string {
