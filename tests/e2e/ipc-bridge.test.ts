@@ -483,7 +483,7 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
         title: 'Shell Restart'
       })
 
-      await api.restartSession?.(session.id)
+      await api.restartSession(session.id)
 
       expect(manager.snapshot().activeSessionId).toBe(session.id)
     })

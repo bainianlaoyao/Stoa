@@ -109,7 +109,7 @@ describe('meta-session-state-store', () => {
     await expect(readMetaSessionState(metaSessionStatePath)).resolves.toEqual(state)
   })
 
-  test('drops incompatible legacy meta sessions and rewrites the file in the latest format', async () => {
+  test('normalizes legacy meta sessions by defaulting archived=false and rewrites the file in the latest format', async () => {
     const metaSessionStatePath = await createTempMetaSessionStatePath()
     const legacyPayload = JSON.stringify({
       version: 1,
@@ -138,8 +138,25 @@ describe('meta-session-state-store', () => {
     const { readFile, readdir, writeFile } = await import('node:fs/promises')
     const expectedLatestState = {
       version: 1 as const,
-      active_meta_session_id: null,
-      sessions: [],
+      active_meta_session_id: 'meta_session_1',
+      sessions: [
+        {
+          session_id: 'meta_session_1',
+          title: 'legacy-meta-session',
+          status: 'idle' as const,
+          backend_session_type: 'claude-code' as const,
+          capability_level: 3 as const,
+          pending_proposal_count: 0,
+          active_target_count: 0,
+          last_summary: 'legacy payload',
+          last_risk: null,
+          backend_session_id: 'backend-session-1',
+          created_at: '2026-05-07T08:00:00.000Z',
+          updated_at: '2026-05-07T08:05:00.000Z',
+          last_activated_at: null,
+          archived: false as const
+        }
+      ],
       proposals: [],
       action_logs: [],
       inspector_target: {
@@ -187,7 +204,7 @@ describe('meta-session-state-store', () => {
     expect(resolveMetaSessionStateFilePath(globalStatePath)).toBe(join(dirname(globalStatePath), 'meta-session.json'))
   })
 
-  test('keeps only latest-format sessions and drops proposal data for discarded meta sessions', async () => {
+  test('keeps legacy meta sessions by defaulting archived=false and preserves their related proposal data', async () => {
     const metaSessionStatePath = await createTempMetaSessionStatePath()
     const mixedPayload = JSON.stringify({
       version: 1,
@@ -312,6 +329,22 @@ describe('meta-session-state-store', () => {
       active_meta_session_id: 'meta_session_2',
       sessions: [
         {
+          session_id: 'meta_session_1',
+          title: 'legacy-meta-session',
+          status: 'idle' as const,
+          backend_session_type: 'claude-code' as const,
+          capability_level: 3 as const,
+          pending_proposal_count: 1,
+          active_target_count: 0,
+          last_summary: 'legacy payload',
+          last_risk: null,
+          backend_session_id: 'backend-session-1',
+          created_at: '2026-05-07T08:00:00.000Z',
+          updated_at: '2026-05-07T08:05:00.000Z',
+          last_activated_at: null,
+          archived: false as const
+        },
+        {
           session_id: 'meta_session_2',
           title: 'valid-meta-session',
           status: 'running' as const,
@@ -329,6 +362,34 @@ describe('meta-session-state-store', () => {
         }
       ],
       proposals: [
+        {
+          proposal_id: 'proposal_1',
+          meta_session_id: 'meta_session_1',
+          kind: 'prompt' as const,
+          target_session_ids: ['session_1'],
+          risk_level: 3 as const,
+          status: 'pending_approval' as const,
+          summary: 'Prompt injection for session_1',
+          reason: 'Freeform prompt injection requires explicit approval.',
+          prompt_text: 'Please review the diff.',
+          preset_name: null,
+          snapshot: {
+            sessions: [
+              {
+                session_id: 'session_1',
+                last_state_sequence: 17,
+                turn_epoch: 4,
+                updated_at: '2026-05-07T08:05:00.000Z'
+              }
+            ]
+          },
+          created_at: '2026-05-07T08:05:00.000Z',
+          updated_at: '2026-05-07T08:05:00.000Z',
+          approved_at: null,
+          rejected_at: null,
+          executed_at: null,
+          execution_result: null
+        },
         {
           proposal_id: 'proposal_2',
           meta_session_id: 'meta_session_2',
@@ -360,6 +421,14 @@ describe('meta-session-state-store', () => {
       ],
       action_logs: [
         {
+          action_id: 'action_1',
+          meta_session_id: 'meta_session_1',
+          proposal_id: 'proposal_1',
+          action: 'proposal.created' as const,
+          detail: 'Created approval-gated prompt proposal.',
+          created_at: '2026-05-07T08:05:00.000Z'
+        },
+        {
           action_id: 'action_2',
           meta_session_id: 'meta_session_2',
           proposal_id: 'proposal_2',
@@ -369,7 +438,8 @@ describe('meta-session-state-store', () => {
         }
       ],
       inspector_target: {
-        kind: 'app' as const
+        kind: 'proposal' as const,
+        proposalId: 'proposal_1'
       }
     }
 

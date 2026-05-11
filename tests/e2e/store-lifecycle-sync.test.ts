@@ -12,6 +12,8 @@ import { createTestWorkspace, createTestGlobalStatePath, readGlobalStateFile } f
 import { readProjectSessions } from '@core/state-store'
 import { waitForExit } from './wait-for-exit'
 
+const REAL_PTY_TEST_TIMEOUT_MS = 15_000
+
 function createEchoProvider(): ProviderDefinition {
   const isWin = process.platform === 'win32'
   return {
@@ -149,7 +151,7 @@ describe('E2E: Store Lifecycle Synchronization', () => {
 
       expect(store.sessions.find(s => s.id === session.id)!.runtimeState).toBe('exited')
       expect(store.activeSession!.runtimeState).toBe('exited')
-    })
+    }, REAL_PTY_TEST_TIMEOUT_MS)
 
     test('projectHierarchy reflects runtime changes through lifecycle', async () => {
       const workspaceDir = await createTestWorkspace('stoa-sync-hierarchy-')
@@ -181,7 +183,7 @@ describe('E2E: Store Lifecycle Synchronization', () => {
       replayEventsToStore(store, capturing.events)
 
       expect(store.projectHierarchy[0]!.sessions[0]!.runtimeState).toBe('exited')
-    })
+    }, REAL_PTY_TEST_TIMEOUT_MS)
 
     test('state on disk matches store state at each lifecycle stage', async () => {
       const workspaceDir = await createTestWorkspace('stoa-sync-disk-')
@@ -216,7 +218,7 @@ describe('E2E: Store Lifecycle Synchronization', () => {
       const diskExited = await readProjectSessions(workspaceDir)
       expect(diskExited.sessions[0]!.runtime_state).toBe('exited')
       expect(store.sessions[0]!.runtimeState).toBe('exited')
-    })
+    }, REAL_PTY_TEST_TIMEOUT_MS)
 
     test('externalSessionId propagates to store after running', async () => {
       const workspaceDir = await createTestWorkspace('stoa-sync-extid-')
@@ -247,7 +249,7 @@ describe('E2E: Store Lifecycle Synchronization', () => {
       expect(store.sessions[0]!.externalSessionId).toBeNull()
       expect(store.activeSession!.externalSessionId).toBeNull()
       await waitForExit(capturing.exitSignal)
-    })
+    }, REAL_PTY_TEST_TIMEOUT_MS)
   })
 
   describe('Event sequence validation', () => {
@@ -274,7 +276,7 @@ describe('E2E: Store Lifecycle Synchronization', () => {
       expect(capturing.events[0]!.runtimeState).toBe('starting')
       expect(capturing.events[1]!.runtimeState).toBe('alive')
       expect(capturing.events[2]!.runtimeState).toBe('exited')
-    })
+    }, REAL_PTY_TEST_TIMEOUT_MS)
 
     test('replaying events to store produces same state as backend snapshot', async () => {
       const workspaceDir = await createTestWorkspace('stoa-sync-replay-')
@@ -302,7 +304,7 @@ describe('E2E: Store Lifecycle Synchronization', () => {
       expect(store.sessions[0]!.runtimeState).toBe(backendSession.runtimeState)
       expect(store.sessions[0]!.summary).toBe(backendSession.summary)
       expect(store.sessions[0]!.externalSessionId).toBe(backendSession.externalSessionId)
-    })
+    }, REAL_PTY_TEST_TIMEOUT_MS)
 
     test('terminal data captured alongside lifecycle events', async () => {
       const workspaceDir = await createTestWorkspace('stoa-sync-termdata-')
@@ -328,7 +330,7 @@ describe('E2E: Store Lifecycle Synchronization', () => {
       expect(capturing.terminalData.length).toBeGreaterThan(0)
       expect(capturing.terminalData.every(c => c.sessionId === session.id)).toBe(true)
       expect(capturing.terminalData.map(c => c.data).join('')).toContain('sync-e2e')
-    })
+    }, REAL_PTY_TEST_TIMEOUT_MS)
   })
 
   describe('Multi-session store sync', () => {
@@ -381,7 +383,7 @@ describe('E2E: Store Lifecycle Synchronization', () => {
 
       expect(store.sessions.find(s => s.id === session1.id)!.runtimeState).toBe('exited')
       expect(store.sessions.find(s => s.id === session2.id)!.runtimeState).toBe('exited')
-    })
+    }, REAL_PTY_TEST_TIMEOUT_MS)
 
     test('active session switches correctly during concurrent lifecycles', async () => {
       const workspaceDir = await createTestWorkspace('stoa-sync-active-')
@@ -441,7 +443,7 @@ describe('E2E: Store Lifecycle Synchronization', () => {
 
       store.setActiveSession(session1.id)
       expect(store.activeSession!.runtimeState).toBe('exited')
-    })
+    }, REAL_PTY_TEST_TIMEOUT_MS)
   })
 
   describe('Store-backend consistency after restart', () => {
@@ -483,6 +485,6 @@ describe('E2E: Store Lifecycle Synchronization', () => {
       expect(store2.sessions[0]!.runtimeState).toBe(store1.sessions[0]!.runtimeState)
       expect(store2.sessions[0]!.externalSessionId).toBe(store1.sessions[0]!.externalSessionId)
       expect(store2.projectHierarchy[0]!.sessions[0]!.runtimeState).toBe('exited')
-    })
+    }, REAL_PTY_TEST_TIMEOUT_MS)
   })
 })

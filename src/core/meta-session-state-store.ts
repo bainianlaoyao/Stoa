@@ -104,6 +104,91 @@ function isValidPersistedMetaSession(value: unknown): value is PersistedMetaSess
     && typeof value.archived === 'boolean'
 }
 
+function toNormalizedPersistedMetaSession(
+  value: unknown
+): PersistedMetaSessionStateV1['sessions'][number] | null {
+  if (typeof value !== 'object' || value === null) {
+    return null
+  }
+
+  if (!('session_id' in value) || typeof value.session_id !== 'string') {
+    return null
+  }
+
+  if (!('title' in value) || typeof value.title !== 'string') {
+    return null
+  }
+
+  if (!('status' in value) || !isValidStatus(value.status)) {
+    return null
+  }
+
+  if (!('backend_session_type' in value) || !isValidBackendSessionType(value.backend_session_type)) {
+    return null
+  }
+
+  if (!('capability_level' in value) || !isValidCapabilityLevel(value.capability_level)) {
+    return null
+  }
+
+  if (!('pending_proposal_count' in value) || typeof value.pending_proposal_count !== 'number') {
+    return null
+  }
+
+  if (!('active_target_count' in value) || typeof value.active_target_count !== 'number') {
+    return null
+  }
+
+  if (!('last_summary' in value) || typeof value.last_summary !== 'string') {
+    return null
+  }
+
+  if (!('last_risk' in value) || (value.last_risk !== null && typeof value.last_risk !== 'string')) {
+    return null
+  }
+
+  if (!('backend_session_id' in value) || (value.backend_session_id !== null && typeof value.backend_session_id !== 'string')) {
+    return null
+  }
+
+  if (!('created_at' in value) || typeof value.created_at !== 'string') {
+    return null
+  }
+
+  if (!('updated_at' in value) || typeof value.updated_at !== 'string') {
+    return null
+  }
+
+  if (!('last_activated_at' in value) || (value.last_activated_at !== null && typeof value.last_activated_at !== 'string')) {
+    return null
+  }
+
+  if ('archived' in value && typeof value.archived !== 'boolean') {
+    return null
+  }
+
+  const archived = 'archived' in value && typeof value.archived === 'boolean'
+    ? value.archived
+    : false
+
+  return {
+    session_id: value.session_id,
+    title: value.title,
+    status: value.status,
+    backend_session_type: value.backend_session_type,
+    capability_level: value.capability_level,
+    pending_proposal_count: value.pending_proposal_count,
+    active_target_count: value.active_target_count,
+    last_summary: value.last_summary,
+    last_risk: value.last_risk,
+    backend_session_id: value.backend_session_id,
+    created_at: value.created_at,
+    updated_at: value.updated_at,
+    last_activated_at: value.last_activated_at,
+    archived
+  }
+}
+
 function isValidProposalStatus(value: unknown): value is PersistedMetaSessionStateV1['proposals'][number]['status'] {
   return value === 'pending_approval'
     || value === 'approved'
@@ -315,7 +400,9 @@ function toNormalizedMetaSessionState(value: unknown): PersistedMetaSessionState
     return null
   }
 
-  const sessions = value.sessions.filter(isValidPersistedMetaSession)
+  const sessions = value.sessions
+    .map((session) => toNormalizedPersistedMetaSession(session))
+    .filter((session): session is PersistedMetaSessionStateV1['sessions'][number] => session !== null)
   const retainedSessionIds = new Set(sessions.map((session) => session.session_id))
   const proposals = 'proposals' in value && Array.isArray(value.proposals)
     ? value.proposals

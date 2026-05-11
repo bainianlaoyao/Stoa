@@ -180,6 +180,7 @@ describe('AppShell', () => {
       openWorkspace: vi.fn().mockResolvedValue(undefined),
       archiveSession: vi.fn().mockResolvedValue(undefined),
       restoreSession: vi.fn().mockResolvedValue(undefined),
+      restartSession: vi.fn().mockResolvedValue(undefined),
       listArchivedSessions: vi.fn().mockResolvedValue([]),
 
       setActiveProject: vi.fn().mockResolvedValue(undefined),

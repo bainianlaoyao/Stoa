@@ -590,7 +590,7 @@ describe('App (root)', () => {
       expect(store.activeSessionId).toBeNull()
     })
 
-    it('archiveSession failure restores session and records error', async () => {
+    it('archiveSession failure preserves the current selection and records error', async () => {
       const hydratedState: BootstrapState = {
         activeProjectId: 'p1',
         activeSessionId: 's1',
@@ -612,6 +612,8 @@ describe('App (root)', () => {
 
       const store = useWorkspaceStore(pinia)
       expect(store.sessions[0].archived).toBe(false)
+      expect(store.activeProjectId).toBe('p1')
+      expect(store.activeSessionId).toBe('s1')
       expect(store.lastError).toBe('archive failed')
     })
 
@@ -641,13 +643,19 @@ describe('App (root)', () => {
       expect(store.projectHierarchy[0]!.sessions[0]!.id).toBe('s1')
     })
 
-    it('restoreSession failure re-archives session and records error', async () => {
+    it('restoreSession failure preserves the previous selection and records error', async () => {
       const hydratedState: BootstrapState = {
         activeProjectId: 'p1',
-        activeSessionId: null,
+        activeSessionId: 's1',
         terminalWebhookPort: 0,
-        projects: [{ id: 'p1', name: 'P', path: '/p', createdAt: 't', updatedAt: 't' }],
-        sessions: [createSessionSummary({ id: 's1', projectId: 'p1', archived: true })]
+        projects: [
+          { id: 'p1', name: 'P1', path: '/p1', createdAt: 't', updatedAt: 't' },
+          { id: 'p2', name: 'P2', path: '/p2', createdAt: 't', updatedAt: 't' }
+        ],
+        sessions: [
+          createSessionSummary({ id: 's1', projectId: 'p1', archived: false }),
+          createSessionSummary({ id: 's2', projectId: 'p2', archived: true })
+        ]
       }
       setupStoa({
         getBootstrapState: vi.fn().mockResolvedValue(hydratedState),
@@ -658,12 +666,13 @@ describe('App (root)', () => {
       await flush()
 
       const appShell = wrapper.findComponent({ name: 'AppShell' })
-      await appShell.vm.$emit('restoreSession', 's1')
+      await appShell.vm.$emit('restoreSession', 's2')
       await flush()
 
       const store = useWorkspaceStore(pinia)
-      expect(store.sessions[0].archived).toBe(true)
-      expect(store.activeSessionId).toBeNull()
+      expect(store.sessions.find((session) => session.id === 's2')?.archived).toBe(true)
+      expect(store.activeProjectId).toBe('p1')
+      expect(store.activeSessionId).toBe('s1')
       expect(store.lastError).toBe('restore failed')
     })
 

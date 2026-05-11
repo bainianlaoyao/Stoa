@@ -295,6 +295,27 @@ describe('PtyHost', () => {
 
       await expect(pending).resolves.toBeUndefined()
     })
+
+    test('ignores stale exit callbacks after a newer launch reuses the runtimeId', () => {
+      const firstOnExit = vi.fn()
+      const secondOnExit = vi.fn()
+
+      host.start('rt-1', defaultCommand, vi.fn(), firstOnExit)
+      const firstTerm = lastTerminal()
+
+      host.start('rt-1', defaultCommand, vi.fn(), secondOnExit)
+      const secondTerm = lastTerminal()
+
+      firstTerm._onExit!({ exitCode: 1 })
+
+      expect(firstOnExit).not.toHaveBeenCalled()
+      expect(secondOnExit).not.toHaveBeenCalled()
+      host.write('rt-1', 'alive')
+      expect(secondTerm.write).toHaveBeenCalledWith('alive')
+
+      secondTerm._onExit!({ exitCode: 0 })
+      expect(secondOnExit).toHaveBeenCalledWith(0)
+    })
   })
 
   describe('dispose()', () => {

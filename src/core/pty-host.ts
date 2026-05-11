@@ -84,8 +84,12 @@ async function forceKillProcessTree(pid: number): Promise<void> {
 export class PtyHost {
   private readonly sessions = new Map<string, IPty>()
   private readonly exitWaiters = new Map<string, ExitWaiter>()
+  private readonly runtimeTokens = new Map<string, number>()
 
   start(runtimeId: string, command: ProviderCommand, onData: (data: string) => void, onExit: (exitCode: number) => void, shellIntegration?: ShellIntegrationOptions): PtySession {
+    const generation = (this.runtimeTokens.get(runtimeId) ?? 0) + 1
+    this.runtimeTokens.set(runtimeId, generation)
+
     let spawnCommand = command.command
     let spawnArgs = command.args
     let spawnEnv: Record<string, string | undefined> = {
@@ -119,6 +123,10 @@ export class PtyHost {
 
     terminal.onData(onData)
     terminal.onExit(({ exitCode }) => {
+      if (this.runtimeTokens.get(runtimeId) !== generation) {
+        return
+      }
+
       this.sessions.delete(runtimeId)
       this.resolveExitWaiter(runtimeId)
       onExit(exitCode)

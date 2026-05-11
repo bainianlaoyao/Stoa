@@ -314,7 +314,7 @@ export interface RendererApi {
   isWindowMaximized: () => Promise<boolean>
   onWindowMaximizeChange: (callback: (maximized: boolean) => void) => () => void
   restoreSession: (sessionId: string) => Promise<void>
-  restartSession?: (sessionId: string) => Promise<void>
+  restartSession: (sessionId: string) => Promise<void>
   listArchivedSessions: () => Promise<SessionSummary[]>
   getUpdateState: () => Promise<UpdateState>
   checkForUpdates: () => Promise<UpdateState>

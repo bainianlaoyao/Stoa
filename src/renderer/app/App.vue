@@ -86,23 +86,23 @@ async function handleProjectDelete(projectId: string): Promise<void> {
 }
 
 async function handleArchiveSession(sessionId: string): Promise<void> {
-  workspaceStore.archiveSession(sessionId)
+  workspaceStore.clearError()
   try {
     await window.stoa.archiveSession(sessionId)
+    workspaceStore.archiveSession(sessionId)
   } catch (err) {
     workspaceStore.lastError = err instanceof Error ? err.message : String(err)
-    workspaceStore.restoreSession(sessionId)
   }
 }
 
 async function handleRestoreSession(sessionId: string): Promise<void> {
-  workspaceStore.restoreSession(sessionId)
-  workspaceStore.setActiveSession(sessionId)
+  workspaceStore.clearError()
   try {
     await window.stoa.restoreSession(sessionId)
+    workspaceStore.restoreSession(sessionId)
+    workspaceStore.setActiveSession(sessionId)
   } catch (err) {
     workspaceStore.lastError = err instanceof Error ? err.message : String(err)
-    workspaceStore.archiveSession(sessionId)
   }
 }
 
@@ -110,9 +110,6 @@ async function handleRestartSession(sessionId: string): Promise<void> {
   workspaceStore.clearError()
   workspaceStore.setActiveSession(sessionId)
   try {
-    if (!window.stoa.restartSession) {
-      throw new Error('Restart is unavailable in the current preload bridge')
-    }
     await window.stoa.restartSession(sessionId)
   } catch (err) {
     workspaceStore.lastError = err instanceof Error ? err.message : String(err)

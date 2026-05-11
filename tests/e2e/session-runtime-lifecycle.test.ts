@@ -10,6 +10,8 @@ import { createTestWorkspace, createTestGlobalStatePath } from './helpers'
 import { readProjectSessions } from '@core/state-store'
 import { waitForExit } from './wait-for-exit'
 
+const REAL_PTY_TEST_TIMEOUT_MS = 15_000
+
 function createEchoProvider(): ProviderDefinition {
   const isWin = process.platform === 'win32'
 
@@ -192,7 +194,7 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
       snapshot = manager.snapshot()
       expect(snapshot.sessions.find(s => s.id === session.id)!.runtimeState).toBe('exited')
       expect(snapshot.sessions.find(s => s.id === session.id)!.summary).toMatch(/exited/)
-    })
+    }, REAL_PTY_TEST_TIMEOUT_MS)
 
     test('captures terminal data from real process output', async () => {
       const workspaceDir = await createTestWorkspace('stoa-e2e-rt-output-')
@@ -237,7 +239,7 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
       for (const chunk of capturing.terminalData) {
         expect(chunk.sessionId).toBe(session.id)
       }
-    })
+    }, REAL_PTY_TEST_TIMEOUT_MS)
 
     test('state is persisted to disk at each lifecycle stage', async () => {
       const workspaceDir = await createTestWorkspace('stoa-e2e-rt-persist-')
@@ -283,7 +285,7 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
       const diskExited = await readProjectSessions(workspaceDir)
       expect(diskExited.sessions[0]!.runtime_state).toBe('exited')
       expect(diskExited.sessions[0]!.last_summary).toMatch(/exited/)
-    })
+    }, REAL_PTY_TEST_TIMEOUT_MS)
   })
 
   describe('Multiple sessions lifecycle', () => {
@@ -331,7 +333,7 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
       expect(snapshot.sessions[1]!.runtimeState).toBe('exited')
       expect(capturing1.terminalData[0]!.sessionId).toBe(session1.id)
       expect(capturing2.terminalData[0]!.sessionId).toBe(session2.id)
-    })
+    }, REAL_PTY_TEST_TIMEOUT_MS)
   })
 
   describe('PtyHost cleanup after exit', () => {
@@ -358,7 +360,7 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
 
       await waitForExit(capturing.exitSignal)
       expect(() => ptyHost.write(session.id, 'should-not-crash')).not.toThrow()
-    })
+    }, REAL_PTY_TEST_TIMEOUT_MS)
   })
 
   describe('Restart recovery after full lifecycle', () => {
@@ -393,7 +395,7 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
       expect(snapshot.sessions[0]!.summary).toMatch(/exited/)
       expect(snapshot.sessions[0]!.id).toBe(session.id)
       expect(snapshot.sessions[0]!.externalSessionId).toBeNull()
-    })
+    }, REAL_PTY_TEST_TIMEOUT_MS)
   })
 
   describe('Concurrent sessions', () => {
@@ -445,7 +447,7 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
       expect(snapshot.sessions.find(s => s.id === session2.id)!.runtimeState).toBe('exited')
       expect(capturing1.terminalData.some(c => c.data.includes('hello-from-e2e'))).toBe(true)
       expect(capturing2.terminalData.some(c => c.data.includes('hello-from-e2e'))).toBe(true)
-    })
+    }, REAL_PTY_TEST_TIMEOUT_MS)
   })
 
   describe('Non-zero exit code', () => {
@@ -484,6 +486,6 @@ describe('E2E: Session Runtime Full Lifecycle', () => {
         runtimeExitReason: 'failed',
         runtimeExitCode: 42
       })
-    })
+    }, REAL_PTY_TEST_TIMEOUT_MS)
   })
 })

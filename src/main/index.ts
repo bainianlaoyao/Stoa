@@ -34,6 +34,7 @@ import { syncManagedSidecars } from './managed-sidecar-maintenance'
 import { UpdateService } from './update-service'
 import { resolveDefaultStoaRuntimeRoot } from './stoa-runtime-root'
 import { createHookLeaseManager } from './hook-lease-manager'
+import { SessionDimensionsRegistry } from './session-dimensions'
 import { DEFAULT_SETTINGS } from '@shared/project-session'
 import type {
   CreateProjectRequest,
@@ -489,6 +490,7 @@ app.whenReady().then(async () => {
     resolve: (dims: { cols: number; rows: number }) => void
     timer: ReturnType<typeof setTimeout>
   }>()
+  const sessionDimensions = new SessionDimensionsRegistry()
   const sessionLaunchTokens = new Map<string, number>()
 
   function reserveSessionLaunchToken(sessionId: string): number {
@@ -499,6 +501,14 @@ app.whenReady().then(async () => {
 
   function isSessionLaunchTokenCurrent(sessionId: string, launchToken: number): boolean {
     return sessionLaunchTokens.get(sessionId) === launchToken
+  }
+
+  function rememberSessionDimensions(sessionId: string, dims: { cols: number; rows: number }): void {
+    sessionDimensions.set(sessionId, dims)
+  }
+
+  function getSessionDimensions(sessionId: string): { cols: number; rows: number } | null {
+    return sessionDimensions.get(sessionId)
   }
 
   function waitForSessionDimensions(sessionId: string, timeoutMs: number): Promise<{ cols: number; rows: number }> {
@@ -697,6 +707,7 @@ app.whenReady().then(async () => {
     source: 'session-create' | 'session-restore' | 'session-restart' | 'bootstrap-recovery' | 'packaged-smoke',
     options?: {
       awaitDimensions?: boolean
+      initialDimensions?: { cols: number; rows: number }
       launchToken?: number
       requireExternalSessionIdForResume?: boolean
     }
@@ -708,10 +719,14 @@ app.whenReady().then(async () => {
 
     try {
       const launchToken = options?.launchToken ?? reserveSessionLaunchToken(sessionId)
-      let initialDimensions: { cols: number; rows: number } | undefined
+      let initialDimensions = options?.initialDimensions ?? getSessionDimensions(sessionId) ?? undefined
       if (options?.awaitDimensions) {
         initialDimensions = await waitForSessionDimensions(sessionId, 5000)
         console.log(`[pty-dimensions] Launching ${sessionId} with dimensions ${initialDimensions.cols}x${initialDimensions.rows}`)
+      }
+
+      if (initialDimensions) {
+        rememberSessionDimensions(sessionId, initialDimensions)
       }
 
       sessionInputRouter?.resetSession(sessionId)
@@ -1260,6 +1275,7 @@ app.whenReady().then(async () => {
       pendingLaunchSessions.delete(sessionId)
       pending.resolve({ cols, rows })
     }
+    rememberSessionDimensions(sessionId, { cols, rows })
     ptyHost?.resize(sessionId, cols, rows)
   })
 

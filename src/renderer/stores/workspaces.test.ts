@@ -35,6 +35,7 @@ function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
     setActiveProject: vi.fn().mockResolvedValue(undefined),
     setActiveSession: vi.fn().mockResolvedValue(undefined),
     archiveSession: vi.fn().mockResolvedValue(undefined),
+    restoreSession: vi.fn().mockResolvedValue(undefined),
     getTerminalReplay: vi.fn().mockResolvedValue(''),
     sendSessionInput: vi.fn(),
     sendSessionBinaryInput: vi.fn(),
@@ -77,7 +78,6 @@ function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
     closeWindow: vi.fn().mockResolvedValue(undefined),
     isWindowMaximized: vi.fn().mockResolvedValue(false),
     onWindowMaximizeChange: vi.fn().mockReturnValue(() => {}),
-    restoreSession: vi.fn().mockResolvedValue(undefined),
     listArchivedSessions: vi.fn().mockResolvedValue([]),
 
     getUpdateState: vi.fn().mockResolvedValue({
@@ -116,8 +116,9 @@ function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
     uninstallSidecars: vi.fn().mockResolvedValue(undefined),
     listSessionEvidence: vi.fn().mockResolvedValue([]),
     contextExportFullText: vi.fn().mockResolvedValue({ text: '', truncated: false, totalTurns: 0 }),
-      contextExportSlimText: vi.fn().mockResolvedValue({ text: '', truncated: false, totalTurns: 0 }),
-    ...overrides
+    contextExportSlimText: vi.fn().mockResolvedValue({ text: '', truncated: false, totalTurns: 0 }),
+    ...overrides,
+    restartSession: overrides.restartSession ?? vi.fn().mockResolvedValue(undefined)
   }
 }
 
