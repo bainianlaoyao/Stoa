@@ -200,6 +200,7 @@ export function createMetaSessionControlServer(options: MetaSessionControlServer
         workSessionList: true,
         workSessionContext: true,
         workSessionPrompt: true,
+        workSessionSendKeys: true,
         metaSessionManage: true,
         proposalDispatch: true
       },
@@ -368,6 +369,27 @@ export function createMetaSessionControlServer(options: MetaSessionControlServer
             details: { proposal: result.proposal }
           }
         : null))
+    } catch (error) {
+      response.status(getErrorStatus(error)).json(jsonEnvelope(null, getErrorBody(error)))
+    }
+  })
+
+  app.post('/ctl/work-sessions/:sessionId/send-keys', async (request, response) => {
+    try {
+      const metaSessionId = request.header('x-stoa-session-id')!
+      const data = typeof request.body?.data === 'string' ? request.body.data : ''
+      if (!data) {
+        invalidRequest(response, 'Missing input data.')
+        return
+      }
+
+      const result = await options.dispatcher.sendKeysToWorkSession({
+        metaSessionId,
+        targetSessionId: request.params.sessionId,
+        data
+      })
+
+      response.json(jsonEnvelope(result))
     } catch (error) {
       response.status(getErrorStatus(error)).json(jsonEnvelope(null, getErrorBody(error)))
     }

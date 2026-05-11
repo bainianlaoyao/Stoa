@@ -325,7 +325,7 @@ function toNormalizedMetaSessionState(value: unknown): PersistedMetaSessionState
     active_meta_session_id: value.active_meta_session_id,
     sessions: value.sessions.map((session) => ({
       ...session,
-      archived: (session as Record<string, unknown>).archived === true,
+      archived: (session as unknown as { archived?: unknown }).archived === true,
       backend_session_type: isValidBackendSessionType((session as Partial<typeof session>).backend_session_type)
         ? (session as typeof session).backend_session_type
         : DEFAULT_META_SESSION_BACKEND_SESSION_TYPE

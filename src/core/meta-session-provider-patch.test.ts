@@ -17,7 +17,8 @@ function createSession(): MetaSessionSummary {
     backendSessionId: 'meta-backend-1',
     createdAt: '2026-05-07T08:00:00.000Z',
     updatedAt: '2026-05-07T08:00:00.000Z',
-    lastActivatedAt: null
+    lastActivatedAt: null,
+    archived: false
   }
 }
 

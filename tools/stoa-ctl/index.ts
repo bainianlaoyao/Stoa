@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { readFile } from 'node:fs/promises'
+import { parseSendKeysTokens } from './send-keys'
 
 type JsonEnvelope = {
   ok: boolean
@@ -50,6 +51,7 @@ export const USAGE_TEXT = [
   '  work-sessions prompt <id> --text "..."',
   '  work-sessions prompt <id> --file <path>',
   '  work-sessions prompt <id> --stdin',
+  '  work-sessions send-keys <id> [--literal] [key ...]',
   '  meta-sessions list',
   '  meta-sessions create --title "..." --backend <claude-code|codex|opencode> [--capability-level <0|1|2|3>]',
   '  meta-sessions get <id>',
@@ -366,6 +368,32 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
         return mapFailureExitCode(response, responseText)
       }
       resolvedDeps.stdout.write(responseText)
+      return 0
+    }
+
+    if (group === 'work-sessions' && action === 'send-keys') {
+      const sessionId = rest[0]
+      if (!sessionId) {
+        throw new CliUsageError('Missing session id')
+      }
+
+      const keyTokens = rest.slice(1)
+      const literal = hasFlag(keyTokens, '--literal')
+      const filteredTokens = keyTokens.filter((token) => token !== '--literal')
+      if (filteredTokens.length === 0) {
+        throw new CliUsageError('Missing keys')
+      }
+
+      const data = parseSendKeysTokens(filteredTokens, { literal })
+      const { response, text } = await request(resolvedDeps, `/ctl/work-sessions/${sessionId}/send-keys`, {
+        method: 'POST',
+        body: JSON.stringify({ data })
+      })
+      if (!response.ok) {
+        resolvedDeps.stderr.write(`${text}\n`)
+        return mapFailureExitCode(response, text)
+      }
+      resolvedDeps.stdout.write(text)
       return 0
     }
 

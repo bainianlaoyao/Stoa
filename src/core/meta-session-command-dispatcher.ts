@@ -16,6 +16,12 @@ export interface PromptDispatchInput {
   text: string
 }
 
+export interface SendKeysDispatchInput {
+  metaSessionId: string
+  targetSessionId: string
+  data: string
+}
+
 export type PromptDispatchResult =
   | { kind: 'dispatched' }
   | { kind: 'approval_required'; proposal: MetaSessionProposal }
@@ -29,6 +35,10 @@ export interface PresetDispatchInput {
 export type PresetDispatchResult = {
   kind: 'dispatched'
   presetName: PresetDispatchInput['presetName']
+}
+
+export type DirectWorkSessionDispatchResult = {
+  kind: 'dispatched'
 }
 
 interface MetaSessionCommandDispatcherOptions {
@@ -82,6 +92,16 @@ function resolvePresetPrompt(presetName: PresetDispatchInput['presetName']): str
 
 export class MetaSessionCommandDispatcher {
   constructor(private readonly options: MetaSessionCommandDispatcherOptions) {}
+
+  async sendKeysToWorkSession(input: SendKeysDispatchInput): Promise<DirectWorkSessionDispatchResult> {
+    const session = this.options.snapshotSource.snapshot().sessions.find((candidate) => candidate.id === input.targetSessionId)
+    if (!session) {
+      throw new MetaSessionDispatchError('unknown_session', `Unknown session: ${input.targetSessionId}`)
+    }
+
+    await this.options.sessionInput.send(input.targetSessionId, input.data)
+    return { kind: 'dispatched' }
+  }
 
   async promptWorkSession(input: PromptDispatchInput): Promise<PromptDispatchResult> {
     const session = this.options.snapshotSource.snapshot().sessions.find((candidate) => candidate.id === input.targetSessionId)

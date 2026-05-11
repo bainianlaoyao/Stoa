@@ -291,4 +291,83 @@ describe('MetaSessionCommandDispatcher', () => {
     })
     expect(send).toHaveBeenCalledWith('session_1', 'Continue by running the project test command only. Do not modify code. Summarize failures and likely causes.\r')
   })
+
+  test('dispatches low-level send-keys input directly without approval', async () => {
+    const proposalStore = new MetaSessionProposalStore()
+    const send = vi.fn(async () => {})
+    const dispatcher = new MetaSessionCommandDispatcher({
+      snapshotSource: {
+        snapshot() {
+          return {
+            activeProjectId: 'project_1',
+            activeSessionId: 'session_1',
+            terminalWebhookPort: 43127,
+            projects: [],
+            sessions: [{
+              id: 'session_1',
+              projectId: 'project_1',
+              type: 'codex',
+              runtimeState: 'alive',
+              turnState: 'idle',
+              turnEpoch: 4,
+              lastTurnOutcome: 'completed',
+              blockingReason: null,
+              failureReason: null,
+              hasUnseenCompletion: true,
+              runtimeExitCode: null,
+              runtimeExitReason: null,
+              lastStateSequence: 17,
+              title: 'session one',
+              summary: 'Completed but waiting for review.',
+              recoveryMode: 'resume-external',
+              externalSessionId: 'codex-1',
+              createdAt: '2026-05-07T08:00:00.000Z',
+              updatedAt: '2026-05-07T08:05:00.000Z',
+              lastActivatedAt: '2026-05-07T08:05:00.000Z',
+              archived: false
+            }]
+          }
+        }
+      },
+      sessionInput: {
+        send
+      },
+      proposals: proposalStore
+    })
+
+    const result = await dispatcher.sendKeysToWorkSession({
+      metaSessionId: 'meta_session_1',
+      targetSessionId: 'session_1',
+      data: '1\r'
+    })
+
+    expect(result).toEqual({ kind: 'dispatched' })
+    expect(send).toHaveBeenCalledWith('session_1', '1\r')
+  })
+
+  test('rejects send-keys for unknown sessions', async () => {
+    const dispatcher = new MetaSessionCommandDispatcher({
+      snapshotSource: {
+        snapshot() {
+          return {
+            activeProjectId: 'project_1',
+            activeSessionId: null,
+            terminalWebhookPort: 43127,
+            projects: [],
+            sessions: []
+          }
+        }
+      },
+      sessionInput: {
+        send: vi.fn(async () => {})
+      },
+      proposals: new MetaSessionProposalStore()
+    })
+
+    await expect(dispatcher.sendKeysToWorkSession({
+      metaSessionId: 'meta_session_1',
+      targetSessionId: 'session_missing',
+      data: '1'
+    })).rejects.toThrow(/unknown session/i)
+  })
 })

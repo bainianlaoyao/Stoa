@@ -25,6 +25,7 @@ function makeSession(patch: Partial<MetaSessionSummary> = {}): MetaSessionSummar
     createdAt: '2026-05-07T08:00:00.000Z',
     updatedAt: '2026-05-07T08:05:00.000Z',
     lastActivatedAt: '2026-05-07T08:05:00.000Z',
+    archived: false,
     ...patch
   }
 }

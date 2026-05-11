@@ -34,6 +34,7 @@ describe('stoa-ctl command surface', () => {
     expect(module.USAGE_TEXT).toContain('work-sessions list')
     expect(module.USAGE_TEXT).toContain('work-sessions get <id>')
     expect(module.USAGE_TEXT).toContain('work-sessions events <id>')
+    expect(module.USAGE_TEXT).toContain('work-sessions send-keys <id> [--literal] [key ...]')
     expect(module.USAGE_TEXT).toContain('state attention-queue')
     expect(module.USAGE_TEXT).toContain('state conflicts')
     expect(module.USAGE_TEXT).toContain('meta-sessions list')
@@ -245,6 +246,71 @@ describe('stoa-ctl command surface', () => {
 
     expect(exitCode).toBe(0)
     expect(writes.join('')).toContain('"proposal_2"')
+  })
+
+  test('sends tmux-style keys to a work session through the control plane', async () => {
+    const module = await import('./index')
+    const writes: string[] = []
+    const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      expect(String(input)).toBe('http://127.0.0.1:43129/ctl/work-sessions/session_1/send-keys')
+      expect(init?.method).toBe('POST')
+      expect(init?.body).toBe('{"data":"1\\r\\u0003"}')
+      return createResponse({
+        body: '{"ok":true,"data":{"kind":"dispatched"},"error":null}'
+      })
+    })
+
+    const exitCode = await module.run([
+      'work-sessions',
+      'send-keys',
+      'session_1',
+      '1',
+      'Enter',
+      'C-c'
+    ], {
+      fetch: fetchImpl,
+      env: metaSessionEnv,
+      stdout: {
+        write(chunk: string) {
+          writes.push(chunk)
+        }
+      },
+      stderr: {
+        write() {}
+      },
+      sleep: async () => {}
+    })
+
+    expect(exitCode).toBe(0)
+    expect(writes.join('')).toContain('"dispatched"')
+  })
+
+  test('supports literal mode when sending keys to a work session', async () => {
+    const module = await import('./index')
+    const fetchImpl = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+      expect(String(_input)).toBe('http://127.0.0.1:43129/ctl/work-sessions/session_1/send-keys')
+      expect(init?.body).toBe('{"data":"EnterC-c"}')
+      return createResponse({
+        body: '{"ok":true,"data":{"kind":"dispatched"},"error":null}'
+      })
+    })
+
+    const exitCode = await module.run([
+      'work-sessions',
+      'send-keys',
+      'session_1',
+      '--literal',
+      'Enter',
+      'C-c'
+    ], {
+      fetch: fetchImpl,
+      env: metaSessionEnv,
+      stdout: { write() {} },
+      stderr: { write() {} },
+      sleep: async () => {}
+    })
+
+    expect(exitCode).toBe(0)
   })
 
   test('dispatches a safe preset through the control plane', async () => {

@@ -122,7 +122,8 @@ function createMetaSession(id = 'meta_session_1'): MetaSessionSummary {
     backendSessionId: `backend-${id}`,
     createdAt: '2026-05-07T08:00:00.000Z',
     updatedAt: '2026-05-07T08:10:00.000Z',
-    lastActivatedAt: '2026-05-07T08:10:00.000Z'
+    lastActivatedAt: '2026-05-07T08:10:00.000Z',
+    archived: false
   }
 }
 
@@ -335,7 +336,10 @@ describe('meta session control server', () => {
     expect(JSON.parse(capabilities.body)).toMatchObject({
       ok: true,
       data: {
-        capabilityLevel: 3
+        capabilityLevel: 3,
+        supports: {
+          workSessionSendKeys: true
+        }
       }
     })
     expect(JSON.parse(workSessions.body)).toMatchObject({
@@ -589,6 +593,11 @@ describe('meta session control server', () => {
             }
           }
         },
+        async sendKeysToWorkSession() {
+          return {
+            kind: 'dispatched'
+          }
+        },
         async createPromptProposal() {
           return {
             id: 'proposal_2',
@@ -629,6 +638,12 @@ describe('meta session control server', () => {
       authHeaders,
       '{"kind":"prompt","targetSessionId":"session_1","text":"Review the diff only."}'
     )
+    const sendKeys = await post(
+      port,
+      '/ctl/work-sessions/session_1/send-keys',
+      authHeaders,
+      '{"data":"1\\r"}'
+    )
     const dispatchedPreset = await post(
       port,
       '/ctl/dispatch/preset/run-tests-only',
@@ -655,6 +670,12 @@ describe('meta session control server', () => {
       ok: true,
       data: {
         id: 'proposal_2'
+      }
+    })
+    expect(JSON.parse(sendKeys.body)).toMatchObject({
+      ok: true,
+      data: {
+        kind: 'dispatched'
       }
     })
     expect(JSON.parse(dispatchedPreset.body)).toMatchObject({
