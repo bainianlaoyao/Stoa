@@ -33,6 +33,10 @@ vi.mock('@xterm/xterm', () => {
         throw new Error('xterm open failed')
       }
     }
+    attachCustomKeyEventHandler() {}
+    getSelection() {
+      return ''
+    }
     focus() {}
     write(data: string, callback?: () => void) {
       this.writes.push(data)
