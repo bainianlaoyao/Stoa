@@ -113,7 +113,8 @@ function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
         backendSessionId: 'backend-session-1',
         createdAt: '2026-05-07T08:00:00.000Z',
         updatedAt: '2026-05-07T08:05:00.000Z',
-        lastActivatedAt: '2026-05-07T08:05:00.000Z'
+        lastActivatedAt: '2026-05-07T08:05:00.000Z',
+        archived: false
       }],
       inspectorTarget: {
         kind: 'app'
@@ -122,6 +123,8 @@ function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
     createMetaSession: vi.fn().mockResolvedValue(null),
     setActiveMetaSession: vi.fn().mockResolvedValue(undefined),
     closeMetaSession: vi.fn().mockResolvedValue(undefined),
+    archiveMetaSession: vi.fn().mockResolvedValue(undefined),
+    restoreMetaSession: vi.fn().mockResolvedValue(undefined),
     setMetaSessionInspectorTarget: vi.fn().mockResolvedValue(undefined),
     listMetaSessionProposals: vi.fn().mockResolvedValue([{
       id: 'proposal_1',
@@ -217,7 +220,8 @@ describe('MetaSessionSurface', () => {
       backendSessionId: null,
       createdAt: '2026-05-07T08:10:00.000Z',
       updatedAt: '2026-05-07T08:10:00.000Z',
-      lastActivatedAt: null
+      lastActivatedAt: null,
+      archived: false
     })
     window.stoa = createStoaMock({ createMetaSession })
     const store = useMetaSessionStore()
