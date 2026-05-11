@@ -1,14 +1,97 @@
+import { chmod, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { test, expect } from '@playwright/test'
 import {
   appendTerminalData,
   cleanupStateDir,
+  createStateDir,
   getMainE2EDebugState,
   launchElectronApp,
   readTerminalBuffer,
   waitForTerminalBufferText
 } from './fixtures/electron-app'
 import { createProject, createSession } from './helpers/ui-actions'
+
+async function installFakeCodex(app: Awaited<ReturnType<typeof launchElectronApp>>): Promise<void> {
+  const wrapperPath = join(
+    app.stateDir,
+    process.platform === 'win32' ? 'fake-codex.cmd' : 'fake-codex.sh'
+  )
+  const driverPath = join(app.stateDir, 'fake-codex-driver.mjs')
+  const driverSource = [
+    "import { spawn } from 'node:child_process'",
+    "import { randomUUID } from 'node:crypto'",
+    "import { join } from 'node:path'",
+    '',
+    'const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms))',
+    '',
+    'async function invokeHook(eventName, payload) {',
+    "  const dispatchPath = join(process.cwd(), '.stoa', 'hook-dispatch.mjs')",
+    '  await new Promise((resolve, reject) => {',
+    '    const child = spawn(process.execPath, [dispatchPath, "codex", eventName], {',
+    '      cwd: process.cwd(),',
+    '      env: process.env,',
+    "      stdio: ['pipe', 'ignore', 'pipe']",
+    '    })',
+    "    let stderr = ''",
+    "    child.stderr.on('data', (chunk) => { stderr += String(chunk) })",
+    '    child.on("error", reject)',
+    '    child.on("exit", (code) => {',
+    '      if (code === 0) {',
+    '        resolve(null)',
+    '        return',
+    '      }',
+    '      reject(new Error(`hook ${eventName} failed with code ${code}: ${stderr}`))',
+    '    })',
+    '    child.stdin.end(JSON.stringify(payload))',
+    '  })',
+    '}',
+    '',
+    'const externalSessionId = randomUUID()',
+    'const turnId = randomUUID()',
+    "await invokeHook('SessionStart', {",
+    '  session_id: externalSessionId,',
+    '  cwd: process.cwd(),',
+    "  model: 'gpt-5-codex'",
+    '})',
+    'await sleep(5000)',
+    "await invokeHook('UserPromptSubmit', {",
+    '  session_id: externalSessionId,',
+    '  turn_id: turnId,',
+    "  prompt: 'Say hello from fake codex',",
+    '  cwd: process.cwd(),',
+    "  model: 'gpt-5-codex'",
+    '})',
+    "console.log('__FAKE_CODEX_RUNNING__')",
+    'await sleep(5000)',
+    "await invokeHook('Stop', {",
+    '  session_id: externalSessionId,',
+    '  turn_id: turnId,',
+    "  last_assistant_message: 'Fake codex complete',",
+    '  cwd: process.cwd(),',
+    "  model: 'gpt-5-codex'",
+    '})',
+    "console.log('__FAKE_CODEX_COMPLETE__')",
+    'await sleep(15000)'
+  ].join('\n')
+  const wrapperSource = process.platform === 'win32'
+    ? `@echo off\r\nnode "${driverPath}" %*\r\n`
+    : `#!/bin/sh\nnode "${driverPath}" "$@"\n`
+
+  await writeFile(driverPath, driverSource, 'utf8')
+  await writeFile(wrapperPath, wrapperSource, 'utf8')
+
+  if (process.platform !== 'win32') {
+    await chmod(wrapperPath, 0o755)
+  }
+
+  await app.page.evaluate(async (providerPath) => {
+    const api = (window as typeof window & {
+      stoa?: { setSetting?: (key: string, value: unknown) => Promise<void> }
+    }).stoa
+    await api?.setSetting?.('providers', { codex: providerPath })
+  }, wrapperPath)
+}
 
 async function waitForSessionState(
   app: Awaited<ReturnType<typeof launchElectronApp>>,
@@ -94,6 +177,59 @@ test.describe('Electron terminal journeys', () => {
       const { stateDir } = app
       await app.close()
       await cleanupStateDir(stateDir)
+    }
+  })
+
+  test('codex live session derives row status from hook events', async () => {
+    const stateDir = await createStateDir('stoa-playwright-codex-hooks-')
+    const app = await launchElectronApp({
+      stateDir,
+      env: {
+        CODEX_HOME: join(stateDir, 'codex-home')
+      }
+    })
+
+    try {
+      await installFakeCodex(app)
+
+      const projectRow = await createProject(app, {
+        name: 'terminal-codex-hooks-project',
+        path: join(app.stateDir, 'terminal-codex-hooks-project')
+      })
+      const session = await createSession(app.page, projectRow, {
+        type: 'codex'
+      })
+
+      await waitForSessionState(app, session.title, (candidate) => candidate.runtimeState === 'alive')
+      const sessionState = await waitForSessionByTitle(app, session.title)
+
+      const statusDot = session.row.locator('[data-testid="session-status-dot"]')
+      await expect(statusDot).toHaveAttribute('data-session-status-testid', 'session-status-ready')
+      await expect(statusDot).toHaveAttribute('data-phase', 'ready')
+
+      await waitForTerminalBufferText(app.electronApp, sessionState.id, '__FAKE_CODEX_RUNNING__')
+      await expect(statusDot).toHaveAttribute('data-session-status-testid', 'session-status-running', { timeout: 15000 })
+      await expect(statusDot).toHaveAttribute('data-phase', 'running')
+      await expect(session.row.locator('.route-session-label')).toContainText('Running')
+
+      await waitForTerminalBufferText(app.electronApp, sessionState.id, '__FAKE_CODEX_COMPLETE__')
+      await expect(statusDot).toHaveAttribute('data-session-status-testid', 'session-status-complete', { timeout: 15000 })
+
+      await session.row.click()
+      await expect(statusDot).toHaveAttribute('data-session-status-testid', 'session-status-ready')
+
+      await expect.poll(async () => {
+        const debugState = await getMainE2EDebugState(app.electronApp)
+        return debugState?.snapshot?.sessions.find((candidate) => candidate.id === sessionState.id) ?? null
+      }).toMatchObject({
+        runtimeState: 'alive',
+        turnState: 'idle',
+        lastTurnOutcome: 'completed'
+      })
+    } finally {
+      const { stateDir: launchedStateDir } = app
+      await app.close()
+      await cleanupStateDir(launchedStateDir)
     }
   })
 

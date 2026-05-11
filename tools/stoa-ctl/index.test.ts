@@ -18,7 +18,6 @@ function createResponse(init: MockResponseInit = {}): Response {
 
 const metaSessionEnv = {
   STOA_CTL_BASE_URL: 'http://127.0.0.1:43129',
-  STOA_CTL_TOKEN: 'secret-1',
   STOA_META_SESSION_ID: 'meta_session_1'
 }
 

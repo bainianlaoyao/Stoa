@@ -75,15 +75,13 @@ function resolveBaseUrl(env: NodeJS.ProcessEnv): string {
 }
 
 function resolveHeaders(env: NodeJS.ProcessEnv): Record<string, string> {
-  const token = env.STOA_CTL_TOKEN?.trim()
   const sessionId = env.STOA_META_SESSION_ID?.trim() ?? env.STOA_SESSION_ID?.trim()
-  if (!token || !sessionId) {
-    throw new CliConfigError('Missing STOA_CTL_TOKEN or STOA_META_SESSION_ID')
+  if (!sessionId) {
+    throw new CliConfigError('Missing STOA_META_SESSION_ID')
   }
 
   return {
-    'x-stoa-session-id': sessionId,
-    'x-stoa-secret': token
+    'x-stoa-session-id': sessionId
   }
 }
 
@@ -595,7 +593,9 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]?.replace(/\\/g, '/')}`) {
+const entryPath = process.argv[1]?.replace(/\\/g, '/')
+const metaPath = import.meta.url.replace(/^file:\/\//, '')
+if (entryPath && (entryPath.endsWith(metaPath) || metaPath.endsWith(entryPath))) {
   const exitCode = await run(process.argv.slice(2))
   process.exit(exitCode)
 }

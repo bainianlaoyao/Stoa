@@ -245,6 +245,11 @@ describe('SessionEventBridge', () => {
     const metaSessionManager = await MetaSessionManager.create({
       statePath: resolveMetaSessionStateFilePath(join(metaSessionStateDir, 'global.json'))
     })
+    const metaSession = await metaSessionManager.createSession({
+      title: 'Global Triage',
+      backendSessionType: 'claude-code',
+      capabilityLevel: 3
+    })
     const assembler = new MetaSessionContextAssembler({
       snapshotSource: manager,
       getSessionPresence() {
@@ -269,9 +274,6 @@ describe('SessionEventBridge', () => {
         })
         createMetaSessionControlServer({
           app,
-          getSessionSecret(sessionId: string) {
-            return bridge.debugSnapshotSessionSecrets()[sessionId] ?? null
-          },
           metaSessionSource: metaSessionManager,
           snapshotSource: manager,
           getSessionPresence() {
@@ -286,10 +288,8 @@ describe('SessionEventBridge', () => {
     bridges.push(bridge)
 
     const port = await bridge.start()
-    const secret = bridge.issueSessionSecret('meta_session_1')
     const response = await getPath(port, '/ctl/state/brief', {
-      'x-stoa-session-id': 'meta_session_1',
-      'x-stoa-secret': secret
+      'x-stoa-session-id': metaSession.id
     })
 
     expect(response.statusCode).toBe(200)
@@ -330,6 +330,106 @@ describe('SessionEventBridge', () => {
       failureReason: undefined,
       summary: 'Turn complete',
       externalSessionId: undefined
+    })
+  })
+
+  test('submitCanonicalEvent maps Codex rollout task_started/task_complete into sequential running and complete patches', async () => {
+    const stateDir = await createTestTempDir('session-event-bridge-codex-rollout-state-')
+    const workspaceDir = await createTestTempDir('session-event-bridge-codex-rollout-workspace-')
+    tempDirs.push(stateDir, workspaceDir)
+
+    const manager = await ProjectSessionManager.create({
+      webhookPort: null,
+      globalStatePath: join(stateDir, 'global.json')
+    })
+    const project = await manager.createProject({
+      name: 'Codex Project',
+      path: workspaceDir,
+      defaultSessionType: 'codex'
+    })
+    const session = await manager.createSession({
+      projectId: project.id,
+      type: 'codex',
+      title: 'Codex Session',
+      externalSessionId: 'codex-real-321'
+    })
+    await manager.markRuntimeAlive(session.id, 'codex-real-321')
+
+    const controller = {
+      applyProviderStatePatch: vi.fn(async (patch: SessionStatePatchEvent) => {
+        await manager.applySessionStatePatch(patch)
+      })
+    }
+    const bridge = new SessionEventBridge(manager, controller)
+    bridges.push(bridge)
+
+    await bridge.submitCanonicalEvent({
+      event_version: 1,
+      event_id: 'evt_codex_rollout_started',
+      event_type: 'codex.rollout.task_started',
+      timestamp: '2026-05-10T09:19:07.257Z',
+      session_id: session.id,
+      project_id: project.id,
+      source: 'provider-adapter',
+      payload: {
+        intent: 'agent.turn_started',
+        sourceTurnId: 'turn_codex_1',
+        summary: 'task_started',
+        externalSessionId: 'codex-real-321'
+      }
+    })
+
+    expect(controller.applyProviderStatePatch).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining<Partial<SessionStatePatchEvent>>({
+        sessionId: session.id,
+        intent: 'agent.turn_started',
+        turnEpoch: 1,
+        sourceTurnId: 'turn_codex_1',
+        sourceEventType: 'codex.rollout.task_started',
+        externalSessionId: 'codex-real-321'
+      })
+    )
+    expect(manager.snapshot().sessions.find(candidate => candidate.id === session.id)).toMatchObject({
+      runtimeState: 'alive',
+      turnState: 'running',
+      turnEpoch: 1,
+      lastTurnOutcome: 'none'
+    })
+
+    await bridge.submitCanonicalEvent({
+      event_version: 1,
+      event_id: 'evt_codex_rollout_complete',
+      event_type: 'codex.rollout.task_complete',
+      timestamp: '2026-05-10T09:24:55.652Z',
+      session_id: session.id,
+      project_id: project.id,
+      source: 'provider-adapter',
+      payload: {
+        intent: 'agent.turn_completed',
+        sourceTurnId: 'turn_codex_1',
+        summary: 'task_complete',
+        externalSessionId: 'codex-real-321'
+      }
+    })
+
+    expect(controller.applyProviderStatePatch).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining<Partial<SessionStatePatchEvent>>({
+        sessionId: session.id,
+        intent: 'agent.turn_completed',
+        turnEpoch: 1,
+        sourceTurnId: 'turn_codex_1',
+        sourceEventType: 'codex.rollout.task_complete',
+        externalSessionId: 'codex-real-321'
+      })
+    )
+    expect(manager.snapshot().sessions.find(candidate => candidate.id === session.id)).toMatchObject({
+      runtimeState: 'alive',
+      turnState: 'idle',
+      turnEpoch: 1,
+      lastTurnOutcome: 'completed',
+      hasUnseenCompletion: true
     })
   })
 

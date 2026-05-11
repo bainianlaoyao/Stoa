@@ -20,7 +20,6 @@ interface MetaSessionSource {
 }
 
 interface MetaSessionControlServerOptions {
-  getSessionSecret: (sessionId: string) => string | null
   metaSessionSource: MetaSessionSource
   snapshotSource: SnapshotSource
   getSessionPresence: (sessionId: string) => SessionPresenceSnapshot | null
@@ -73,16 +72,14 @@ function getErrorBody(error: unknown): { code: string; message: string; details:
 }
 
 function authorize(
-  getSessionSecret: (sessionId: string) => string | null,
-  sessionId: string | undefined,
-  providedSecret: string | undefined
+  metaSessionSource: MetaSessionSource,
+  sessionId: string | undefined
 ): boolean {
-  if (!sessionId || !providedSecret) {
+  if (!sessionId) {
     return false
   }
 
-  const expectedSecret = getSessionSecret(sessionId)
-  return !!expectedSecret && expectedSecret === providedSecret
+  return metaSessionSource.getSession(sessionId) !== null
 }
 
 function parsePositiveInt(value: unknown, fallback: number): number {
@@ -153,8 +150,7 @@ export function createMetaSessionControlServer(options: MetaSessionControlServer
 
   app.use('/ctl', (request, response, next) => {
     const sessionId = request.header('x-stoa-session-id') ?? undefined
-    const secret = request.header('x-stoa-secret') ?? undefined
-    if (!authorize(options.getSessionSecret, sessionId, secret)) {
+    if (!authorize(options.metaSessionSource, sessionId)) {
       response.status(401).json(jsonEnvelope(null, {
         code: 'invalid_secret',
         message: 'Invalid meta-session control credentials.',

@@ -1,8 +1,10 @@
-import { readFile, rm, stat } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { cp, mkdtemp, readFile, rm, stat } from 'node:fs/promises'
 import { request } from 'node:http'
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { tmpdir } from 'node:os'
 import { afterEach, describe, expect, test } from 'vitest'
 import { getProvider, listProviders } from '@extensions/providers'
 import type { CanonicalSessionEvent, ProviderCommandContext } from '@shared/project-session'
@@ -22,6 +24,260 @@ async function createTempDir(prefix: string): Promise<string> {
   const dir = await createTestTempDir(prefix)
   tempDirs.push(dir)
   return dir
+}
+
+async function createExternalTempDir(prefix: string): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), prefix))
+  tempDirs.push(dir)
+  return dir
+}
+
+async function withTempCodexHome<T>(run: (codexHomeDir: string) => Promise<T>): Promise<T> {
+  const codexHomeDir = await createTempDir('stoa-codex-home-')
+  const previousCodexHome = process.env.CODEX_HOME
+  process.env.CODEX_HOME = codexHomeDir
+  try {
+    return await run(codexHomeDir)
+  } finally {
+    if (previousCodexHome === undefined) {
+      delete process.env.CODEX_HOME
+    } else {
+      process.env.CODEX_HOME = previousCodexHome
+    }
+  }
+}
+
+async function withRealCodexHome<T>(run: (codexHomeDir: string) => Promise<T>): Promise<T> {
+  const codexHomeDir = await createTempDir('stoa-real-codex-home-')
+  const homeDir = process.env.USERPROFILE ?? process.env.HOME
+  if (!homeDir) {
+    throw new Error('Cannot resolve user home directory for real Codex test.')
+  }
+
+  await cp(join(homeDir, '.codex', 'config.toml'), join(codexHomeDir, 'config.toml'))
+  await cp(join(homeDir, '.codex', 'auth.json'), join(codexHomeDir, 'auth.json'))
+
+  const previousCodexHome = process.env.CODEX_HOME
+  process.env.CODEX_HOME = codexHomeDir
+  try {
+    return await run(codexHomeDir)
+  } finally {
+    if (previousCodexHome === undefined) {
+      delete process.env.CODEX_HOME
+    } else {
+      process.env.CODEX_HOME = previousCodexHome
+    }
+  }
+}
+
+function resolveCodexCliPath(): string {
+  const configured = process.env.CODEX_CLI_PATH?.trim()
+  if (configured) {
+    return configured
+  }
+
+  const lookup = spawnSync('where.exe', ['codex'], { encoding: 'utf8', shell: false })
+  if (lookup.status !== 0) {
+    throw new Error(`Codex CLI executable was not found.\n${lookup.stderr}`)
+  }
+
+  const candidates = lookup.stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+  const preferred = candidates.find((line) => line.toLowerCase().endsWith('.cmd'))
+  return preferred ?? candidates[0]!
+}
+
+function canRunRealCodexTests(): boolean {
+  try {
+    const cliPath = resolveCodexCliPath()
+    if (!existsSync(cliPath)) {
+      return false
+    }
+
+    const homeDir = process.env.USERPROFILE ?? process.env.HOME
+    if (!homeDir) {
+      return false
+    }
+
+    return existsSync(join(homeDir, '.codex', 'config.toml'))
+      && existsSync(join(homeDir, '.codex', 'auth.json'))
+  } catch {
+    return false
+  }
+}
+
+const SHOULD_RUN_REAL_CODEX_TESTS = canRunRealCodexTests()
+
+function runCodexCli(
+  args: string[],
+  options: { cwd: string; env: Record<string, string | undefined>; timeoutMs?: number }
+): Promise<{ stdout: string; stderr: string; exitCode: number | null }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn('cmd.exe', ['/c', resolveCodexCliPath(), ...args], {
+      cwd: options.cwd,
+      env: Object.fromEntries(
+        Object.entries(options.env).filter(([, value]) => value !== undefined)
+      ) as Record<string, string>,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true,
+      shell: false
+    })
+    child.stdin.end()
+
+    let stdout = ''
+    let stderr = ''
+    const timeout = setTimeout(() => {
+      child.kill()
+      reject(new Error(`Timed out running Codex CLI: codex ${args.join(' ')}`))
+    }, options.timeoutMs ?? 30_000)
+
+    child.stdout.setEncoding('utf8')
+    child.stderr.setEncoding('utf8')
+    child.stdout.on('data', (chunk) => { stdout += chunk })
+    child.stderr.on('data', (chunk) => { stderr += chunk })
+    child.on('error', (error) => {
+      clearTimeout(timeout)
+      reject(error)
+    })
+    child.on('close', (exitCode) => {
+      clearTimeout(timeout)
+      resolve({ stdout, stderr, exitCode })
+    })
+  })
+}
+
+function spawnCodexCli(
+  args: string[],
+  options: { cwd: string; env: Record<string, string | undefined> }
+): {
+  child: import('node:child_process').ChildProcessWithoutNullStreams
+  output: { stdout: string; stderr: string }
+} {
+  const child = spawn('cmd.exe', ['/c', resolveCodexCliPath(), ...args], {
+    cwd: options.cwd,
+    env: Object.fromEntries(
+      Object.entries(options.env).filter(([, value]) => value !== undefined)
+    ) as Record<string, string>,
+    stdio: ['pipe', 'pipe', 'pipe'],
+    windowsHide: true,
+    shell: false
+  })
+  child.stdin.end()
+
+  const output = { stdout: '', stderr: '' }
+  child.stdout.setEncoding('utf8')
+  child.stderr.setEncoding('utf8')
+  child.stdout.on('data', (chunk) => { output.stdout += chunk })
+  child.stderr.on('data', (chunk) => { output.stderr += chunk })
+
+  return { child, output }
+}
+
+async function waitForCondition(
+  condition: () => boolean,
+  options: { timeoutMs: number; intervalMs?: number; timeoutMessage: string }
+): Promise<void> {
+  const startedAt = Date.now()
+  while (Date.now() - startedAt < options.timeoutMs) {
+    if (condition()) {
+      return
+    }
+    await new Promise((resolve) => setTimeout(resolve, options.intervalMs ?? 100))
+  }
+  throw new Error(options.timeoutMessage)
+}
+
+async function listCodexHooksThroughAppServer(
+  cwd: string,
+  codexHomeDir: string
+): Promise<Array<Record<string, unknown>>> {
+  return await new Promise((resolve, reject) => {
+    const child = spawn('cmd.exe', ['/c', resolveCodexCliPath(), 'app-server'], {
+      cwd,
+      env: {
+        ...process.env as Record<string, string | undefined>,
+        CODEX_HOME: codexHomeDir
+      },
+      stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true,
+      shell: false
+    })
+
+    let stdoutBuffer = ''
+    let stderr = ''
+    let resolved = false
+    const timeout = setTimeout(() => {
+      child.kill()
+      reject(new Error(`Timed out waiting for Codex hooks/list response.\nstderr:\n${stderr}`))
+    }, 10_000)
+
+    const finish = (hooks: Array<Record<string, unknown>>) => {
+      if (resolved) {
+        return
+      }
+      resolved = true
+      clearTimeout(timeout)
+      child.kill()
+      resolve(hooks)
+    }
+
+    child.stdout.setEncoding('utf8')
+    child.stderr.setEncoding('utf8')
+    child.stderr.on('data', (chunk) => { stderr += chunk })
+    child.stdout.on('data', (chunk) => {
+      stdoutBuffer += chunk
+      const lines = stdoutBuffer.split(/\r?\n/)
+      stdoutBuffer = lines.pop() ?? ''
+      for (const line of lines) {
+        const trimmed = line.trim()
+        if (!trimmed) {
+          continue
+        }
+
+        const message = JSON.parse(trimmed) as {
+          id?: number
+          result?: { data?: Array<{ hooks?: Array<Record<string, unknown>> }> }
+        }
+        if (message.id === 1) {
+          finish(message.result?.data?.[0]?.hooks ?? [])
+          break
+        }
+      }
+    })
+    child.on('error', (error) => {
+      clearTimeout(timeout)
+      reject(error)
+    })
+    child.on('close', () => {
+      if (!resolved) {
+        clearTimeout(timeout)
+        reject(new Error(`Codex app-server exited before hooks/list response.\nstderr:\n${stderr}`))
+      }
+    })
+
+    child.stdin.write(JSON.stringify({
+      jsonrpc: '2.0',
+      id: 0,
+      method: 'initialize',
+      params: {
+        clientInfo: { name: 'stoa-provider-integration', version: '0.1.0' },
+        capabilities: { experimentalApi: true }
+      }
+    }) + '\n')
+    child.stdin.write(JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'notifications/initialized',
+      params: {}
+    }) + '\n')
+    child.stdin.write(JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'hooks/list',
+      params: { cwds: [cwd] }
+    }) + '\n')
+  })
 }
 
 async function postCanonicalEvent(
@@ -82,6 +338,12 @@ function createContext(overrides: Partial<ProviderCommandContext> = {}): Provide
     hookSpawnGeneration: 1,
     ...overrides
   }
+}
+
+function expectedCodexHookCommand(eventName: string): string {
+  return process.platform === 'win32'
+    ? `.\\.stoa\\hook-dispatch.cmd codex ${eventName}`
+    : `.stoa/hook-dispatch codex ${eventName}`
 }
 
 describe('E2E: Provider Integration', () => {
@@ -360,26 +622,40 @@ describe('E2E: Provider Integration', () => {
       expect(command.env.STOA_PROVIDER_PORT).toBe('47771')
       expect(command.env.STOA_SESSION_SECRET).toBeUndefined()
       expect(command.env.STOA_WEBHOOK_PORT).toBeUndefined()
+      expect(command.args).toEqual([])
     })
 
-    test('installSidecar writes hook-only Codex sidecar assets', async () => {
+    test('installSidecar writes official Codex config files alongside shared dispatcher assets', async () => {
       const workspaceDir = await createTempDir('stoa-codex-sidecar-')
       const provider = getProvider('codex')
       const target = createTarget({ path: workspaceDir, type: 'codex' })
       const context = createContext()
 
-      await provider.installSidecar(target, context)
+      await withTempCodexHome(async (codexHomeDir) => {
+        await provider.installSidecar(target, context)
 
-      const configPath = join(workspaceDir, '.codex', 'config.toml')
-      const hooksPath = join(workspaceDir, '.codex', 'hooks.json')
-      const manifestPath = join(workspaceDir, '.codex', '.stoa-managed-sidecar.json')
-      const dispatcherPath = join(workspaceDir, '.stoa', 'hook-dispatch.mjs')
-      await expect(stat(configPath)).resolves.toMatchObject({ isFile: expect.any(Function) })
-      await expect(stat(hooksPath)).resolves.toMatchObject({ isFile: expect.any(Function) })
-      await expect(stat(manifestPath)).resolves.toMatchObject({ isFile: expect.any(Function) })
-      await expect(stat(dispatcherPath)).resolves.toMatchObject({ isFile: expect.any(Function) })
-      await expect(stat(join(workspaceDir, '.codex', 'hook-stoa.mjs'))).rejects.toThrow()
-      await expect(stat(join(workspaceDir, '.codex', 'notify-stoa.mjs'))).rejects.toThrow()
+        const manifestPath = join(workspaceDir, '.codex', '.stoa-managed-sidecar.json')
+        const dispatcherPath = join(workspaceDir, '.stoa', 'hook-dispatch.mjs')
+        const configContent = await readFile(join(workspaceDir, '.codex', 'config.toml'), 'utf8')
+        const userConfigContent = await readFile(join(codexHomeDir, 'config.toml'), 'utf8')
+
+        await expect(stat(manifestPath)).resolves.toMatchObject({ isFile: expect.any(Function) })
+        await expect(stat(dispatcherPath)).resolves.toMatchObject({ isFile: expect.any(Function) })
+        await expect(stat(join(workspaceDir, '.stoa', 'hook-dispatch'))).resolves.toMatchObject({ isFile: expect.any(Function) })
+        await expect(stat(join(workspaceDir, '.stoa', 'hook-dispatch.cmd'))).resolves.toMatchObject({ isFile: expect.any(Function) })
+        await expect(stat(join(workspaceDir, '.stoa', 'hook-contract.json'))).resolves.toMatchObject({ isFile: expect.any(Function) })
+        await expect(stat(join(workspaceDir, '.codex', 'config.toml'))).resolves.toMatchObject({ isFile: expect.any(Function) })
+        await expect(stat(join(workspaceDir, '.codex', 'hooks.json'))).rejects.toThrow()
+        await expect(stat(join(workspaceDir, '.codex', 'hook-stoa.mjs'))).rejects.toThrow()
+        await expect(stat(join(workspaceDir, '.codex', 'notify-stoa.mjs'))).rejects.toThrow()
+        expect(configContent).toContain('[[hooks.SessionStart]]')
+        expect(configContent).toContain(`command = ${JSON.stringify(expectedCodexHookCommand('SessionStart'))}`)
+        expect(configContent).not.toContain('[hooks.state.')
+        expect(configContent).not.toContain('trusted_hash = "sha256:')
+        expect(userConfigContent).toContain('trust_level = "trusted"')
+        expect(userConfigContent).toContain('[hooks.state.')
+        expect(userConfigContent).toContain('trusted_hash = "sha256:')
+      })
     })
 
     test('shared dispatcher artifact avoids provider-private baked session routing', async () => {
@@ -392,17 +668,17 @@ describe('E2E: Provider Integration', () => {
         project_id: 'project_internal_codex'
       })
 
-      await provider.installSidecar(target, createContext({ webhookPort: 43127, sessionSecret: 'secret-codex' }))
+      await withTempCodexHome(async () => {
+        await provider.installSidecar(target, createContext({ webhookPort: 43127, sessionSecret: 'secret-codex' }))
 
-      const hooksContent = await readFile(join(workspaceDir, '.codex', 'hooks.json'), 'utf8')
-      const dispatcherContent = await readFile(join(workspaceDir, '.stoa', 'hook-dispatch.mjs'), 'utf8')
-      expect(hooksContent).toContain('.stoa/hook-dispatch codex SessionStart')
-      expect(dispatcherContent).toContain('STOA_HOOK_LEASE_PATH')
-      expect(dispatcherContent).toContain('/hooks/codex')
-      expect(dispatcherContent).not.toContain('../src/extensions/providers/shared-hook-dispatch.ts')
-      expect(dispatcherContent).not.toContain('session_internal_codex')
-      expect(dispatcherContent).not.toContain('project_internal_codex')
-      expect(dispatcherContent).not.toContain('secret-codex')
+        const dispatcherContent = await readFile(join(workspaceDir, '.stoa', 'hook-dispatch.mjs'), 'utf8')
+        expect(dispatcherContent).toContain('STOA_HOOK_LEASE_PATH')
+        expect(dispatcherContent).toContain('/hooks/codex')
+        expect(dispatcherContent).not.toContain('../src/extensions/providers/shared-hook-dispatch.ts')
+        expect(dispatcherContent).not.toContain('session_internal_codex')
+        expect(dispatcherContent).not.toContain('project_internal_codex')
+        expect(dispatcherContent).not.toContain('secret-codex')
+      })
     })
   })
 
@@ -789,43 +1065,70 @@ describe('E2E: Provider Integration', () => {
       })
     }
 
-    test('installSidecar writes hooks.json with all 5 codex hook events', async () => {
+    test('installSidecar writes inline config.toml hooks with trusted state for all supported Codex lifecycle hooks', async () => {
       const workspaceDir = await createTempDir('stoa-codex-hooks-json-')
       const provider = getProvider('codex')
       const target = createTarget({ path: workspaceDir, type: 'codex' })
       const context = createContext()
 
-      await provider.installSidecar(target, context)
+      await withTempCodexHome(async () => {
+        await provider.installSidecar(target, context)
 
-      const hooksJsonPath = join(workspaceDir, '.codex', 'hooks.json')
-      const hooksContent = await readFile(hooksJsonPath, 'utf8')
-      const parsed = JSON.parse(hooksContent)
-
-      expect(Object.keys(parsed.hooks)).toEqual(
-        expect.arrayContaining(['SessionStart', 'UserPromptSubmit', 'PostToolUse', 'Stop'])
-      )
-      expect(parsed.hooks.SessionStart[0].hooks[0].command).toBe('.stoa/hook-dispatch codex SessionStart')
-      expect(parsed.hooks.Stop[0].hooks[0].type).toBe('command')
-      expect(parsed.hooks.UserPromptSubmit[0].hooks).toBeDefined()
-      expect(parsed.hooks.UserPromptSubmit[0].matcher).toBeUndefined()
-      expect(parsed.hooks.SessionStart[0].matcher).toBe('*')
+        const configContent = await readFile(join(workspaceDir, '.codex', 'config.toml'), 'utf8')
+        expect(configContent).toContain('[[hooks.SessionStart]]')
+        expect(configContent).toContain('matcher = "startup|resume|clear"')
+        expect(configContent).toContain('[[hooks.PreToolUse]]')
+        expect(configContent).toContain('matcher = ".*"')
+        expect(configContent).toContain('[[hooks.PostToolUse]]')
+        expect(configContent).toContain(`command = ${JSON.stringify(expectedCodexHookCommand('Stop'))}`)
+        expect(configContent).not.toContain('[hooks.state.')
+        expect(configContent).not.toContain('trusted_hash = "sha256:')
+      })
     })
 
-    test('installSidecar writes config.toml with hooks feature flag', async () => {
+    test('installSidecar writes config.toml with the latest hooks feature flag', async () => {
       const workspaceDir = await createTempDir('stoa-codex-config-')
       const provider = getProvider('codex')
       const target = createTarget({ path: workspaceDir, type: 'codex' })
       const context = createContext()
 
-      await provider.installSidecar(target, context)
+      await withTempCodexHome(async () => {
+        await provider.installSidecar(target, context)
 
-      const configPath = join(workspaceDir, '.codex', 'config.toml')
-      const configContent = await readFile(configPath, 'utf8')
+        const configPath = join(workspaceDir, '.codex', 'config.toml')
+        const configContent = await readFile(configPath, 'utf8')
 
-      expect(configContent).toContain('codex_hooks = true')
-      expect(configContent).toContain('[features]')
-      expect(configContent).not.toContain('notify =')
+        expect(configContent).toContain('[features]')
+        expect(configContent).toContain('hooks = true')
+        expect(configContent).toContain('[[hooks.UserPromptSubmit]]')
+        expect(configContent).not.toContain('codex_hooks')
+      })
     })
+
+    test('real Codex app-server sees project hooks as trusted after sidecar install', async () => {
+      const workspaceDir = await createTempDir('stoa-codex-real-hooks-list-')
+      const provider = getProvider('codex')
+      const target = createTarget({ path: workspaceDir, type: 'codex' })
+
+      await withRealCodexHome(async (codexHomeDir) => {
+        await provider.installSidecar(target, createContext())
+
+        const hooks = await listCodexHooksThroughAppServer(workspaceDir, codexHomeDir)
+        const stoaHooks = hooks.filter((hook) => {
+          const command = typeof hook.command === 'string' ? hook.command : ''
+          const sourcePath = typeof hook.sourcePath === 'string' ? hook.sourcePath : ''
+          return command.includes('hook-dispatch') && sourcePath.toLowerCase().includes(workspaceDir.toLowerCase())
+        })
+        expect(stoaHooks).toHaveLength(5)
+        expect(stoaHooks.map((hook) => hook.trustStatus)).toEqual([
+          'trusted',
+          'trusted',
+          'trusted',
+          'trusted',
+          'trusted'
+        ])
+      })
+    }, 20_000)
 
     test('installSidecar writes a shared dispatcher artifact for codex hooks', async () => {
       const workspaceDir = await createTempDir('stoa-codex-hook-sidecar-')
@@ -833,14 +1136,16 @@ describe('E2E: Provider Integration', () => {
       const target = createTarget({ path: workspaceDir, type: 'codex' })
       const context = createContext()
 
-      await provider.installSidecar(target, context)
+      await withTempCodexHome(async () => {
+        await provider.installSidecar(target, context)
 
-      const content = await readFile(join(workspaceDir, '.stoa', 'hook-dispatch.mjs'), 'utf8')
+        const content = await readFile(join(workspaceDir, '.stoa', 'hook-dispatch.mjs'), 'utf8')
 
-      expect(content).toContain('/hooks/codex')
-      expect(content).toContain('STOA_HOOK_LEASE_PATH')
-      expect(content).toContain('x-stoa-session-id')
-      expect(content).toContain('x-stoa-secret')
+        expect(content).toContain('/hooks/codex')
+        expect(content).toContain('STOA_HOOK_LEASE_PATH')
+        expect(content).toContain('x-stoa-session-id')
+        expect(content).toContain('x-stoa-secret')
+      })
     })
 
     test('full pipeline: webhook server receives and converts Codex PreToolUse hook into a working patch', async () => {
@@ -976,7 +1281,9 @@ describe('E2E: Provider Integration', () => {
         hookProjectId: projectId,
         hookProvider: 'codex'
       })
-      await provider.installSidecar(target, context)
+      await withTempCodexHome(async () => {
+        await provider.installSidecar(target, context)
+      })
       await writeFile(leasePath, `${JSON.stringify({
         version: 1,
         sessionId,
@@ -1071,6 +1378,102 @@ describe('E2E: Provider Integration', () => {
       })
     })
 
+    test('codex hook command string is executable through cmd and delivers event on Windows', async () => {
+      test.skipIf(process.platform !== 'win32')
+
+      const server = createLocalWebhookServer({
+        getSessionSecret(id) { return id === 'trigger-sess-cmd' ? 'trigger-secret-cmd' : null },
+        onEvent(event) { triggerEvents.push(event) }
+      })
+      triggerServers.push(server)
+      const port = await server.start()
+
+      const workspaceDir = await createTempDir('stoa-trigger-hook-cmd-')
+      const provider = getProvider('codex')
+      const leasePath = join(workspaceDir, 'runtime-hook-lease.json')
+
+      await withTempCodexHome(async () => {
+        await provider.installSidecar(
+          createTarget({ path: workspaceDir, type: 'codex' }),
+          createContext({
+            webhookPort: port,
+            sessionSecret: 'trigger-secret-cmd',
+            hookLeasePath: leasePath,
+            hookSessionId: 'trigger-sess-cmd',
+            hookProjectId: 'trigger-proj-cmd',
+            hookProvider: 'codex',
+            hookManaged: true,
+            hookSpawnOwnerInstanceId: 'instance-trigger-cmd',
+            hookSpawnGeneration: 1
+          })
+        )
+      })
+
+      await writeFile(leasePath, `${JSON.stringify({
+        version: 1,
+        sessionId: 'trigger-sess-cmd',
+        projectId: 'trigger-proj-cmd',
+        provider: 'codex',
+        leaseState: 'active',
+        ownerInstanceId: 'instance-trigger-cmd',
+        generation: 1,
+        webhookBaseUrl: `http://127.0.0.1:${port}`,
+        sessionSecret: 'trigger-secret-cmd',
+        createdAt: '2026-05-10T12:00:00.000Z',
+        updatedAt: '2026-05-10T12:00:00.000Z',
+        heartbeatAt: '2026-05-10T12:00:00.000Z',
+        expiresAt: '2099-05-10T12:00:20.000Z',
+        commitLockNonce: 'nonce-trigger-cmd',
+        commitToken: 'token-trigger-cmd'
+      }, null, 2)}\n`, 'utf8')
+
+      const commandString = expectedCodexHookCommand('SessionStart')
+      const result = await new Promise<{ exitCode: number | null; stderr: string }>((resolve) => {
+        const child = spawn('cmd.exe', ['/c', commandString], {
+          cwd: workspaceDir,
+          env: {
+            ...process.env as Record<string, string>,
+            STOA_HOOK_LEASE_PATH: leasePath,
+            STOA_HOOK_MANAGED: '1',
+            STOA_HOOK_SESSION_ID: 'trigger-sess-cmd',
+            STOA_HOOK_PROJECT_ID: 'trigger-proj-cmd',
+            STOA_HOOK_PROVIDER: 'codex',
+            STOA_HOOK_SPAWN_OWNER_INSTANCE_ID: 'instance-trigger-cmd',
+            STOA_HOOK_SPAWN_GENERATION: '1'
+          },
+          stdio: ['pipe', 'pipe', 'pipe'],
+          shell: false,
+          windowsHide: true
+        })
+
+        let stderr = ''
+        child.stderr?.setEncoding('utf8')
+        child.stderr?.on('data', (chunk: string) => { stderr += chunk })
+        child.stdin?.write(JSON.stringify({
+          hook_event_name: 'SessionStart',
+          session_id: 'codex-hook-session',
+          turn_id: 'turn-hook-1',
+          cwd: workspaceDir,
+          model: 'gpt-5.4-nano'
+        }))
+        child.stdin?.end()
+        child.on('close', (code) => resolve({ exitCode: code, stderr }))
+      })
+
+      expect(result.exitCode).toBe(0)
+      expect(result.stderr).toBe('')
+      expect(triggerEvents).toHaveLength(1)
+      expect(triggerEvents[0]).toMatchObject({
+        event_type: 'codex.SessionStart',
+        session_id: 'trigger-sess-cmd',
+        project_id: 'trigger-proj-cmd',
+        payload: {
+          intent: 'runtime.alive',
+          sourceTurnId: 'turn-hook-1'
+        }
+      })
+    })
+
     test('spawning shared dispatcher with PreToolUse payload delivers tool details', async () => {
       const server = createLocalWebhookServer({
         getSessionSecret(id) { return id === 'trigger-sess-2' ? 'trigger-secret-2' : null },
@@ -1151,10 +1554,12 @@ describe('E2E: Provider Integration', () => {
 
       const workspaceDir = await createTempDir('stoa-trigger-noenv-')
       const provider = getProvider('codex')
-      await provider.installSidecar(
-        createTarget({ path: workspaceDir, type: 'codex' }),
-        createContext({ webhookPort: port, sessionSecret: 'secret' })
-      )
+      await withTempCodexHome(async () => {
+        await provider.installSidecar(
+          createTarget({ path: workspaceDir, type: 'codex' }),
+          createContext({ webhookPort: port, sessionSecret: 'secret' })
+        )
+      })
 
       const { exitCode } = await new Promise<{ exitCode: number | null }>((resolve) => {
         const child = spawn('node', [join(workspaceDir, '.stoa', 'hook-dispatch.mjs'), 'codex', 'SessionStart'], {
@@ -1186,6 +1591,121 @@ describe('E2E: Provider Integration', () => {
       expect(exitCode).toBe(0)
       expect(triggerEvents).toHaveLength(0)
     })
+  })
+
+  describe('Real Codex hook delivery', () => {
+    test.skipIf(!SHOULD_RUN_REAL_CODEX_TESTS)(
+      'real codex exec delivers hook events to Stoa through project hooks',
+      async () => {
+        const workspaceDir = await createExternalTempDir('stoa-codex-real-exec-')
+        const acceptedEvents: CanonicalSessionEvent[] = []
+        const sessionId = 'session_real_codex_exec'
+        const projectId = 'project_real_codex_exec'
+        const sessionSecret = 'secret-real-codex-exec'
+
+        const server = createLocalWebhookServer({
+          getSessionSecret(id) {
+            return id === sessionId ? sessionSecret : null
+          },
+          onEvent(event) {
+            acceptedEvents.push(event)
+          }
+        })
+        const port = await server.start()
+
+        try {
+          await withRealCodexHome(async (codexHomeDir) => {
+            const provider = getProvider('codex')
+            const target = createTarget({
+              path: workspaceDir,
+              type: 'codex',
+              session_id: sessionId,
+              project_id: projectId,
+              title: 'real-codex-session'
+            })
+            const leasePath = join(workspaceDir, 'runtime-hook-lease.json')
+            const context = createContext({
+              webhookPort: port,
+              sessionSecret,
+              hookLeasePath: leasePath,
+              hookManaged: true,
+              hookSessionId: sessionId,
+              hookProjectId: projectId,
+              hookProvider: 'codex',
+              hookSpawnOwnerInstanceId: 'instance-real-codex',
+              hookSpawnGeneration: 1,
+              providerPath: resolveCodexCliPath()
+            })
+
+            await provider.installSidecar(target, context)
+            await writeFile(leasePath, `${JSON.stringify({
+              version: 1,
+              sessionId,
+              projectId,
+              provider: 'codex',
+              leaseState: 'active',
+              ownerInstanceId: 'instance-real-codex',
+              generation: 1,
+              webhookBaseUrl: `http://127.0.0.1:${port}`,
+              sessionSecret,
+              createdAt: '2026-05-10T12:00:00.000Z',
+              updatedAt: '2026-05-10T12:00:00.000Z',
+              heartbeatAt: '2026-05-10T12:00:00.000Z',
+              expiresAt: '2099-05-10T12:00:20.000Z',
+              commitLockNonce: 'nonce-real-codex',
+              commitToken: 'token-real-codex'
+            }, null, 2)}\n`, 'utf8')
+
+            const { child, output } = spawnCodexCli([
+              'exec',
+              '--skip-git-repo-check',
+              '--dangerously-bypass-approvals-and-sandbox',
+              '--cd',
+              workspaceDir,
+              '-m',
+              'gpt-5.4-nano',
+              'Reply with exactly: STOA_REAL_HOOK_OK'
+            ], {
+              cwd: workspaceDir,
+              env: {
+                ...process.env as Record<string, string | undefined>,
+                CODEX_HOME: codexHomeDir,
+                STOA_HOOK_LEASE_PATH: leasePath,
+                STOA_HOOK_MANAGED: '1',
+                STOA_HOOK_SESSION_ID: sessionId,
+                STOA_HOOK_PROJECT_ID: projectId,
+                STOA_HOOK_PROVIDER: 'codex',
+                STOA_HOOK_SPAWN_OWNER_INSTANCE_ID: 'instance-real-codex',
+                STOA_HOOK_SPAWN_GENERATION: '1'
+              }
+            })
+
+            try {
+              await waitForCondition(
+                () => acceptedEvents.some((event) => event.event_type === 'codex.UserPromptSubmit'),
+                {
+                  timeoutMs: 60_000,
+                  timeoutMessage:
+                    `Timed out waiting for Codex hook delivery.\nstderr:\n${output.stderr}\nstdout:\n${output.stdout}`
+                }
+              )
+            } finally {
+              child.kill()
+            }
+
+            await new Promise((resolve) => child.once('close', resolve))
+
+            expect(output.stderr).not.toContain('Untrusted')
+            expect(acceptedEvents.length).toBeGreaterThan(0)
+            expect(acceptedEvents.some((event) => event.event_type === 'codex.SessionStart')).toBe(true)
+            expect(acceptedEvents.some((event) => event.event_type === 'codex.UserPromptSubmit')).toBe(true)
+          })
+        } finally {
+          await server.stop()
+        }
+      },
+      180_000
+    )
   })
 
 })

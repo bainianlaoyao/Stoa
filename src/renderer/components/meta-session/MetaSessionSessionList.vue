@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import type { SessionType } from '@shared/project-session'
-import { getProviderDescriptorBySessionType, listMetaSessionProviderDescriptors } from '@shared/provider-descriptors'
+import { listMetaSessionProviderDescriptors } from '@shared/provider-descriptors'
 import type { MetaSessionBackendSessionType, MetaSessionStatus } from '@shared/meta-session'
 import { useMetaSessionStore } from '@renderer/stores/meta-session'
 import { ICONS } from '@renderer/composables/provider-icons'
@@ -77,10 +77,6 @@ function statusLabel(session: { status: MetaSessionStatus; pendingProposalCount:
   return parts.join(' · ')
 }
 
-function backendLabel(type: SessionType): string {
-  return getProviderDescriptorBySessionType(type).displayName
-}
-
 function generateMetaSessionTitle(): string {
   const nextIndex = sessions.value.length + 1
   return `meta-session-${nextIndex}`
@@ -152,7 +148,7 @@ const emit = defineEmits<{
         <div
           v-for="session in orderedSessions"
           :key="session.id"
-          class="meta-session-row"
+          class="route-session-row"
         >
           <button
             class="route-item child"
@@ -168,14 +164,61 @@ const emit = defineEmits<{
               :data-phase="statusPhase(session.status)"
             />
             <img class="route-provider-icon" :src="providerIcon(session.backendSessionType)" :alt="session.backendSessionType" />
-            <div class="route-copy">
-              <strong class="route-session-title">{{ session.title }}</strong>
-              <div class="route-copy--session">
-                <span class="route-session-label">{{ backendLabel(session.backendSessionType) }}</span>
-                <span class="route-session-label">{{ statusLabel(session) }}</span>
-              </div>
+            <div class="route-copy route-copy--session">
+              <span class="route-session-label">{{ session.title }}</span>
+              <span class="route-session-label">{{ statusLabel(session) }}</span>
             </div>
           </button>
+          <span class="route-row-actions">
+            <button
+              class="route-row-action route-icon-button"
+              type="button"
+              data-testid="meta-session.session.close"
+              :data-session-id="session.id"
+              :aria-label="`Close session ${session.title}`"
+              title="Close session"
+              @click.stop="void metaSessionStore.closeSession(session.id)"
+            >
+              <svg
+                class="route-icon-button__icon"
+                viewBox="0 0 16 16"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+                aria-hidden="true"
+              >
+                <path
+                  d="M4 4H12L11.5 13H4.5L4 4Z"
+                  stroke="currentColor"
+                  stroke-width="1.25"
+                  stroke-linejoin="round"
+                />
+                <path
+                  d="M6.5 6.5V10.5"
+                  stroke="currentColor"
+                  stroke-width="1.25"
+                  stroke-linecap="round"
+                />
+                <path
+                  d="M9.5 6.5V10.5"
+                  stroke="currentColor"
+                  stroke-width="1.25"
+                  stroke-linecap="round"
+                />
+                <path
+                  d="M3 4H13"
+                  stroke="currentColor"
+                  stroke-width="1.25"
+                  stroke-linecap="round"
+                />
+                <path
+                  d="M6.5 2.5H9.5V4H6.5V2.5Z"
+                  stroke="currentColor"
+                  stroke-width="1.25"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </button>
+          </span>
         </div>
       </div>
     </div>
@@ -256,7 +299,7 @@ const emit = defineEmits<{
   gap: 2px;
 }
 
-.meta-session-row {
+.route-session-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   align-items: center;
@@ -264,7 +307,7 @@ const emit = defineEmits<{
   position: relative;
 }
 
-.meta-session-row .route-item {
+.route-session-row .route-item {
   min-width: 0;
 }
 
@@ -286,7 +329,7 @@ const emit = defineEmits<{
 .route-item.child {
   grid-template-columns: 6px 18px minmax(0, 1fr);
   gap: 6px;
-  padding: 4px 8px 4px 20px;
+  padding: 2px 8px 2px 20px;
 }
 
 .route-item:hover:not(.route-item--active),
@@ -301,7 +344,7 @@ const emit = defineEmits<{
   box-shadow: none;
 }
 
-.meta-session-row:has(.route-item--active)::before {
+.route-session-row:has(.route-item--active)::before {
   content: '';
   position: absolute;
   left: 0;
@@ -330,25 +373,60 @@ const emit = defineEmits<{
 .route-copy--session {
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.route-row-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.route-session-row:hover .route-row-actions,
+.route-session-row:focus-within .route-row-actions {
+  opacity: 1;
+}
+
+.route-icon-button {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-solid);
+  color: var(--color-muted);
+  display: grid;
+  place-items: center;
+  box-shadow: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.route-icon-button:hover,
+.route-icon-button:focus-visible {
+  background: var(--color-surface);
+  color: var(--color-text-strong);
+  border-color: var(--color-accent);
+  outline: none;
+}
+
+.route-icon-button__icon {
+  width: 12px;
+  height: 12px;
 }
 
 .route-provider-icon {
   flex: none;
   height: 1.75em;
   width: auto;
-}
-
-.route-session-title {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--color-text-strong);
-  font-size: var(--text-body-sm);
-  font-weight: 600;
-  font-family: var(--font-ui);
 }
 
 .route-session-label {

@@ -468,19 +468,17 @@ describe('session runtime', () => {
     expect(markRuntimeAlive).toHaveBeenCalledWith('session_claude_1', 'claude-seeded-1')
   })
 
-  test('patches discovered externalSessionId asynchronously for fresh codex starts', async () => {
+  test('starts a fresh codex session without asynchronous external session discovery', async () => {
     const buildStartCommand = vi.fn(async () => ({
       command: 'codex',
       args: [],
       cwd: 'D:/demo',
       env: { TEST_ENV: '1' }
     }))
-    const discoverExternalSessionIdAfterStart = vi.fn(async () => 'codex-real-123')
     const provider = createProvider({
       providerId: 'codex',
       supportsStructuredEvents: () => false,
-      buildStartCommand,
-      discoverExternalSessionIdAfterStart
+      buildStartCommand
     })
     const markRuntimeStarting = vi.fn(async () => {})
     const markRuntimeAlive = vi.fn(async () => {})
@@ -512,12 +510,9 @@ describe('session runtime', () => {
     })
 
     expect(buildStartCommand).toHaveBeenCalledOnce()
-    expect(discoverExternalSessionIdAfterStart).toHaveBeenCalledOnce()
     expect(markRuntimeStarting).toHaveBeenCalledWith('session_codex_1', 'Starting codex', null)
-    expect(markRuntimeAlive).toHaveBeenNthCalledWith(1, 'session_codex_1', null)
-    await vi.waitFor(() => {
-      expect(markRuntimeAlive).toHaveBeenNthCalledWith(2, 'session_codex_1', 'codex-real-123')
-    })
+    expect(markRuntimeAlive).toHaveBeenCalledTimes(1)
+    expect(markRuntimeAlive).toHaveBeenCalledWith('session_codex_1', null)
   })
 
   test('starts a fresh codex session when recovering without externalSessionId', async () => {
@@ -580,19 +575,17 @@ describe('session runtime', () => {
     )
   })
 
-  test('does not let discovered ids overwrite an existing resumed externalSessionId', async () => {
+  test('keeps resumed externalSessionId unchanged for codex resume', async () => {
     const buildResumeCommand = vi.fn(async () => ({
       command: 'codex',
       args: ['resume', 'codex-known-123'],
       cwd: 'D:/demo',
       env: { TEST_ENV: '1' }
     }))
-    const discoverExternalSessionIdAfterStart = vi.fn(async () => 'codex-wrong-999')
     const provider = createProvider({
       providerId: 'codex',
       supportsStructuredEvents: () => false,
-      buildResumeCommand,
-      discoverExternalSessionIdAfterStart
+      buildResumeCommand
     })
     const markRuntimeAlive = vi.fn(async () => {})
 
@@ -622,7 +615,6 @@ describe('session runtime', () => {
     })
 
     expect(buildResumeCommand).toHaveBeenCalledOnce()
-    expect(discoverExternalSessionIdAfterStart).not.toHaveBeenCalled()
     expect(markRuntimeAlive).toHaveBeenCalledTimes(1)
     expect(markRuntimeAlive).toHaveBeenCalledWith('session_codex_3', 'codex-known-123')
   })
@@ -735,4 +727,5 @@ describe('session runtime', () => {
     expect(markRuntimeAlive).toHaveBeenCalledTimes(1)
     expect(markRuntimeAlive).toHaveBeenCalledWith('session_claude_boot', 'claude-seeded-boot')
   })
+
 })

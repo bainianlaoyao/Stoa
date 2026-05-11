@@ -1,0 +1,1375 @@
+diff --git a/src/core/session-runtime.test.ts b/src/core/session-runtime.test.ts
+index 1da695a..81e4458 100644
+--- a/src/core/session-runtime.test.ts
++++ b/src/core/session-runtime.test.ts
+@@ -468,19 +468,17 @@ describe('session runtime', () => {
+     expect(markRuntimeAlive).toHaveBeenCalledWith('session_claude_1', 'claude-seeded-1')
+   })
+ 
+-  test('patches discovered externalSessionId asynchronously for fresh codex starts', async () => {
++  test('starts a fresh codex session without asynchronous external session discovery', async () => {
+     const buildStartCommand = vi.fn(async () => ({
+       command: 'codex',
+       args: [],
+       cwd: 'D:/demo',
+       env: { TEST_ENV: '1' }
+     }))
+-    const discoverExternalSessionIdAfterStart = vi.fn(async () => 'codex-real-123')
+     const provider = createProvider({
+       providerId: 'codex',
+       supportsStructuredEvents: () => false,
+-      buildStartCommand,
+-      discoverExternalSessionIdAfterStart
++      buildStartCommand
+     })
+     const markRuntimeStarting = vi.fn(async () => {})
+     const markRuntimeAlive = vi.fn(async () => {})
+@@ -512,12 +510,9 @@ describe('session runtime', () => {
+     })
+ 
+     expect(buildStartCommand).toHaveBeenCalledOnce()
+-    expect(discoverExternalSessionIdAfterStart).toHaveBeenCalledOnce()
+     expect(markRuntimeStarting).toHaveBeenCalledWith('session_codex_1', 'Starting codex', null)
+-    expect(markRuntimeAlive).toHaveBeenNthCalledWith(1, 'session_codex_1', null)
+-    await vi.waitFor(() => {
+-      expect(markRuntimeAlive).toHaveBeenNthCalledWith(2, 'session_codex_1', 'codex-real-123')
+-    })
++    expect(markRuntimeAlive).toHaveBeenCalledTimes(1)
++    expect(markRuntimeAlive).toHaveBeenCalledWith('session_codex_1', null)
+   })
+ 
+   test('starts a fresh codex session when recovering without externalSessionId', async () => {
+@@ -580,19 +575,17 @@ describe('session runtime', () => {
+     )
+   })
+ 
+-  test('does not let discovered ids overwrite an existing resumed externalSessionId', async () => {
++  test('keeps resumed externalSessionId unchanged for codex resume', async () => {
+     const buildResumeCommand = vi.fn(async () => ({
+       command: 'codex',
+       args: ['resume', 'codex-known-123'],
+       cwd: 'D:/demo',
+       env: { TEST_ENV: '1' }
+     }))
+-    const discoverExternalSessionIdAfterStart = vi.fn(async () => 'codex-wrong-999')
+     const provider = createProvider({
+       providerId: 'codex',
+       supportsStructuredEvents: () => false,
+-      buildResumeCommand,
+-      discoverExternalSessionIdAfterStart
++      buildResumeCommand
+     })
+     const markRuntimeAlive = vi.fn(async () => {})
+ 
+@@ -622,7 +615,6 @@ describe('session runtime', () => {
+     })
+ 
+     expect(buildResumeCommand).toHaveBeenCalledOnce()
+-    expect(discoverExternalSessionIdAfterStart).not.toHaveBeenCalled()
+     expect(markRuntimeAlive).toHaveBeenCalledTimes(1)
+     expect(markRuntimeAlive).toHaveBeenCalledWith('session_codex_3', 'codex-known-123')
+   })
+@@ -735,4 +727,5 @@ describe('session runtime', () => {
+     expect(markRuntimeAlive).toHaveBeenCalledTimes(1)
+     expect(markRuntimeAlive).toHaveBeenCalledWith('session_claude_boot', 'claude-seeded-boot')
+   })
++
+ })
+diff --git a/src/core/session-runtime.ts b/src/core/session-runtime.ts
+index ab122ba..cb22921 100644
+--- a/src/core/session-runtime.ts
++++ b/src/core/session-runtime.ts
+@@ -83,7 +83,6 @@ export async function startSessionRuntime(options: StartSessionRuntimeOptions):
+     claudeDangerouslySkipPermissions: options.claudeDangerouslySkipPermissions === true,
+     startedAt: Date.now()
+   }
+-
+   console.log(`[session-runtime] installSidecar for ${session.id}`)
+   await provider.installSidecar(target, context)
+   console.log(`[session-runtime] installSidecar done for ${session.id}`)
+@@ -159,18 +158,5 @@ export async function startSessionRuntime(options: StartSessionRuntimeOptions):
+   console.log(`[session-runtime] markRuntimeAlive for ${session.id} (runtimeId: ${started.runtimeId})`)
+   await manager.markRuntimeAlive(session.id, activeExternalSessionId ?? null)
+ 
+-  if (!session.externalSessionId && provider.discoverExternalSessionIdAfterStart) {
+-    void provider.discoverExternalSessionIdAfterStart(target, context)
+-      .then(async (discoveredExternalSessionId) => {
+-        if (!discoveredExternalSessionId) {
+-          return
+-        }
+-        await manager.markRuntimeAlive(session.id, discoveredExternalSessionId)
+-      })
+-      .catch((error) => {
+-        console.error(`[session-runtime] Failed external session discovery for ${session.id}:`, error)
+-      })
+-  }
+-
+   console.log(`[session-runtime] markRuntimeAlive done for ${session.id}`)
+ }
+diff --git a/src/extensions/providers/codex-provider.test.ts b/src/extensions/providers/codex-provider.test.ts
+index 96966cd..d9035cd 100644
+--- a/src/extensions/providers/codex-provider.test.ts
++++ b/src/extensions/providers/codex-provider.test.ts
+@@ -1,67 +1,72 @@
+-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
++import { mkdtemp, readFile, rm, stat } from 'node:fs/promises'
+ import { tmpdir } from 'node:os'
+ import { join } from 'node:path'
+ import { describe, expect, test } from 'vitest'
+ import { createCodexProvider } from './codex-provider'
+ 
++function expectedCodexHookCommand(eventName: string): string {
++  return process.platform === 'win32'
++    ? `.\\.stoa\\hook-dispatch.cmd codex ${eventName}`
++    : `.stoa/hook-dispatch codex ${eventName}`
++}
++
+ describe('codex provider', () => {
+-  test('discovers external session id from current Codex session_meta payload schema', async () => {
++  test('buildStartCommand relies on project-managed hook config files instead of cli overrides', async () => {
+     const provider = createCodexProvider()
+-    const workspaceDir = await mkdtemp(join(tmpdir(), 'stoa-codex-workspace-'))
+-    const codexHomeDir = await mkdtemp(join(tmpdir(), 'stoa-codex-home-'))
+-    const originalCodexHome = process.env.CODEX_HOME
+-    const startedAt = Date.now()
+ 
+-    try {
+-      process.env.CODEX_HOME = codexHomeDir
++    const command = await provider.buildStartCommand({
++      session_id: 'session_demo_001',
++      project_id: 'project_demo',
++      path: 'D:/workspace/demo',
++      title: 'demo',
++      type: 'codex'
++    }, {
++      webhookPort: 43127,
++      sessionSecret: 'secret-1',
++      providerPort: 43128,
++      hookLeasePath: 'D:/runtime/hook-leases/session_demo_001.json',
++      hookManaged: true,
++      hookSessionId: 'session_demo_001',
++      hookProjectId: 'project_demo',
++      hookProvider: 'codex',
++      hookSpawnOwnerInstanceId: 'instance-1',
++      hookSpawnGeneration: 7
++    })
+ 
+-      const sessionDir = join(codexHomeDir, 'sessions', '2026', '05', '10')
+-      await mkdir(sessionDir, { recursive: true })
+-      await writeFile(
+-        join(sessionDir, 'rollout-2026-05-10T15-16-41-019e0784-c299-7280-8d85-9bcde6d72ecc.jsonl'),
+-        `${JSON.stringify({
+-          timestamp: '2026-05-10T07:16:59.592Z',
+-          type: 'session_meta',
+-          payload: {
+-            id: '019e0784-c299-7280-8d85-9bcde6d72ecc',
+-            cwd: workspaceDir
+-          }
+-        })}\n`,
+-        'utf8'
+-      )
++    expect(command.command).toBe('codex')
++    expect(command.cwd).toBe('D:/workspace/demo')
++    expect(command.env.STOA_HOOK_LEASE_PATH).toBe('D:/runtime/hook-leases/session_demo_001.json')
++    expect(command.args).toEqual([])
++  })
+ 
+-      const sessionId = await provider.discoverExternalSessionIdAfterStart?.({
+-        session_id: 'session_demo_001',
+-        project_id: 'project_demo',
+-        path: workspaceDir,
+-        title: 'demo',
+-        type: 'codex'
+-      }, {
+-        webhookPort: 43127,
+-        sessionSecret: 'secret-1',
+-        providerPort: 43128,
+-        startedAt
+-      })
++  test('buildResumeCommand only adds resume arguments because hooks come from project config', async () => {
++    const provider = createCodexProvider()
+ 
+-      expect(sessionId).toBe('019e0784-c299-7280-8d85-9bcde6d72ecc')
+-    } finally {
+-      if (originalCodexHome === undefined) {
+-        delete process.env.CODEX_HOME
+-      } else {
+-        process.env.CODEX_HOME = originalCodexHome
+-      }
+-      await rm(workspaceDir, { recursive: true, force: true })
+-      await rm(codexHomeDir, { recursive: true, force: true })
+-    }
+-  }, 15000)
++    const command = await provider.buildResumeCommand({
++      session_id: 'session_demo_002',
++      project_id: 'project_demo',
++      path: 'D:/workspace/demo',
++      title: 'demo',
++      type: 'codex'
++    }, 'codex-external-1', {
++      webhookPort: 43127,
++      sessionSecret: 'secret-1',
++      providerPort: 43128
++    })
++
++    expect(command.args).toEqual(['resume', 'codex-external-1'])
++  })
+ 
+-  test('writes sidecar files using the current Codex hooks contract', async () => {
++  test('installSidecar writes shared dispatcher artifacts and official Codex hook config files', async () => {
+     const provider = createCodexProvider()
+     const workspaceDir = await mkdtemp(join(tmpdir(), 'stoa-codex-sidecar-'))
++    const codexHomeDir = await mkdtemp(join(tmpdir(), 'stoa-codex-home-'))
++    const previousCodexHome = process.env.CODEX_HOME
+ 
+     try {
++      process.env.CODEX_HOME = codexHomeDir
+       await provider.installSidecar({
+-        session_id: 'session_demo_002',
++        session_id: 'session_demo_003',
+         project_id: 'project_demo',
+         path: workspaceDir,
+         title: 'demo',
+@@ -72,20 +77,41 @@ describe('codex provider', () => {
+         providerPort: 43128
+       })
+ 
++      await expect(stat(join(workspaceDir, '.stoa', 'hook-dispatch.mjs'))).resolves.toMatchObject({ isFile: expect.any(Function) })
++      await expect(stat(join(workspaceDir, '.stoa', 'hook-dispatch'))).resolves.toMatchObject({ isFile: expect.any(Function) })
++      await expect(stat(join(workspaceDir, '.stoa', 'hook-dispatch.cmd'))).resolves.toMatchObject({ isFile: expect.any(Function) })
++      await expect(stat(join(workspaceDir, '.stoa', 'hook-contract.json'))).resolves.toMatchObject({ isFile: expect.any(Function) })
++      await expect(stat(join(workspaceDir, '.codex', '.stoa-managed-sidecar.json'))).resolves.toMatchObject({ isFile: expect.any(Function) })
++      await expect(stat(join(workspaceDir, '.codex', 'config.toml'))).resolves.toMatchObject({ isFile: expect.any(Function) })
++      await expect(stat(join(workspaceDir, '.codex', 'hooks.json'))).rejects.toThrow()
++
+       const configContent = await readFile(join(workspaceDir, '.codex', 'config.toml'), 'utf8')
+-      const hooksContent = await readFile(join(workspaceDir, '.codex', 'hooks.json'), 'utf8')
++      const userConfigContent = await readFile(join(codexHomeDir, 'config.toml'), 'utf8')
++      const dispatcherContent = await readFile(join(workspaceDir, '.stoa', 'hook-dispatch.mjs'), 'utf8')
+ 
+       expect(configContent).toContain('[features]')
+-      expect(configContent).toContain('codex_hooks = true')
+-      expect(configContent).not.toContain('\nhooks = true\n')
+-
+-      const parsed = JSON.parse(hooksContent) as {
+-        hooks: Record<string, Array<{ hooks: Array<{ timeout?: number; timeout_sec?: number }> }>>
+-      }
+-      expect(parsed.hooks.SessionStart[0]?.hooks[0]?.timeout).toBe(5)
+-      expect(parsed.hooks.SessionStart[0]?.hooks[0]?.timeout_sec).toBeUndefined()
++      expect(configContent).toContain('hooks = true')
++      expect(configContent).toContain('[[hooks.SessionStart]]')
++      expect(configContent).toContain(`command = ${JSON.stringify(expectedCodexHookCommand('SessionStart'))}`)
++      expect(configContent).toContain(`command = ${JSON.stringify(expectedCodexHookCommand('Stop'))}`)
++      expect(configContent).not.toContain('[hooks.state.')
++      expect(configContent).not.toContain('trusted_hash = "sha256:')
++      expect(configContent).not.toContain('codex_hooks')
++      expect(userConfigContent).toContain('trust_level = "trusted"')
++      expect(userConfigContent).toContain('[hooks.state.')
++      expect(userConfigContent).toContain('trusted_hash = "sha256:')
++      expect(userConfigContent.toLowerCase().replaceAll('\\\\', '\\')).toContain(workspaceDir.toLowerCase())
++      expect(dispatcherContent).toContain('/hooks/codex')
++      expect(dispatcherContent).toContain('STOA_HOOK_LEASE_PATH')
++      expect(dispatcherContent).not.toContain('../src/extensions/providers/shared-hook-dispatch.ts')
+     } finally {
++      if (previousCodexHome === undefined) {
++        delete process.env.CODEX_HOME
++      } else {
++        process.env.CODEX_HOME = previousCodexHome
++      }
+       await rm(workspaceDir, { recursive: true, force: true })
++      await rm(codexHomeDir, { recursive: true, force: true })
+     }
+   })
+ })
+diff --git a/src/extensions/providers/codex-provider.ts b/src/extensions/providers/codex-provider.ts
+index 7ffb375..750f5d8 100644
+--- a/src/extensions/providers/codex-provider.ts
++++ b/src/extensions/providers/codex-provider.ts
+@@ -1,26 +1,15 @@
+-import { createReadStream } from 'node:fs'
+-import { readdir, stat } from 'node:fs/promises'
+-import { homedir } from 'node:os'
+-import { join, resolve } from 'node:path'
+-import { createInterface } from 'node:readline'
+-import type { CanonicalSessionEvent, ProviderCommand, ProviderCommandContext } from '@shared/project-session'
++import type { ProviderCommandContext } from '@shared/project-session'
+ import type { ProviderDefinition, ProviderRuntimeTarget } from './index'
++import { buildCodexProjectConfigToml, ensureCodexProjectTrusted } from './codex-project-config'
+ import { installManagedSidecar, uninstallManagedSidecar } from './managed-sidecar-installer'
+ import { buildSharedHookArtifacts } from './shared-hook-dispatch'
+ 
+-const DISCOVERY_ATTEMPTS = 20
+-const DISCOVERY_DELAY_MS = 500
+-const DISCOVERY_WINDOW_MS = 60_000
+-const DISCOVERY_CLOCK_SKEW_MS = 2_000
+-const MAX_SESSION_FILES = 40
+-const FULL_RESCAN_INTERVAL = 4
+-
+ function codexCommand(context: ProviderCommandContext): string {
+   const configuredPath = context.providerPath?.trim()
+   return configuredPath && configuredPath.length > 0 ? configuredPath : 'codex'
+ }
+ 
+-function createProviderEnv(target: ProviderRuntimeTarget, context: ProviderCommandContext): Record<string, string> {
++function createProviderEnv(_target: ProviderRuntimeTarget, context: ProviderCommandContext): Record<string, string> {
+   const env: Record<string, string> = {
+     ...process.env as Record<string, string>,
+     STOA_PROVIDER_PORT: String(context.providerPort)
+@@ -56,7 +45,7 @@ function createProviderEnv(target: ProviderRuntimeTarget, context: ProviderComma
+   return env
+ }
+ 
+-function createCommand(target: ProviderRuntimeTarget, context: ProviderCommandContext, args: string[]): ProviderCommand {
++function createCommand(target: ProviderRuntimeTarget, context: ProviderCommandContext, args: string[]) {
+   return {
+     command: codexCommand(context),
+     args,
+@@ -65,172 +54,31 @@ function createCommand(target: ProviderRuntimeTarget, context: ProviderCommandCo
+   }
+ }
+ 
+-async function writeSharedHookSidecar(target: ProviderRuntimeTarget): Promise<void> {
+-  const hooksConfig = {
+-    hooks: {
+-      SessionStart: [
+-        {
+-          matcher: '*',
+-          hooks: [{ type: 'command', command: '.stoa/hook-dispatch codex SessionStart', timeout: 5 }]
+-        }
+-      ],
+-      UserPromptSubmit: [
+-        {
+-          hooks: [{ type: 'command', command: '.stoa/hook-dispatch codex UserPromptSubmit', timeout: 5 }]
+-        }
+-      ],
+-      PreToolUse: [
+-        {
+-          matcher: '*',
+-          hooks: [{ type: 'command', command: '.stoa/hook-dispatch codex PreToolUse', timeout: 5 }]
+-        }
+-      ],
+-      PostToolUse: [
+-        {
+-          matcher: '*',
+-          hooks: [{ type: 'command', command: '.stoa/hook-dispatch codex PostToolUse', timeout: 5 }]
+-        }
+-      ],
+-      Stop: [
+-        {
+-          hooks: [{ type: 'command', command: '.stoa/hook-dispatch codex Stop', timeout: 5 }]
+-        }
+-      ]
+-    }
+-  }
++async function writeCodexHookSidecar(target: ProviderRuntimeTarget): Promise<void> {
+   const sharedArtifacts = buildSharedHookArtifacts()
++  await ensureCodexProjectTrusted(target.path)
+ 
+   await installManagedSidecar({
+     rootDir: target.path,
+     manifestRelativePath: '.codex/.stoa-managed-sidecar.json',
+     currentArtifacts: [
+       '.codex/config.toml',
+-      '.codex/hooks.json',
+-      '.stoa/hook-contract.json',
+-      '.stoa/hook-dispatch',
+-      '.stoa/hook-dispatch.cmd',
+-      '.stoa/hook-dispatch.mjs'
++      ...sharedArtifacts.map(artifact => artifact.relativePath)
+     ],
+     legacyArtifacts: [
++      '.codex/hooks.json',
+       '.codex/hook-stoa.mjs'
+     ],
+     writes: [
+       {
+         relativePath: '.codex/config.toml',
+-        content: '[features]\ncodex_hooks = true\n'
+-      },
+-      {
+-        relativePath: '.codex/hooks.json',
+-        content: `${JSON.stringify(hooksConfig, null, 2)}\n`
++        content: buildCodexProjectConfigToml(target.path)
+       },
+       ...sharedArtifacts
+     ]
+   })
+ }
+ 
+-function normalizePath(path: string): string {
+-  return path.replaceAll('\\', '/').replace(/\/+$/, '').toLowerCase()
+-}
+-
+-function codexHome(): string {
+-  const explicit = process.env.CODEX_HOME?.trim()
+-  if (explicit) return explicit
+-  return join(homedir(), '.codex')
+-}
+-
+-function insertRecentFile(
+-  files: Array<{ file: string; modifiedAt: number }>,
+-  nextFile: { file: string; modifiedAt: number }
+-): void {
+-  files.push(nextFile)
+-  files.sort((left, right) => right.modifiedAt - left.modifiedAt)
+-  if (files.length > MAX_SESSION_FILES) {
+-    files.length = MAX_SESSION_FILES
+-  }
+-}
+-
+-async function collectRecentSessionFiles(
+-  dir: string,
+-  files: Array<{ file: string; modifiedAt: number }> = []
+-): Promise<Array<{ file: string; modifiedAt: number }>> {
+-  const entries = await readdir(dir, { withFileTypes: true }).catch(() => [])
+-  for (const entry of entries) {
+-    const absolute = join(dir, entry.name)
+-    if (entry.isDirectory()) {
+-      await collectRecentSessionFiles(absolute, files)
+-      continue
+-    }
+-    if (entry.isFile() && absolute.endsWith('.jsonl')) {
+-      const modifiedAt = (await stat(absolute).catch(() => ({ mtimeMs: 0 } as { mtimeMs: number }))).mtimeMs
+-      insertRecentFile(files, { file: absolute, modifiedAt })
+-    }
+-  }
+-  return files
+-}
+-
+-async function readCodexSessionMeta(path: string): Promise<{ id: string; cwd: string } | null> {
+-  const stream = createReadStream(path, { encoding: 'utf8' })
+-  const reader = createInterface({ input: stream, crlfDelay: Infinity })
+-
+-  let firstLine = ''
+-  try {
+-    for await (const line of reader) {
+-      firstLine = line.trim()
+-      break
+-    }
+-  } catch {
+-    return null
+-  } finally {
+-    reader.close()
+-    stream.destroy()
+-  }
+-
+-  if (!firstLine) {
+-    return null
+-  }
+-
+-  try {
+-    const parsed = JSON.parse(firstLine) as {
+-      type?: string
+-      payload?: { id?: string; cwd?: string }
+-    }
+-    if (parsed.type !== 'session_meta') return null
+-    if (!parsed.payload?.id || !parsed.payload?.cwd) return null
+-    return { id: parsed.payload.id, cwd: parsed.payload.cwd }
+-  } catch {
+-    return null
+-  }
+-}
+-
+-async function findMatchingCodexSession(
+-  target: ProviderRuntimeTarget,
+-  context: ProviderCommandContext,
+-  recentFiles: Array<{ file: string; modifiedAt: number }>
+-): Promise<string | null> {
+-  const startedAt = context.startedAt ?? Date.now()
+-  const normalizedTargetPath = normalizePath(target.path)
+-
+-  for (const { file, modifiedAt } of recentFiles) {
+-    if (modifiedAt < startedAt - DISCOVERY_CLOCK_SKEW_MS) {
+-      continue
+-    }
+-    if (modifiedAt > startedAt + DISCOVERY_WINDOW_MS) {
+-      continue
+-    }
+-
+-    const meta = await readCodexSessionMeta(file)
+-    if (!meta) continue
+-    if (normalizePath(resolve(meta.cwd)) !== normalizedTargetPath) continue
+-    return meta.id
+-  }
+-
+-  return null
+-}
+-
+-function sleep(ms: number): Promise<void> {
+-  return new Promise(resolvePromise => setTimeout(resolvePromise, ms))
+-}
+-
+ export function createCodexProvider(): ProviderDefinition {
+   return {
+     providerId: 'codex',
+@@ -246,36 +94,20 @@ export function createCodexProvider(): ProviderDefinition {
+     async buildResumeCommand(target, externalSessionId, context) {
+       return createCommand(target, context, ['resume', externalSessionId])
+     },
+-    resolveSessionId(_event: CanonicalSessionEvent) {
++    resolveSessionId(_event) {
+       return null
+     },
+     async installSidecar(target) {
+-      await writeSharedHookSidecar(target)
++      await writeCodexHookSidecar(target)
+     },
+     async uninstallSidecar(projectPath) {
+       await uninstallManagedSidecar({
+         rootDir: projectPath,
+-        manifestRelativePath: '.codex/.stoa-managed-sidecar.json'
++        manifestRelativePath: '.codex/.stoa-managed-sidecar.json',
++        legacyArtifacts: [
++          '.codex/hook-stoa.mjs'
++        ]
+       })
+-    },
+-    async discoverExternalSessionIdAfterStart(target, context) {
+-      const sessionRoot = join(codexHome(), 'sessions')
+-      let recentFiles: Array<{ file: string; modifiedAt: number }> = []
+-
+-      for (let attempt = 0; attempt < DISCOVERY_ATTEMPTS; attempt += 1) {
+-        if (attempt === 0 || attempt % FULL_RESCAN_INTERVAL === 0) {
+-          recentFiles = await collectRecentSessionFiles(sessionRoot)
+-        }
+-
+-        const sessionId = await findMatchingCodexSession(target, context, recentFiles)
+-        if (sessionId) {
+-          return sessionId
+-        }
+-        if (attempt < DISCOVERY_ATTEMPTS - 1) {
+-          await sleep(DISCOVERY_DELAY_MS)
+-        }
+-      }
+-      return null
+     }
+   }
+ }
+diff --git a/src/main/managed-sidecar-maintenance.test.ts b/src/main/managed-sidecar-maintenance.test.ts
+index 62d6e7b..4d5502d 100644
+--- a/src/main/managed-sidecar-maintenance.test.ts
++++ b/src/main/managed-sidecar-maintenance.test.ts
+@@ -6,6 +6,12 @@ import { describe, expect, test } from 'vitest'
+ import { ProjectSessionManager } from '@core/project-session-manager'
+ import { syncManagedSidecars } from './managed-sidecar-maintenance'
+ 
++function expectedCodexHookCommand(eventName: string): string {
++  return process.platform === 'win32'
++    ? `.\\.stoa\\hook-dispatch.cmd codex ${eventName}`
++    : `.stoa/hook-dispatch codex ${eventName}`
++}
++
+ describe('managed-sidecar-maintenance', () => {
+   test('refreshes legacy Claude artifacts into managed command hooks during main boot maintenance', async () => {
+     const projectDir = await mkdtemp(join(tmpdir(), 'stoa-managed-sidecar-main-'))
+@@ -42,9 +48,12 @@ describe('managed-sidecar-maintenance', () => {
+     }
+   })
+ 
+-  test('refreshes codex managed sidecar during main boot maintenance when marker artifacts already exist', async () => {
++  test('refreshes codex managed sidecar into official config files during main boot maintenance', async () => {
+     const projectDir = await mkdtemp(join(tmpdir(), 'stoa-managed-codex-main-'))
++    const codexHomeDir = await mkdtemp(join(tmpdir(), 'stoa-managed-codex-home-'))
++    const previousCodexHome = process.env.CODEX_HOME
+     try {
++      process.env.CODEX_HOME = codexHomeDir
+       await mkdir(join(projectDir, '.codex'), { recursive: true })
+       await writeFile(join(projectDir, '.codex', 'hook-stoa.mjs'), 'legacy\n', 'utf8')
+ 
+@@ -61,23 +70,28 @@ describe('managed-sidecar-maintenance', () => {
+         logger: console
+       })
+ 
+-      const hooks = JSON.parse(await readFile(join(projectDir, '.codex', 'hooks.json'), 'utf8')) as {
+-        hooks?: Record<string, unknown>
+-      }
+-      expect(Object.keys(hooks.hooks ?? {}).sort()).toEqual([
+-        'PostToolUse',
+-        'PreToolUse',
+-        'SessionStart',
+-        'Stop',
+-        'UserPromptSubmit'
+-      ])
+       const dispatcher = await readFile(join(projectDir, '.stoa', 'hook-dispatch.mjs'), 'utf8')
++      const configToml = await readFile(join(projectDir, '.codex', 'config.toml'), 'utf8')
++      const userConfigToml = await readFile(join(codexHomeDir, 'config.toml'), 'utf8')
+       expect(dispatcher).toContain('/hooks/codex')
+       expect(dispatcher).not.toContain('../src/extensions/providers/shared-hook-dispatch.ts')
+       await expect(readFile(join(projectDir, '.codex', 'hook-stoa.mjs'), 'utf8')).rejects.toThrow()
+-      expect(await readFile(join(projectDir, '.codex', 'config.toml'), 'utf8')).toContain('codex_hooks = true')
++      await expect(readFile(join(projectDir, '.codex', 'hooks.json'), 'utf8')).rejects.toThrow()
++      expect(configToml).toContain('hooks = true')
++      expect(configToml).toContain('[[hooks.SessionStart]]')
++      expect(configToml).toContain(`command = ${JSON.stringify(expectedCodexHookCommand('Stop'))}`)
++      expect(configToml).not.toContain('trusted_hash = "sha256:')
++      expect(userConfigToml).toContain('trust_level = "trusted"')
++      expect(userConfigToml).toContain('[hooks.state.')
++      expect(userConfigToml).toContain('trusted_hash = "sha256:')
+     } finally {
++      if (previousCodexHome === undefined) {
++        delete process.env.CODEX_HOME
++      } else {
++        process.env.CODEX_HOME = previousCodexHome
++      }
+       await rm(projectDir, { recursive: true, force: true })
++      await rm(codexHomeDir, { recursive: true, force: true })
+     }
+   })
+ 
+diff --git a/src/renderer/components/TerminalViewport.test.ts b/src/renderer/components/TerminalViewport.test.ts
+index 0354572..297e196 100644
+--- a/src/renderer/components/TerminalViewport.test.ts
++++ b/src/renderer/components/TerminalViewport.test.ts
+@@ -33,6 +33,10 @@ vi.mock('@xterm/xterm', () => {
+         throw new Error('xterm open failed')
+       }
+     }
++    attachCustomKeyEventHandler() {}
++    getSelection() {
++      return ''
++    }
+     focus() {}
+     write(data: string, callback?: () => void) {
+       this.writes.push(data)
+diff --git a/tests/e2e/provider-integration.test.ts b/tests/e2e/provider-integration.test.ts
+index 6422d20..04ee908 100644
+--- a/tests/e2e/provider-integration.test.ts
++++ b/tests/e2e/provider-integration.test.ts
+@@ -1,8 +1,10 @@
+-import { readFile, rm, stat } from 'node:fs/promises'
++import { existsSync } from 'node:fs'
++import { cp, mkdtemp, readFile, rm, stat } from 'node:fs/promises'
+ import { request } from 'node:http'
+-import { spawn } from 'node:child_process'
++import { spawn, spawnSync } from 'node:child_process'
+ import { writeFile } from 'node:fs/promises'
+ import { join } from 'node:path'
++import { tmpdir } from 'node:os'
+ import { afterEach, describe, expect, test } from 'vitest'
+ import { getProvider, listProviders } from '@extensions/providers'
+ import type { CanonicalSessionEvent, ProviderCommandContext } from '@shared/project-session'
+@@ -24,6 +26,260 @@ async function createTempDir(prefix: string): Promise<string> {
+   return dir
+ }
+ 
++async function createExternalTempDir(prefix: string): Promise<string> {
++  const dir = await mkdtemp(join(tmpdir(), prefix))
++  tempDirs.push(dir)
++  return dir
++}
++
++async function withTempCodexHome<T>(run: (codexHomeDir: string) => Promise<T>): Promise<T> {
++  const codexHomeDir = await createTempDir('stoa-codex-home-')
++  const previousCodexHome = process.env.CODEX_HOME
++  process.env.CODEX_HOME = codexHomeDir
++  try {
++    return await run(codexHomeDir)
++  } finally {
++    if (previousCodexHome === undefined) {
++      delete process.env.CODEX_HOME
++    } else {
++      process.env.CODEX_HOME = previousCodexHome
++    }
++  }
++}
++
++async function withRealCodexHome<T>(run: (codexHomeDir: string) => Promise<T>): Promise<T> {
++  const codexHomeDir = await createTempDir('stoa-real-codex-home-')
++  const homeDir = process.env.USERPROFILE ?? process.env.HOME
++  if (!homeDir) {
++    throw new Error('Cannot resolve user home directory for real Codex test.')
++  }
++
++  await cp(join(homeDir, '.codex', 'config.toml'), join(codexHomeDir, 'config.toml'))
++  await cp(join(homeDir, '.codex', 'auth.json'), join(codexHomeDir, 'auth.json'))
++
++  const previousCodexHome = process.env.CODEX_HOME
++  process.env.CODEX_HOME = codexHomeDir
++  try {
++    return await run(codexHomeDir)
++  } finally {
++    if (previousCodexHome === undefined) {
++      delete process.env.CODEX_HOME
++    } else {
++      process.env.CODEX_HOME = previousCodexHome
++    }
++  }
++}
++
++function resolveCodexCliPath(): string {
++  const configured = process.env.CODEX_CLI_PATH?.trim()
++  if (configured) {
++    return configured
++  }
++
++  const lookup = spawnSync('where.exe', ['codex'], { encoding: 'utf8', shell: false })
++  if (lookup.status !== 0) {
++    throw new Error(`Codex CLI executable was not found.\n${lookup.stderr}`)
++  }
++
++  const candidates = lookup.stdout
++    .split(/\r?\n/)
++    .map((line) => line.trim())
++    .filter(Boolean)
++  const preferred = candidates.find((line) => line.toLowerCase().endsWith('.cmd'))
++  return preferred ?? candidates[0]!
++}
++
++function canRunRealCodexTests(): boolean {
++  try {
++    const cliPath = resolveCodexCliPath()
++    if (!existsSync(cliPath)) {
++      return false
++    }
++
++    const homeDir = process.env.USERPROFILE ?? process.env.HOME
++    if (!homeDir) {
++      return false
++    }
++
++    return existsSync(join(homeDir, '.codex', 'config.toml'))
++      && existsSync(join(homeDir, '.codex', 'auth.json'))
++  } catch {
++    return false
++  }
++}
++
++const SHOULD_RUN_REAL_CODEX_TESTS = canRunRealCodexTests()
++
++function runCodexCli(
++  args: string[],
++  options: { cwd: string; env: Record<string, string | undefined>; timeoutMs?: number }
++): Promise<{ stdout: string; stderr: string; exitCode: number | null }> {
++  return new Promise((resolve, reject) => {
++    const child = spawn('cmd.exe', ['/c', resolveCodexCliPath(), ...args], {
++      cwd: options.cwd,
++      env: Object.fromEntries(
++        Object.entries(options.env).filter(([, value]) => value !== undefined)
++      ) as Record<string, string>,
++      stdio: ['pipe', 'pipe', 'pipe'],
++      windowsHide: true,
++      shell: false
++    })
++    child.stdin.end()
++
++    let stdout = ''
++    let stderr = ''
++    const timeout = setTimeout(() => {
++      child.kill()
++      reject(new Error(`Timed out running Codex CLI: codex ${args.join(' ')}`))
++    }, options.timeoutMs ?? 30_000)
++
++    child.stdout.setEncoding('utf8')
++    child.stderr.setEncoding('utf8')
++    child.stdout.on('data', (chunk) => { stdout += chunk })
++    child.stderr.on('data', (chunk) => { stderr += chunk })
++    child.on('error', (error) => {
++      clearTimeout(timeout)
++      reject(error)
++    })
++    child.on('close', (exitCode) => {
++      clearTimeout(timeout)
++      resolve({ stdout, stderr, exitCode })
++    })
++  })
++}
++
++function spawnCodexCli(
++  args: string[],
++  options: { cwd: string; env: Record<string, string | undefined> }
++): {
++  child: import('node:child_process').ChildProcessWithoutNullStreams
++  output: { stdout: string; stderr: string }
++} {
++  const child = spawn('cmd.exe', ['/c', resolveCodexCliPath(), ...args], {
++    cwd: options.cwd,
++    env: Object.fromEntries(
++      Object.entries(options.env).filter(([, value]) => value !== undefined)
++    ) as Record<string, string>,
++    stdio: ['pipe', 'pipe', 'pipe'],
++    windowsHide: true,
++    shell: false
++  })
++  child.stdin.end()
++
++  const output = { stdout: '', stderr: '' }
++  child.stdout.setEncoding('utf8')
++  child.stderr.setEncoding('utf8')
++  child.stdout.on('data', (chunk) => { output.stdout += chunk })
++  child.stderr.on('data', (chunk) => { output.stderr += chunk })
++
++  return { child, output }
++}
++
++async function waitForCondition(
++  condition: () => boolean,
++  options: { timeoutMs: number; intervalMs?: number; timeoutMessage: string }
++): Promise<void> {
++  const startedAt = Date.now()
++  while (Date.now() - startedAt < options.timeoutMs) {
++    if (condition()) {
++      return
++    }
++    await new Promise((resolve) => setTimeout(resolve, options.intervalMs ?? 100))
++  }
++  throw new Error(options.timeoutMessage)
++}
++
++async function listCodexHooksThroughAppServer(
++  cwd: string,
++  codexHomeDir: string
++): Promise<Array<Record<string, unknown>>> {
++  return await new Promise((resolve, reject) => {
++    const child = spawn('cmd.exe', ['/c', resolveCodexCliPath(), 'app-server'], {
++      cwd,
++      env: {
++        ...process.env as Record<string, string | undefined>,
++        CODEX_HOME: codexHomeDir
++      },
++      stdio: ['pipe', 'pipe', 'pipe'],
++      windowsHide: true,
++      shell: false
++    })
++
++    let stdoutBuffer = ''
++    let stderr = ''
++    let resolved = false
++    const timeout = setTimeout(() => {
++      child.kill()
++      reject(new Error(`Timed out waiting for Codex hooks/list response.\nstderr:\n${stderr}`))
++    }, 10_000)
++
++    const finish = (hooks: Array<Record<string, unknown>>) => {
++      if (resolved) {
++        return
++      }
++      resolved = true
++      clearTimeout(timeout)
++      child.kill()
++      resolve(hooks)
++    }
++
++    child.stdout.setEncoding('utf8')
++    child.stderr.setEncoding('utf8')
++    child.stderr.on('data', (chunk) => { stderr += chunk })
++    child.stdout.on('data', (chunk) => {
++      stdoutBuffer += chunk
++      const lines = stdoutBuffer.split(/\r?\n/)
++      stdoutBuffer = lines.pop() ?? ''
++      for (const line of lines) {
++        const trimmed = line.trim()
++        if (!trimmed) {
++          continue
++        }
++
++        const message = JSON.parse(trimmed) as {
++          id?: number
++          result?: { data?: Array<{ hooks?: Array<Record<string, unknown>> }> }
++        }
++        if (message.id === 1) {
++          finish(message.result?.data?.[0]?.hooks ?? [])
++          break
++        }
++      }
++    })
++    child.on('error', (error) => {
++      clearTimeout(timeout)
++      reject(error)
++    })
++    child.on('close', () => {
++      if (!resolved) {
++        clearTimeout(timeout)
++        reject(new Error(`Codex app-server exited before hooks/list response.\nstderr:\n${stderr}`))
++      }
++    })
++
++    child.stdin.write(JSON.stringify({
++      jsonrpc: '2.0',
++      id: 0,
++      method: 'initialize',
++      params: {
++        clientInfo: { name: 'stoa-provider-integration', version: '0.1.0' },
++        capabilities: { experimentalApi: true }
++      }
++    }) + '\n')
++    child.stdin.write(JSON.stringify({
++      jsonrpc: '2.0',
++      method: 'notifications/initialized',
++      params: {}
++    }) + '\n')
++    child.stdin.write(JSON.stringify({
++      jsonrpc: '2.0',
++      id: 1,
++      method: 'hooks/list',
++      params: { cwds: [cwd] }
++    }) + '\n')
++  })
++}
++
+ async function postCanonicalEvent(
+   port: number,
+   secret: string,
+@@ -84,6 +340,12 @@ function createContext(overrides: Partial<ProviderCommandContext> = {}): Provide
+   }
+ }
+ 
++function expectedCodexHookCommand(eventName: string): string {
++  return process.platform === 'win32'
++    ? `.\\.stoa\\hook-dispatch.cmd codex ${eventName}`
++    : `.stoa/hook-dispatch codex ${eventName}`
++}
++
+ describe('E2E: Provider Integration', () => {
+   describe('Provider registry', () => {
+     test('listProviders returns local-shell opencode codex and claude-code providers', () => {
+@@ -360,26 +622,40 @@ describe('E2E: Provider Integration', () => {
+       expect(command.env.STOA_PROVIDER_PORT).toBe('47771')
+       expect(command.env.STOA_SESSION_SECRET).toBeUndefined()
+       expect(command.env.STOA_WEBHOOK_PORT).toBeUndefined()
++      expect(command.args).toEqual([])
+     })
+ 
+-    test('installSidecar writes hook-only Codex sidecar assets', async () => {
++    test('installSidecar writes official Codex config files alongside shared dispatcher assets', async () => {
+       const workspaceDir = await createTempDir('stoa-codex-sidecar-')
+       const provider = getProvider('codex')
+       const target = createTarget({ path: workspaceDir, type: 'codex' })
+       const context = createContext()
+ 
+-      await provider.installSidecar(target, context)
+-
+-      const configPath = join(workspaceDir, '.codex', 'config.toml')
+-      const hooksPath = join(workspaceDir, '.codex', 'hooks.json')
+-      const manifestPath = join(workspaceDir, '.codex', '.stoa-managed-sidecar.json')
+-      const dispatcherPath = join(workspaceDir, '.stoa', 'hook-dispatch.mjs')
+-      await expect(stat(configPath)).resolves.toMatchObject({ isFile: expect.any(Function) })
+-      await expect(stat(hooksPath)).resolves.toMatchObject({ isFile: expect.any(Function) })
+-      await expect(stat(manifestPath)).resolves.toMatchObject({ isFile: expect.any(Function) })
+-      await expect(stat(dispatcherPath)).resolves.toMatchObject({ isFile: expect.any(Function) })
+-      await expect(stat(join(workspaceDir, '.codex', 'hook-stoa.mjs'))).rejects.toThrow()
+-      await expect(stat(join(workspaceDir, '.codex', 'notify-stoa.mjs'))).rejects.toThrow()
++      await withTempCodexHome(async (codexHomeDir) => {
++        await provider.installSidecar(target, context)
++
++        const manifestPath = join(workspaceDir, '.codex', '.stoa-managed-sidecar.json')
++        const dispatcherPath = join(workspaceDir, '.stoa', 'hook-dispatch.mjs')
++        const configContent = await readFile(join(workspaceDir, '.codex', 'config.toml'), 'utf8')
++        const userConfigContent = await readFile(join(codexHomeDir, 'config.toml'), 'utf8')
++
++        await expect(stat(manifestPath)).resolves.toMatchObject({ isFile: expect.any(Function) })
++        await expect(stat(dispatcherPath)).resolves.toMatchObject({ isFile: expect.any(Function) })
++        await expect(stat(join(workspaceDir, '.stoa', 'hook-dispatch'))).resolves.toMatchObject({ isFile: expect.any(Function) })
++        await expect(stat(join(workspaceDir, '.stoa', 'hook-dispatch.cmd'))).resolves.toMatchObject({ isFile: expect.any(Function) })
++        await expect(stat(join(workspaceDir, '.stoa', 'hook-contract.json'))).resolves.toMatchObject({ isFile: expect.any(Function) })
++        await expect(stat(join(workspaceDir, '.codex', 'config.toml'))).resolves.toMatchObject({ isFile: expect.any(Function) })
++        await expect(stat(join(workspaceDir, '.codex', 'hooks.json'))).rejects.toThrow()
++        await expect(stat(join(workspaceDir, '.codex', 'hook-stoa.mjs'))).rejects.toThrow()
++        await expect(stat(join(workspaceDir, '.codex', 'notify-stoa.mjs'))).rejects.toThrow()
++        expect(configContent).toContain('[[hooks.SessionStart]]')
++        expect(configContent).toContain(`command = ${JSON.stringify(expectedCodexHookCommand('SessionStart'))}`)
++        expect(configContent).not.toContain('[hooks.state.')
++        expect(configContent).not.toContain('trusted_hash = "sha256:')
++        expect(userConfigContent).toContain('trust_level = "trusted"')
++        expect(userConfigContent).toContain('[hooks.state.')
++        expect(userConfigContent).toContain('trusted_hash = "sha256:')
++      })
+     })
+ 
+     test('shared dispatcher artifact avoids provider-private baked session routing', async () => {
+@@ -392,17 +668,17 @@ describe('E2E: Provider Integration', () => {
+         project_id: 'project_internal_codex'
+       })
+ 
+-      await provider.installSidecar(target, createContext({ webhookPort: 43127, sessionSecret: 'secret-codex' }))
++      await withTempCodexHome(async () => {
++        await provider.installSidecar(target, createContext({ webhookPort: 43127, sessionSecret: 'secret-codex' }))
+ 
+-      const hooksContent = await readFile(join(workspaceDir, '.codex', 'hooks.json'), 'utf8')
+-      const dispatcherContent = await readFile(join(workspaceDir, '.stoa', 'hook-dispatch.mjs'), 'utf8')
+-      expect(hooksContent).toContain('.stoa/hook-dispatch codex SessionStart')
+-      expect(dispatcherContent).toContain('STOA_HOOK_LEASE_PATH')
+-      expect(dispatcherContent).toContain('/hooks/codex')
+-      expect(dispatcherContent).not.toContain('../src/extensions/providers/shared-hook-dispatch.ts')
+-      expect(dispatcherContent).not.toContain('session_internal_codex')
+-      expect(dispatcherContent).not.toContain('project_internal_codex')
+-      expect(dispatcherContent).not.toContain('secret-codex')
++        const dispatcherContent = await readFile(join(workspaceDir, '.stoa', 'hook-dispatch.mjs'), 'utf8')
++        expect(dispatcherContent).toContain('STOA_HOOK_LEASE_PATH')
++        expect(dispatcherContent).toContain('/hooks/codex')
++        expect(dispatcherContent).not.toContain('../src/extensions/providers/shared-hook-dispatch.ts')
++        expect(dispatcherContent).not.toContain('session_internal_codex')
++        expect(dispatcherContent).not.toContain('project_internal_codex')
++        expect(dispatcherContent).not.toContain('secret-codex')
++      })
+     })
+   })
+ 
+@@ -789,58 +1065,87 @@ describe('E2E: Provider Integration', () => {
+       })
+     }
+ 
+-    test('installSidecar writes hooks.json with all 5 codex hook events', async () => {
++    test('installSidecar writes inline config.toml hooks with trusted state for all supported Codex lifecycle hooks', async () => {
+       const workspaceDir = await createTempDir('stoa-codex-hooks-json-')
+       const provider = getProvider('codex')
+       const target = createTarget({ path: workspaceDir, type: 'codex' })
+       const context = createContext()
+ 
+-      await provider.installSidecar(target, context)
+-
+-      const hooksJsonPath = join(workspaceDir, '.codex', 'hooks.json')
+-      const hooksContent = await readFile(hooksJsonPath, 'utf8')
+-      const parsed = JSON.parse(hooksContent)
+-
+-      expect(Object.keys(parsed.hooks)).toEqual(
+-        expect.arrayContaining(['SessionStart', 'UserPromptSubmit', 'PostToolUse', 'Stop'])
+-      )
+-      expect(parsed.hooks.SessionStart[0].hooks[0].command).toBe('.stoa/hook-dispatch codex SessionStart')
+-      expect(parsed.hooks.Stop[0].hooks[0].type).toBe('command')
+-      expect(parsed.hooks.UserPromptSubmit[0].hooks).toBeDefined()
+-      expect(parsed.hooks.UserPromptSubmit[0].matcher).toBeUndefined()
+-      expect(parsed.hooks.SessionStart[0].matcher).toBe('*')
++      await withTempCodexHome(async () => {
++        await provider.installSidecar(target, context)
++
++        const configContent = await readFile(join(workspaceDir, '.codex', 'config.toml'), 'utf8')
++        expect(configContent).toContain('[[hooks.SessionStart]]')
++        expect(configContent).toContain('matcher = "startup|resume|clear"')
++        expect(configContent).toContain('[[hooks.PreToolUse]]')
++        expect(configContent).toContain('matcher = ".*"')
++        expect(configContent).toContain('[[hooks.PostToolUse]]')
++        expect(configContent).toContain(`command = ${JSON.stringify(expectedCodexHookCommand('Stop'))}`)
++        expect(configContent).not.toContain('[hooks.state.')
++        expect(configContent).not.toContain('trusted_hash = "sha256:')
++      })
+     })
+ 
+-    test('installSidecar writes config.toml with hooks feature flag', async () => {
++    test('installSidecar writes config.toml with the latest hooks feature flag', async () => {
+       const workspaceDir = await createTempDir('stoa-codex-config-')
+       const provider = getProvider('codex')
+       const target = createTarget({ path: workspaceDir, type: 'codex' })
+       const context = createContext()
+ 
+-      await provider.installSidecar(target, context)
++      await withTempCodexHome(async () => {
++        await provider.installSidecar(target, context)
+ 
+-      const configPath = join(workspaceDir, '.codex', 'config.toml')
+-      const configContent = await readFile(configPath, 'utf8')
++        const configPath = join(workspaceDir, '.codex', 'config.toml')
++        const configContent = await readFile(configPath, 'utf8')
+ 
+-      expect(configContent).toContain('codex_hooks = true')
+-      expect(configContent).toContain('[features]')
+-      expect(configContent).not.toContain('notify =')
++        expect(configContent).toContain('[features]')
++        expect(configContent).toContain('hooks = true')
++        expect(configContent).toContain('[[hooks.UserPromptSubmit]]')
++        expect(configContent).not.toContain('codex_hooks')
++      })
+     })
+ 
++    test('real Codex app-server sees project hooks as trusted after sidecar install', async () => {
++      const workspaceDir = await createTempDir('stoa-codex-real-hooks-list-')
++      const provider = getProvider('codex')
++      const target = createTarget({ path: workspaceDir, type: 'codex' })
++
++      await withRealCodexHome(async (codexHomeDir) => {
++        await provider.installSidecar(target, createContext())
++
++        const hooks = await listCodexHooksThroughAppServer(workspaceDir, codexHomeDir)
++        const stoaHooks = hooks.filter((hook) => {
++          const command = typeof hook.command === 'string' ? hook.command : ''
++          const sourcePath = typeof hook.sourcePath === 'string' ? hook.sourcePath : ''
++          return command.includes('hook-dispatch') && sourcePath.toLowerCase().includes(workspaceDir.toLowerCase())
++        })
++        expect(stoaHooks).toHaveLength(5)
++        expect(stoaHooks.map((hook) => hook.trustStatus)).toEqual([
++          'trusted',
++          'trusted',
++          'trusted',
++          'trusted',
++          'trusted'
++        ])
++      })
++    }, 20_000)
++
+     test('installSidecar writes a shared dispatcher artifact for codex hooks', async () => {
+       const workspaceDir = await createTempDir('stoa-codex-hook-sidecar-')
+       const provider = getProvider('codex')
+       const target = createTarget({ path: workspaceDir, type: 'codex' })
+       const context = createContext()
+ 
+-      await provider.installSidecar(target, context)
++      await withTempCodexHome(async () => {
++        await provider.installSidecar(target, context)
+ 
+-      const content = await readFile(join(workspaceDir, '.stoa', 'hook-dispatch.mjs'), 'utf8')
++        const content = await readFile(join(workspaceDir, '.stoa', 'hook-dispatch.mjs'), 'utf8')
+ 
+-      expect(content).toContain('/hooks/codex')
+-      expect(content).toContain('STOA_HOOK_LEASE_PATH')
+-      expect(content).toContain('x-stoa-session-id')
+-      expect(content).toContain('x-stoa-secret')
++        expect(content).toContain('/hooks/codex')
++        expect(content).toContain('STOA_HOOK_LEASE_PATH')
++        expect(content).toContain('x-stoa-session-id')
++        expect(content).toContain('x-stoa-secret')
++      })
+     })
+ 
+     test('full pipeline: webhook server receives and converts Codex PreToolUse hook into a working patch', async () => {
+@@ -976,7 +1281,9 @@ describe('E2E: Provider Integration', () => {
+         hookProjectId: projectId,
+         hookProvider: 'codex'
+       })
+-      await provider.installSidecar(target, context)
++      await withTempCodexHome(async () => {
++        await provider.installSidecar(target, context)
++      })
+       await writeFile(leasePath, `${JSON.stringify({
+         version: 1,
+         sessionId,
+@@ -1071,6 +1378,102 @@ describe('E2E: Provider Integration', () => {
+       })
+     })
+ 
++    test('codex hook command string is executable through cmd and delivers event on Windows', async () => {
++      test.skipIf(process.platform !== 'win32')
++
++      const server = createLocalWebhookServer({
++        getSessionSecret(id) { return id === 'trigger-sess-cmd' ? 'trigger-secret-cmd' : null },
++        onEvent(event) { triggerEvents.push(event) }
++      })
++      triggerServers.push(server)
++      const port = await server.start()
++
++      const workspaceDir = await createTempDir('stoa-trigger-hook-cmd-')
++      const provider = getProvider('codex')
++      const leasePath = join(workspaceDir, 'runtime-hook-lease.json')
++
++      await withTempCodexHome(async () => {
++        await provider.installSidecar(
++          createTarget({ path: workspaceDir, type: 'codex' }),
++          createContext({
++            webhookPort: port,
++            sessionSecret: 'trigger-secret-cmd',
++            hookLeasePath: leasePath,
++            hookSessionId: 'trigger-sess-cmd',
++            hookProjectId: 'trigger-proj-cmd',
++            hookProvider: 'codex',
++            hookManaged: true,
++            hookSpawnOwnerInstanceId: 'instance-trigger-cmd',
++            hookSpawnGeneration: 1
++          })
++        )
++      })
++
++      await writeFile(leasePath, `${JSON.stringify({
++        version: 1,
++        sessionId: 'trigger-sess-cmd',
++        projectId: 'trigger-proj-cmd',
++        provider: 'codex',
++        leaseState: 'active',
++        ownerInstanceId: 'instance-trigger-cmd',
++        generation: 1,
++        webhookBaseUrl: `http://127.0.0.1:${port}`,
++        sessionSecret: 'trigger-secret-cmd',
++        createdAt: '2026-05-10T12:00:00.000Z',
++        updatedAt: '2026-05-10T12:00:00.000Z',
++        heartbeatAt: '2026-05-10T12:00:00.000Z',
++        expiresAt: '2099-05-10T12:00:20.000Z',
++        commitLockNonce: 'nonce-trigger-cmd',
++        commitToken: 'token-trigger-cmd'
++      }, null, 2)}\n`, 'utf8')
++
++      const commandString = expectedCodexHookCommand('SessionStart')
++      const result = await new Promise<{ exitCode: number | null; stderr: string }>((resolve) => {
++        const child = spawn('cmd.exe', ['/c', commandString], {
++          cwd: workspaceDir,
++          env: {
++            ...process.env as Record<string, string>,
++            STOA_HOOK_LEASE_PATH: leasePath,
++            STOA_HOOK_MANAGED: '1',
++            STOA_HOOK_SESSION_ID: 'trigger-sess-cmd',
++            STOA_HOOK_PROJECT_ID: 'trigger-proj-cmd',
++            STOA_HOOK_PROVIDER: 'codex',
++            STOA_HOOK_SPAWN_OWNER_INSTANCE_ID: 'instance-trigger-cmd',
++            STOA_HOOK_SPAWN_GENERATION: '1'
++          },
++          stdio: ['pipe', 'pipe', 'pipe'],
++          shell: false,
++          windowsHide: true
++        })
++
++        let stderr = ''
++        child.stderr?.setEncoding('utf8')
++        child.stderr?.on('data', (chunk: string) => { stderr += chunk })
++        child.stdin?.write(JSON.stringify({
++          hook_event_name: 'SessionStart',
++          session_id: 'codex-hook-session',
++          turn_id: 'turn-hook-1',
++          cwd: workspaceDir,
++          model: 'gpt-5.4-nano'
++        }))
++        child.stdin?.end()
++        child.on('close', (code) => resolve({ exitCode: code, stderr }))
++      })
++
++      expect(result.exitCode).toBe(0)
++      expect(result.stderr).toBe('')
++      expect(triggerEvents).toHaveLength(1)
++      expect(triggerEvents[0]).toMatchObject({
++        event_type: 'codex.SessionStart',
++        session_id: 'trigger-sess-cmd',
++        project_id: 'trigger-proj-cmd',
++        payload: {
++          intent: 'runtime.alive',
++          sourceTurnId: 'turn-hook-1'
++        }
++      })
++    })
++
+     test('spawning shared dispatcher with PreToolUse payload delivers tool details', async () => {
+       const server = createLocalWebhookServer({
+         getSessionSecret(id) { return id === 'trigger-sess-2' ? 'trigger-secret-2' : null },
+@@ -1151,10 +1554,12 @@ describe('E2E: Provider Integration', () => {
+ 
+       const workspaceDir = await createTempDir('stoa-trigger-noenv-')
+       const provider = getProvider('codex')
+-      await provider.installSidecar(
+-        createTarget({ path: workspaceDir, type: 'codex' }),
+-        createContext({ webhookPort: port, sessionSecret: 'secret' })
+-      )
++      await withTempCodexHome(async () => {
++        await provider.installSidecar(
++          createTarget({ path: workspaceDir, type: 'codex' }),
++          createContext({ webhookPort: port, sessionSecret: 'secret' })
++        )
++      })
+ 
+       const { exitCode } = await new Promise<{ exitCode: number | null }>((resolve) => {
+         const child = spawn('node', [join(workspaceDir, '.stoa', 'hook-dispatch.mjs'), 'codex', 'SessionStart'], {
+@@ -1188,6 +1593,121 @@ describe('E2E: Provider Integration', () => {
+     })
+   })
+ 
++  describe('Real Codex hook delivery', () => {
++    test.skipIf(!SHOULD_RUN_REAL_CODEX_TESTS)(
++      'real codex exec delivers hook events to Stoa through project hooks',
++      async () => {
++        const workspaceDir = await createExternalTempDir('stoa-codex-real-exec-')
++        const acceptedEvents: CanonicalSessionEvent[] = []
++        const sessionId = 'session_real_codex_exec'
++        const projectId = 'project_real_codex_exec'
++        const sessionSecret = 'secret-real-codex-exec'
++
++        const server = createLocalWebhookServer({
++          getSessionSecret(id) {
++            return id === sessionId ? sessionSecret : null
++          },
++          onEvent(event) {
++            acceptedEvents.push(event)
++          }
++        })
++        const port = await server.start()
++
++        try {
++          await withRealCodexHome(async (codexHomeDir) => {
++            const provider = getProvider('codex')
++            const target = createTarget({
++              path: workspaceDir,
++              type: 'codex',
++              session_id: sessionId,
++              project_id: projectId,
++              title: 'real-codex-session'
++            })
++            const leasePath = join(workspaceDir, 'runtime-hook-lease.json')
++            const context = createContext({
++              webhookPort: port,
++              sessionSecret,
++              hookLeasePath: leasePath,
++              hookManaged: true,
++              hookSessionId: sessionId,
++              hookProjectId: projectId,
++              hookProvider: 'codex',
++              hookSpawnOwnerInstanceId: 'instance-real-codex',
++              hookSpawnGeneration: 1,
++              providerPath: resolveCodexCliPath()
++            })
++
++            await provider.installSidecar(target, context)
++            await writeFile(leasePath, `${JSON.stringify({
++              version: 1,
++              sessionId,
++              projectId,
++              provider: 'codex',
++              leaseState: 'active',
++              ownerInstanceId: 'instance-real-codex',
++              generation: 1,
++              webhookBaseUrl: `http://127.0.0.1:${port}`,
++              sessionSecret,
++              createdAt: '2026-05-10T12:00:00.000Z',
++              updatedAt: '2026-05-10T12:00:00.000Z',
++              heartbeatAt: '2026-05-10T12:00:00.000Z',
++              expiresAt: '2099-05-10T12:00:20.000Z',
++              commitLockNonce: 'nonce-real-codex',
++              commitToken: 'token-real-codex'
++            }, null, 2)}\n`, 'utf8')
++
++            const { child, output } = spawnCodexCli([
++              'exec',
++              '--skip-git-repo-check',
++              '--dangerously-bypass-approvals-and-sandbox',
++              '--cd',
++              workspaceDir,
++              '-m',
++              'gpt-5.4-nano',
++              'Reply with exactly: STOA_REAL_HOOK_OK'
++            ], {
++              cwd: workspaceDir,
++              env: {
++                ...process.env as Record<string, string | undefined>,
++                CODEX_HOME: codexHomeDir,
++                STOA_HOOK_LEASE_PATH: leasePath,
++                STOA_HOOK_MANAGED: '1',
++                STOA_HOOK_SESSION_ID: sessionId,
++                STOA_HOOK_PROJECT_ID: projectId,
++                STOA_HOOK_PROVIDER: 'codex',
++                STOA_HOOK_SPAWN_OWNER_INSTANCE_ID: 'instance-real-codex',
++                STOA_HOOK_SPAWN_GENERATION: '1'
++              }
++            })
++
++            try {
++              await waitForCondition(
++                () => acceptedEvents.some((event) => event.event_type === 'codex.UserPromptSubmit'),
++                {
++                  timeoutMs: 60_000,
++                  timeoutMessage:
++                    `Timed out waiting for Codex hook delivery.\nstderr:\n${output.stderr}\nstdout:\n${output.stdout}`
++                }
++              )
++            } finally {
++              child.kill()
++            }
++
++            await new Promise((resolve) => child.once('close', resolve))
++
++            expect(output.stderr).not.toContain('Untrusted')
++            expect(acceptedEvents.length).toBeGreaterThan(0)
++            expect(acceptedEvents.some((event) => event.event_type === 'codex.SessionStart')).toBe(true)
++            expect(acceptedEvents.some((event) => event.event_type === 'codex.UserPromptSubmit')).toBe(true)
++          })
++        } finally {
++          await server.stop()
++        }
++      },
++      180_000
++    )
++  })
++
+ })
+ 
+ function parsedClaudeHttpHook(
