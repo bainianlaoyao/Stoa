@@ -58,6 +58,7 @@ let metaSessionManager: MetaSessionManager | null = null
 let evidenceStore: SessionEvidenceStore | null = null
 let hookLeaseManager: ReturnType<typeof createHookLeaseManager> | null = null
 const e2eWorkspaceOpenRequests: OpenWorkspaceRequest[] = []
+const metaSessionBootstrapPending = new Set<string>()
 let isQuittingAfterBridgeStop = false
 const pendingE2EPickFolders: Array<string | null> = []
 const isE2EMode = process.env.VIBECODING_E2E === '1'
@@ -602,13 +603,19 @@ app.whenReady().then(async () => {
       ? async (input) => await activeHookLeaseManager.authorizeHookRequest(input)
       : undefined,
     getSessionBootstrapPrompt(sessionId: string) {
+      if (!metaSessionBootstrapPending.has(sessionId)) {
+        return null
+      }
       if (!activeMetaSessionManager?.hasSession(sessionId)) {
+        metaSessionBootstrapPending.delete(sessionId)
         return null
       }
       const session = activeMetaSessionManager.getSession(sessionId)
       if (!session || session.backendSessionType !== 'codex') {
+        metaSessionBootstrapPending.delete(sessionId)
         return null
       }
+      metaSessionBootstrapPending.delete(sessionId)
       return buildMetaSessionBootstrapPrompt()
     },
     configureServerApp(app) {
@@ -892,7 +899,8 @@ app.whenReady().then(async () => {
     }
 
     sessionInputRouter?.resetSession(sessionId)
-    const bootstrapPrompt = buildMetaSessionBootstrapPrompt()
+    const isCreate = source === 'meta-session-create'
+    const bootstrapPrompt = isCreate ? buildMetaSessionBootstrapPrompt() : undefined
     const isClaudeCode = metaSession.backendSessionType === 'claude-code'
     const isOpenCode = metaSession.backendSessionType === 'opencode'
     const hookLease = await activeHookLeaseManager?.ensureLease({
@@ -904,6 +912,10 @@ app.whenReady().then(async () => {
     const sessionSecret = hookLease?.lease.sessionSecret
       ?? activeHookLeaseManager?.debugSnapshotSessionSecrets()[sessionId]
       ?? sessionEventBridge.issueSessionSecret(sessionId)
+
+    if (isCreate) {
+      metaSessionBootstrapPending.add(sessionId)
+    }
 
     const launched = await launchTrackedSessionRuntime({
       sessionId,
@@ -920,16 +932,15 @@ app.whenReady().then(async () => {
         webhookPort,
         stoaCtlBinDir: stoaCtlShim.binDir
       }),
-      initialPrompt: isClaudeCode ? bootstrapPrompt : undefined
+      initialPrompt: isCreate && isClaudeCode ? bootstrapPrompt : undefined
     })
 
-    if (launched && isOpenCode) {
+    if (launched && isCreate && isOpenCode && bootstrapPrompt) {
       setTimeout(() => {
         void sessionInputRouter?.send(sessionId, `${bootstrapPrompt}\r`)
       }, 2000)
     }
 
-    void source
     return launched
   }
 
