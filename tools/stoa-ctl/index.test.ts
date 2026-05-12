@@ -29,6 +29,7 @@ describe('stoa-ctl command surface', () => {
   test('declares meta session discovery, session, proposal, and dispatch commands in the usage text', async () => {
     const module = await import('./index')
 
+    expect(module.USAGE_TEXT).toContain('bootstrap-prompt')
     expect(module.USAGE_TEXT).toContain('whoami')
     expect(module.USAGE_TEXT).toContain('capabilities')
     expect(module.USAGE_TEXT).toContain('work-sessions list')
@@ -75,6 +76,34 @@ describe('stoa-ctl command surface', () => {
 
     expect(exitCode).toBe(0)
     expect(writes.join('')).toContain('"Global Triage"')
+  })
+
+  test('fetches bootstrap-prompt as plain text through the control plane', async () => {
+    const module = await import('./index')
+    const writes: string[] = []
+    const fetchImpl = vi.fn(async (input: string | URL | Request) => {
+      expect(String(input)).toBe('http://127.0.0.1:43129/ctl/bootstrap-prompt')
+      return createResponse({
+        body: 'You are running inside a Stoa meta session.\n## HARD RULE: METADATA IS NOT CONTENT'
+      })
+    })
+
+    const exitCode = await module.run(['bootstrap-prompt'], {
+      fetch: fetchImpl,
+      env: metaSessionEnv,
+      stdout: {
+        write(chunk: string) {
+          writes.push(chunk)
+        }
+      },
+      stderr: {
+        write() {}
+      },
+      sleep: async () => {}
+    })
+
+    expect(exitCode).toBe(0)
+    expect(writes.join('')).toContain('METADATA IS NOT CONTENT')
   })
 
   test('lists work-session events with query flags through the control plane', async () => {

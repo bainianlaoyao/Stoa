@@ -1039,4 +1039,34 @@ describe('meta session control server', () => {
     const wrongSecret = await get(port, '/ctl/health', { 'x-stoa-secret': 'wrong-secret', 'x-stoa-session-id': 'unknown' })
     expect(wrongSecret.statusCode).toBe(401)
   })
+
+  test('serves /ctl/bootstrap-prompt as plain text with the canonical meta session prompt', async () => {
+    const server = createMetaSessionControlServer({
+      metaSessionSource: {
+        snapshot() { return { activeMetaSessionId: 'meta_session_1', sessions: [createMetaSession()], inspectorTarget: { kind: 'app' } } },
+        getSession(sessionId: string) { return sessionId === 'meta_session_1' ? createMetaSession() : null },
+        async createSession() { return createMetaSession('meta_session_created') },
+        async setActiveSession() {},
+        async archiveSession() {},
+        async restoreSession() {}
+      },
+      snapshotSource: { snapshot() { return { activeProjectId: 'project_1', activeSessionId: 'session_1', terminalWebhookPort: 43127, projects: [], sessions: [createWorkSession()] } } },
+      getSessionPresence() { return null },
+      contextAssembler: { getStatus() { return { level: 'status', sessionId: 'session_1' } }, getBundle() { return { level: 'bundle', sessionId: 'session_1' } }, async getSlimContext() { return { text: '', truncated: false, nextCursor: null } }, async getFullContext() { return { text: '', truncated: false, nextCursor: null } } } as never,
+      dispatcher: { async promptWorkSession() { return { kind: 'approval_required' } }, async dispatchProposal() { return { kind: 'dispatched' } } } as never,
+      proposals: { list() { return [] }, get() { return null } } as never,
+      workSessionLifecycle: createNoopWorkSessionLifecycle()
+    })
+    servers.push(server)
+    const port = await server.start()
+    const authHeaders = { 'x-stoa-session-id': 'meta_session_1' }
+
+    const result = await get(port, '/ctl/bootstrap-prompt', authHeaders)
+
+    expect(result.statusCode).toBe(200)
+    expect(result.contentType).toContain('text/plain')
+    expect(result.body).toContain('METADATA IS NOT CONTENT')
+    expect(result.body).toContain('stoa-ctl work-sessions context <id> --level slim')
+    expect(result.body).toContain('Always trust content over status')
+  })
 })

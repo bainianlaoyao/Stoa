@@ -200,16 +200,25 @@ describe('E2E: Main Process Config Guard', () => {
       expect(restoreBody!).toMatch(/sessionInputRouter\?\.resetSession\(sessionId\)/)
     })
 
-    it('meta-session bootstrap prompt enforces content-over-metadata rule', () => {
-      const bootstrapBody = extractNamedFunctionBody(mainSource, 'buildMetaSessionBootstrapPrompt')
+    it('meta-session bootstrap prompt is imported from shared module', () => {
+      expect(mainSource).toMatch(/META_SESSION_BOOTSTRAP_PROMPT/)
+      expect(mainSource).toContain("from '@core/meta-session-bootstrap-prompt'")
 
+      const bootstrapBody = extractNamedFunctionBody(mainSource, 'buildMetaSessionBootstrapPrompt')
       expect(bootstrapBody, 'Could not find buildMetaSessionBootstrapPrompt').not.toBeNull()
-      expect(bootstrapBody!).toContain('METADATA IS NOT CONTENT')
-      expect(bootstrapBody!).toContain('stoa-ctl work-sessions context <id> --level slim')
-      expect(bootstrapBody!).toContain('stoa-ctl work-sessions context <id> --level full')
-      expect(bootstrapBody!).toContain('stoa-ctl work-sessions send-keys <id> ...')
-      expect(bootstrapBody!).toContain('fetch context for EVERY relevant session before answering')
-      expect(bootstrapBody!).toContain('Always trust content over status')
+      expect(bootstrapBody!).toContain('return META_SESSION_BOOTSTRAP_PROMPT')
+    })
+
+    it('shared bootstrap prompt module enforces content-over-metadata rule', async () => {
+      const promptModule = await import('@core/meta-session-bootstrap-prompt')
+      const prompt = promptModule.META_SESSION_BOOTSTRAP_PROMPT as string
+
+      expect(prompt).toContain('METADATA IS NOT CONTENT')
+      expect(prompt).toContain('stoa-ctl work-sessions context <id> --level slim')
+      expect(prompt).toContain('stoa-ctl work-sessions context <id> --level full')
+      expect(prompt).toContain('stoa-ctl work-sessions send-keys <id> ...')
+      expect(prompt).toContain('fetch context for EVERY relevant session before answering')
+      expect(prompt).toContain('Always trust content over status')
     })
 
     it('wires work-session lifecycle control routes to host-owned create and archive flows', () => {

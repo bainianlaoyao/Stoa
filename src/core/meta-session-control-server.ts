@@ -1,4 +1,5 @@
 import express, { type Express } from 'express'
+import { META_SESSION_BOOTSTRAP_PROMPT } from './meta-session-bootstrap-prompt'
 import type { AddressInfo } from 'node:net'
 import type { SessionPresenceSnapshot } from '@shared/observability'
 import type { BootstrapState, CreateSessionRequest, SessionSummary, SessionType } from '@shared/project-session'
@@ -176,6 +177,10 @@ export function createMetaSessionControlServer(options: MetaSessionControlServer
 
   app.get('/ctl/health', (_request, response) => {
     response.json(jsonEnvelope({ ok: true }))
+  })
+
+  app.get('/ctl/bootstrap-prompt', (_request, response) => {
+    response.type('text/plain; charset=utf-8').send(META_SESSION_BOOTSTRAP_PROMPT)
   })
 
   app.get('/ctl/whoami', (request, response) => {

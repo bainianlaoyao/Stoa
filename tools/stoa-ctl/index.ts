@@ -46,6 +46,7 @@ export const USAGE_TEXT = [
   '',
   'Commands:',
   '  health',
+  '  bootstrap-prompt',
   '  whoami',
   '  capabilities',
   '  state brief',
@@ -266,6 +267,16 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
 
     if (group === 'whoami' && action === undefined) {
       const { response, text } = await ctlRequest('/ctl/whoami')
+      if (!response.ok) {
+        resolvedDeps.stderr.write(`${text}\n`)
+        return mapFailureExitCode(response, text)
+      }
+      resolvedDeps.stdout.write(text)
+      return 0
+    }
+
+    if (group === 'bootstrap-prompt' && action === undefined) {
+      const { response, text } = await ctlRequest('/ctl/bootstrap-prompt')
       if (!response.ok) {
         resolvedDeps.stderr.write(`${text}\n`)
         return mapFailureExitCode(response, text)
