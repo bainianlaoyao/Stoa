@@ -961,4 +961,82 @@ describe('meta session control server', () => {
       }
     })
   })
+
+  test('accepts ctlSecret as alternative to session-id auth', async () => {
+    const server = createMetaSessionControlServer({
+      metaSessionSource: {
+        snapshot() {
+          return {
+            activeMetaSessionId: 'meta_session_1',
+            sessions: [createMetaSession()],
+            inspectorTarget: { kind: 'app' }
+          }
+        },
+        getSession(sessionId: string) {
+          return sessionId === 'meta_session_1' ? createMetaSession() : null
+        },
+        async createSession() { return createMetaSession('meta_session_created') },
+        async setActiveSession() {},
+        async archiveSession() {},
+        async restoreSession() {}
+      },
+      snapshotSource: {
+        snapshot() {
+          return {
+            activeProjectId: 'project_1',
+            activeSessionId: 'session_1',
+            terminalWebhookPort: 43127,
+            projects: [],
+            sessions: [createWorkSession()]
+          }
+        }
+      },
+      getSessionPresence() { return null },
+      contextAssembler: {
+        getStatus() { return { level: 'status', sessionId: 'session_1' } },
+        getBundle() { return { level: 'bundle', sessionId: 'session_1' } },
+        async getSlimContext() { return { text: '', truncated: false, nextCursor: null } },
+        async getFullContext() { return { text: '', truncated: false, nextCursor: null } }
+      } as never,
+      dispatcher: { async promptWorkSession() { return { kind: 'approval_required' } }, async dispatchProposal() { return { kind: 'dispatched' } } } as never,
+      proposals: { list() { return [] }, get() { return null } } as never,
+      workSessionLifecycle: createNoopWorkSessionLifecycle(),
+      ctlSecret: 'test-secret-1234567890abcdef1234567890abcdef1234567890abcdef1234567890'
+    })
+    servers.push(server)
+    const port = await server.start()
+
+    const secretAuthHeaders = {
+      'x-stoa-secret': 'test-secret-1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
+      'x-stoa-session-id': 'meta_session_1'
+    }
+
+    const health = await get(port, '/ctl/health', secretAuthHeaders)
+    expect(health.statusCode).toBe(200)
+  })
+
+  test('rejects wrong ctlSecret', async () => {
+    const server = createMetaSessionControlServer({
+      metaSessionSource: {
+        snapshot() { return { activeMetaSessionId: 'meta_session_1', sessions: [createMetaSession()], inspectorTarget: { kind: 'app' } } },
+        getSession() { return null },
+        async createSession() { return createMetaSession() },
+        async setActiveSession() {},
+        async archiveSession() {},
+        async restoreSession() {}
+      },
+      snapshotSource: { snapshot() { return { activeProjectId: 'project_1', activeSessionId: 'session_1', terminalWebhookPort: 43127, projects: [], sessions: [] } } },
+      getSessionPresence() { return null },
+      contextAssembler: { getStatus() { return { level: 'status', sessionId: 'session_1' } }, getBundle() { return { level: 'bundle', sessionId: 'session_1' } }, async getSlimContext() { return { text: '', truncated: false, nextCursor: null } }, async getFullContext() { return { text: '', truncated: false, nextCursor: null } } } as never,
+      dispatcher: { async promptWorkSession() { return { kind: 'approval_required' } }, async dispatchProposal() { return { kind: 'dispatched' } } } as never,
+      proposals: { list() { return [] }, get() { return null } } as never,
+      workSessionLifecycle: createNoopWorkSessionLifecycle(),
+      ctlSecret: 'correct-secret-1234567890abcdef1234567890abcdef1234567890abcdef1234'
+    })
+    servers.push(server)
+    const port = await server.start()
+
+    const wrongSecret = await get(port, '/ctl/health', { 'x-stoa-secret': 'wrong-secret', 'x-stoa-session-id': 'unknown' })
+    expect(wrongSecret.statusCode).toBe(401)
+  })
 })

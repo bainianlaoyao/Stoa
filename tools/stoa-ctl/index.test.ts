@@ -631,6 +631,205 @@ describe('stoa-ctl command surface', () => {
     expect(exitCode).toBe(0)
   })
 
+  test('discovers base URL from port file when STOA_CTL_BASE_URL is unset', async () => {
+    const module = await import('./index')
+    const fetchImpl = vi.fn(async (input: string | URL | Request) => {
+      expect(String(input)).toBe('http://127.0.0.1:54321/ctl/health')
+      return createResponse({ body: '{"ok":true,"data":{"ok":true},"error":null}' })
+    })
+
+    const exitCode = await module.run(['health'], {
+      fetch: fetchImpl,
+      env: {},
+      stdout: { write() {} },
+      stderr: { write() {} },
+      sleep: async () => {},
+      readPortFile: async () => ({
+        port: 54321,
+        pid: process.pid,
+        activeMetaSessionId: 'meta_from_port_file',
+        secret: 'abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
+        startedAt: new Date().toISOString()
+      })
+    })
+
+    expect(exitCode).toBe(0)
+  })
+
+  test('uses activeMetaSessionId from port file when no session env vars set', async () => {
+    const module = await import('./index')
+    const fetchImpl = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+      expect(init?.headers).toMatchObject({
+        'x-stoa-session-id': 'meta_from_port_file',
+        'x-stoa-secret': 'abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890'
+      })
+      return createResponse({ body: '{"ok":true,"data":{"ok":true},"error":null}' })
+    })
+
+    const exitCode = await module.run(['health'], {
+      fetch: fetchImpl,
+      env: {},
+      stdout: { write() {} },
+      stderr: { write() {} },
+      sleep: async () => {},
+      readPortFile: async () => ({
+        port: 54321,
+        pid: process.pid,
+        activeMetaSessionId: 'meta_from_port_file',
+        secret: 'abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
+        startedAt: new Date().toISOString()
+      })
+    })
+
+    expect(exitCode).toBe(0)
+  })
+
+  test('ignores port file when STOA_CTL_BASE_URL is set', async () => {
+    const module = await import('./index')
+    const fetchImpl = vi.fn(async (input: string | URL | Request) => {
+      expect(String(input)).toBe('http://127.0.0.1:43129/ctl/health')
+      return createResponse({ body: '{"ok":true,"data":{"ok":true},"error":null}' })
+    })
+    const readPortFile = vi.fn(async () => ({ port: 99999, pid: 1, activeMetaSessionId: 'wrong', secret: 'x'.repeat(64), startedAt: '2026-01-01' }))
+
+    const exitCode = await module.run(['health'], {
+      fetch: fetchImpl,
+      env: metaSessionEnv,
+      stdout: { write() {} },
+      stderr: { write() {} },
+      sleep: async () => {},
+      readPortFile
+    })
+
+    expect(exitCode).toBe(0)
+    expect(readPortFile).not.toHaveBeenCalled()
+  })
+
+  test('exits with code 3 when neither env vars nor port file available', async () => {
+    const module = await import('./index')
+    const stderr: string[] = []
+
+    const exitCode = await module.run(['health'], {
+      fetch: async () => { throw new Error('should not be called') },
+      env: {},
+      stdout: { write() {} },
+      stderr: { write(chunk: string) { stderr.push(chunk) } },
+      sleep: async () => {},
+      readPortFile: async () => null
+    })
+
+    expect(exitCode).toBe(3)
+    expect(stderr.join('')).toContain('Stoa is not running')
+  })
+
+  test('exits with code 3 when port file PID is stale', async () => {
+    const module = await import('./index')
+    const stderr: string[] = []
+
+    const exitCode = await module.run(['health'], {
+      fetch: async () => { throw new Error('should not be called') },
+      env: {},
+      stdout: { write() {} },
+      stderr: { write(chunk: string) { stderr.push(chunk) } },
+      sleep: async () => {},
+      readPortFile: async () => ({
+        port: 54321,
+        pid: -1,
+        activeMetaSessionId: 'meta_old',
+        secret: 'x'.repeat(64),
+        startedAt: '2026-01-01'
+      })
+    })
+
+    expect(exitCode).toBe(3)
+  })
+
+  test('uses --session flag to override session identity', async () => {
+    const module = await import('./index')
+    const fetchImpl = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+      expect(init?.headers).toMatchObject({
+        'x-stoa-session-id': 'meta_explicit'
+      })
+      return createResponse({ body: '{"ok":true,"data":{"sessionId":"meta_explicit"},"error":null}' })
+    })
+
+    const exitCode = await module.run(['--session', 'meta_explicit', 'whoami'], {
+      fetch: fetchImpl,
+      env: { STOA_CTL_BASE_URL: 'http://127.0.0.1:43129' },
+      stdout: { write() {} },
+      stderr: { write() {} },
+      sleep: async () => {}
+    })
+
+    expect(exitCode).toBe(0)
+  })
+
+  test('prefers --session flag over port file activeMetaSessionId', async () => {
+    const module = await import('./index')
+    const fetchImpl = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+      expect(init?.headers).toMatchObject({
+        'x-stoa-session-id': 'meta_from_flag'
+      })
+      return createResponse({ body: '{"ok":true,"data":{"ok":true},"error":null}' })
+    })
+
+    const exitCode = await module.run(['--session', 'meta_from_flag', 'health'], {
+      fetch: fetchImpl,
+      env: {},
+      stdout: { write() {} },
+      stderr: { write() {} },
+      sleep: async () => {},
+      readPortFile: async () => ({
+        port: 54321,
+        pid: process.pid,
+        activeMetaSessionId: 'meta_from_port_file',
+        secret: 'x'.repeat(64),
+        startedAt: new Date().toISOString()
+      })
+    })
+
+    expect(exitCode).toBe(0)
+  })
+
+  test('exits with code 3 when no session identity source available', async () => {
+    const module = await import('./index')
+    const stderr: string[] = []
+
+    const exitCode = await module.run(['whoami'], {
+      fetch: async () => { throw new Error('should not be called') },
+      env: {},
+      stdout: { write() {} },
+      stderr: { write(chunk: string) { stderr.push(chunk) } },
+      sleep: async () => {},
+      readPortFile: async () => ({
+        port: 54321,
+        pid: process.pid,
+        activeMetaSessionId: null,
+        secret: 'x'.repeat(64),
+        startedAt: new Date().toISOString()
+      })
+    })
+
+    expect(exitCode).toBe(3)
+    expect(stderr.join('')).toContain('No session identity')
+  })
+
+  test('exits with usage error when --session has no value', async () => {
+    const module = await import('./index')
+    const stderr: string[] = []
+
+    const exitCode = await module.run(['--session'], {
+      fetch: async () => { throw new Error('should not be called') },
+      env: metaSessionEnv,
+      stdout: { write() {} },
+      stderr: { write(chunk: string) { stderr.push(chunk) } },
+      sleep: async () => {}
+    })
+
+    expect(exitCode).toBe(2)
+    expect(stderr.join('')).toContain('Usage')
+  })
+
   test('detects direct entry when tsx passes its cli path as argv[1]', async () => {
     const module = await import('./index')
 

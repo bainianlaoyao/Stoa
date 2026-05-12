@@ -33,6 +33,7 @@ interface MetaSessionControlServerOptions {
   dispatcher: MetaSessionCommandDispatcher
   proposals: MetaSessionProposalStore
   workSessionLifecycle: WorkSessionLifecycle
+  ctlSecret?: string
   app?: Express
 }
 
@@ -80,12 +81,16 @@ function getErrorBody(error: unknown): { code: string; message: string; details:
 
 function authorize(
   metaSessionSource: MetaSessionSource,
-  sessionId: string | undefined
+  sessionId: string | undefined,
+  secret: string | undefined,
+  expectedSecret: string | undefined
 ): boolean {
+  if (expectedSecret && secret === expectedSecret) {
+    return true
+  }
   if (!sessionId) {
     return false
   }
-
   return metaSessionSource.getSession(sessionId) !== null
 }
 
@@ -157,7 +162,8 @@ export function createMetaSessionControlServer(options: MetaSessionControlServer
 
   app.use('/ctl', (request, response, next) => {
     const sessionId = request.header('x-stoa-session-id') ?? undefined
-    if (!authorize(options.metaSessionSource, sessionId)) {
+    const secret = request.header('x-stoa-secret') ?? undefined
+    if (!authorize(options.metaSessionSource, sessionId, secret, options.ctlSecret)) {
       response.status(401).json(jsonEnvelope(null, {
         code: 'invalid_secret',
         message: 'Invalid meta-session control credentials.',

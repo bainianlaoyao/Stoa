@@ -200,14 +200,16 @@ describe('E2E: Main Process Config Guard', () => {
       expect(restoreBody!).toMatch(/sessionInputRouter\?\.resetSession\(sessionId\)/)
     })
 
-    it('meta-session bootstrap prompt recommends slim work-session context by default', () => {
+    it('meta-session bootstrap prompt enforces content-over-metadata rule', () => {
       const bootstrapBody = extractNamedFunctionBody(mainSource, 'buildMetaSessionBootstrapPrompt')
 
       expect(bootstrapBody, 'Could not find buildMetaSessionBootstrapPrompt').not.toBeNull()
+      expect(bootstrapBody!).toContain('METADATA IS NOT CONTENT')
       expect(bootstrapBody!).toContain('stoa-ctl work-sessions context <id> --level slim')
-      expect(bootstrapBody!).toContain('never guess from the session title alone')
       expect(bootstrapBody!).toContain('stoa-ctl work-sessions context <id> --level full')
       expect(bootstrapBody!).toContain('stoa-ctl work-sessions send-keys <id> ...')
+      expect(bootstrapBody!).toContain('fetch context for EVERY relevant session before answering')
+      expect(bootstrapBody!).toContain('Always trust content over status')
     })
 
     it('wires work-session lifecycle control routes to host-owned create and archive flows', () => {

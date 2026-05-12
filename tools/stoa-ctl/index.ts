@@ -2,6 +2,7 @@
 
 import { readFile } from 'node:fs/promises'
 import { parseSendKeysTokens } from './send-keys'
+import { readPortFile as defaultReadPortFile, isPidAlive, type PortFileData } from '@core/stoa-ctl-port-file'
 
 type JsonEnvelope = {
   ok: boolean
@@ -31,13 +32,19 @@ interface RunDependencies {
   stderr?: WritableLike
   stdin?: ReadableLike
   sleep?: (ms: number) => Promise<void>
+  readPortFile?: () => Promise<PortFileData | null>
 }
 
 const DEFAULT_WAIT_TIMEOUT_MS = 30_000
 const DEFAULT_WAIT_INTERVAL_MS = 1_000
 
 export const USAGE_TEXT = [
-  'Usage: stoa-ctl',
+  'Usage: stoa-ctl [--session <id>] <command>',
+  '',
+  'Global flags:',
+  '  --session <id>    Use a specific meta-session (default: active meta-session or STOA_SESSION_ID)',
+  '',
+  'Commands:',
   '  health',
   '  whoami',
   '  capabilities',
@@ -71,23 +78,50 @@ export const USAGE_TEXT = [
 class CliUsageError extends Error {}
 class CliConfigError extends Error {}
 
-function resolveBaseUrl(env: NodeJS.ProcessEnv): string {
+function resolveBaseUrl(env: NodeJS.ProcessEnv, portFileData: PortFileData | null): string {
   const baseUrl = env.STOA_CTL_BASE_URL?.trim()
-  if (!baseUrl) {
-    throw new CliConfigError('Missing STOA_CTL_BASE_URL')
+  if (baseUrl) {
+    return baseUrl.replace(/\/+$/, '')
   }
-  return baseUrl.replace(/\/+$/, '')
+  if (portFileData) {
+    return `http://127.0.0.1:${portFileData.port}`
+  }
+  throw new CliConfigError('Stoa is not running. Start Stoa or set STOA_CTL_BASE_URL.')
 }
 
-function resolveHeaders(env: NodeJS.ProcessEnv): Record<string, string> {
-  const sessionId = env.STOA_META_SESSION_ID?.trim() ?? env.STOA_SESSION_ID?.trim()
+function resolveHeaders(env: NodeJS.ProcessEnv, sessionOverride: string | undefined, portFileData: PortFileData | null): Record<string, string> {
+  const sessionId = env.STOA_META_SESSION_ID?.trim()
+    ?? env.STOA_SESSION_ID?.trim()
+    ?? sessionOverride
+    ?? portFileData?.activeMetaSessionId
+    ?? undefined
+
   if (!sessionId) {
-    throw new CliConfigError('Missing STOA_META_SESSION_ID')
+    throw new CliConfigError('No session identity available. Use --session <id> or ensure Stoa has an active meta-session.')
   }
 
-  return {
+  const headers: Record<string, string> = {
     'x-stoa-session-id': sessionId
   }
+
+  if (portFileData?.secret) {
+    headers['x-stoa-secret'] = portFileData.secret
+  }
+
+  return headers
+}
+
+function consumeGlobalFlags(argv: string[]): { session?: string; cleanArgv: string[] } {
+  const sessionIndex = argv.indexOf('--session')
+  if (sessionIndex >= 0) {
+    const value = argv[sessionIndex + 1]
+    if (!value) {
+      throw new CliUsageError('--session requires a value')
+    }
+    const cleanArgv = argv.filter((_, i) => i !== sessionIndex && i !== sessionIndex + 1)
+    return { session: value, cleanArgv }
+  }
+  return { cleanArgv: argv }
 }
 
 export function isDirectCliEntry(importMetaUrl: string, argvEntry: string | undefined): boolean {
@@ -168,12 +202,13 @@ function mapFailureExitCode(response: Response, bodyText: string): number {
 async function request(
   deps: Required<RunDependencies>,
   path: string,
-  init: RequestInit = {}
+  init: RequestInit = {},
+  context?: { session?: string; portFileData: PortFileData | null }
 ): Promise<{ response: Response; text: string }> {
-  const response = await deps.fetch(`${resolveBaseUrl(deps.env)}${path}`, {
+  const response = await deps.fetch(`${resolveBaseUrl(deps.env, context?.portFileData ?? null)}${path}`, {
     ...init,
     headers: {
-      ...resolveHeaders(deps.env),
+      ...resolveHeaders(deps.env, context?.session, context?.portFileData ?? null),
       ...(init.body === undefined ? {} : { 'content-type': 'application/json' }),
       ...(init.headers ?? {})
     }
@@ -193,17 +228,34 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
     stdout: deps.stdout ?? process.stdout,
     stderr: deps.stderr ?? process.stderr,
     stdin: deps.stdin ?? process.stdin,
-    sleep: deps.sleep ?? (async (ms: number) => await new Promise((resolve) => setTimeout(resolve, ms)))
+    sleep: deps.sleep ?? (async (ms: number) => await new Promise((resolve) => setTimeout(resolve, ms))),
+    readPortFile: deps.readPortFile ?? defaultReadPortFile
   }
 
   try {
-    const [group, action, ...rest] = argv
+    const { session, cleanArgv } = consumeGlobalFlags(argv)
+
+    let portFileData: PortFileData | null = null
+    if (!resolvedDeps.env.STOA_CTL_BASE_URL) {
+      portFileData = await resolvedDeps.readPortFile()
+      if (portFileData && !isPidAlive(portFileData.pid)) {
+        portFileData = null
+      }
+    }
+
+    const ctx = { session, portFileData } as { session?: string; portFileData: PortFileData | null }
+
+    async function ctlRequest(path: string, init: RequestInit = {}): Promise<{ response: Response; text: string }> {
+      return request(resolvedDeps, path, init, ctx)
+    }
+
+    const [group, action, ...rest] = cleanArgv
     if (!group) {
       throw new CliUsageError('Missing command')
     }
 
     if (group === 'health' && action === undefined) {
-      const { response, text } = await request(resolvedDeps, '/ctl/health')
+      const { response, text } = await ctlRequest('/ctl/health')
       if (!response.ok) {
         resolvedDeps.stderr.write(`${text}\n`)
         return mapFailureExitCode(response, text)
@@ -213,7 +265,7 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
     }
 
     if (group === 'whoami' && action === undefined) {
-      const { response, text } = await request(resolvedDeps, '/ctl/whoami')
+      const { response, text } = await ctlRequest('/ctl/whoami')
       if (!response.ok) {
         resolvedDeps.stderr.write(`${text}\n`)
         return mapFailureExitCode(response, text)
@@ -223,7 +275,7 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
     }
 
     if (group === 'capabilities' && action === undefined) {
-      const { response, text } = await request(resolvedDeps, '/ctl/capabilities')
+      const { response, text } = await ctlRequest('/ctl/capabilities')
       if (!response.ok) {
         resolvedDeps.stderr.write(`${text}\n`)
         return mapFailureExitCode(response, text)
@@ -237,7 +289,7 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
     }
 
     if (group === 'state' && action === 'brief') {
-      const { response, text } = await request(resolvedDeps, '/ctl/state/brief')
+      const { response, text } = await ctlRequest('/ctl/state/brief')
       if (!response.ok) {
         resolvedDeps.stderr.write(`${text}\n`)
         return mapFailureExitCode(response, text)
@@ -247,7 +299,7 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
     }
 
     if (group === 'state' && action === 'attention-queue') {
-      const { response, text } = await request(resolvedDeps, '/ctl/state/attention-queue')
+      const { response, text } = await ctlRequest('/ctl/state/attention-queue')
       if (!response.ok) {
         resolvedDeps.stderr.write(`${text}\n`)
         return mapFailureExitCode(response, text)
@@ -257,7 +309,7 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
     }
 
     if (group === 'state' && action === 'conflicts') {
-      const { response, text } = await request(resolvedDeps, '/ctl/state/conflicts')
+      const { response, text } = await ctlRequest('/ctl/state/conflicts')
       if (!response.ok) {
         resolvedDeps.stderr.write(`${text}\n`)
         return mapFailureExitCode(response, text)
@@ -267,7 +319,7 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
     }
 
     if (group === 'work-sessions' && action === 'list') {
-      const { response, text } = await request(resolvedDeps, '/ctl/work-sessions')
+      const { response, text } = await ctlRequest('/ctl/work-sessions')
       if (!response.ok) {
         resolvedDeps.stderr.write(`${text}\n`)
         return mapFailureExitCode(response, text)
@@ -291,7 +343,7 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
         ? JSON.stringify({ projectId, type, title })
         : JSON.stringify({ projectId, type })
 
-      const { response, text } = await request(resolvedDeps, '/ctl/work-sessions', {
+      const { response, text } = await ctlRequest('/ctl/work-sessions', {
         method: 'POST',
         body
       })
@@ -309,7 +361,7 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
         throw new CliUsageError('Missing session id')
       }
 
-      const { response, text } = await request(resolvedDeps, `/ctl/work-sessions/${sessionId}`)
+      const { response, text } = await ctlRequest(`/ctl/work-sessions/${sessionId}`)
       if (!response.ok) {
         resolvedDeps.stderr.write(`${text}\n`)
         return mapFailureExitCode(response, text)
@@ -334,7 +386,7 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
         params.set('includeEphemeral', '1')
       }
 
-      const { response, text } = await request(resolvedDeps, `/ctl/work-sessions/${sessionId}/events?${params.toString()}`)
+      const { response, text } = await ctlRequest(`/ctl/work-sessions/${sessionId}/events?${params.toString()}`)
       if (!response.ok) {
         resolvedDeps.stderr.write(`${text}\n`)
         return mapFailureExitCode(response, text)
@@ -360,7 +412,7 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
         params.set('cursor', cursor)
       }
 
-      const { response, text } = await request(resolvedDeps, `/ctl/work-sessions/${sessionId}/context?${params.toString()}`)
+      const { response, text } = await ctlRequest(`/ctl/work-sessions/${sessionId}/context?${params.toString()}`)
       if (!response.ok) {
         resolvedDeps.stderr.write(`${text}\n`)
         return mapFailureExitCode(response, text)
@@ -375,7 +427,7 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
         throw new CliUsageError('Missing session id')
       }
 
-      const { response, text } = await request(resolvedDeps, `/ctl/work-sessions/${sessionId}/archive`, {
+      const { response, text } = await ctlRequest(`/ctl/work-sessions/${sessionId}/archive`, {
         method: 'POST'
       })
       if (!response.ok) {
@@ -406,7 +458,7 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
         throw new CliUsageError('Missing prompt text')
       }
 
-      const { response, text: responseText } = await request(resolvedDeps, `/ctl/work-sessions/${sessionId}/prompt`, {
+      const { response, text: responseText } = await ctlRequest(`/ctl/work-sessions/${sessionId}/prompt`, {
         method: 'POST',
         body: JSON.stringify({ text })
       })
@@ -432,7 +484,7 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
       }
 
       const data = parseSendKeysTokens(filteredTokens, { literal })
-      const { response, text } = await request(resolvedDeps, `/ctl/work-sessions/${sessionId}/send-keys`, {
+      const { response, text } = await ctlRequest(`/ctl/work-sessions/${sessionId}/send-keys`, {
         method: 'POST',
         body: JSON.stringify({ data })
       })
@@ -445,7 +497,7 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
     }
 
     if (group === 'meta-sessions' && action === 'list') {
-      const { response, text } = await request(resolvedDeps, '/ctl/meta-sessions')
+      const { response, text } = await ctlRequest('/ctl/meta-sessions')
       if (!response.ok) {
         resolvedDeps.stderr.write(`${text}\n`)
         return mapFailureExitCode(response, text)
@@ -465,7 +517,7 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
       }
 
       const capabilityLevel = parseCapabilityLevel(rest, '--capability-level', 3)
-      const { response, text } = await request(resolvedDeps, '/ctl/meta-sessions', {
+      const { response, text } = await ctlRequest('/ctl/meta-sessions', {
         method: 'POST',
         body: JSON.stringify({
           title,
@@ -487,7 +539,7 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
           throw new CliUsageError('Missing meta session id')
         }
 
-      const { response, text } = await request(resolvedDeps, `/ctl/meta-sessions/${metaSessionId}`)
+      const { response, text } = await ctlRequest(`/ctl/meta-sessions/${metaSessionId}`)
       if (!response.ok) {
         resolvedDeps.stderr.write(`${text}\n`)
         return mapFailureExitCode(response, text)
@@ -502,7 +554,7 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
           throw new CliUsageError('Missing meta session id')
         }
 
-      const { response, text } = await request(resolvedDeps, `/ctl/meta-sessions/${metaSessionId}/archive`, {
+      const { response, text } = await ctlRequest(`/ctl/meta-sessions/${metaSessionId}/archive`, {
         method: 'POST'
       })
       if (!response.ok) {
@@ -519,7 +571,7 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
           throw new CliUsageError('Missing meta session id')
         }
 
-      const { response, text } = await request(resolvedDeps, `/ctl/meta-sessions/${metaSessionId}/restore`, {
+      const { response, text } = await ctlRequest(`/ctl/meta-sessions/${metaSessionId}/restore`, {
         method: 'POST'
       })
       if (!response.ok) {
@@ -536,7 +588,7 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
           throw new CliUsageError('Missing meta session id')
         }
 
-      const { response, text } = await request(resolvedDeps, `/ctl/meta-sessions/${metaSessionId}/activate`, {
+      const { response, text } = await ctlRequest(`/ctl/meta-sessions/${metaSessionId}/activate`, {
         method: 'POST'
       })
       if (!response.ok) {
@@ -548,7 +600,7 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
     }
 
     if (group === 'proposals' && action === 'list') {
-      const { response, text } = await request(resolvedDeps, '/ctl/proposals')
+      const { response, text } = await ctlRequest('/ctl/proposals')
       if (!response.ok) {
         resolvedDeps.stderr.write(`${text}\n`)
         return mapFailureExitCode(response, text)
@@ -569,7 +621,7 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
         throw new CliUsageError('Missing proposal target or text')
       }
 
-      const { response, text: responseText } = await request(resolvedDeps, '/ctl/proposals', {
+      const { response, text: responseText } = await ctlRequest('/ctl/proposals', {
         method: 'POST',
         body: JSON.stringify({
           kind: 'prompt',
@@ -590,7 +642,7 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
       if (!proposalId) {
         throw new CliUsageError('Missing proposal id')
       }
-      const { response, text } = await request(resolvedDeps, `/ctl/proposals/${proposalId}`)
+      const { response, text } = await ctlRequest(`/ctl/proposals/${proposalId}`)
       if (!response.ok) {
         resolvedDeps.stderr.write(`${text}\n`)
         return mapFailureExitCode(response, text)
@@ -610,7 +662,7 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
       const deadline = Date.now() + timeoutMs
 
       while (true) {
-        const { response, text } = await request(resolvedDeps, `/ctl/proposals/${proposalId}`)
+        const { response, text } = await ctlRequest(`/ctl/proposals/${proposalId}`)
         if (!response.ok) {
           resolvedDeps.stderr.write(`${text}\n`)
           return mapFailureExitCode(response, text)
@@ -642,7 +694,7 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
       if (!proposalId) {
         throw new CliUsageError('Missing proposal id')
       }
-      const { response, text } = await request(resolvedDeps, `/ctl/dispatch/proposal/${proposalId}`, {
+      const { response, text } = await ctlRequest(`/ctl/dispatch/proposal/${proposalId}`, {
         method: 'POST'
       })
       if (!response.ok) {
@@ -660,7 +712,7 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
         throw new CliUsageError('Missing preset name or target session id')
       }
 
-      const { response, text } = await request(resolvedDeps, `/ctl/dispatch/preset/${presetName}`, {
+      const { response, text } = await ctlRequest(`/ctl/dispatch/preset/${presetName}`, {
         method: 'POST',
         body: JSON.stringify({
           targetSessionId

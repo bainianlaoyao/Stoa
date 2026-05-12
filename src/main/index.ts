@@ -19,7 +19,8 @@ import { MetaSessionProposalStore } from '@core/meta-session-proposal-store'
 import { deriveMetaSessionProviderSessionPatch } from '@core/meta-session-provider-patch'
 import { buildMetaSessionCommandEnv } from '@core/meta-session-command-env'
 import { resolveMetaSessionStateFilePath } from '@core/meta-session-state-store'
-import { ensureStoaCtlShim } from '@core/stoa-ctl-shim'
+import { ensureStoaCtlShim, ensureStoaCtlSystemShim } from '@core/stoa-ctl-shim'
+import { writePortFile as writeCtlPortFile, deletePortFile as deleteCtlPortFile, generateSecret, type PortFileData } from '@core/stoa-ctl-port-file'
 import { openWorkspace } from '@core/workspace-launcher'
 import { resolveRuntimePaths as resolveProviderRuntimePaths } from '@core/provider-path-resolver'
 import { getProvider } from '@extensions/providers'
@@ -672,7 +673,8 @@ app.whenReady().then(async () => {
           async archiveSession(sessionId: string) {
             return await archiveWorkSessionWithRuntime(sessionId)
           }
-        }
+        },
+        ctlSecret
       })
       void metaSessionControlServer
     }
@@ -702,6 +704,20 @@ app.whenReady().then(async () => {
     onStateChange: pushUpdateState
   })
   const webhookPort = await sessionEventBridge.start()
+
+  const ctlSecret = generateSecret()
+  async function refreshCtlPortFile(): Promise<void> {
+    const snapshot = metaSessionManager?.snapshot()
+    await writeCtlPortFile({
+      port: webhookPort,
+      pid: process.pid,
+      activeMetaSessionId: snapshot?.activeMetaSessionId ?? null,
+      secret: ctlSecret,
+      startedAt: new Date().toISOString()
+    })
+  }
+  await refreshCtlPortFile()
+
   await syncManagedSidecars({
     snapshotSource: projectSessionManager,
     webhookPort,
@@ -791,17 +807,33 @@ app.whenReady().then(async () => {
     return [
       'You are running inside a Stoa meta session.',
       'Use the `stoa-ctl` CLI for all Stoa-aware discovery and control instead of guessing the local architecture.',
-      'Start with these commands:',
+      '',
+      '## HARD RULE: METADATA IS NOT CONTENT',
+      'Session titles, status fields, timestamps, and provider names are metadata. They describe the container, not the work inside.',
+      'Before you summarize, classify, compare, recommend actions on, or make ANY judgment about a work session, you MUST run `stoa-ctl work-sessions context <id> --level slim` and reason from the actual conversation content.',
+      'There are NO exceptions. This applies to archiving, summarizing, reporting progress, prioritizing, unblocking, and every other task that involves understanding what a session is doing.',
+      '',
+      '## DISCOVERY SEQUENCE (run on first contact)',
       '1. stoa-ctl whoami',
       '2. stoa-ctl capabilities',
       '3. stoa-ctl state brief',
       '4. stoa-ctl work-sessions list',
-      'When you need session context, default to `stoa-ctl work-sessions context <id> --level slim`.',
-      'When talking about or operating on a work session, always read its context first and never guess from the session title alone.',
-      'Before create/archive/prompt/send-keys or other management actions on a work session, fetch `stoa-ctl work-sessions context <id> --level slim` first.',
+      '',
+      '## SESSION CONTEXT PROTOCOL',
+      '- Default level: `slim`. Use `full` only when the user asks for details or when you need to unblock a stuck session.',
+      '- When the user asks about sessions (which to archive, what is idle, what is stuck, progress status, etc.): fetch context for EVERY relevant session before answering. Do NOT answer from list metadata alone.',
+      '- Before any action on a session (archive, prompt, send-keys, summarize): fetch its context first.',
+      '- When presenting session information, classify each session based on its actual content — "finished work" vs "interrupted mid-task" vs "actively running" — and explain your reasoning.',
+      '- A session whose status says idle/completed/stale but whose context shows unfinished work is NOT done. A session whose status says running but whose last output is a completion message IS done. Always trust content over status.',
+      '',
+      '## STUCK SESSION RECOVERY',
       'If a session is blocked on permission or a terminal choice UI, fetch `stoa-ctl work-sessions context <id> --level full` and continue through the terminal UI instead of immediately reporting it as stuck.',
       'When the full terminal context shows numbered or keyboard-selectable options, prefer `stoa-ctl work-sessions send-keys <id> ...` to choose the highest-permission option that continues the task.',
-      'When you need to create, inspect, or switch meta sessions, use `stoa-ctl meta-sessions ...`.',
+      '',
+      '## META SESSION MANAGEMENT',
+      'Use `stoa-ctl meta-sessions ...` to create, inspect, or switch meta sessions.',
+      '',
+      '## GENERAL',
       'Do not begin with blind repository exploration if Stoa state can answer the question first.'
     ].join('\n')
   }
@@ -822,6 +854,12 @@ app.whenReady().then(async () => {
     const metaSessionBinDir = join(app.getPath('userData'), 'bin')
     const stoaCtlShim = await ensureStoaCtlShim({
       binDir: metaSessionBinDir,
+      appRootPath: app.getAppPath(),
+      appExecutablePath: process.execPath,
+      isPackaged: app.isPackaged
+    })
+
+    void ensureStoaCtlSystemShim({
       appRootPath: app.getAppPath(),
       appExecutablePath: process.execPath,
       isPackaged: app.isPackaged
@@ -986,6 +1024,7 @@ app.whenReady().then(async () => {
     if (session) {
       pushMetaSessionEvent(session)
     }
+    await refreshCtlPortFile()
   }
 
   async function archiveMetaSessionWithRuntime(sessionId: string): Promise<MetaSessionSummary | null> {
@@ -997,6 +1036,7 @@ app.whenReady().then(async () => {
     if (session) {
       pushMetaSessionEvent(session)
     }
+    await refreshCtlPortFile()
     return session
   }
 
@@ -1676,6 +1716,7 @@ app.on('before-quit', async (event) => {
 
   event.preventDefault()
   try {
+    await deleteCtlPortFile()
     await prepareForQuitAndInstall()
   } finally {
     app.quit()

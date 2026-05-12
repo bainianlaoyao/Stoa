@@ -1,5 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
+import { homedir } from 'node:os'
+import { execFile } from 'node:child_process'
 
 export interface StoaCtlInvocationPlan {
   executablePath: string
@@ -122,4 +124,58 @@ export async function ensureStoaCtlShim(options: EnsureStoaCtlShimOptions): Prom
     commandPath,
     binDir: options.binDir
   }
+}
+
+export async function ensureStoaCtlSystemShim(options: ResolveStoaCtlInvocationPlanOptions): Promise<void> {
+  const binDir = join(homedir(), '.stoa', 'bin')
+  await ensureStoaCtlShim({ ...options, binDir })
+  await registerPath(binDir)
+}
+
+function registerPath(binDir: string): Promise<void> {
+  const platform = process.platform
+  if (platform === 'win32') {
+    return registerWindowsPath(binDir)
+  }
+  return registerPosixPath(binDir)
+}
+
+function registerWindowsPath(binDir: string): Promise<void> {
+  return new Promise((resolve) => {
+    const script = `
+$binDir = '${binDir.replace(/'/g, "''")}'
+$userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+if ($userPath -notlike "*$binDir*") {
+  $newPath = if ($userPath.EndsWith(';')) { $userPath + $binDir } else { $userPath + ';' + $binDir }
+  [Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
+}
+`.trim()
+    execFile('powershell.exe', ['-NoProfile', '-Command', script], (error) => {
+      if (error) {
+        console.warn('Failed to register stoa-ctl in user PATH:', error.message)
+      }
+      resolve()
+    })
+  })
+}
+
+function registerPosixPath(binDir: string): Promise<void> {
+  return new Promise((resolve) => {
+    const line = `\nexport PATH="$HOME/.stoa/bin:$PATH" # stoa-ctl`
+    const checked = new Set<string>()
+    for (const rcFile of ['.bashrc', '.zshrc', '.profile']) {
+      const rcPath = join(homedir(), rcFile)
+      import('node:fs').then(({ readFileSync, appendFileSync, existsSync }) => {
+        if (existsSync(rcPath) && !checked.has(rcFile)) {
+          checked.add(rcFile)
+          const content = readFileSync(rcPath, 'utf8')
+          if (!content.includes('.stoa/bin')) {
+            appendFileSync(rcPath, line, 'utf8')
+          }
+        }
+        resolve()
+      }).catch(resolve)
+    }
+    resolve()
+  })
 }
