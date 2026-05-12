@@ -17,6 +17,7 @@ import type {
 import { DEFAULT_SETTINGS } from '@shared/project-session'
 import { getProviderDescriptorBySessionType } from '@shared/provider-descriptors'
 import { reduceSessionState } from '@shared/session-state-reducer'
+import { resolveDefaultWorkSessionTitle } from './work-session-title'
 import {
   DEFAULT_GLOBAL_STATE,
   StateReadError,
@@ -450,6 +451,15 @@ export class ProjectSessionManager {
       throw new Error('Session must belong to an existing project')
     }
 
+    const resolvedTitle = request.title?.trim()
+      ? request.title.trim()
+      : resolveDefaultWorkSessionTitle({
+          project,
+          sessions: this.state.sessions,
+          projectId: request.projectId,
+          type: request.type
+        })
+
     const now = new Date().toISOString()
     const session: SessionSummary = {
       id: `session_${randomUUID()}`,
@@ -465,7 +475,7 @@ export class ProjectSessionManager {
       runtimeExitCode: null,
       runtimeExitReason: null,
       lastStateSequence: 0,
-      title: request.title,
+      title: resolvedTitle,
       summary: 'Waiting for session to start',
       recoveryMode: createSessionRecoveryMode(request.type),
       externalSessionId: createSessionExternalId(request.type, request.externalSessionId),

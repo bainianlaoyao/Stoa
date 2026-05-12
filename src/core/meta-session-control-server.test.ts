@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from 'vitest'
 import { request } from 'node:http'
 import { createMetaSessionControlServer } from './meta-session-control-server'
 import type { CreateMetaSessionRequest, MetaSessionSummary } from '@shared/meta-session'
+import type { CreateSessionRequest, SessionSummary } from '@shared/project-session'
 
 const servers: Array<ReturnType<typeof createMetaSessionControlServer>> = []
 
@@ -82,7 +83,7 @@ async function post(
   })
 }
 
-function createWorkSession() {
+function createWorkSession(): SessionSummary {
   return {
     id: 'session_1',
     projectId: 'project_1',
@@ -105,6 +106,27 @@ function createWorkSession() {
     updatedAt: '2026-05-07T08:10:00.000Z',
     lastActivatedAt: '2026-05-07T08:10:00.000Z',
     archived: false
+  }
+}
+
+function createProject() {
+  return {
+    id: 'project_1',
+    name: 'myproj',
+    path: 'D:/repo',
+    createdAt: '2026-05-07T08:00:00.000Z',
+    updatedAt: '2026-05-07T08:10:00.000Z'
+  }
+}
+
+function createNoopWorkSessionLifecycle() {
+  return {
+    async createSession() {
+      return createWorkSession()
+    },
+    async archiveSession() {
+      return createWorkSession()
+    }
   }
 }
 
@@ -203,7 +225,8 @@ describe('meta session control server', () => {
         get() {
           return null
         }
-      } as never
+      } as never,
+      workSessionLifecycle: createNoopWorkSessionLifecycle()
     })
     servers.push(server)
     const port = await server.start()
@@ -310,7 +333,8 @@ describe('meta session control server', () => {
         get() {
           return null
         }
-      } as never
+      } as never,
+      workSessionLifecycle: createNoopWorkSessionLifecycle()
     })
     servers.push(server)
     const port = await server.start()
@@ -476,7 +500,8 @@ describe('meta session control server', () => {
         get() {
           return null
         }
-      } as never
+      } as never,
+      workSessionLifecycle: createNoopWorkSessionLifecycle()
     })
     servers.push(server)
     const port = await server.start()
@@ -520,6 +545,233 @@ describe('meta session control server', () => {
           archived: false
         }
       }
+    })
+  })
+
+  test('creates and archives work sessions through control routes', async () => {
+    const workSessions = [createWorkSession()]
+    const createdRequests: CreateSessionRequest[] = []
+    const archivedIds: string[] = []
+
+    const server = createMetaSessionControlServer({
+      metaSessionSource: {
+        snapshot() {
+          return {
+            activeMetaSessionId: 'meta_session_1',
+            sessions: [createMetaSession()],
+            inspectorTarget: { kind: 'app' as const }
+          }
+        },
+        getSession(sessionId: string) {
+          return sessionId === 'meta_session_1' ? createMetaSession() : null
+        },
+        async createSession() {
+          throw new Error('unused')
+        },
+        async setActiveSession() {},
+        async archiveSession() {},
+        async restoreSession() {}
+      },
+      snapshotSource: {
+        snapshot() {
+          return {
+            activeProjectId: 'project_1',
+            activeSessionId: 'session_1',
+            terminalWebhookPort: 43127,
+            projects: [createProject()],
+            sessions: workSessions.map((session) => ({ ...session }))
+          }
+        }
+      },
+      getSessionPresence() {
+        return null
+      },
+      contextAssembler: {
+        getStatus() {
+          return { level: 'status', session: createWorkSession(), presence: null }
+        },
+        getBundle() {
+          return { level: 'bundle', session: createWorkSession(), presence: null, events: [] }
+        },
+        async getSlimContext() {
+          return { text: '', truncated: false, nextCursor: null }
+        },
+        async getFullContext() {
+          return { text: '', truncated: false, nextCursor: null }
+        },
+        getEvents() {
+          return { events: [], nextCursor: null }
+        }
+      } as never,
+      dispatcher: {
+        async promptWorkSession() {
+          return { kind: 'approval_required' }
+        },
+        async dispatchProposal() {
+          return { kind: 'dispatched' }
+        }
+      } as never,
+      proposals: {
+        list() {
+          return []
+        },
+        get() {
+          return null
+        }
+      } as never,
+      workSessionLifecycle: {
+        async createSession(request: CreateSessionRequest) {
+          createdRequests.push(request)
+          const created = {
+            ...createWorkSession(),
+            id: 'session_2',
+            projectId: request.projectId,
+            type: request.type,
+            title: request.title
+          }
+          workSessions.push(created)
+          return created
+        },
+        async archiveSession(sessionId: string) {
+          archivedIds.push(sessionId)
+          const target = workSessions.find((session) => session.id === sessionId) ?? null
+          if (!target) {
+            return null
+          }
+          target.archived = true
+          return { ...target }
+        }
+      }
+    })
+    servers.push(server)
+    const port = await server.start()
+    const authHeaders = { 'x-stoa-session-id': 'meta_session_1' }
+
+    const created = await post(port, '/ctl/work-sessions', authHeaders, '{"projectId":"project_1","type":"codex","title":"codex-myproj"}')
+    const archived = await post(port, '/ctl/work-sessions/session_2/archive', authHeaders)
+
+    expect(createdRequests).toEqual([{
+      projectId: 'project_1',
+      type: 'codex',
+      title: 'codex-myproj'
+    }])
+    expect(archivedIds).toEqual(['session_2'])
+    expect(JSON.parse(created.body)).toMatchObject({
+      ok: true,
+      data: {
+        id: 'session_2',
+        title: 'codex-myproj'
+      }
+    })
+    expect(JSON.parse(archived.body)).toMatchObject({
+      ok: true,
+      data: {
+        session: {
+          id: 'session_2',
+          archived: true
+        }
+      }
+    })
+  })
+
+  test('rejects invalid work-session lifecycle requests', async () => {
+    const server = createMetaSessionControlServer({
+      metaSessionSource: {
+        snapshot() {
+          return {
+            activeMetaSessionId: 'meta_session_1',
+            sessions: [createMetaSession()],
+            inspectorTarget: { kind: 'app' as const }
+          }
+        },
+        getSession(sessionId: string) {
+          return sessionId === 'meta_session_1' ? createMetaSession() : null
+        },
+        async createSession() {
+          throw new Error('unused')
+        },
+        async setActiveSession() {},
+        async archiveSession() {},
+        async restoreSession() {}
+      },
+      snapshotSource: {
+        snapshot() {
+          return {
+            activeProjectId: 'project_1',
+            activeSessionId: 'session_1',
+            terminalWebhookPort: 43127,
+            projects: [createProject()],
+            sessions: [createWorkSession()]
+          }
+        }
+      },
+      getSessionPresence() {
+        return null
+      },
+      contextAssembler: {
+        getStatus() {
+          return { level: 'status', session: createWorkSession(), presence: null }
+        },
+        getBundle() {
+          return { level: 'bundle', session: createWorkSession(), presence: null, events: [] }
+        },
+        async getSlimContext() {
+          return { text: '', truncated: false, nextCursor: null }
+        },
+        async getFullContext() {
+          return { text: '', truncated: false, nextCursor: null }
+        },
+        getEvents() {
+          return { events: [], nextCursor: null }
+        }
+      } as never,
+      dispatcher: {
+        async promptWorkSession() {
+          return { kind: 'approval_required' }
+        },
+        async dispatchProposal() {
+          return { kind: 'dispatched' }
+        }
+      } as never,
+      proposals: {
+        list() {
+          return []
+        },
+        get() {
+          return null
+        }
+      } as never,
+      workSessionLifecycle: {
+        async createSession() {
+          throw new Error('Session must belong to an existing project')
+        },
+        async archiveSession() {
+          return null
+        }
+      }
+    })
+    servers.push(server)
+    const port = await server.start()
+    const authHeaders = { 'x-stoa-session-id': 'meta_session_1' }
+
+    const missingProject = await post(port, '/ctl/work-sessions', authHeaders, '{"type":"codex"}')
+    const invalidType = await post(port, '/ctl/work-sessions', authHeaders, '{"projectId":"project_1","type":"bad"}')
+    const archiveUnknown = await post(port, '/ctl/work-sessions/session_missing/archive', authHeaders)
+
+    expect(missingProject.statusCode).toBe(400)
+    expect(JSON.parse(missingProject.body)).toMatchObject({
+      ok: false,
+      error: { code: 'invalid_request' }
+    })
+    expect(invalidType.statusCode).toBe(400)
+    expect(JSON.parse(invalidType.body)).toMatchObject({
+      ok: false,
+      error: { code: 'invalid_request' }
+    })
+    expect(archiveUnknown.statusCode).toBe(404)
+    expect(JSON.parse(archiveUnknown.body)).toMatchObject({
+      ok: false,
+      error: { code: 'unknown_session' }
     })
   })
 
@@ -643,7 +895,8 @@ describe('meta session control server', () => {
         get() {
           return null
         }
-      } as never
+      } as never,
+      workSessionLifecycle: createNoopWorkSessionLifecycle()
     })
     servers.push(server)
     const port = await server.start()

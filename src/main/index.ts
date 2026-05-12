@@ -39,7 +39,8 @@ import { DEFAULT_SETTINGS } from '@shared/project-session'
 import type {
   CreateProjectRequest,
   CreateSessionRequest,
-  OpenWorkspaceRequest
+  OpenWorkspaceRequest,
+  SessionSummary
 } from '@shared/project-session'
 import type { CreateMetaSessionRequest, MetaSessionSummary } from '@shared/meta-session'
 import type { UpdateState } from '@shared/update-state'
@@ -651,7 +652,27 @@ app.whenReady().then(async () => {
         },
         contextAssembler: metaSessionContextAssembler,
         dispatcher: metaSessionCommandDispatcher,
-        proposals: metaSessionProposalStore
+        proposals: metaSessionProposalStore,
+        workSessionLifecycle: {
+          async createSession(request) {
+            if (!projectSessionManager) {
+              throw new Error('Session manager is unavailable.')
+            }
+
+            const created = await createWorkSessionWithRuntime({
+              projectId: request.projectId,
+              type: request.type,
+              title: request.title ?? ''
+            })
+            if (!created) {
+              throw new Error('Work session creation is unavailable.')
+            }
+            return created
+          },
+          async archiveSession(sessionId: string) {
+            return await archiveWorkSessionWithRuntime(sessionId)
+          }
+        }
       })
       void metaSessionControlServer
     }
@@ -775,7 +796,11 @@ app.whenReady().then(async () => {
       '2. stoa-ctl capabilities',
       '3. stoa-ctl state brief',
       '4. stoa-ctl work-sessions list',
-      'When you need deep session context, use `stoa-ctl work-sessions context <id> --level full`.',
+      'When you need session context, default to `stoa-ctl work-sessions context <id> --level slim`.',
+      'When talking about or operating on a work session, always read its context first and never guess from the session title alone.',
+      'Before create/archive/prompt/send-keys or other management actions on a work session, fetch `stoa-ctl work-sessions context <id> --level slim` first.',
+      'If a session is blocked on permission or a terminal choice UI, fetch `stoa-ctl work-sessions context <id> --level full` and continue through the terminal UI instead of immediately reporting it as stuck.',
+      'When the full terminal context shows numbered or keyboard-selectable options, prefer `stoa-ctl work-sessions send-keys <id> ...` to choose the highest-permission option that continues the task.',
       'When you need to create, inspect, or switch meta sessions, use `stoa-ctl meta-sessions ...`.',
       'Do not begin with blind repository exploration if Stoa state can answer the question first.'
     ].join('\n')
@@ -986,6 +1011,38 @@ app.whenReady().then(async () => {
     return session
   }
 
+  async function createWorkSessionWithRuntime(payload: CreateSessionRequest): Promise<SessionSummary | null> {
+    const session = await projectSessionManager?.createSession(payload)
+    if (!session) {
+      return null
+    }
+
+    syncObservabilityAndPushForSession(session.id)
+    await syncUpdateStateToWindow()
+    void launchSessionRuntimeWithGuard(session.id, 'session-create', { awaitDimensions: true })
+    return session
+  }
+
+  async function archiveWorkSessionWithRuntime(sessionId: string): Promise<SessionSummary | null> {
+    if (!projectSessionManager || !ptyHost) {
+      return null
+    }
+
+    const session = projectSessionManager.snapshot().sessions.find((candidate) => candidate.id === sessionId)
+    if (!session) {
+      return null
+    }
+
+    sessionInputRouter?.resetSession(sessionId)
+    await ptyHost.killAndWait(sessionId)
+    await hookLeaseManager?.releaseLease(sessionId)
+    await projectSessionManager.archiveSession(sessionId)
+    syncObservabilitySessions()
+    pushObservabilitySnapshotsForSession(sessionId)
+    await syncUpdateStateToWindow()
+    return projectSessionManager.snapshot().sessions.find((candidate) => candidate.id === sessionId) ?? null
+  }
+
   async function runPackagedSmoke(): Promise<void> {
     if (!isPackagedSmokeMode) {
       return
@@ -1188,17 +1245,11 @@ app.whenReady().then(async () => {
   })
 
   ipcMain.handle(IPC_CHANNELS.sessionCreate, async (_event, payload: CreateSessionRequest) => {
-    const session = await projectSessionManager?.createSession(payload)
-    if (session) {
-      syncObservabilityAndPushForSession(session.id)
-    }
-    await syncUpdateStateToWindow()
+    const session = await createWorkSessionWithRuntime(payload)
     if (!session) {
       console.log('[session-create] Aborted: no session was created.')
       return null
     }
-
-    void launchSessionRuntimeWithGuard(session.id, 'session-create', { awaitDimensions: true })
     return session
   })
 
@@ -1355,14 +1406,7 @@ app.whenReady().then(async () => {
   })
 
   ipcMain.handle(IPC_CHANNELS.sessionArchive, async (_event, sessionId: string) => {
-    if (!projectSessionManager || !ptyHost) return
-    sessionInputRouter?.resetSession(sessionId)
-    await ptyHost.killAndWait(sessionId)
-    await hookLeaseManager?.releaseLease(sessionId)
-    await projectSessionManager.archiveSession(sessionId)
-    syncObservabilitySessions()
-    pushObservabilitySnapshotsForSession(sessionId)
-    await syncUpdateStateToWindow()
+    await archiveWorkSessionWithRuntime(sessionId)
   })
 
   ipcMain.handle(IPC_CHANNELS.sessionRestore, async (_event, sessionId: string) => {

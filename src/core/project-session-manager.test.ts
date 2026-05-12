@@ -774,6 +774,26 @@ describe('ProjectSessionManager', () => {
       expect(session.summary).toBe('Waiting for session to start')
     })
 
+    test('createSession generates shell title when title is omitted', async () => {
+      const manager = ProjectSessionManager.createForTest()
+      const project = await manager.createProject({ name: 'myproj', path: 'D:/repo' })
+
+      const first = await manager.createSession({ projectId: project.id, type: 'shell', title: '' })
+      const second = await manager.createSession({ projectId: project.id, type: 'shell', title: '' })
+
+      expect(first.title).toBe('shell-1')
+      expect(second.title).toBe('shell-2')
+    })
+
+    test('createSession generates provider title when title is omitted', async () => {
+      const manager = ProjectSessionManager.createForTest()
+      const project = await manager.createProject({ name: 'myproj', path: 'D:/repo' })
+
+      const session = await manager.createSession({ projectId: project.id, type: 'codex', title: '' })
+
+      expect(session.title).toBe('codex-myproj')
+    })
+
     test('markRuntimeStarting resets stale agent state and unseen completion', async () => {
       const manager = ProjectSessionManager.createForTest()
       const project = await manager.createProject({ name: 'test', path: 'D:/test' })

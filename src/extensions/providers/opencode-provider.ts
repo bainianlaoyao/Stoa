@@ -140,40 +140,15 @@ function buildEventBody(event) {
 }
 
 export const StoaStatusPlugin = async ({ client }) => ({
-  'tool.execute.before': async ({ event }) => {
+  event: async ({ event }) => {
     const body = buildEventBody(event)
-    await dispatchEvent(event.type, body)
-  },
-  'tool.execute.after': async ({ event }) => {
-    const body = buildEventBody(event)
-    await dispatchEvent(event.type, body)
-  },
-  'session.created': async ({ event }) => {
-    const body = buildEventBody(event)
-    await dispatchEvent(event.type, body)
-  },
-  'session.idle': async ({ event }) => {
-    const body = buildEventBody(event)
-    await enrichWithMessages(client, event, body)
-    await dispatchEvent(event.type, body)
-  },
-  'session.error': async ({ event }) => {
-    const body = buildEventBody(event)
-    body.error = toFailureReason(event)
-    await dispatchEvent(event.type, body)
-  },
-  'message.updated': async ({ event }) => {
-    const body = buildEventBody(event)
-    await dispatchEvent(event.type, body)
-  },
-  'permission.asked': async ({ event }) => {
-    const body = buildEventBody(event)
-    await dispatchEvent(event.type, body)
-  },
-  'permission.replied': async ({ event }) => {
-    const body = buildEventBody(event)
-    const failed = Boolean(event.properties?.error)
-    if (failed) {
+    if (event.type === 'session.idle') {
+      await enrichWithMessages(client, event, body)
+    }
+    if (event.type === 'session.error') {
+      body.error = toFailureReason(event)
+    }
+    if (event.type === 'permission.replied' && event.properties?.error) {
       body.error = toFailureReason(event)
     }
     await dispatchEvent(event.type, body)

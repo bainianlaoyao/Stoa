@@ -46,6 +46,7 @@ describe('stoa-ctl command surface', () => {
     expect(module.USAGE_TEXT).toContain('proposals get <proposalId>')
     expect(module.USAGE_TEXT).toContain('dispatch preset <name> --target <sessionId>')
     expect(module.USAGE_TEXT).toContain('dispatch proposal <proposalId>')
+    expect(module.USAGE_TEXT).toContain('work-sessions context <id> [--level <slim|status|bundle|full>] (default: slim) [--max-chars <n>] [--cursor <token>]')
   })
 
   test('reads whoami through the control plane', async () => {
@@ -143,6 +144,107 @@ describe('stoa-ctl command surface', () => {
 
     expect(exitCode).toBe(0)
     expect(writes.join('')).toContain('resume pointer is stale')
+  })
+
+  test('creates work sessions through the control plane', async () => {
+    const module = await import('./index')
+    const writes: string[] = []
+    const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      expect(String(input)).toBe('http://127.0.0.1:43129/ctl/work-sessions')
+      expect(init?.method).toBe('POST')
+      expect(init?.body).toBe('{"projectId":"project_1","type":"codex","title":"codex-myproj"}')
+      return createResponse({
+        body: '{"ok":true,"data":{"id":"session_2","projectId":"project_1","type":"codex"},"error":null}'
+      })
+    })
+
+    const exitCode = await module.run([
+      'work-sessions',
+      'create',
+      '--project',
+      'project_1',
+      '--type',
+      'codex',
+      '--title',
+      'codex-myproj'
+    ], {
+      fetch: fetchImpl,
+      env: metaSessionEnv,
+      stdout: {
+        write(chunk: string) {
+          writes.push(chunk)
+        }
+      },
+      stderr: {
+        write() {}
+      },
+      sleep: async () => {}
+    })
+
+    expect(exitCode).toBe(0)
+    expect(writes.join('')).toContain('"session_2"')
+  })
+
+  test('creates work sessions without forcing a client-side title', async () => {
+    const module = await import('./index')
+    const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      expect(String(input)).toBe('http://127.0.0.1:43129/ctl/work-sessions')
+      expect(init?.method).toBe('POST')
+      expect(init?.body).toBe('{"projectId":"project_1","type":"shell"}')
+      return createResponse({
+        body: '{"ok":true,"data":{"id":"session_3","projectId":"project_1","type":"shell","title":"shell-1"},"error":null}'
+      })
+    })
+
+    const exitCode = await module.run([
+      'work-sessions',
+      'create',
+      '--project',
+      'project_1',
+      '--type',
+      'shell'
+    ], {
+      fetch: fetchImpl,
+      env: metaSessionEnv,
+      stdout: { write() {} },
+      stderr: { write() {} },
+      sleep: async () => {}
+    })
+
+    expect(exitCode).toBe(0)
+  })
+
+  test('archives a work session through the control plane', async () => {
+    const module = await import('./index')
+    const writes: string[] = []
+    const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      expect(String(input)).toBe('http://127.0.0.1:43129/ctl/work-sessions/session_2/archive')
+      expect(init?.method).toBe('POST')
+      return createResponse({
+        body: '{"ok":true,"data":{"session":{"id":"session_2","archived":true}},"error":null}'
+      })
+    })
+
+    const exitCode = await module.run([
+      'work-sessions',
+      'archive',
+      'session_2'
+    ], {
+      fetch: fetchImpl,
+      env: metaSessionEnv,
+      stdout: {
+        write(chunk: string) {
+          writes.push(chunk)
+        }
+      },
+      stderr: {
+        write() {}
+      },
+      sleep: async () => {}
+    })
+
+    expect(exitCode).toBe(0)
+    expect(writes.join('')).toContain('"archived":true')
   })
 
   test('creates meta sessions through the control plane', async () => {

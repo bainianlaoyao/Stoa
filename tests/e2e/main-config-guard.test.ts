@@ -199,6 +199,24 @@ describe('E2E: Main Process Config Guard', () => {
       expect(archiveBody!).toMatch(/sessionInputRouter\?\.resetSession\(sessionId\)/)
       expect(restoreBody!).toMatch(/sessionInputRouter\?\.resetSession\(sessionId\)/)
     })
+
+    it('meta-session bootstrap prompt recommends slim work-session context by default', () => {
+      const bootstrapBody = extractNamedFunctionBody(mainSource, 'buildMetaSessionBootstrapPrompt')
+
+      expect(bootstrapBody, 'Could not find buildMetaSessionBootstrapPrompt').not.toBeNull()
+      expect(bootstrapBody!).toContain('stoa-ctl work-sessions context <id> --level slim')
+      expect(bootstrapBody!).toContain('never guess from the session title alone')
+      expect(bootstrapBody!).toContain('stoa-ctl work-sessions context <id> --level full')
+      expect(bootstrapBody!).toContain('stoa-ctl work-sessions send-keys <id> ...')
+    })
+
+    it('wires work-session lifecycle control routes to host-owned create and archive flows', () => {
+      expect(mainSource).toMatch(/workSessionLifecycle\s*:\s*\{/)
+      expect(mainSource).toMatch(/createWorkSessionWithRuntime/)
+      expect(mainSource).toMatch(/archiveWorkSessionWithRuntime/)
+      expect(mainSource).toMatch(/await ptyHost\.killAndWait\(sessionId\)/)
+      expect(mainSource).toMatch(/await projectSessionManager\.archiveSession\(sessionId\)/)
+    })
   })
 
   describe('IPC handler registration completeness', () => {
@@ -315,7 +333,7 @@ describe('E2E: Main Process Config Guard', () => {
       const handlerPattern = /ipcMain\.handle\([^)]*sessionCreate[^,]*,\s*(?:async\s*)?\([^)]*\)\s*=>\s*\{?([^}]*\})/s
       const match = mainSource.match(handlerPattern)
       expect(match, 'Could not find handler for sessionCreate').not.toBeNull()
-      expect(match![1]).toMatch(/createSession/)
+      expect(match![1]).toMatch(/createWorkSessionWithRuntime/)
     })
 
     it('IPC handler for session:restart exists', () => {

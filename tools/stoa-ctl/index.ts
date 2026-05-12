@@ -45,9 +45,11 @@ export const USAGE_TEXT = [
   '  state attention-queue',
   '  state conflicts',
   '  work-sessions list',
+  '  work-sessions create --project <projectId> --type <shell|opencode|codex|claude-code> [--title "..."]',
   '  work-sessions get <id>',
   '  work-sessions events <id> [--limit <n>] [--cursor <token>] [--include-ephemeral]',
-  '  work-sessions context <id> [--level <slim|status|bundle|full>] [--max-chars <n>] [--cursor <token>]',
+  '  work-sessions context <id> [--level <slim|status|bundle|full>] (default: slim) [--max-chars <n>] [--cursor <token>]',
+  '  work-sessions archive <id>',
   '  work-sessions prompt <id> --text "..."',
   '  work-sessions prompt <id> --file <path>',
   '  work-sessions prompt <id> --stdin',
@@ -274,6 +276,33 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
       return 0
     }
 
+    if (group === 'work-sessions' && action === 'create') {
+      const projectId = parseFlagValue(rest, '--project')
+      const type = parseFlagValue(rest, '--type')
+      const title = parseFlagValue(rest, '--title')
+      if (!projectId) {
+        throw new CliUsageError('Missing --project')
+      }
+      if (!type) {
+        throw new CliUsageError('Missing --type')
+      }
+
+      const body = title
+        ? JSON.stringify({ projectId, type, title })
+        : JSON.stringify({ projectId, type })
+
+      const { response, text } = await request(resolvedDeps, '/ctl/work-sessions', {
+        method: 'POST',
+        body
+      })
+      if (!response.ok) {
+        resolvedDeps.stderr.write(`${text}\n`)
+        return mapFailureExitCode(response, text)
+      }
+      resolvedDeps.stdout.write(text)
+      return 0
+    }
+
     if (group === 'work-sessions' && action === 'get') {
       const sessionId = rest[0]
       if (!sessionId) {
@@ -332,6 +361,23 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
       }
 
       const { response, text } = await request(resolvedDeps, `/ctl/work-sessions/${sessionId}/context?${params.toString()}`)
+      if (!response.ok) {
+        resolvedDeps.stderr.write(`${text}\n`)
+        return mapFailureExitCode(response, text)
+      }
+      resolvedDeps.stdout.write(text)
+      return 0
+    }
+
+    if (group === 'work-sessions' && action === 'archive') {
+      const sessionId = rest[0]
+      if (!sessionId) {
+        throw new CliUsageError('Missing session id')
+      }
+
+      const { response, text } = await request(resolvedDeps, `/ctl/work-sessions/${sessionId}/archive`, {
+        method: 'POST'
+      })
       if (!response.ok) {
         resolvedDeps.stderr.write(`${text}\n`)
         return mapFailureExitCode(response, text)

@@ -890,7 +890,7 @@ describe('E2E: Provider Integration', () => {
       expect(content).not.toContain('project_test_p99')
     })
 
-    test('sidecar plugin emits only explicit state-changing intents', async () => {
+    test('sidecar plugin delegates hook events through the shared dispatcher payload contract', async () => {
       const workspaceDir = await createTempDir('stoa-sidecar-provider-id-')
       const provider = getProvider('opencode')
 
@@ -904,14 +904,21 @@ describe('E2E: Provider Integration', () => {
       )
 
       const content = await readFile(join(workspaceDir, '.opencode', 'plugins', 'stoa-status.ts'), 'utf8')
-      expect(content).toContain("'session.idle': async ({ event })")
-      expect(content).toContain("'tool.execute.before': async ({ event })")
-      expect(content).toContain("'permission.asked': async ({ event })")
-      expect(content).toContain("'permission.replied': async ({ event })")
-      expect(content).toContain("'session.error': async ({ event })")
+      expect(content).toContain('const body = buildEventBody(event)')
+      expect(content).toContain('hook_event_name: event.type')
+      expect(content).toContain('session_id: event.properties?.sessionID ?? undefined')
+      expect(content).toContain('turn_id: event.properties?.messageID ?? undefined')
+      expect(content).toContain('tool_name: event.properties?.toolName ?? undefined')
+      expect(content).toContain('tool_input: event.properties?.toolInput ?? undefined')
+      expect(content).toContain('model: event.properties?.model ?? undefined')
+      expect(content).toContain('prompt_text: event.properties?.promptText ?? undefined')
+      expect(content).toContain('provider_session_id: event.properties?.sessionID ?? undefined')
+      expect(content).toContain('message_id: event.properties?.messageID ?? undefined')
+      expect(content).toContain("if (event.type === 'session.idle')")
+      expect(content).toContain("if (event.type === 'session.error')")
+      expect(content).toContain("if (event.type === 'permission.replied' && event.properties?.error)")
       expect(content).toContain("body.error = toFailureReason(event)")
-      expect(content).toContain("message_id: event.properties?.messageID ?? undefined")
-      expect(content).toContain("provider_session_id: event.properties?.sessionID ?? undefined")
+      expect(content).toContain('await dispatchEvent(event.type, body)')
       expect(content).not.toContain('agentState:')
       expect(content).not.toContain('hasUnseenCompletion:')
       expect(content).not.toContain("status: event.type === 'session.idle' ? 'awaiting_input' : 'running'")

@@ -548,25 +548,25 @@ describe('WorkspaceHierarchyPanel', () => {
       expect(wrapper.findComponent(ProviderRadialMenu).props('visible')).toBe(false)
     })
 
-    it('creating codex from floating card auto-generates codex project title', async () => {
+    it('creating codex from floating card leaves default title generation to the host', async () => {
       const wrapper = mountPanel()
       await openFloatingCard(wrapper)
       await wrapper.findComponent(ProviderFloatingCard).vm.$emit('create', { type: 'codex' })
       expect(wrapper.emitted('createSession')).toContainEqual([{
         projectId: 'project_alpha',
         type: 'codex',
-        title: 'codex-infra-control'
+        title: ''
       }])
     })
 
-    it('creating claude-code from radial menu auto-generates claude project title', async () => {
+    it('creating claude-code from radial menu leaves default title generation to the host', async () => {
       const wrapper = mountPanel()
       await openRadialMenu(wrapper)
       await wrapper.findComponent(ProviderRadialMenu).vm.$emit('create', { type: 'claude-code' })
       expect(wrapper.emitted('createSession')).toContainEqual([{
         projectId: 'project_alpha',
         type: 'claude-code',
-        title: 'claude-infra-control'
+        title: ''
       }])
     })
   })

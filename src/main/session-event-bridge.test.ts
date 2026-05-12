@@ -281,7 +281,15 @@ describe('SessionEventBridge', () => {
           },
           contextAssembler: assembler,
           dispatcher,
-          proposals: proposalStore
+          proposals: proposalStore,
+          workSessionLifecycle: {
+            async createSession() {
+              throw new Error('unused')
+            },
+            async archiveSession() {
+              return null
+            }
+          }
         })
       }
     })

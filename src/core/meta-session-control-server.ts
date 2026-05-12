@@ -1,7 +1,7 @@
 import express, { type Express } from 'express'
 import type { AddressInfo } from 'node:net'
 import type { SessionPresenceSnapshot } from '@shared/observability'
-import type { BootstrapState } from '@shared/project-session'
+import type { BootstrapState, CreateSessionRequest, SessionSummary, SessionType } from '@shared/project-session'
 import type { CreateMetaSessionRequest, MetaSessionBootstrapState, MetaSessionSummary } from '@shared/meta-session'
 import { MetaSessionDispatchError, type MetaSessionCommandDispatcher } from './meta-session-command-dispatcher'
 import type { MetaSessionContextAssembler } from './meta-session-context-assembler'
@@ -20,6 +20,11 @@ interface MetaSessionSource {
   restoreSession(sessionId: string): Promise<void>
 }
 
+interface WorkSessionLifecycle {
+  createSession(request: CreateSessionRequest): Promise<SessionSummary>
+  archiveSession(sessionId: string): Promise<SessionSummary | null>
+}
+
 interface MetaSessionControlServerOptions {
   metaSessionSource: MetaSessionSource
   snapshotSource: SnapshotSource
@@ -27,6 +32,7 @@ interface MetaSessionControlServerOptions {
   contextAssembler: MetaSessionContextAssembler
   dispatcher: MetaSessionCommandDispatcher
   proposals: MetaSessionProposalStore
+  workSessionLifecycle: WorkSessionLifecycle
   app?: Express
 }
 
@@ -286,6 +292,37 @@ export function createMetaSessionControlServer(options: MetaSessionControlServer
     }))
   })
 
+  app.post('/ctl/work-sessions', async (request, response) => {
+    const projectId = typeof request.body?.projectId === 'string' ? request.body.projectId.trim() : ''
+    const type = typeof request.body?.type === 'string' ? request.body.type : ''
+    const title = typeof request.body?.title === 'string' ? request.body.title.trim() : undefined
+
+    if (!projectId) {
+      invalidRequest(response, 'Missing projectId.')
+      return
+    }
+
+    if (!['shell', 'opencode', 'codex', 'claude-code'].includes(type)) {
+      invalidRequest(response, 'Invalid session type.')
+      return
+    }
+
+    try {
+      const created = await options.workSessionLifecycle.createSession({
+        projectId,
+        type: type as SessionType,
+        title: title ?? ''
+      })
+      response.json(jsonEnvelope(created))
+    } catch (error) {
+      response.status(400).json(jsonEnvelope(null, {
+        code: 'invalid_request',
+        message: error instanceof Error ? error.message : String(error),
+        details: {}
+      }))
+    }
+  })
+
   app.get('/ctl/work-sessions/:sessionId', (request, response) => {
     try {
       response.json(jsonEnvelope(options.contextAssembler.getStatus(request.params.sessionId)))
@@ -295,6 +332,26 @@ export function createMetaSessionControlServer(options: MetaSessionControlServer
         'unknown_session',
         error instanceof Error ? error.message : `Unknown session: ${request.params.sessionId}`
       )
+    }
+  })
+
+  app.post('/ctl/work-sessions/:sessionId/archive', async (request, response) => {
+    try {
+      const archived = await options.workSessionLifecycle.archiveSession(request.params.sessionId)
+      if (!archived) {
+        notFound(response, 'unknown_session', `Unknown work session: ${request.params.sessionId}`)
+        return
+      }
+
+      response.json(jsonEnvelope({
+        session: archived
+      }))
+    } catch (error) {
+      response.status(500).json(jsonEnvelope(null, {
+        code: 'internal_error',
+        message: error instanceof Error ? error.message : String(error),
+        details: {}
+      }))
     }
   })
 

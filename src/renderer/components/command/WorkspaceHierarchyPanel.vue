@@ -72,17 +72,6 @@ let longPressActivated = false
 let addButtonPressStartedAt = 0
 let addButtonPressedProjectId: string | null = null
 
-function generateTitle(projectId: string, type: SessionType): string {
-  const project = props.hierarchy.find(p => p.id === projectId)
-  const descriptor = getProviderDescriptorBySessionType(type)
-  if (type === 'shell') {
-    const shellCount = project?.sessions.filter(s => s.type === 'shell').length ?? 0
-    return `shell-${shellCount + 1}`
-  }
-  const projectName = project?.name ?? 'session'
-  return `${descriptor.titlePrefix}-${projectName}`
-}
-
 function providerIcon(type: SessionType): string {
   const map: Record<SessionType, string> = {
     'claude-code': new URL('@renderer/assets/providers/claude-code.svg', import.meta.url).href,
@@ -94,14 +83,12 @@ function providerIcon(type: SessionType): string {
 }
 
 function handleFloatingCardCreate(payload: { type: SessionType }) {
-  const title = generateTitle(floatingCardProjectId.value, payload.type)
-  emit('createSession', { projectId: floatingCardProjectId.value, type: payload.type, title })
+  emit('createSession', { projectId: floatingCardProjectId.value, type: payload.type, title: '' })
   floatingCardVisible.value = false
 }
 
 function handleRadialMenuCreate(payload: { type: SessionType }) {
-  const title = generateTitle(radialMenuProjectId.value, payload.type)
-  emit('createSession', { projectId: radialMenuProjectId.value, type: payload.type, title })
+  emit('createSession', { projectId: radialMenuProjectId.value, type: payload.type, title: '' })
   radialMenuVisible.value = false
 }
 
