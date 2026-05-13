@@ -600,6 +600,7 @@ app.whenReady().then(async () => {
       await activeRuntimeController.applyProviderStatePatch(patch)
     }
   }
+  const metaSessionCtlSecret = generateSecret()
   sessionEventBridge = new SessionEventBridge(activeProjectSessionManager, compositeRuntimeController, activeObservabilityService, {
     captureEvidence: false,
     authorizeHookRequest: activeHookLeaseManager
@@ -675,7 +676,7 @@ app.whenReady().then(async () => {
             return await archiveWorkSessionWithRuntime(sessionId)
           }
         },
-        ctlSecret
+        ctlSecret: metaSessionCtlSecret
       })
       void metaSessionControlServer
     }
@@ -706,14 +707,13 @@ app.whenReady().then(async () => {
   })
   const webhookPort = await sessionEventBridge.start()
 
-  const ctlSecret = generateSecret()
   async function refreshCtlPortFile(): Promise<void> {
     const snapshot = metaSessionManager?.snapshot()
     await writeCtlPortFile({
       port: webhookPort,
       pid: process.pid,
       activeMetaSessionId: snapshot?.activeMetaSessionId ?? null,
-      secret: ctlSecret,
+      secret: metaSessionCtlSecret,
       startedAt: new Date().toISOString()
     })
   }

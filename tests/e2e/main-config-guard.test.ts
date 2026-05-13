@@ -228,6 +228,16 @@ describe('E2E: Main Process Config Guard', () => {
       expect(mainSource).toMatch(/await ptyHost\.killAndWait\(sessionId\)/)
       expect(mainSource).toMatch(/await projectSessionManager\.archiveSession\(sessionId\)/)
     })
+
+    it('initializes ctlSecret before the shared webhook server starts', () => {
+      const ctlSecretIndex = mainSource.indexOf('const metaSessionCtlSecret = generateSecret()')
+      const bridgeStartIndex = mainSource.indexOf('const webhookPort = await sessionEventBridge.start()')
+
+      expect(ctlSecretIndex, 'Could not find ctlSecret initialization in main/index.ts').toBeGreaterThan(-1)
+      expect(bridgeStartIndex, 'Could not find shared webhook server startup in main/index.ts').toBeGreaterThan(-1)
+      expect(ctlSecretIndex).toBeLessThan(bridgeStartIndex)
+      expect(mainSource).toContain('ctlSecret: metaSessionCtlSecret')
+    })
   })
 
   describe('IPC handler registration completeness', () => {

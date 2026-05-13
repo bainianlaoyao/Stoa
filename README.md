@@ -121,7 +121,7 @@ See [State Storage and Recovery](docs/operations/state-storage-and-recovery.md) 
 
 Stoa is built with Electron and targets Windows, macOS, and Linux.
 
-The 0.1.0 release prioritizes Windows artifacts. macOS and Linux packaging targets are configured, but those artifacts should be built, signed, and smoke-tested on the appropriate platforms before being published as official downloads.
+The 0.2.0 release prioritizes Windows artifacts. macOS and Linux packaging targets are configured, but those artifacts should be built, signed, and smoke-tested on the appropriate platforms before being published as official downloads.
 
 ## What Stoa Is Not
 

@@ -129,8 +129,9 @@ function runCodexCli(
     let stdout = ''
     let stderr = ''
     const timeout = setTimeout(() => {
-      child.kill()
-      reject(new Error(`Timed out running Codex CLI: codex ${args.join(' ')}`))
+      void terminateChildProcessTree(child).finally(() => {
+        reject(new Error(`Timed out running Codex CLI: codex ${args.join(' ')}`))
+      })
     }, options.timeoutMs ?? 30_000)
 
     child.stdout.setEncoding('utf8')
@@ -173,6 +174,69 @@ function spawnCodexCli(
   child.stderr.on('data', (chunk) => { output.stderr += chunk })
 
   return { child, output }
+}
+
+async function terminateChildProcessTree(
+  child: import('node:child_process').ChildProcess
+): Promise<void> {
+  if (!child.pid) {
+    try {
+      child.kill('SIGKILL')
+    } catch {
+      // Best-effort shutdown cleanup.
+    }
+    return
+  }
+
+  if (process.platform === 'win32') {
+    try {
+      spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], {
+        stdio: 'ignore',
+        windowsHide: true,
+        shell: false
+      })
+      return
+    } catch {
+      // Fall through to direct child kill.
+    }
+  }
+
+  try {
+    child.kill('SIGKILL')
+  } catch {
+    // Best-effort shutdown cleanup.
+  }
+}
+
+function waitForChildClose(
+  child: import('node:child_process').ChildProcess
+): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return Promise.resolve()
+  }
+
+  return new Promise((resolve, reject) => {
+    const onClose = () => {
+      cleanup()
+      resolve()
+    }
+    const onError = (error: Error) => {
+      cleanup()
+      reject(error)
+    }
+    const cleanup = () => {
+      child.off('close', onClose)
+      child.off('error', onError)
+    }
+
+    child.once('close', onClose)
+    child.once('error', onError)
+
+    if (child.exitCode !== null || child.signalCode !== null) {
+      cleanup()
+      resolve()
+    }
+  })
 }
 
 async function waitForCondition(
@@ -345,6 +409,57 @@ function expectedCodexHookCommand(eventName: string): string {
     ? `.\\.stoa\\hook-dispatch.cmd codex ${eventName}`
     : `.stoa/hook-dispatch codex ${eventName}`
 }
+
+describe('Provider integration test helpers', () => {
+  test('waitForChildClose resolves after the child already exited', async () => {
+    const child = spawn('cmd.exe', ['/c', 'exit', '0'], {
+      cwd: process.cwd(),
+      env: process.env,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true,
+      shell: false
+    })
+    child.stdin.end()
+
+    await new Promise((resolve) => child.once('close', resolve))
+
+    await expect(Promise.race([
+      waitForChildClose(child).then(() => 'closed'),
+      new Promise((resolve) => setTimeout(() => resolve('timeout'), 250))
+    ])).resolves.toBe('closed')
+  })
+
+  test.skipIf(process.platform !== 'win32')(
+    'terminateChildProcessTree closes a cmd child that spawned descendants',
+    async () => {
+    const child = spawn('cmd.exe', ['/c', 'ping', '-t', '127.0.0.1'], {
+      cwd: process.cwd(),
+      env: process.env,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true,
+      shell: false
+    })
+    child.stdin.end()
+
+    await new Promise((resolve) => setTimeout(resolve, 250))
+
+    try {
+      await expect(Promise.race([
+        (async () => {
+          await terminateChildProcessTree(child)
+          await waitForChildClose(child)
+          return 'closed'
+        })(),
+        new Promise((resolve) => setTimeout(() => resolve('timeout'), 5_000))
+      ])).resolves.toBe('closed')
+    } finally {
+      if (child.exitCode === null && child.signalCode === null) {
+        await terminateChildProcessTree(child)
+      }
+    }
+    }
+  )
+})
 
 describe('E2E: Provider Integration', () => {
   describe('Provider registry', () => {
@@ -1699,10 +1814,10 @@ describe('E2E: Provider Integration', () => {
                 }
               )
             } finally {
-              child.kill()
+              await terminateChildProcessTree(child)
             }
 
-            await new Promise((resolve) => child.once('close', resolve))
+            await waitForChildClose(child)
 
             expect(output.stderr).not.toContain('Untrusted')
             expect(acceptedEvents.length).toBeGreaterThan(0)
