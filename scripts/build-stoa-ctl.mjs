@@ -1,26 +1,39 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
+import { builtinModules } from 'node:module'
 import { fileURLToPath } from 'node:url'
-import ts from 'typescript'
+import { build } from 'vite'
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
 const entryPath = join(repoRoot, 'tools', 'stoa-ctl', 'index.ts')
-const outputPath = join(repoRoot, 'out', 'tools', 'stoa-ctl', 'index.mjs')
+const outputDir = join(repoRoot, 'out', 'tools', 'stoa-ctl')
 
-const source = await readFile(entryPath, 'utf8')
-const shebangMatch = source.match(/^#!.*\r?\n/)
-const shebang = shebangMatch?.[0] ?? ''
-const body = shebangMatch ? source.slice(shebang.length) : source
+const nodeBuiltins = new Set([
+  ...builtinModules,
+  ...builtinModules.map((moduleName) => `node:${moduleName}`)
+])
 
-const transpiled = ts.transpileModule(body, {
-  compilerOptions: {
-    target: ts.ScriptTarget.ES2022,
-    module: ts.ModuleKind.ESNext,
-    moduleResolution: ts.ModuleResolutionKind.Bundler,
-    esModuleInterop: true
+await build({
+  configFile: false,
+  publicDir: false,
+  resolve: {
+    alias: {
+      '@core': resolve(repoRoot, 'src/core'),
+      '@shared': resolve(repoRoot, 'src/shared'),
+      '@extensions': resolve(repoRoot, 'src/extensions')
+    }
   },
-  fileName: entryPath
+  build: {
+    emptyOutDir: false,
+    minify: false,
+    outDir: outputDir,
+    target: 'node22',
+    lib: {
+      entry: entryPath,
+      formats: ['es'],
+      fileName: () => 'index.mjs'
+    },
+    rollupOptions: {
+      external: (id) => nodeBuiltins.has(id)
+    }
+  }
 })
-
-await mkdir(dirname(outputPath), { recursive: true })
-await writeFile(outputPath, `${shebang}${transpiled.outputText}`, 'utf8')

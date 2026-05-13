@@ -120,7 +120,7 @@ Stoa 的应用状态、工作区索引、会话元数据和恢复信息保存在
 
 Stoa 基于 Electron 构建，目标支持 Windows、macOS 和 Linux。
 
-当前 0.2.0 发布版优先提供 Windows 产物。macOS 和 Linux 打包目标已经配置，但需要在对应平台完成构建、签名和 smoke 验证后再作为正式下载发布。
+当前 0.2.1 发布版优先提供 Windows 产物。macOS 和 Linux 打包目标已经配置，但需要在对应平台完成构建、签名和 smoke 验证后再作为正式下载发布。
 
 ## Stoa 不是什么
 
