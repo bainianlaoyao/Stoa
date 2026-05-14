@@ -1,6 +1,10 @@
 import type { ProviderCommandContext } from '@shared/project-session'
 import type { ProviderDefinition, ProviderRuntimeTarget } from './index'
-import { buildCodexProjectConfigToml, ensureCodexProjectTrusted } from './codex-project-config'
+import {
+  cleanupCodexProjectConfig,
+  ensureCodexProjectConfig,
+  ensureCodexProjectTrusted
+} from './codex-project-config'
 import { installManagedSidecar, uninstallManagedSidecar } from './managed-sidecar-installer'
 import { buildSharedHookArtifacts } from './shared-hook-dispatch'
 
@@ -56,26 +60,23 @@ function createCommand(target: ProviderRuntimeTarget, context: ProviderCommandCo
 
 async function writeCodexHookSidecar(target: ProviderRuntimeTarget): Promise<void> {
   const sharedArtifacts = buildSharedHookArtifacts()
+  await ensureCodexProjectConfig(target.path)
   await ensureCodexProjectTrusted(target.path)
 
   await installManagedSidecar({
     rootDir: target.path,
     manifestRelativePath: '.codex/.stoa-managed-sidecar.json',
     currentArtifacts: [
-      '.codex/config.toml',
       ...sharedArtifacts.map(artifact => artifact.relativePath)
+    ],
+    preserveArtifacts: [
+      '.codex/config.toml'
     ],
     legacyArtifacts: [
       '.codex/hooks.json',
       '.codex/hook-stoa.mjs'
     ],
-    writes: [
-      {
-        relativePath: '.codex/config.toml',
-        content: buildCodexProjectConfigToml(target.path)
-      },
-      ...sharedArtifacts
-    ]
+    writes: sharedArtifacts
   })
 }
 
@@ -101,9 +102,13 @@ export function createCodexProvider(): ProviderDefinition {
       await writeCodexHookSidecar(target)
     },
     async uninstallSidecar(projectPath) {
+      await cleanupCodexProjectConfig(projectPath)
       await uninstallManagedSidecar({
         rootDir: projectPath,
         manifestRelativePath: '.codex/.stoa-managed-sidecar.json',
+        preserveArtifacts: [
+          '.codex/config.toml'
+        ],
         legacyArtifacts: [
           '.codex/hook-stoa.mjs'
         ]

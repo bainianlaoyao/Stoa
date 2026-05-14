@@ -48,6 +48,53 @@ describe('managed-sidecar-maintenance', () => {
     }
   })
 
+  test('Claude sidecar maintenance preserves existing project and local settings', async () => {
+    const projectDir = await mkdtemp(join(tmpdir(), 'stoa-managed-sidecar-claude-preserve-'))
+    try {
+      await mkdir(join(projectDir, '.claude'), { recursive: true })
+      await writeFile(
+        join(projectDir, '.claude', 'settings.json'),
+        JSON.stringify({
+          permissions: {
+            allow: ['Bash(git status)']
+          }
+        }, null, 2) + '\n',
+        'utf8'
+      )
+      await writeFile(
+        join(projectDir, '.claude', 'settings.local.json'),
+        JSON.stringify({
+          env: {
+            DEBUG: '1'
+          }
+        }, null, 2) + '\n',
+        'utf8'
+      )
+
+      const manager = ProjectSessionManager.createForTest()
+      const project = await manager.createProject({
+        name: 'claude-preserve',
+        path: projectDir,
+        defaultSessionType: 'claude-code'
+      })
+
+      await syncManagedSidecars({
+        snapshotSource: manager,
+        webhookPort: 43127,
+        logger: console
+      })
+
+      const settingsContent = await readFile(join(project.path, '.claude', 'settings.json'), 'utf8')
+      const localSettingsContent = await readFile(join(project.path, '.claude', 'settings.local.json'), 'utf8')
+      expect(settingsContent).toContain('"permissions"')
+      expect(settingsContent).toContain('Bash(git status)')
+      expect(settingsContent).toContain('.stoa/hook-dispatch claude-code SessionStart')
+      expect(localSettingsContent).toContain('"DEBUG": "1"')
+    } finally {
+      await rm(projectDir, { recursive: true, force: true })
+    }
+  })
+
   test('refreshes codex managed sidecar into official config files during main boot maintenance', async () => {
     const projectDir = await mkdtemp(join(tmpdir(), 'stoa-managed-codex-main-'))
     const codexHomeDir = await mkdtemp(join(tmpdir(), 'stoa-managed-codex-home-'))

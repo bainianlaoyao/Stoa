@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, test } from 'vitest'
@@ -104,6 +104,110 @@ describe('codex provider', () => {
       expect(dispatcherContent).toContain('/hooks/codex')
       expect(dispatcherContent).toContain('STOA_HOOK_LEASE_PATH')
       expect(dispatcherContent).not.toContain('../src/extensions/providers/shared-hook-dispatch.ts')
+    } finally {
+      if (previousCodexHome === undefined) {
+        delete process.env.CODEX_HOME
+      } else {
+        process.env.CODEX_HOME = previousCodexHome
+      }
+      await rm(workspaceDir, { recursive: true, force: true })
+      await rm(codexHomeDir, { recursive: true, force: true })
+    }
+  })
+
+  test('installSidecar preserves existing project codex config while adding Stoa hooks', async () => {
+    const provider = createCodexProvider()
+    const workspaceDir = await mkdtemp(join(tmpdir(), 'stoa-codex-sidecar-existing-config-'))
+    const codexHomeDir = await mkdtemp(join(tmpdir(), 'stoa-codex-home-existing-config-'))
+    const previousCodexHome = process.env.CODEX_HOME
+
+    try {
+      process.env.CODEX_HOME = codexHomeDir
+      await mkdir(join(workspaceDir, '.codex'), { recursive: true })
+      await writeFile(
+        join(workspaceDir, '.codex', 'config.toml'),
+        [
+          'model = "gpt-5"',
+          '',
+          '[model_providers.openai]',
+          'name = "OpenAI"',
+          'base_url = "https://api.openai.com/v1"',
+          ''
+        ].join('\n'),
+        'utf8'
+      )
+
+      await provider.installSidecar({
+        session_id: 'session_demo_004',
+        project_id: 'project_demo',
+        path: workspaceDir,
+        title: 'demo',
+        type: 'codex'
+      }, {
+        webhookPort: 43127,
+        sessionSecret: 'secret-1',
+        providerPort: 43128
+      })
+
+      const configContent = await readFile(join(workspaceDir, '.codex', 'config.toml'), 'utf8')
+
+      expect(configContent).toContain('model = "gpt-5"')
+      expect(configContent).toContain('[model_providers.openai]')
+      expect(configContent).toContain('base_url = "https://api.openai.com/v1"')
+      expect(configContent).toContain('[[hooks.SessionStart]]')
+      expect(configContent).toContain(`command = ${JSON.stringify(expectedCodexHookCommand('Stop'))}`)
+    } finally {
+      if (previousCodexHome === undefined) {
+        delete process.env.CODEX_HOME
+      } else {
+        process.env.CODEX_HOME = previousCodexHome
+      }
+      await rm(workspaceDir, { recursive: true, force: true })
+      await rm(codexHomeDir, { recursive: true, force: true })
+    }
+  })
+
+  test('uninstallSidecar removes only Stoa-managed codex hooks and keeps user project config', async () => {
+    const provider = createCodexProvider()
+    const workspaceDir = await mkdtemp(join(tmpdir(), 'stoa-codex-sidecar-uninstall-config-'))
+    const codexHomeDir = await mkdtemp(join(tmpdir(), 'stoa-codex-home-uninstall-config-'))
+    const previousCodexHome = process.env.CODEX_HOME
+
+    try {
+      process.env.CODEX_HOME = codexHomeDir
+      await mkdir(join(workspaceDir, '.codex'), { recursive: true })
+      await writeFile(
+        join(workspaceDir, '.codex', 'config.toml'),
+        [
+          'model = "gpt-5"',
+          '',
+          '[projects."/tmp/existing"]',
+          'trust_level = "trusted"',
+          ''
+        ].join('\n'),
+        'utf8'
+      )
+
+      await provider.installSidecar({
+        session_id: 'session_demo_005',
+        project_id: 'project_demo',
+        path: workspaceDir,
+        title: 'demo',
+        type: 'codex'
+      }, {
+        webhookPort: 43127,
+        sessionSecret: 'secret-1',
+        providerPort: 43128
+      })
+
+      await provider.uninstallSidecar?.(workspaceDir)
+
+      const configContent = await readFile(join(workspaceDir, '.codex', 'config.toml'), 'utf8')
+
+      expect(configContent).toContain('model = "gpt-5"')
+      expect(configContent).toContain('[projects."/tmp/existing"]')
+      expect(configContent).not.toContain('[[hooks.SessionStart]]')
+      expect(configContent).not.toContain(`command = ${JSON.stringify(expectedCodexHookCommand('SessionStart'))}`)
     } finally {
       if (previousCodexHome === undefined) {
         delete process.env.CODEX_HOME

@@ -12,6 +12,7 @@ export interface ManagedSidecarInstallPlan {
   rootDir: string
   manifestRelativePath?: string
   currentArtifacts: string[]
+  preserveArtifacts?: string[]
   legacyArtifacts?: string[]
   writes: Array<{
     relativePath: string
@@ -24,15 +25,18 @@ export async function installManagedSidecar(plan: ManagedSidecarInstallPlan): Pr
   const manifestPath = join(plan.rootDir, plan.manifestRelativePath ?? MANIFEST_FILE_NAME)
   const previousArtifacts = await readManagedArtifacts(manifestPath)
   const currentArtifactSet = new Set(plan.currentArtifacts)
+  const preservedArtifacts = new Set(plan.preserveArtifacts ?? [])
   const staleArtifacts = new Set<string>([
     ...previousArtifacts.filter(path => !currentArtifactSet.has(path)),
     ...(plan.legacyArtifacts ?? [])
   ])
 
   await Promise.all(
-    [...staleArtifacts].map(async (relativePath) => {
+    [...staleArtifacts]
+      .filter(relativePath => !preservedArtifacts.has(relativePath))
+      .map(async (relativePath) => {
       await rm(join(plan.rootDir, relativePath), { force: true, recursive: true })
-    })
+      })
   )
 
   for (const file of plan.writes) {
@@ -63,19 +67,23 @@ export async function installManagedSidecar(plan: ManagedSidecarInstallPlan): Pr
 export async function uninstallManagedSidecar(options: {
   rootDir: string
   manifestRelativePath?: string
+  preserveArtifacts?: string[]
   legacyArtifacts?: string[]
 }): Promise<void> {
   const manifestPath = join(options.rootDir, options.manifestRelativePath ?? MANIFEST_FILE_NAME)
   const previousArtifacts = await readManagedArtifacts(manifestPath)
+  const preservedArtifacts = new Set(options.preserveArtifacts ?? [])
   const allArtifacts = new Set<string>([
     ...previousArtifacts,
     ...(options.legacyArtifacts ?? [])
   ])
 
   await Promise.all(
-    [...allArtifacts].map(async (relativePath) => {
+    [...allArtifacts]
+      .filter(relativePath => !preservedArtifacts.has(relativePath))
+      .map(async (relativePath) => {
       await rm(join(options.rootDir, relativePath), { force: true, recursive: true })
-    })
+      })
   )
 
   await rm(manifestPath, { force: true })
@@ -83,7 +91,7 @@ export async function uninstallManagedSidecar(options: {
   // Clean up empty parent directories left after artifact removal
   const manifestRelativeDir = dirname(options.manifestRelativePath ?? MANIFEST_FILE_NAME)
   const dirPaths = new Set<string>()
-  for (const relativePath of allArtifacts) {
+  for (const relativePath of [...allArtifacts].filter(path => !preservedArtifacts.has(path))) {
     const parent = dirname(relativePath)
     if (parent !== '.' && parent !== '..') {
       dirPaths.add(parent)

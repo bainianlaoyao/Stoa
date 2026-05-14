@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { cp, mkdtemp, readFile, rm, stat } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readFile, rm, stat } from 'node:fs/promises'
 import { request } from 'node:http'
 import { spawn, spawnSync } from 'node:child_process'
 import { writeFile } from 'node:fs/promises'
@@ -776,6 +776,44 @@ describe('E2E: Provider Integration', () => {
       })
     })
 
+    test('installSidecar and uninstallSidecar preserve existing project codex config content', async () => {
+      const workspaceDir = await createTempDir('stoa-codex-preserve-project-config-')
+      const provider = getProvider('codex')
+      const target = createTarget({ path: workspaceDir, type: 'codex' })
+      const context = createContext()
+
+      await mkdir(join(workspaceDir, '.codex'), { recursive: true })
+      await writeFile(
+        join(workspaceDir, '.codex', 'config.toml'),
+        [
+          'model = "gpt-5"',
+          '',
+          '[model_providers.openai]',
+          'name = "OpenAI"',
+          'base_url = "https://api.openai.com/v1"',
+          ''
+        ].join('\n'),
+        'utf8'
+      )
+
+      await withTempCodexHome(async () => {
+        await provider.installSidecar(target, context)
+
+        const installedConfig = await readFile(join(workspaceDir, '.codex', 'config.toml'), 'utf8')
+        expect(installedConfig).toContain('model = "gpt-5"')
+        expect(installedConfig).toContain('[model_providers.openai]')
+        expect(installedConfig).toContain('[[hooks.SessionStart]]')
+
+        await provider.uninstallSidecar?.(workspaceDir)
+
+        const uninstalledConfig = await readFile(join(workspaceDir, '.codex', 'config.toml'), 'utf8')
+        expect(uninstalledConfig).toContain('model = "gpt-5"')
+        expect(uninstalledConfig).toContain('[model_providers.openai]')
+        expect(uninstalledConfig).not.toContain('[[hooks.SessionStart]]')
+        expect(uninstalledConfig).not.toContain(`command = ${JSON.stringify(expectedCodexHookCommand('SessionStart'))}`)
+      })
+    })
+
     test('shared dispatcher artifact avoids provider-private baked session routing', async () => {
       const workspaceDir = await createTempDir('stoa-codex-env-sidecar-')
       const provider = getProvider('codex')
@@ -919,6 +957,55 @@ describe('E2E: Provider Integration', () => {
         command: '.stoa/hook-dispatch claude-code UserPromptSubmit',
         timeout: 5
       })
+    })
+
+    test('installSidecar and uninstallSidecar preserve existing Claude project and local settings', async () => {
+      const workspaceDir = await createTempDir('stoa-claude-preserve-settings-')
+      const provider = getProvider('claude-code')
+      const target = createTarget({
+        path: workspaceDir,
+        type: 'claude-code',
+        external_session_id: 'external-preserve'
+      })
+
+      await mkdir(join(workspaceDir, '.claude'), { recursive: true })
+      await writeFile(
+        join(workspaceDir, '.claude', 'settings.json'),
+        JSON.stringify({
+          permissions: {
+            allow: ['Bash(git status)']
+          }
+        }, null, 2) + '\n',
+        'utf8'
+      )
+      await writeFile(
+        join(workspaceDir, '.claude', 'settings.local.json'),
+        JSON.stringify({
+          env: {
+            DEBUG: '1'
+          }
+        }, null, 2) + '\n',
+        'utf8'
+      )
+
+      await provider.installSidecar(target, createContext({ webhookPort: 43127, sessionSecret: 'secret-claude' }))
+
+      const installedProjectSettings = await readFile(join(workspaceDir, '.claude', 'settings.json'), 'utf8')
+      const installedLocalSettings = await readFile(join(workspaceDir, '.claude', 'settings.local.json'), 'utf8')
+      expect(installedProjectSettings).toContain('"permissions"')
+      expect(installedProjectSettings).toContain('Bash(git status)')
+      expect(installedProjectSettings).toContain('.stoa/hook-dispatch claude-code SessionStart')
+      expect(installedLocalSettings).toContain('"DEBUG": "1"')
+
+      await provider.uninstallSidecar?.(workspaceDir)
+
+      const projectSettingsAfterUninstall = await readFile(join(workspaceDir, '.claude', 'settings.json'), 'utf8')
+      const localSettingsAfterUninstall = await readFile(join(workspaceDir, '.claude', 'settings.local.json'), 'utf8')
+      expect(projectSettingsAfterUninstall).toContain('"permissions"')
+      expect(projectSettingsAfterUninstall).toContain('Bash(git status)')
+      expect(projectSettingsAfterUninstall).not.toContain('.stoa/hook-dispatch claude-code SessionStart')
+      expect(projectSettingsAfterUninstall).not.toContain('.stoa/hook-dispatch claude-code Stop')
+      expect(localSettingsAfterUninstall).toContain('"DEBUG": "1"')
     })
   })
 

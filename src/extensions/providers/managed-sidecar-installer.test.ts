@@ -86,6 +86,41 @@ describe('managed-sidecar-installer', () => {
     await expect(stat(join(rootDir, '.codex', '.stoa-managed-sidecar.json'))).rejects.toThrow()
   })
 
+  test('preserveArtifacts protects user-owned files during cleanup and uninstall', async () => {
+    const rootDir = await createTempDir('stoa-managed-sidecar-preserve-')
+    await mkdir(join(rootDir, '.codex'), { recursive: true })
+    await writeFile(join(rootDir, '.codex', 'config.toml'), 'model = "gpt-5"\n', 'utf8')
+
+    await installManagedSidecar({
+      rootDir,
+      manifestRelativePath: '.codex/.stoa-managed-sidecar.json',
+      currentArtifacts: ['.codex/config.toml', '.codex/hook-stoa.mjs'],
+      preserveArtifacts: ['.codex/config.toml'],
+      writes: [
+        { relativePath: '.codex/hook-stoa.mjs', content: 'hook' }
+      ]
+    })
+
+    await installManagedSidecar({
+      rootDir,
+      manifestRelativePath: '.codex/.stoa-managed-sidecar.json',
+      currentArtifacts: [],
+      preserveArtifacts: ['.codex/config.toml'],
+      writes: []
+    })
+
+    await expect(readFile(join(rootDir, '.codex', 'config.toml'), 'utf8')).resolves.toBe('model = "gpt-5"\n')
+    await expect(stat(join(rootDir, '.codex', 'hook-stoa.mjs'))).rejects.toThrow()
+
+    await uninstallManagedSidecar({
+      rootDir,
+      manifestRelativePath: '.codex/.stoa-managed-sidecar.json',
+      preserveArtifacts: ['.codex/config.toml']
+    })
+
+    await expect(readFile(join(rootDir, '.codex', 'config.toml'), 'utf8')).resolves.toBe('model = "gpt-5"\n')
+  })
+
   test('uninstallManagedSidecar removes all managed artifacts and the manifest', async () => {
     const rootDir = await createTempDir('stoa-uninstall-')
 

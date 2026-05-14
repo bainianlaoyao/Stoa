@@ -239,7 +239,6 @@ describe('claude-code provider', () => {
         artifactPaths: string[]
       }
       expect(manifest.artifactPaths).toEqual([
-        '.claude/settings.json',
         '.stoa/hook-contract.json',
         '.stoa/hook-dispatch',
         '.stoa/hook-dispatch.cmd',
@@ -250,7 +249,7 @@ describe('claude-code provider', () => {
     }
   })
 
-  test('installSidecar removes legacy settings.local.json to avoid duplicate Stop hooks', async () => {
+  test('installSidecar preserves user local settings while project settings provide Stoa Stop hooks', async () => {
     const workspaceDir = await mkdtemp(join(tmpdir(), 'stoa-claude-local-settings-'))
     try {
       await mkdir(join(workspaceDir, '.claude'), { recursive: true })
@@ -283,12 +282,179 @@ describe('claude-code provider', () => {
         providerPort: 43128
       })
 
-      await expect(readFile(join(workspaceDir, '.claude', 'settings.local.json'), 'utf8')).rejects.toThrow()
+      await expect(readFile(join(workspaceDir, '.claude', 'settings.local.json'), 'utf8')).resolves.toContain(
+        '"url": "http://127.0.0.1:54198/hooks/claude-code"'
+      )
       const content = await readFile(join(workspaceDir, '.claude', 'settings.json'), 'utf8')
       expect(readCommandHook(content, 'Stop')).toMatchObject({
         type: 'command',
         command: '.stoa/hook-dispatch claude-code Stop'
       })
+    } finally {
+      await rm(workspaceDir, { recursive: true, force: true })
+    }
+  })
+
+  test('installSidecar preserves existing project settings while adding Stoa hooks', async () => {
+    const workspaceDir = await mkdtemp(join(tmpdir(), 'stoa-claude-existing-settings-'))
+    try {
+      await mkdir(join(workspaceDir, '.claude'), { recursive: true })
+      await writeFile(
+        join(workspaceDir, '.claude', 'settings.json'),
+        JSON.stringify({
+          permissions: {
+            allow: ['Bash(git status)']
+          },
+          hooks: {
+            SessionStart: [{
+              hooks: [{
+                type: 'command',
+                command: 'user-session-start'
+              }]
+            }]
+          }
+        }, null, 2) + '\n',
+        'utf8'
+      )
+
+      const provider = createClaudeCodeProvider()
+      await provider.installSidecar({
+        session_id: 'session_claude_preserve',
+        project_id: 'project_alpha',
+        path: workspaceDir,
+        title: 'Claude Alpha',
+        type: 'claude-code',
+        external_session_id: 'external-preserve'
+      }, {
+        webhookPort: 43127,
+        sessionSecret: 'secret-env',
+        providerPort: 43128
+      })
+
+      const content = await readFile(join(workspaceDir, '.claude', 'settings.json'), 'utf8')
+      expect(content).toContain('"permissions"')
+      expect(content).toContain('Bash(git status)')
+      expect(content).toContain('"command": "user-session-start"')
+      expect(content).toContain('.stoa/hook-dispatch claude-code SessionStart')
+      expect(content).toContain('.stoa/hook-dispatch claude-code Stop')
+    } finally {
+      await rm(workspaceDir, { recursive: true, force: true })
+    }
+  })
+
+  test('installSidecar preserves existing local settings file', async () => {
+    const workspaceDir = await mkdtemp(join(tmpdir(), 'stoa-claude-existing-local-settings-'))
+    try {
+      await mkdir(join(workspaceDir, '.claude'), { recursive: true })
+      await writeFile(
+        join(workspaceDir, '.claude', 'settings.local.json'),
+        JSON.stringify({
+          env: {
+            DEBUG: '1'
+          }
+        }, null, 2) + '\n',
+        'utf8'
+      )
+
+      const provider = createClaudeCodeProvider()
+      await provider.installSidecar({
+        session_id: 'session_claude_local_preserve',
+        project_id: 'project_alpha',
+        path: workspaceDir,
+        title: 'Claude Alpha',
+        type: 'claude-code',
+        external_session_id: 'external-local-preserve'
+      }, {
+        webhookPort: 43127,
+        sessionSecret: 'secret-env',
+        providerPort: 43128
+      })
+
+      const localContent = await readFile(join(workspaceDir, '.claude', 'settings.local.json'), 'utf8')
+      expect(localContent).toContain('"DEBUG": "1"')
+    } finally {
+      await rm(workspaceDir, { recursive: true, force: true })
+    }
+  })
+
+  test('uninstallSidecar removes only Stoa hooks and keeps user Claude settings files', async () => {
+    const workspaceDir = await mkdtemp(join(tmpdir(), 'stoa-claude-uninstall-settings-'))
+    try {
+      await mkdir(join(workspaceDir, '.claude'), { recursive: true })
+      await writeFile(
+        join(workspaceDir, '.claude', 'settings.json'),
+        JSON.stringify({
+          permissions: {
+            allow: ['Bash(git status)']
+          }
+        }, null, 2) + '\n',
+        'utf8'
+      )
+      await writeFile(
+        join(workspaceDir, '.claude', 'settings.local.json'),
+        JSON.stringify({
+          env: {
+            DEBUG: '1'
+          }
+        }, null, 2) + '\n',
+        'utf8'
+      )
+
+      const provider = createClaudeCodeProvider()
+      await provider.installSidecar({
+        session_id: 'session_claude_uninstall_preserve',
+        project_id: 'project_alpha',
+        path: workspaceDir,
+        title: 'Claude Alpha',
+        type: 'claude-code',
+        external_session_id: 'external-uninstall-preserve'
+      }, {
+        webhookPort: 43127,
+        sessionSecret: 'secret-env',
+        providerPort: 43128
+      })
+
+      await provider.uninstallSidecar?.(workspaceDir)
+
+      const projectContent = await readFile(join(workspaceDir, '.claude', 'settings.json'), 'utf8')
+      const localContent = await readFile(join(workspaceDir, '.claude', 'settings.local.json'), 'utf8')
+
+      expect(projectContent).toContain('"permissions"')
+      expect(projectContent).toContain('Bash(git status)')
+      expect(projectContent).not.toContain('.stoa/hook-dispatch claude-code SessionStart')
+      expect(projectContent).not.toContain('.stoa/hook-dispatch claude-code Stop')
+      expect(localContent).toContain('"DEBUG": "1"')
+    } finally {
+      await rm(workspaceDir, { recursive: true, force: true })
+    }
+  })
+
+  test('installSidecar refuses to overwrite malformed project settings JSON', async () => {
+    const workspaceDir = await mkdtemp(join(tmpdir(), 'stoa-claude-malformed-settings-'))
+    try {
+      await mkdir(join(workspaceDir, '.claude'), { recursive: true })
+      await writeFile(
+        join(workspaceDir, '.claude', 'settings.json'),
+        '{ invalid json }\n',
+        'utf8'
+      )
+
+      const provider = createClaudeCodeProvider()
+      await expect(provider.installSidecar({
+        session_id: 'session_claude_bad_json',
+        project_id: 'project_alpha',
+        path: workspaceDir,
+        title: 'Claude Alpha',
+        type: 'claude-code',
+        external_session_id: 'external-bad-json'
+      }, {
+        webhookPort: 43127,
+        sessionSecret: 'secret-env',
+        providerPort: 43128
+      })).rejects.toThrow()
+
+      const content = await readFile(join(workspaceDir, '.claude', 'settings.json'), 'utf8')
+      expect(content).toBe('{ invalid json }\n')
     } finally {
       await rm(workspaceDir, { recursive: true, force: true })
     }
