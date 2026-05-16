@@ -51,6 +51,7 @@ async function installFakeCodex(app: Awaited<ReturnType<typeof launchElectronApp
     'const turnId = randomUUID()',
     "await invokeHook('SessionStart', {",
     '  session_id: externalSessionId,',
+    "  source: 'startup',",
     '  cwd: process.cwd(),',
     "  model: 'gpt-5-codex'",
     '})',

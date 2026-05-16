@@ -192,6 +192,7 @@ describe('launchTrackedSessionRuntime', () => {
   test('launches codex sessions when the manager snapshot provides a codex-scoped entry', async () => {
     const provider = { providerId: 'codex' }
     const getProvider = vi.fn(() => provider)
+    const registerCodexLaunchIntent = vi.fn()
     const resolveRuntimePaths = vi.fn(async () => ({
       shellPath: 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
       providerPath: 'codex',
@@ -250,7 +251,9 @@ describe('launchTrackedSessionRuntime', () => {
         markRuntimeFailedToStart: vi.fn(async () => {}),
         appendTerminalData: vi.fn(async () => {})
       },
-      sessionEventBridge: {} as never,
+      sessionEventBridge: {
+        registerCodexLaunchIntent
+      } as never,
       hookLeaseManager: {
         ensureLease
       } as never,
@@ -268,6 +271,7 @@ describe('launchTrackedSessionRuntime', () => {
       sessionType: 'codex',
       webhookBaseUrl: 'http://127.0.0.1:43127'
     })
+    expect(registerCodexLaunchIntent).toHaveBeenCalledWith('session_codex_1', 'startup')
     expect(startRuntime).toHaveBeenCalledWith(
       expect.objectContaining({
         session: expect.objectContaining({

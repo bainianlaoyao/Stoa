@@ -130,6 +130,43 @@ async function postClaudeHook(
   })
 }
 
+async function postCodexHook(
+  port: number,
+  body: Record<string, unknown>,
+  headers: Record<string, string>
+): Promise<{ statusCode: number; body: string }> {
+  return await new Promise((resolve, reject) => {
+    const payload = JSON.stringify(body)
+    const req = request(
+      {
+        host: '127.0.0.1',
+        port,
+        path: '/hooks/codex',
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'content-length': Buffer.byteLength(payload),
+          ...headers
+        }
+      },
+      (response) => {
+        let body = ''
+        response.setEncoding('utf8')
+        response.on('data', (chunk) => {
+          body += chunk
+        })
+        response.on('end', () => {
+          resolve({ statusCode: response.statusCode ?? 0, body })
+        })
+      }
+    )
+
+    req.on('error', reject)
+    req.write(payload)
+    req.end()
+  })
+}
+
 async function postMemoryNotification(
   port: number,
   body: Record<string, unknown>,
@@ -818,6 +855,205 @@ describe('SessionEventBridge', () => {
     })
   })
 
+  test('codex Stop with mismatched external session id is ignored outside a trusted rebind window', async () => {
+    const stateDir = await createTestTempDir('session-event-bridge-codex-mismatch-state-')
+    const workspaceDir = await createTestTempDir('session-event-bridge-codex-mismatch-workspace-')
+    tempDirs.push(stateDir, workspaceDir)
+    const manager = await ProjectSessionManager.create({
+      webhookPort: null,
+      globalStatePath: join(stateDir, 'global.json')
+    })
+    const project = await manager.createProject({
+      name: 'P1',
+      path: workspaceDir,
+      defaultSessionType: 'codex'
+    })
+    const session = await manager.createSession({
+      projectId: project.id,
+      type: 'codex',
+      title: 'Codex Session',
+      externalSessionId: 'codex-root-1'
+    })
+    await manager.markRuntimeAlive(session.id, 'codex-root-1')
+    await manager.applySessionStatePatch({
+      sessionId: session.id,
+      sequence: manager.snapshot().sessions.find(candidate => candidate.id === session.id)!.lastStateSequence + 1,
+      occurredAt: '2026-05-16T10:00:00.000Z',
+      intent: 'agent.turn_started',
+      source: 'provider',
+      sourceEventType: 'codex.UserPromptSubmit',
+      turnEpoch: 1,
+      sourceTurnId: 'turn-root-1',
+      summary: 'root turn started',
+      externalSessionId: 'codex-root-1'
+    })
+
+    const controller = {
+      applyProviderStatePatch: vi.fn(async (patch: SessionStatePatchEvent) => {
+        await manager.applySessionStatePatch(patch)
+      })
+    }
+    const bridge = new SessionEventBridge(manager, controller)
+    bridges.push(bridge)
+
+    const port = await bridge.start()
+    const secret = bridge.issueSessionSecret(session.id)
+    const response = await postCodexHook(
+      port,
+      {
+        hook_event_name: 'Stop',
+        session_id: 'codex-subagent-1',
+        turn_id: 'turn-subagent-1'
+      },
+      {
+        'x-stoa-secret': secret,
+        'x-stoa-session-id': session.id,
+        'x-stoa-project-id': project.id
+      }
+    )
+
+    expect(response.statusCode).toBe(204)
+    expect(controller.applyProviderStatePatch).not.toHaveBeenCalled()
+    expect(manager.snapshot().sessions.find(candidate => candidate.id === session.id)).toMatchObject({
+      runtimeState: 'alive',
+      turnState: 'running',
+      turnEpoch: 1,
+      lastTurnOutcome: 'none',
+      externalSessionId: 'codex-root-1'
+    })
+  })
+
+  test('codex mismatched completion cannot override a user-interrupted session', async () => {
+    const stateDir = await createTestTempDir('session-event-bridge-codex-interrupt-state-')
+    const workspaceDir = await createTestTempDir('session-event-bridge-codex-interrupt-workspace-')
+    tempDirs.push(stateDir, workspaceDir)
+    const manager = await ProjectSessionManager.create({
+      webhookPort: null,
+      globalStatePath: join(stateDir, 'global.json')
+    })
+    const project = await manager.createProject({
+      name: 'P1',
+      path: workspaceDir,
+      defaultSessionType: 'codex'
+    })
+    const session = await manager.createSession({
+      projectId: project.id,
+      type: 'codex',
+      title: 'Codex Session',
+      externalSessionId: 'codex-root-2'
+    })
+    await manager.markRuntimeAlive(session.id, 'codex-root-2')
+    await manager.applySessionStatePatch({
+      sessionId: session.id,
+      sequence: manager.snapshot().sessions.find(candidate => candidate.id === session.id)!.lastStateSequence + 1,
+      occurredAt: '2026-05-16T10:01:00.000Z',
+      intent: 'agent.turn_started',
+      source: 'provider',
+      sourceEventType: 'codex.UserPromptSubmit',
+      turnEpoch: 1,
+      sourceTurnId: 'turn-root-2',
+      summary: 'root turn started',
+      externalSessionId: 'codex-root-2'
+    })
+    await manager.markAgentTurnInterrupted(session.id, 'Interrupted by user')
+
+    const controller = {
+      applyProviderStatePatch: vi.fn(async (patch: SessionStatePatchEvent) => {
+        await manager.applySessionStatePatch(patch)
+      })
+    }
+    const bridge = new SessionEventBridge(manager, controller)
+    bridges.push(bridge)
+
+    const port = await bridge.start()
+    const secret = bridge.issueSessionSecret(session.id)
+    const response = await postCodexHook(
+      port,
+      {
+        hook_event_name: 'Stop',
+        session_id: 'codex-subagent-2',
+        turn_id: 'turn-subagent-2'
+      },
+      {
+        'x-stoa-secret': secret,
+        'x-stoa-session-id': session.id,
+        'x-stoa-project-id': project.id
+      }
+    )
+
+    expect(response.statusCode).toBe(204)
+    expect(controller.applyProviderStatePatch).not.toHaveBeenCalled()
+    expect(manager.snapshot().sessions.find(candidate => candidate.id === session.id)).toMatchObject({
+      runtimeState: 'alive',
+      turnState: 'idle',
+      turnEpoch: 1,
+      lastTurnOutcome: 'interrupted',
+      hasUnseenCompletion: false,
+      externalSessionId: 'codex-root-2'
+    })
+  })
+
+  test('codex SessionStart can rebind the external session id during a trusted resume launch', async () => {
+    const stateDir = await createTestTempDir('session-event-bridge-codex-rebind-state-')
+    const workspaceDir = await createTestTempDir('session-event-bridge-codex-rebind-workspace-')
+    tempDirs.push(stateDir, workspaceDir)
+    const manager = await ProjectSessionManager.create({
+      webhookPort: null,
+      globalStatePath: join(stateDir, 'global.json')
+    })
+    const project = await manager.createProject({
+      name: 'P1',
+      path: workspaceDir,
+      defaultSessionType: 'codex'
+    })
+    const session = await manager.createSession({
+      projectId: project.id,
+      type: 'codex',
+      title: 'Codex Session',
+      externalSessionId: 'codex-old-root'
+    })
+    await manager.markRuntimeAlive(session.id, 'codex-old-root')
+
+    const controller = {
+      applyProviderStatePatch: vi.fn(async (patch: SessionStatePatchEvent) => {
+        await manager.applySessionStatePatch(patch)
+      })
+    }
+    const bridge = new SessionEventBridge(manager, controller)
+    bridge.registerCodexLaunchIntent(session.id, 'resume')
+    bridges.push(bridge)
+
+    const port = await bridge.start()
+    const secret = bridge.issueSessionSecret(session.id)
+    const response = await postCodexHook(
+      port,
+      {
+        hook_event_name: 'SessionStart',
+        session_id: 'codex-new-root',
+        source: 'resume'
+      },
+      {
+        'x-stoa-secret': secret,
+        'x-stoa-session-id': session.id,
+        'x-stoa-project-id': project.id
+      }
+    )
+
+    expect(response.statusCode).toBe(204)
+    expect(controller.applyProviderStatePatch).toHaveBeenCalledWith(
+      expect.objectContaining<Partial<SessionStatePatchEvent>>({
+        intent: 'runtime.alive',
+        sourceEventType: 'codex.SessionStart',
+        externalSessionId: 'codex-new-root'
+      })
+    )
+    expect(manager.snapshot().sessions.find(candidate => candidate.id === session.id)).toMatchObject({
+      runtimeState: 'alive',
+      turnState: 'idle',
+      externalSessionId: 'codex-new-root'
+    })
+  })
+
   test('claude UserPromptSubmit no longer routes through an adapter recall hook', async () => {
     const stateDir = await createTestTempDir('session-event-bridge-recall-state-')
     const workspaceDir = await createTestTempDir('session-event-bridge-recall-workspace-')
@@ -1480,6 +1716,11 @@ describe('SessionEventBridge', () => {
       event_id: 'event-evidence-1',
       session_id: session.id,
       project_id: otherProject.id,
+      payload: {
+        intent: 'agent.turn_completed',
+        summary: 'session.idle',
+        externalSessionId: 'provider-session-bridge'
+      },
       evidence: {
         rawSource: {
           provider: 'codex',
@@ -1508,7 +1749,7 @@ describe('SessionEventBridge', () => {
       blockingReason: undefined,
       failureReason: undefined,
       summary: 'session.idle',
-      externalSessionId: 'opencode-real-123'
+      externalSessionId: 'provider-session-bridge'
     })
 
     const evidenceDir = join(
@@ -1581,6 +1822,11 @@ describe('SessionEventBridge', () => {
         event_id: 'event-evidence-failure',
         session_id: session.id,
         project_id: project.id,
+        payload: {
+          intent: 'agent.turn_completed',
+          summary: 'session.idle',
+          externalSessionId: 'provider-session-bridge'
+        },
         evidence: {
           rawSource: {
             provider: 'codex',
@@ -1607,7 +1853,7 @@ describe('SessionEventBridge', () => {
         blockingReason: undefined,
         failureReason: undefined,
         summary: 'session.idle',
-        externalSessionId: 'opencode-real-123'
+        externalSessionId: 'provider-session-bridge'
       })
       expect(evidenceStore.persist).toHaveBeenCalledTimes(1)
       expect(consoleError).toHaveBeenCalledWith(

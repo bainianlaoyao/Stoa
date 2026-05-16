@@ -60,6 +60,7 @@ export class SessionEventBridge {
   private readonly sessionSecrets = new Map<string, string>()
   private readonly providerPatchSequences = new Map<string, number>()
   private readonly sessionEventQueues = new Map<string, Promise<null>>()
+  private readonly codexLaunchIntents = new Map<string, 'startup' | 'resume' | 'clear'>()
   private readonly turnEvidenceIds = new Map<string, Set<string>>()
   private readonly activeTurnIds = new Map<string, string>()
   private readonly activeTurnEpochs = new Map<string, number>()
@@ -151,6 +152,9 @@ export class SessionEventBridge {
     const next = previous
       .catch(() => null)
       .then(async (): Promise<Record<string, unknown> | null> => {
+        if (!this.shouldAcceptCanonicalEvent(event)) {
+          return null
+        }
         const normalized = this.attachResolvedTurnId(event)
         const evidenceRef = await this.persistEvidenceIfPresent(normalized)
         this.trackTurnEvidence(normalized, evidenceRef)
@@ -208,6 +212,64 @@ export class SessionEventBridge {
         ...event.evidence,
         turnId
       }
+    }
+  }
+
+  private shouldAcceptCanonicalEvent(event: CanonicalSessionEvent): boolean {
+    if (event.evidence?.rawSource.provider !== 'codex') {
+      return true
+    }
+
+    const session = this.manager.snapshot().sessions.find((candidate) => candidate.id === event.session_id)
+    if (!session || session.type !== 'codex') {
+      return true
+    }
+
+    const incomingProviderSessionId =
+      event.payload.externalSessionId
+      ?? event.evidence.providerSessionId
+      ?? null
+    const boundProviderSessionId = session.externalSessionId
+
+    if (incomingProviderSessionId === null) {
+      return true
+    }
+
+    if (boundProviderSessionId === incomingProviderSessionId) {
+      this.consumeSatisfiedCodexLaunchIntent(event)
+      return true
+    }
+
+    return this.isTrustedCodexSessionStartRebind(event)
+  }
+
+  private isTrustedCodexSessionStartRebind(event: CanonicalSessionEvent): boolean {
+    if (event.evidence?.hookEventName !== 'SessionStart') {
+      return false
+    }
+
+    const actualSource = event.evidence.sessionStartSource
+    if (actualSource === 'clear') {
+      this.codexLaunchIntents.delete(event.session_id)
+      return true
+    }
+
+    const expectedSource = this.codexLaunchIntents.get(event.session_id)
+    if (expectedSource && actualSource && expectedSource === actualSource) {
+      this.codexLaunchIntents.delete(event.session_id)
+      return true
+    }
+
+    return false
+  }
+
+  private consumeSatisfiedCodexLaunchIntent(event: CanonicalSessionEvent): void {
+    if (event.evidence?.hookEventName !== 'SessionStart') {
+      return
+    }
+
+    if (event.evidence.sessionStartSource !== undefined) {
+      this.codexLaunchIntents.delete(event.session_id)
     }
   }
 
@@ -658,6 +720,14 @@ export class SessionEventBridge {
     this.sessionSecrets.set(sessionId, secret)
   }
 
+  registerCodexLaunchIntent(sessionId: string, intent: 'startup' | 'resume' | 'clear'): void {
+    this.codexLaunchIntents.set(sessionId, intent)
+  }
+
+  clearCodexLaunchIntent(sessionId: string): void {
+    this.codexLaunchIntents.delete(sessionId)
+  }
+
   debugSnapshotSessionSecrets(): Record<string, string> {
     return Object.fromEntries(this.sessionSecrets)
   }
@@ -668,6 +738,7 @@ export class SessionEventBridge {
     this.sessionSecrets.clear()
     this.providerPatchSequences.clear()
     this.sessionEventQueues.clear()
+    this.codexLaunchIntents.clear()
     this.turnEvidenceIds.clear()
     this.activeTurnIds.clear()
     this.activeTurnEpochs.clear()

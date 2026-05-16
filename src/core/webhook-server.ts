@@ -64,6 +64,7 @@ const OPTIONAL_EVIDENCE_STRING_FIELDS = [
   'cwd',
   'model'
 ] as const
+const VALID_CODEX_SESSION_START_SOURCES = new Set(['startup', 'resume', 'clear'])
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0
@@ -238,6 +239,17 @@ function isMemoryRuntimeEvidence(value: unknown): boolean {
     if (evidence[field] !== undefined && !isNonEmptyString(evidence[field])) {
       return false
     }
+  }
+
+  if (
+    evidence.sessionStartSource !== undefined
+    && evidence.sessionStartSource !== null
+    && (
+      typeof evidence.sessionStartSource !== 'string'
+      || !VALID_CODEX_SESSION_START_SOURCES.has(evidence.sessionStartSource)
+    )
+  ) {
+    return false
   }
 
   if (

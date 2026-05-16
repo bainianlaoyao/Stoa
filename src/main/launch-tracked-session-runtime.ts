@@ -60,6 +60,14 @@ export async function launchTrackedSessionRuntime(options: LaunchTrackedSessionR
     options.sessionEventBridge.registerSessionSecret(session.id, hookLease.lease.sessionSecret)
   }
 
+  if (session.type === 'codex') {
+    const codexLaunchIntent =
+      session.runtimeState !== 'created' && session.runtimeState !== 'starting' && session.externalSessionId
+        ? 'resume'
+        : 'startup'
+    options.sessionEventBridge.registerCodexLaunchIntent?.(session.id, codexLaunchIntent)
+  }
+
   await (options.startRuntime ?? startSessionRuntime)({
     session: {
       id: session.id,

@@ -404,6 +404,34 @@ describe('webhook event validation', () => {
       })
     })
 
+    test('accepts canonical events carrying Codex SessionStart source evidence', async () => {
+      const { server, events } = createTestServer()
+      const port = await server.start()
+
+      const response = await postJson(
+        port,
+        createValidEvent({
+          evidence: {
+            rawSource: {
+              provider: 'codex',
+              channel: 'hook',
+              rawEventName: 'SessionStart'
+            },
+            providerSessionId: 'codex-thread-2',
+            sessionStartSource: 'resume'
+          }
+        }),
+        'secret-1'
+      )
+
+      expect(response.statusCode).toBe(202)
+      expect(events).toHaveLength(1)
+      expect(events[0]!.evidence).toMatchObject({
+        providerSessionId: 'codex-thread-2',
+        sessionStartSource: 'resume'
+      })
+    })
+
     test('rejects event with empty payload object', async () => {
       const { server } = createTestServer()
       const port = await server.start()
@@ -487,7 +515,8 @@ describe('webhook event validation', () => {
       ['invalid toolUseId', { rawSource: { provider: 'codex', channel: 'hook', rawEventName: 'Stop' }, toolUseId: {} }],
       ['invalid cwd', { rawSource: { provider: 'codex', channel: 'hook', rawEventName: 'Stop' }, cwd: {} }],
       ['invalid model', { rawSource: { provider: 'codex', channel: 'hook', rawEventName: 'Stop' }, model: {} }],
-      ['invalid hookEventName', { rawSource: { provider: 'codex', channel: 'hook', rawEventName: 'Stop' }, hookEventName: {} }]
+      ['invalid hookEventName', { rawSource: { provider: 'codex', channel: 'hook', rawEventName: 'Stop' }, hookEventName: {} }],
+      ['invalid sessionStartSource', { rawSource: { provider: 'codex', channel: 'hook', rawEventName: 'SessionStart' }, sessionStartSource: 'fork' }]
     ])('rejects %s evidence payloads', async (_name, evidence) => {
       const { server } = createTestServer()
       const port = await server.start()

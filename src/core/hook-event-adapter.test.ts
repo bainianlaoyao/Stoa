@@ -251,6 +251,7 @@ describe('codex hook adapter', () => {
       {
         hook_event_name: 'SessionStart',
         session_id: 'codex-session-1',
+        source: 'resume',
         transcript_path: '/tmp/codex-transcript.jsonl',
         cwd: '/repo/codex',
         turn_id: 'turn_1',
@@ -279,6 +280,7 @@ describe('codex hook adapter', () => {
         },
         hookEventName: 'SessionStart',
         providerSessionId: 'codex-session-1',
+        sessionStartSource: 'resume',
         turnId: 'turn_1',
         transcriptPath: '/tmp/codex-transcript.jsonl',
         cwd: '/repo/codex',
@@ -479,12 +481,46 @@ describe('codex hook adapter', () => {
     expect(event?.evidence).not.toHaveProperty('lastAssistantMessage')
   })
 
+  test('preserves documented Codex SessionStart source values', () => {
+    const event = adaptCodexHook(
+      {
+        hook_event_name: 'SessionStart',
+        session_id: 'codex-session-clear',
+        source: 'clear'
+      },
+      codexContext
+    )
+
+    expect(event).toMatchObject({
+      event_type: 'codex.SessionStart',
+      evidence: {
+        rawSource: {
+          provider: 'codex',
+          channel: 'hook',
+          rawEventName: 'SessionStart'
+        },
+        providerSessionId: 'codex-session-clear',
+        sessionStartSource: 'clear'
+      }
+    })
+  })
+
   test('throws when a recognized Codex hook contains malformed evidence fields', () => {
     expect(() => adaptCodexHook(
       {
         hook_event_name: 'PreToolUse',
         turn_id: 123,
         tool_name: 'Write'
+      },
+      codexContext
+    )).toThrow('Invalid Codex hook evidence')
+  })
+
+  test('throws when Codex SessionStart contains an unsupported source value', () => {
+    expect(() => adaptCodexHook(
+      {
+        hook_event_name: 'SessionStart',
+        source: 'fork'
       },
       codexContext
     )).toThrow('Invalid Codex hook evidence')

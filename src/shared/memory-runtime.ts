@@ -55,6 +55,7 @@ export interface ObservedEvent {
   rawSource: ObservedEventRawSource
   hookEventName?: string
   providerSessionId?: string
+  sessionStartSource?: 'startup' | 'resume' | 'clear'
   turnId?: string
   transcriptPath?: string
   lastAssistantMessage?: string

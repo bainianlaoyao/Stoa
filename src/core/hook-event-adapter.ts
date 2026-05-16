@@ -180,6 +180,7 @@ function buildCodexHookEvidence(
     },
     hookEventName,
     providerSessionId: requiredOptionalStringField(body, 'session_id', 'codex'),
+    sessionStartSource: codexSessionStartSource(body, hookEventName),
     turnId: requiredOptionalStringField(body, 'turn_id', 'codex'),
     transcriptPath: nullableOptionalStringField(body, 'transcript_path', 'codex'),
     lastAssistantMessage: nullableOptionalStringField(body, 'last_assistant_message', 'codex'),
@@ -342,6 +343,26 @@ function nullableOptionalStringField(
   }
 
   return value
+}
+
+function codexSessionStartSource(
+  body: Record<string, unknown>,
+  hookEventName: string
+): 'startup' | 'resume' | 'clear' | undefined {
+  if (hookEventName !== 'SessionStart') {
+    return undefined
+  }
+
+  const value = requiredOptionalStringField(body, 'source', 'codex')
+  if (value === undefined) {
+    return undefined
+  }
+
+  if (value === 'startup' || value === 'resume' || value === 'clear') {
+    return value
+  }
+
+  throw new InvalidHookEvidenceError('codex')
 }
 
 function compactEvidence(evidence: MemoryRuntimeEvidence): MemoryRuntimeEvidence {
