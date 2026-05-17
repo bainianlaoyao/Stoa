@@ -109,7 +109,8 @@ export function adaptOpenCodeHook(
   }
 
   const hasError = 'error' in body && body.error !== undefined && body.error !== null
-  const patch = mapOpenCodeHookToPatch(hookEventName, hasError)
+  const sessionStatus = openCodeSessionStatus(body)
+  const patch = mapOpenCodeHookToPatch(hookEventName, hasError, sessionStatus)
   if (!patch) {
     return null
   }
@@ -268,12 +269,21 @@ function mapCodexHookToPatch(hookEventName: string): HookPatch | null {
   }
 }
 
-function mapOpenCodeHookToPatch(hookEventName: string, hasError: boolean): HookPatch | null {
+function mapOpenCodeHookToPatch(
+  hookEventName: string,
+  hasError: boolean,
+  sessionStatus?: string
+): HookPatch | null {
   switch (hookEventName) {
     case 'tool.execute.before':
       return { intent: 'agent.tool_started' }
     case 'tool.execute.after':
       return { intent: 'agent.tool_completed' }
+    case 'session.status':
+      if (sessionStatus === 'busy' || sessionStatus === 'retry' || sessionStatus === 'active') {
+        return { intent: 'agent.tool_started' }
+      }
+      return null
     case 'session.idle':
       return { intent: 'agent.turn_completed' }
     case 'permission.asked':
@@ -286,11 +296,22 @@ function mapOpenCodeHookToPatch(hookEventName: string, hasError: boolean): HookP
       return { intent: 'agent.turn_failed', failureReason: 'provider_error' }
     case 'session.created':
       return { intent: 'runtime.alive' }
-    case 'message.updated':
-      return { intent: 'agent.turn_started' }
     default:
       return null
   }
+}
+
+function openCodeSessionStatus(body: Record<string, unknown>): string | undefined {
+  if (!('session_status' in body) || body.session_status === undefined) {
+    return undefined
+  }
+
+  const value = body.session_status
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new InvalidHookEvidenceError('opencode')
+  }
+
+  return value
 }
 
 function withSourceTurnId(

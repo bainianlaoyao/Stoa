@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { adaptClaudeCodeHook, adaptCodexHook } from './hook-event-adapter'
+import { adaptClaudeCodeHook, adaptCodexHook, adaptOpenCodeHook } from './hook-event-adapter'
 
 describe('hook event adapter', () => {
   test('adapts Claude Stop hook into turn completed state patch event', () => {
@@ -569,5 +569,66 @@ describe('codex hook adapter', () => {
     })
     expect(event?.payload).not.toHaveProperty('externalSessionId')
     expect(event?.evidence).not.toHaveProperty('providerSessionId')
+  })
+})
+
+describe('opencode hook adapter', () => {
+  const opencodeContext = { sessionId: 'opencode_session_1', projectId: 'opencode_project_1' }
+
+  test('adapts OpenCode session.status busy into running evidence without treating message updates as turn starts', () => {
+    const event = adaptOpenCodeHook(
+      {
+        hook_event_name: 'session.status',
+        provider_session_id: 'opencode-external-1',
+        session_status: 'busy'
+      },
+      opencodeContext
+    )
+
+    expect(event).toMatchObject({
+      event_type: 'opencode.session.status',
+      session_id: 'opencode_session_1',
+      project_id: 'opencode_project_1',
+      source: 'provider-adapter',
+      payload: {
+        intent: 'agent.tool_started',
+        summary: 'session.status',
+        externalSessionId: 'opencode-external-1'
+      },
+      evidence: {
+        rawSource: {
+          provider: 'opencode',
+          channel: 'hook',
+          rawEventName: 'session.status'
+        },
+        providerSessionId: 'opencode-external-1'
+      }
+    })
+  })
+
+  test('ignores OpenCode session.status idle because completion is carried by session.idle', () => {
+    const event = adaptOpenCodeHook(
+      {
+        hook_event_name: 'session.status',
+        provider_session_id: 'opencode-external-1',
+        session_status: 'idle'
+      },
+      opencodeContext
+    )
+
+    expect(event).toBeNull()
+  })
+
+  test('ignores OpenCode message.updated because it is only content mutation, not a new turn boundary', () => {
+    const event = adaptOpenCodeHook(
+      {
+        hook_event_name: 'message.updated',
+        provider_session_id: 'opencode-external-1',
+        message_id: 'msg-1'
+      },
+      opencodeContext
+    )
+
+    expect(event).toBeNull()
   })
 })

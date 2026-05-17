@@ -1116,6 +1116,7 @@ describe('E2E: Provider Integration', () => {
       expect(content).toContain('prompt_text: event.properties?.promptText ?? undefined')
       expect(content).toContain('provider_session_id: event.properties?.sessionID ?? undefined')
       expect(content).toContain('message_id: event.properties?.messageID ?? undefined')
+      expect(content).toContain('session_status: event.properties?.status ?? event.properties?.sessionStatus ?? undefined')
       expect(content).toContain("if (event.type === 'session.idle')")
       expect(content).toContain("if (event.type === 'session.error')")
       expect(content).toContain("if (event.type === 'permission.replied' && event.properties?.error)")

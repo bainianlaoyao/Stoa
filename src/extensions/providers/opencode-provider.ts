@@ -135,7 +135,8 @@ function buildEventBody(event) {
     last_assistant_message: undefined,
     prompt_text: event.properties?.promptText ?? undefined,
     provider_session_id: event.properties?.sessionID ?? undefined,
-    message_id: event.properties?.messageID ?? undefined
+    message_id: event.properties?.messageID ?? undefined,
+    session_status: event.properties?.status ?? event.properties?.sessionStatus ?? undefined
   }
 }
 

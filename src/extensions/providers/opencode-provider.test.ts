@@ -111,6 +111,7 @@ describe('opencode provider', () => {
       expect(content).toContain('turn_id: event.properties?.messageID')
       expect(content).toContain('tool_name: event.properties?.toolName')
       expect(content).toContain('provider_session_id: event.properties?.sessionID')
+      expect(content).toContain('session_status: event.properties?.status ?? event.properties?.sessionStatus ?? undefined')
       expect(content).toContain('async ({ client }) => ({')
       expect(content).toContain('enrichWithMessages(client, event, body)')
       expect(content).toContain('client.session.messages')

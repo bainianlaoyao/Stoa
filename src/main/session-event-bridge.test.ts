@@ -167,6 +167,43 @@ async function postCodexHook(
   })
 }
 
+async function postOpenCodeHook(
+  port: number,
+  body: Record<string, unknown>,
+  headers: Record<string, string>
+): Promise<{ statusCode: number; body: string }> {
+  return await new Promise((resolve, reject) => {
+    const payload = JSON.stringify(body)
+    const req = request(
+      {
+        host: '127.0.0.1',
+        port,
+        path: '/hooks/opencode',
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'content-length': Buffer.byteLength(payload),
+          ...headers
+        }
+      },
+      (response) => {
+        let body = ''
+        response.setEncoding('utf8')
+        response.on('data', (chunk) => {
+          body += chunk
+        })
+        response.on('end', () => {
+          resolve({ statusCode: response.statusCode ?? 0, body })
+        })
+      }
+    )
+
+    req.on('error', reject)
+    req.write(payload)
+    req.end()
+  })
+}
+
 async function postMemoryNotification(
   port: number,
   body: Record<string, unknown>,
@@ -1333,6 +1370,84 @@ describe('SessionEventBridge', () => {
       phase: 'complete',
       confidence: 'authoritative',
       recoveryPointerState: 'trusted'
+    })
+  })
+
+  test('OpenCode message.updated after session.idle does not reopen the completed main turn', async () => {
+    const stateDir = await createTestTempDir('session-event-bridge-opencode-complete-state-')
+    const workspaceDir = await createTestTempDir('session-event-bridge-opencode-complete-workspace-')
+    tempDirs.push(stateDir, workspaceDir)
+    const manager = await ProjectSessionManager.create({
+      webhookPort: null,
+      globalStatePath: join(stateDir, 'global.json')
+    })
+    const project = await manager.createProject({
+      name: 'OpenCode Project',
+      path: workspaceDir,
+      defaultSessionType: 'opencode'
+    })
+    const session = await manager.createSession({
+      projectId: project.id,
+      type: 'opencode',
+      title: 'OpenCode Session',
+      externalSessionId: 'opencode-real-456'
+    })
+    await manager.markRuntimeAlive(session.id, 'opencode-real-456')
+
+    const controller = {
+      applyProviderStatePatch: vi.fn(async (patch: SessionStatePatchEvent) => {
+        await manager.applySessionStatePatch(patch)
+      })
+    }
+    const bridge = new SessionEventBridge(manager, controller)
+    bridges.push(bridge)
+
+    const port = await bridge.start()
+    const secret = bridge.issueSessionSecret(session.id)
+    const headers = {
+      'x-stoa-secret': secret,
+      'x-stoa-session-id': session.id,
+      'x-stoa-project-id': project.id
+    }
+
+    expect((await postOpenCodeHook(port, {
+      hook_event_name: 'session.status',
+      provider_session_id: 'opencode-real-456',
+      session_status: 'busy'
+    }, headers)).statusCode).toBe(204)
+
+    expect(manager.snapshot().sessions.find(candidate => candidate.id === session.id)).toMatchObject({
+      runtimeState: 'alive',
+      turnState: 'running',
+      turnEpoch: 1,
+      lastTurnOutcome: 'none'
+    })
+
+    expect((await postOpenCodeHook(port, {
+      hook_event_name: 'session.idle',
+      provider_session_id: 'opencode-real-456'
+    }, headers)).statusCode).toBe(204)
+
+    expect(manager.snapshot().sessions.find(candidate => candidate.id === session.id)).toMatchObject({
+      runtimeState: 'alive',
+      turnState: 'idle',
+      turnEpoch: 1,
+      lastTurnOutcome: 'completed',
+      hasUnseenCompletion: true
+    })
+
+    expect((await postOpenCodeHook(port, {
+      hook_event_name: 'message.updated',
+      provider_session_id: 'opencode-real-456',
+      message_id: 'assistant-message-after-idle'
+    }, headers)).statusCode).toBe(204)
+
+    expect(manager.snapshot().sessions.find(candidate => candidate.id === session.id)).toMatchObject({
+      runtimeState: 'alive',
+      turnState: 'idle',
+      turnEpoch: 1,
+      lastTurnOutcome: 'completed',
+      hasUnseenCompletion: true
     })
   })
 
