@@ -1,6 +1,6 @@
 {
   "name": "stoa",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "private": true,
   "license": "Apache-2.0",
   "type": "module",
@@ -20,7 +20,7 @@
     "package:mac": "pnpm run build && node scripts/run-electron-builder.mjs --mac",
     "package:linux": "pnpm run build && node scripts/run-electron-builder.mjs --linux",
     "package:local": "pnpm run build && pnpm run package",
-    "package:release": "electron-builder --config electron-builder.yml --publish always",
+    "package:release": "pnpm run build && node scripts/run-electron-builder.mjs --publish always",
     "rebuild:native": "node scripts/rebuild-node-pty.mjs",
     "generate:icons": "node scripts/generate-icons.mjs",
     "stoa-ctl": "tsx --tsconfig tsconfig.node.json tools/stoa-ctl/index.ts",

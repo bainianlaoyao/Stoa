@@ -37,4 +37,14 @@ describe('electron-builder cross-platform contract', () => {
     expect(packageJson.scripts['package:mac']).toContain('scripts/run-electron-builder.mjs --mac')
     expect(packageJson.scripts['package:linux']).toContain('scripts/run-electron-builder.mjs --linux')
   })
+
+  test('routes package:release through the build pipeline before publishing', () => {
+    const packageJson = JSON.parse(readFileSync('package.json', 'utf8')) as {
+      scripts: Record<string, string>
+    }
+
+    expect(packageJson.scripts['package:release']).toContain('pnpm run build')
+    expect(packageJson.scripts['package:release']).toContain('scripts/run-electron-builder.mjs')
+    expect(packageJson.scripts['package:release']).toContain('--publish always')
+  })
 })
