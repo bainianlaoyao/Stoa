@@ -12,6 +12,10 @@ const store = useSettingsStore()
 const evolverInferenceProviderOptions = [
   { value: 'claude-code', label: 'Claude Code' }
 ]
+const titleGenerationModelOptions = [
+  { value: 'gpt-5.4-mini', label: 'GPT-5.4 Mini' },
+  { value: 'gpt-5-mini', label: 'GPT-5 Mini' }
+]
 
 const providerList = listProviderDescriptors()
   .filter(provider => provider.providerId !== 'local-shell')
@@ -59,6 +63,15 @@ function handleEvolverInferenceProviderChange(value: string): void {
     void store.updateSetting('evolverInferenceProvider', value)
   }
 }
+
+function handleTitleGenerationPatch(
+  patch: Partial<typeof store.titleGeneration>
+): void {
+  void store.updateSetting('titleGeneration', {
+    ...store.titleGeneration,
+    ...patch
+  })
+}
 </script>
 
 <template>
@@ -97,6 +110,70 @@ function handleEvolverInferenceProviderChange(value: string): void {
 
         <p class="settings-item__hint">
           {{ t('providers.evolverInference.hint') }}
+        </p>
+      </section>
+
+      <section class="settings-card" :aria-label="t('providers.titleGeneration.ariaLabel')">
+        <div class="settings-card__header">
+          <div>
+            <h4 class="settings-card__title">{{ t('providers.titleGeneration.title') }}</h4>
+            <p class="settings-card__description">
+              {{ t('providers.titleGeneration.description') }}
+            </p>
+          </div>
+          <span class="settings-card__badge">{{ t('providers.titleGeneration.badge') }}</span>
+        </div>
+
+        <div
+          class="settings-toggle"
+          data-settings-field="title-generation-enabled"
+        >
+          <div class="settings-toggle__label">
+            <span class="settings-toggle__copy">
+              <span class="settings-toggle__title">{{ t('providers.titleGeneration.enabled') }}</span>
+              <span class="settings-toggle__description">{{ t('providers.titleGeneration.enabledHint') }}</span>
+            </span>
+            <Switch
+              :model-value="store.titleGeneration.enabled"
+              class="settings-toggle__switch"
+              :class="{ 'settings-toggle__switch--active': store.titleGeneration.enabled }"
+              @update:model-value="handleTitleGenerationPatch({ enabled: $event })"
+            >
+              <span class="settings-toggle__thumb" />
+            </Switch>
+          </div>
+        </div>
+
+        <div class="settings-inline-field" data-settings-field="title-generation-model">
+          <GlassFormField
+            :label="t('providers.titleGeneration.modelLabel')"
+            type="select"
+            :model-value="store.titleGeneration.model"
+            :options="titleGenerationModelOptions"
+            @update:model-value="handleTitleGenerationPatch({ model: $event })"
+          />
+        </div>
+
+        <div class="settings-inline-field" data-settings-field="title-generation-base-url">
+          <GlassFormField
+            :label="t('providers.titleGeneration.baseUrlLabel')"
+            :model-value="store.titleGeneration.baseUrl"
+            :placeholder="t('providers.titleGeneration.baseUrlPlaceholder')"
+            @update:model-value="handleTitleGenerationPatch({ baseUrl: $event })"
+          />
+        </div>
+
+        <div class="settings-inline-field" data-settings-field="title-generation-api-key">
+          <GlassFormField
+            :label="t('providers.titleGeneration.apiKeyLabel')"
+            :model-value="store.titleGeneration.apiKey"
+            :placeholder="t('providers.titleGeneration.apiKeyPlaceholder')"
+            @update:model-value="handleTitleGenerationPatch({ apiKey: $event })"
+          />
+        </div>
+
+        <p class="settings-item__hint">
+          {{ t('providers.titleGeneration.hint') }}
         </p>
       </section>
 

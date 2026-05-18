@@ -13,7 +13,7 @@ import { resolveBundledEvolverRepoRoot } from './bundled-evolver'
 
 type RuntimeHostSettings = Pick<
   AppSettings,
-  'evolverInferenceProvider' | 'evolverExecutionMode' | 'providers' | 'shellPath'
+  'evolverInferenceProvider' | 'evolverExecutionMode' | 'providers' | 'shellPath' | 'titleGeneration'
 >
 
 interface RuntimeHostSettingsReader {
@@ -127,6 +127,7 @@ async function resolveInferenceProviderPath(
       ...settings,
       locale: 'en',
       terminal: {},
+      titleGeneration: settings.titleGeneration,
       workspaceIde: {
         id: 'vscode',
         executablePath: ''

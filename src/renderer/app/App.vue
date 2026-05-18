@@ -95,6 +95,19 @@ async function handleArchiveSession(sessionId: string): Promise<void> {
   }
 }
 
+async function handleRegenerateSessionTitle(sessionId: string): Promise<void> {
+  workspaceStore.clearError()
+  try {
+    const updated = await window.stoa.regenerateSessionTitle(sessionId)
+    if (!updated) {
+      return
+    }
+    workspaceStore.updateSession(sessionId, updated)
+  } catch (err) {
+    workspaceStore.lastError = err instanceof Error ? err.message : String(err)
+  }
+}
+
 async function handleRestoreSession(sessionId: string): Promise<void> {
   workspaceStore.clearError()
   try {
@@ -128,6 +141,7 @@ async function handleOpenWorkspace(request: OpenWorkspaceRequest): Promise<void>
 let unsubscribeUpdateState: (() => void) | null = null
 let unsubscribeMemoryNotification: (() => void) | null = null
 let unsubscribeMetaSessionEvents: (() => void) | null = null
+let unsubscribeSessionEvents: (() => void) | null = null
 let isUnmounted = false
 
 onMounted(async () => {
@@ -139,6 +153,9 @@ onMounted(async () => {
       return
     }
     memoryNotificationsStore.enqueue(event)
+  })
+  unsubscribeSessionEvents = window.stoa.onSessionEvent((event) => {
+    workspaceStore.updateSession(event.session.id, event.session)
   })
 
   const bootstrapState = await window.stoa.getBootstrapState()
@@ -180,6 +197,7 @@ onBeforeUnmount(() => {
   unsubscribeUpdateState?.()
   unsubscribeMemoryNotification?.()
   unsubscribeMetaSessionEvents?.()
+  unsubscribeSessionEvents?.()
   memoryNotificationsStore.reset()
   metaSessionStore.unsubscribe()
   workspaceStore.unsubscribeObservability()
@@ -201,6 +219,7 @@ onBeforeUnmount(() => {
       @create-session="handleSessionCreate"
       @delete-project="handleProjectDelete"
       @archive-session="handleArchiveSession"
+      @regenerate-session-title="handleRegenerateSessionTitle"
       @restart-session="handleRestartSession"
       @restore-session="handleRestoreSession"
       @open-workspace="handleOpenWorkspace"

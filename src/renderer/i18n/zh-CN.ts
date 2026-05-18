@@ -132,6 +132,20 @@ export default {
         api: 'OpenAI API'
       }
     },
+    titleGeneration: {
+      ariaLabel: '\u4F1A\u8BDD\u6807\u9898\u751F\u6210',
+      title: '\u4F1A\u8BDD\u6807\u9898\u751F\u6210',
+      description: '\u5728\u9996\u4E2A\u6709\u6548 turn \u5B8C\u6210\u540E\u751F\u6210 Stoa \u81EA\u6709\u6807\u9898\uFF0C\u5E76\u5141\u8BB8\u4ECE\u4F1A\u8BDD\u53F3\u952E\u83DC\u5355\u624B\u52A8\u8986\u76D6\u91CD\u751F\u3002',
+      badge: 'Stoa \u6240\u6709',
+      enabled: '\u9996\u4E2A\u6709\u6548 turn \u540E\u81EA\u52A8\u751F\u6210',
+      enabledHint: '\u5982\u679C\u751F\u6210\u5931\u8D25\u6216\u529F\u80FD\u5173\u95ED\uFF0CStoa \u4F1A\u4FDD\u7559\u5F53\u524D\u4E3B\u673A\u4FA7\u6807\u9898\u3002',
+      modelLabel: '\u6807\u9898\u6A21\u578B',
+      baseUrlLabel: 'Base URL',
+      baseUrlPlaceholder: 'https://api.openai.com/v1',
+      apiKeyLabel: 'API Key',
+      apiKeyPlaceholder: 'sk-...',
+      hint: '\u5F53\u53F3\u952E\u83DC\u5355\u624B\u52A8\u89E6\u53D1\u91CD\u65B0\u751F\u6210\u4E14\u8FD4\u56DE\u65B0\u7ED3\u679C\u65F6\uFF0C\u4F1A\u76F4\u63A5\u8986\u76D6\u5F53\u524D\u6807\u9898\u3002'
+    },
     sessionProviders: '\u4F1A\u8BDD\u63D0\u4F9B\u5546',
     sessionProvidersRadial: '\u4F1A\u8BDD\u63D0\u4F9B\u5546\uFF08\u73AF\u5F62\uFF09',
     createSession: '\u521B\u5EFA {provider} \u4F1A\u8BDD',
@@ -215,6 +229,7 @@ export default {
     addSessionTitle: '\u6DFB\u52A0\u4F1A\u8BDD \u00B7 \u957F\u6309\u663E\u793A\u73AF\u5F62\u83DC\u5355',
     archiveSession: '\u5F52\u6863 {title}',
     archiveSessionTitle: '\u5F52\u6863\u4F1A\u8BDD',
+    regenerateSessionTitle: '\u91CD\u65B0\u751F\u6210\u6807\u9898',
     restartSession: '\u91CD\u542F\u4F1A\u8BDD',
     sessionActions: '{title} \u7684\u4F1A\u8BDD\u64CD\u4F5C'
   },

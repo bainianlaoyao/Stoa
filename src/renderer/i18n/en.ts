@@ -132,6 +132,20 @@ export default {
         api: 'OpenAI API'
       }
     },
+    titleGeneration: {
+      ariaLabel: 'Session title generation',
+      title: 'Session title generation',
+      description: 'Generate a host-owned session title after the first valid turn completes, and allow manual overwrite from the session menu.',
+      badge: 'Host-owned',
+      enabled: 'Auto-generate after first valid turn',
+      enabledHint: 'If generation fails or is disabled, Stoa keeps the existing host title.',
+      modelLabel: 'Title model',
+      baseUrlLabel: 'Base URL',
+      baseUrlPlaceholder: 'https://api.openai.com/v1',
+      apiKeyLabel: 'API key',
+      apiKeyPlaceholder: 'sk-...',
+      hint: 'Manual regenerate from the session context menu always overwrites the current title when a new result is returned.'
+    },
     sessionProviders: 'Session providers',
     sessionProvidersRadial: 'Session providers (radial)',
     createSession: 'Create {provider} session',
@@ -215,6 +229,7 @@ export default {
     addSessionTitle: 'Add session \u00B7 long-press for radial',
     archiveSession: 'Archive {title}',
     archiveSessionTitle: 'Archive session',
+    regenerateSessionTitle: 'Regenerate title',
     restartSession: 'Restart session',
     sessionActions: 'Session actions for {title}'
   },

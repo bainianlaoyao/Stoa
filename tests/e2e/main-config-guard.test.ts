@@ -259,6 +259,7 @@ describe('E2E: Main Process Config Guard', () => {
         ['getTerminalReplay', 'sessionTerminalReplay'],
         ['sendSessionResize', 'sessionResize'],
         ['archiveSession', 'sessionArchive'],
+        ['regenerateSessionTitle', 'sessionRegenerateTitle'],
         ['restoreSession', 'sessionRestore'],
         ['restartSession', 'sessionRestart'],
         ['listArchivedSessions', 'sessionListArchived'],
@@ -407,6 +408,7 @@ describe('E2E: Main Process Config Guard', () => {
         'detectProvider',
         'detectVscode',
         'archiveSession',
+        'regenerateSessionTitle',
         'restoreSession',
         'restartSession',
         'listArchivedSessions',
@@ -494,6 +496,7 @@ describe('E2E: Main Process Config Guard', () => {
       expect(invMap.get('detectProvider')).toBe('settings:detect-provider')
       expect(invMap.get('detectVscode')).toBe('settings:detect-vscode')
       expect(invMap.get('archiveSession')).toBe('session:archive')
+      expect(invMap.get('regenerateSessionTitle')).toBe('session:regenerate-title')
       expect(invMap.get('restoreSession')).toBe('session:restore')
       expect(invMap.get('restartSession')).toBe('session:restart')
       expect(invMap.get('listArchivedSessions')).toBe('session:list-archived')

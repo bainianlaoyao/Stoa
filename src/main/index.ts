@@ -31,6 +31,7 @@ import { SessionRuntimeController } from './session-runtime-controller'
 import { SessionEventBridge } from './session-event-bridge'
 import { SessionInputRouter } from './session-input-router'
 import { launchTrackedSessionRuntime } from './launch-tracked-session-runtime'
+import { SessionTitleController } from './session-title-controller'
 import { syncObservabilitySessionsFromManager } from './observability-sync'
 import { syncManagedSidecars } from './managed-sidecar-maintenance'
 import { UpdateService } from './update-service'
@@ -60,6 +61,7 @@ let updateService: UpdateService | null = null
 let metaSessionManager: MetaSessionManager | null = null
 let evidenceStore: SessionEvidenceStore | null = null
 let hookLeaseManager: ReturnType<typeof createHookLeaseManager> | null = null
+let sessionTitleController: SessionTitleController | null = null
 const e2eWorkspaceOpenRequests: OpenWorkspaceRequest[] = []
 const metaSessionBootstrapPending = new Set<string>()
 let isQuittingAfterBridgeStop = false
@@ -578,6 +580,19 @@ app.whenReady().then(async () => {
     },
     proposals: metaSessionProposalStore
   })
+  sessionTitleController = new SessionTitleController({
+    snapshotSource: activeProjectSessionManager,
+    async updateSessionTitleGenerationContext(sessionId, patch) {
+      return await activeProjectSessionManager.updateSessionTitleGenerationContext(sessionId, patch)
+    },
+    async updateSessionTitle(sessionId, title, options) {
+      const updated = await activeProjectSessionManager.updateSessionTitle(sessionId, title, options)
+      if (updated) {
+        syncObservabilityAndPushForSession(sessionId)
+      }
+      return updated
+    }
+  })
   const compositeRuntimeController = {
     async applyProviderStatePatch(patch: import('@shared/project-session').SessionStatePatchEvent) {
       if (activeMetaSessionManager?.hasSession(patch.sessionId)) {
@@ -598,11 +613,17 @@ app.whenReady().then(async () => {
       }
 
       await activeRuntimeController.applyProviderStatePatch(patch)
+      if (patch.intent === 'agent.turn_completed') {
+        await sessionTitleController?.maybeAutoGenerateForCompletedTurn(patch.sessionId)
+      }
     }
   }
   const metaSessionCtlSecret = generateSecret()
   sessionEventBridge = new SessionEventBridge(activeProjectSessionManager, compositeRuntimeController, activeObservabilityService, {
     captureEvidence: false,
+    captureObservation(event) {
+      return sessionTitleController?.captureObservation(event)
+    },
     authorizeHookRequest: activeHookLeaseManager
       ? async (input) => await activeHookLeaseManager.authorizeHookRequest(input)
       : undefined,
@@ -1417,6 +1438,10 @@ app.whenReady().then(async () => {
 
   ipcMain.handle(IPC_CHANNELS.sessionArchive, async (_event, sessionId: string) => {
     await archiveWorkSessionWithRuntime(sessionId)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.sessionRegenerateTitle, async (_event, sessionId: string) => {
+    return await sessionTitleController?.regenerateSessionTitle(sessionId) ?? null
   })
 
   ipcMain.handle(IPC_CHANNELS.sessionRestore, async (_event, sessionId: string) => {

@@ -16,6 +16,7 @@ describe('SessionContextMenu', () => {
         position: { x: 120, y: 160 },
         ariaLabel: 'Session actions',
         items: [
+          { id: 'regenerate-title', label: 'Regenerate title' },
           { id: 'restart', label: 'Restart session' }
         ]
       }
@@ -23,6 +24,7 @@ describe('SessionContextMenu', () => {
 
     const menu = document.querySelector('[data-testid="session-context-menu"]')
     expect(menu).not.toBeNull()
+    expect(menu?.textContent).toContain('Regenerate title')
     expect(menu?.textContent).toContain('Restart session')
 
     const button = document.querySelector('[data-testid="session-context-menu.item.restart"]') as HTMLButtonElement | null

@@ -23,6 +23,10 @@ interface ObservabilityIngester {
   ingest: (event: ObservationEvent) => boolean
 }
 
+interface ObservationTap {
+  captureObservation?: (event: ObservationEvent) => Promise<void> | void
+}
+
 interface EvidenceStoreLike {
   persist: SessionEvidenceStore['persist']
   sealTurn?: SessionEvidenceStore['sealTurn']
@@ -54,6 +58,7 @@ interface SessionEventBridgeOptions {
     | { ok: false; reason: 'invalid_secret' | 'invalid_hook_context' }
   >
   getSessionBootstrapPrompt?: (sessionId: string) => string | null
+  captureObservation?: (event: ObservationEvent) => Promise<void> | void
 }
 
 export class SessionEventBridge {
@@ -75,6 +80,7 @@ export class SessionEventBridge {
   private readonly configureServerApp?: (app: Express) => void
   private readonly authorizeHookRequest?: SessionEventBridgeOptions['authorizeHookRequest']
   private readonly getSessionBootstrapPrompt?: SessionEventBridgeOptions['getSessionBootstrapPrompt']
+  private readonly observationTap?: ObservationTap
   private server: ReturnType<typeof createLocalWebhookServer> | null = null
   private port: number | null = null
 
@@ -101,6 +107,7 @@ export class SessionEventBridge {
     this.configureServerApp = options.configureServerApp
     this.authorizeHookRequest = options.authorizeHookRequest
     this.getSessionBootstrapPrompt = options.getSessionBootstrapPrompt
+    this.observationTap = options as ObservationTap
   }
 
   async start(): Promise<number> {
@@ -158,7 +165,9 @@ export class SessionEventBridge {
         const normalized = this.attachResolvedTurnId(event)
         const evidenceRef = await this.persistEvidenceIfPresent(normalized)
         this.trackTurnEvidence(normalized, evidenceRef)
-        this.observability?.ingest(this.toObservationEvent(normalized))
+        const observationEvent = this.toObservationEvent(normalized)
+        this.observability?.ingest(observationEvent)
+        await this.observationTap?.captureObservation?.(observationEvent)
         await this.controller.applyProviderStatePatch(this.toSessionStatePatch(normalized))
         await this.handleLifecycle(normalized, evidenceRef)
 

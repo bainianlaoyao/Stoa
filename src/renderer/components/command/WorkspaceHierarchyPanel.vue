@@ -44,6 +44,7 @@ const emit = defineEmits<{
   createSession: [payload: { projectId: string; type: SessionType; title: string }]
   deleteProject: [projectId: string]
   archiveSession: [sessionId: string]
+  regenerateSessionTitle: [sessionId: string]
   restartSession: [sessionId: string]
 }>()
 
@@ -115,6 +116,10 @@ function closeSessionContextMenu(): void {
 function sessionContextMenuItems(): SessionContextMenuItem[] {
   return [
     {
+      id: 'regenerate-title',
+      label: t('workspace.regenerateSessionTitle')
+    },
+    {
       id: 'restart',
       label: t('workspace.restartSession')
     }
@@ -128,6 +133,10 @@ function handleSessionContextMenuSelect(actionId: string): void {
 
   if (actionId === 'restart') {
     emit('restartSession', sessionContextMenuSessionId.value)
+  }
+
+  if (actionId === 'regenerate-title') {
+    emit('regenerateSessionTitle', sessionContextMenuSessionId.value)
   }
 
   closeSessionContextMenu()

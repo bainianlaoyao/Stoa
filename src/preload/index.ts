@@ -74,6 +74,9 @@ const api: RendererApi = {
   async archiveSession(sessionId) {
     return ipcRenderer.invoke(IPC_CHANNELS.sessionArchive, sessionId)
   },
+  async regenerateSessionTitle(sessionId) {
+    return ipcRenderer.invoke(IPC_CHANNELS.sessionRegenerateTitle, sessionId)
+  },
   async restoreSession(sessionId) {
     return ipcRenderer.invoke(IPC_CHANNELS.sessionRestore, sessionId)
   },

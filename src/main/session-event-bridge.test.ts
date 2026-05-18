@@ -309,6 +309,31 @@ describe('SessionEventBridge', () => {
     })
   })
 
+  test('forwards observation events to the optional observation tap before applying the provider patch', async () => {
+    const manager = ProjectSessionManager.createForTest()
+    const controller = {
+      applyProviderStatePatch: vi.fn(async () => {})
+    }
+    const captureObservation = vi.fn(async () => {})
+    const bridge = new SessionEventBridge(manager, controller, undefined, {
+      captureObservation
+    })
+    bridges.push(bridge)
+
+    const port = await bridge.start()
+    const secret = bridge.issueSessionSecret('session_1')
+    const response = await postEvent(port, createCanonicalEvent(), secret)
+
+    expect(response.statusCode).toBe(202)
+    expect(captureObservation).toHaveBeenCalledOnce()
+    expect(captureObservation).toHaveBeenCalledWith(expect.objectContaining({
+      scope: 'session',
+      sessionId: 'session_1',
+      projectId: 'project_1'
+    }))
+    expect(controller.applyProviderStatePatch).toHaveBeenCalledOnce()
+  })
+
   test('shared loopback server can expose meta session control routes via configureServerApp', async () => {
     const manager = ProjectSessionManager.createForTest()
     const controller = {

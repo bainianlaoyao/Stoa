@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import type {
   EvolverExecutionMode,
   EvolverInferenceProvider,
+  TitleGenerationSettings,
   WorkspaceIdeSettings
 } from '@shared/project-session'
 import { normalizeTerminalSettings, type TerminalSettings } from '@shared/terminal-settings'
@@ -13,6 +14,12 @@ export const useSettingsStore = defineStore('settings', () => {
   const shellPath = ref('')
   const terminal = ref<Partial<TerminalSettings>>({})
   const providers = ref<Record<string, string>>({})
+  const titleGeneration = ref<TitleGenerationSettings>({
+    enabled: false,
+    apiKey: '',
+    baseUrl: 'https://api.openai.com/v1',
+    model: 'gpt-5.4-mini'
+  })
   const workspaceIde = ref<WorkspaceIdeSettings>({ id: 'vscode', executablePath: '' })
   const evolverInferenceProvider = ref<EvolverInferenceProvider>('claude-code')
   const evolverExecutionMode = ref<EvolverExecutionMode>('workspace-shell')
@@ -26,6 +33,7 @@ export const useSettingsStore = defineStore('settings', () => {
       shellPath.value = settings.shellPath
       terminal.value = { ...settings.terminal ?? {} }
       providers.value = { ...settings.providers }
+      titleGeneration.value = { ...settings.titleGeneration }
       workspaceIde.value = { ...settings.workspaceIde }
       if (settings.evolverInferenceProvider === 'claude-code') {
         evolverInferenceProvider.value = settings.evolverInferenceProvider
@@ -52,6 +60,8 @@ export const useSettingsStore = defineStore('settings', () => {
       terminal.value = { ...(value as Partial<TerminalSettings>) }
     } else if (key === 'providers' && typeof value === 'object' && value !== null) {
       providers.value = { ...(value as Record<string, string>) }
+    } else if (key === 'titleGeneration' && isTitleGenerationSettings(value)) {
+      titleGeneration.value = { ...value }
     } else if (key === 'workspaceIde' && isWorkspaceIdeSettings(value)) {
       workspaceIde.value = { ...value }
     } else if (
@@ -118,10 +128,24 @@ export const useSettingsStore = defineStore('settings', () => {
       && typeof value.executablePath === 'string'
   }
 
+  function isTitleGenerationSettings(value: unknown): value is TitleGenerationSettings {
+    return typeof value === 'object'
+      && value !== null
+      && 'enabled' in value
+      && 'apiKey' in value
+      && 'baseUrl' in value
+      && 'model' in value
+      && typeof value.enabled === 'boolean'
+      && typeof value.apiKey === 'string'
+      && typeof value.baseUrl === 'string'
+      && typeof value.model === 'string'
+  }
+
   return {
     shellPath,
     terminal,
     providers,
+    titleGeneration,
     workspaceIde,
     evolverInferenceProvider,
     evolverExecutionMode,

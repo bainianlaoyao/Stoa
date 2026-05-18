@@ -87,6 +87,7 @@ function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
     setActiveProject: vi.fn().mockResolvedValue(undefined),
     setActiveSession: vi.fn().mockResolvedValue(undefined),
     archiveSession: vi.fn().mockResolvedValue(undefined),
+    regenerateSessionTitle: vi.fn().mockResolvedValue(null),
     restoreSession: vi.fn().mockResolvedValue(undefined),
     listArchivedSessions: vi.fn().mockResolvedValue([]),
     getTerminalReplay: vi.fn().mockResolvedValue(''),
@@ -107,6 +108,12 @@ function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
       shellPath: '',
       terminal: {},
       providers: {},
+      titleGeneration: {
+        enabled: false,
+        apiKey: '',
+        baseUrl: 'https://api.openai.com/v1',
+        model: 'gpt-5.4-mini'
+      },
       evolverInferenceProvider: 'claude-code',
       evolverExecutionMode: 'workspace-shell',
       workspaceIde: { id: 'vscode', executablePath: '' },

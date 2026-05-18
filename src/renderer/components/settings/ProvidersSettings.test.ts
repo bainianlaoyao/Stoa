@@ -25,6 +25,7 @@ function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
     createSession: vi.fn().mockResolvedValue(null),
     openWorkspace: vi.fn().mockResolvedValue(undefined),
     archiveSession: vi.fn().mockResolvedValue(undefined),
+    regenerateSessionTitle: vi.fn().mockResolvedValue(null),
     restoreSession: vi.fn().mockResolvedValue(undefined),
     listArchivedSessions: vi.fn().mockResolvedValue([]),
 
@@ -56,6 +57,12 @@ function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
       shellPath: '',
       terminal: {},
       providers: {},
+      titleGeneration: {
+        enabled: false,
+        apiKey: '',
+        baseUrl: 'https://api.openai.com/v1',
+        model: 'gpt-5.4-mini'
+      },
       workspaceIde: { id: 'vscode', executablePath: '' },
       evolverInferenceProvider: 'claude-code',
       evolverExecutionMode: 'workspace-shell',
@@ -184,6 +191,50 @@ describe('ProvidersSettings', () => {
     const trigger = wrapper.find('[data-settings-field="evolver-inference-provider"] [data-testid="glass-listbox-button"]')
 
     expect(trigger.text()).toContain('Claude Code')
+  })
+
+  it('renders the session title generation card with user-supplied API fields', () => {
+    const wrapper = mountProvidersSettings()
+    const card = wrapper.find(`[aria-label="${providerMessages.titleGeneration.ariaLabel}"]`)
+
+    expect(card.exists()).toBe(true)
+    expect(card.text()).toContain(providerMessages.titleGeneration.title)
+    expect(card.text()).toContain(providerMessages.titleGeneration.description)
+    expect(card.text()).toContain(providerMessages.titleGeneration.badge)
+    expect(card.text()).toContain(providerMessages.titleGeneration.hint)
+    expect(wrapper.find('[data-settings-field="title-generation-enabled"]').exists()).toBe(true)
+    expect(wrapper.find('[data-settings-field="title-generation-model"]').exists()).toBe(true)
+    expect(wrapper.find('[data-settings-field="title-generation-base-url"]').exists()).toBe(true)
+    expect(wrapper.find('[data-settings-field="title-generation-api-key"]').exists()).toBe(true)
+  })
+
+  it('updates title generation API fields through the shared settings store', async () => {
+    const wrapper = mountProvidersSettings()
+    const store = useSettingsStore()
+    const updateSetting = vi.spyOn(store, 'updateSetting').mockResolvedValue(undefined)
+
+    const inputs = wrapper.findAll('[data-testid="form-input"]')
+    const baseUrlInput = inputs[0]
+    const apiKeyInput = inputs[1]
+
+    expect(baseUrlInput).toBeDefined()
+    expect(apiKeyInput).toBeDefined()
+
+    await baseUrlInput!.setValue('https://example.test/v1')
+    await apiKeyInput!.setValue('sk-user-title')
+
+    expect(updateSetting).toHaveBeenNthCalledWith(1, 'titleGeneration', {
+      enabled: false,
+      apiKey: '',
+      baseUrl: 'https://example.test/v1',
+      model: 'gpt-5.4-mini'
+    })
+    expect(updateSetting).toHaveBeenNthCalledWith(2, 'titleGeneration', {
+      enabled: false,
+      apiKey: 'sk-user-title',
+      baseUrl: 'https://api.openai.com/v1',
+      model: 'gpt-5.4-mini'
+    })
   })
 
   it('renders Browse button for each provider', () => {

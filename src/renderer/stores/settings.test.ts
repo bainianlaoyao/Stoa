@@ -13,6 +13,7 @@ function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
     createSession: vi.fn().mockResolvedValue(null),
     openWorkspace: vi.fn().mockResolvedValue(undefined),
     archiveSession: vi.fn().mockResolvedValue(undefined),
+    regenerateSessionTitle: vi.fn().mockResolvedValue(null),
     restoreSession: vi.fn().mockResolvedValue(undefined),
     listArchivedSessions: vi.fn().mockResolvedValue([]),
 
@@ -36,6 +37,12 @@ function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
       shellPath: '',
       terminal: {},
       providers: {},
+      titleGeneration: {
+        enabled: false,
+        apiKey: '',
+        baseUrl: 'https://api.openai.com/v1',
+        model: 'gpt-5.4-mini'
+      },
       evolverInferenceProvider: 'claude-code',
       evolverExecutionMode: 'workspace-shell',
       workspaceIde: { id: 'vscode', executablePath: '' },
@@ -116,6 +123,12 @@ describe('useSettingsStore', () => {
         shellPath: '',
         terminal: {},
         providers: {},
+        titleGeneration: {
+          enabled: false,
+          apiKey: '',
+          baseUrl: 'https://api.openai.com/v1',
+          model: 'gpt-5.4-mini'
+        },
         evolverInferenceProvider: 'codex',
         evolverExecutionMode: 'workspace-shell',
         workspaceIde: { id: 'vscode', executablePath: '' },
@@ -150,5 +163,62 @@ describe('useSettingsStore', () => {
 
     expect(setSetting).toHaveBeenCalledWith('evolverExecutionMode', 'workspace-shell')
     expect(store.evolverExecutionMode).toBe('workspace-shell')
+  })
+
+  it('hydrates title generation settings from the runtime contract', async () => {
+    window.stoa = createStoaMock({
+      getSettings: vi.fn().mockResolvedValue({
+        shellPath: '',
+        terminal: {},
+        providers: {},
+        titleGeneration: {
+          enabled: true,
+          apiKey: 'sk-title-user',
+          baseUrl: 'https://example.test/v1',
+          model: 'gpt-5-mini'
+        },
+        evolverInferenceProvider: 'claude-code',
+        evolverExecutionMode: 'workspace-shell',
+        workspaceIde: { id: 'vscode', executablePath: '' },
+        claudeDangerouslySkipPermissions: false,
+        locale: 'en'
+      })
+    })
+    const store = useSettingsStore()
+
+    await store.loadSettings()
+
+    expect(store.titleGeneration).toEqual({
+      enabled: true,
+      apiKey: 'sk-title-user',
+      baseUrl: 'https://example.test/v1',
+      model: 'gpt-5-mini'
+    })
+  })
+
+  it('persists title generation updates through setSetting', async () => {
+    const setSetting = vi.fn().mockResolvedValue(undefined)
+    window.stoa = createStoaMock({ setSetting })
+    const store = useSettingsStore()
+
+    await store.updateSetting('titleGeneration', {
+      enabled: true,
+      apiKey: 'sk-title-user',
+      baseUrl: 'https://example.test/v1',
+      model: 'gpt-5-mini'
+    })
+
+    expect(setSetting).toHaveBeenCalledWith('titleGeneration', {
+      enabled: true,
+      apiKey: 'sk-title-user',
+      baseUrl: 'https://example.test/v1',
+      model: 'gpt-5-mini'
+    })
+    expect(store.titleGeneration).toEqual({
+      enabled: true,
+      apiKey: 'sk-title-user',
+      baseUrl: 'https://example.test/v1',
+      model: 'gpt-5-mini'
+    })
   })
 })
