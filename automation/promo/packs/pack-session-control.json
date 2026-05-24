@@ -1,0 +1,16 @@
+{
+  "id": "pack-session-control",
+  "title": "Session control",
+  "goal": "Explain create, status, and recovery behavior.",
+  "pointIds": [
+    "workflow-new-session",
+    "closeup-session-status-permission-block",
+    "workflow-session-archive-to-restore",
+    "closeup-terminal-meta-explanation"
+  ],
+  "platforms": [
+    "x-thread",
+    "x-carousel"
+  ],
+  "note": "Mix one broad workflow point with hard proof closeups."
+}

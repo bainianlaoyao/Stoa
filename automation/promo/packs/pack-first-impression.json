@@ -1,0 +1,17 @@
+{
+  "id": "pack-first-impression",
+  "title": "First impression",
+  "goal": "Explain what Stoa is in one quick pass.",
+  "pointIds": [
+    "overview-app-shell",
+    "overview-workspace-multi-session",
+    "overview-provider-mix",
+    "overview-terminal-live-output"
+  ],
+  "platforms": [
+    "x-thread",
+    "x-carousel",
+    "github-social"
+  ],
+  "note": "Use when the post needs fast product comprehension before detail."
+}

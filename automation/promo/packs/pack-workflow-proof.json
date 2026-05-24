@@ -1,0 +1,16 @@
+{
+  "id": "pack-workflow-proof",
+  "title": "Workflow proof",
+  "goal": "Prove the product with full-path workflow screenshots instead of isolated UI.",
+  "pointIds": [
+    "workflow-new-project",
+    "workflow-project-create-to-visible",
+    "workflow-new-session",
+    "workflow-session-switching"
+  ],
+  "platforms": [
+    "x-thread",
+    "x-carousel"
+  ],
+  "note": "Use when the post needs end-to-end proof that this is a working desktop flow."
+}

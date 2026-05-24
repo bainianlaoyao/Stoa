@@ -1,15 +1,23 @@
 import { existsSync } from 'node:fs'
 import { readFile, readdir, writeFile } from 'node:fs/promises'
-import { basename, extname, join } from 'node:path'
+import { basename, join } from 'node:path'
+import { collectBundleAssets } from './asset-bundles'
 import { ensurePromoScaffold } from './promo-paths'
-import type { PromoAsset, PromoFactPack, PromoPaths, PromoPostHistoryEntry, PromoRepoFact } from './types'
-
-const ASSET_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.mp4', '.mov'])
+import type {
+  PromoFactPack,
+  PromoPackDefinition,
+  PromoPaths,
+  PromoPostHistoryEntry,
+  PromoRepoFact
+} from './types'
 
 export async function buildFactPack(repoRoot: string): Promise<PromoFactPack> {
   const paths = await ensurePromoScaffold(repoRoot)
   const repoFacts = await collectRepoFacts(repoRoot)
-  const assets = await collectAssets(paths.assetsDir)
+  const assets = await collectBundleAssets({
+    bundleRootDir: paths.assetsDir
+  })
+  const packs = await readPackDefinitions(paths)
   const recentPosts = await readRecentPosts(paths.postHistoryPath)
 
   return {
@@ -20,6 +28,7 @@ export async function buildFactPack(repoRoot: string): Promise<PromoFactPack> {
     },
     repoFacts,
     assets,
+    packs,
     recentPosts
   }
 }
@@ -60,32 +69,6 @@ async function collectRepoFacts(repoRoot: string): Promise<PromoRepoFact[]> {
   return facts
 }
 
-async function collectAssets(assetsDir: string): Promise<PromoAsset[]> {
-  if (!existsSync(assetsDir)) {
-    return []
-  }
-
-  const entries = (await readdir(assetsDir)).sort()
-  const assets: PromoAsset[] = []
-
-  for (const entry of entries) {
-    const extension = extname(entry).toLowerCase()
-    if (!ASSET_EXTENSIONS.has(extension)) {
-      continue
-    }
-
-    const absolutePath = join(assetsDir, entry)
-    const notePath = join(assetsDir, `${basename(entry, extension)}.md`)
-    assets.push({
-      fileName: entry,
-      absolutePath,
-      note: existsSync(notePath) ? (await readFile(notePath, 'utf8')).trim() || null : null
-    })
-  }
-
-  return assets
-}
-
 async function readRecentPosts(postHistoryPath: string): Promise<PromoPostHistoryEntry[]> {
   if (!existsSync(postHistoryPath)) {
     return []
@@ -93,6 +76,34 @@ async function readRecentPosts(postHistoryPath: string): Promise<PromoPostHistor
 
   const parsed = JSON.parse(await readFile(postHistoryPath, 'utf8')) as PromoPostHistoryEntry[]
   return Array.isArray(parsed) ? parsed.slice(-10) : []
+}
+
+async function readPackDefinitions(paths: PromoPaths): Promise<PromoPackDefinition[]> {
+  if (!existsSync(paths.packsDir)) {
+    return []
+  }
+
+  const entries = (await readdir(paths.packsDir, { withFileTypes: true }))
+    .filter((entry) => entry.isFile() && entry.name.endsWith('.json'))
+    .sort((left, right) => left.name.localeCompare(right.name))
+
+  const packs: PromoPackDefinition[] = []
+  for (const entry of entries) {
+    const parsed = JSON.parse(await readFile(join(paths.packsDir, entry.name), 'utf8')) as Partial<PromoPackDefinition>
+    if (!parsed.id || !parsed.title || !parsed.goal || !Array.isArray(parsed.pointIds) || !Array.isArray(parsed.platforms)) {
+      continue
+    }
+    packs.push({
+      id: parsed.id,
+      title: parsed.title,
+      goal: parsed.goal,
+      pointIds: [...parsed.pointIds],
+      platforms: [...parsed.platforms],
+      note: typeof parsed.note === 'string' ? parsed.note : null
+    })
+  }
+
+  return packs
 }
 
 function inferProjectName(repoFacts: PromoRepoFact[], repoRoot: string): string {

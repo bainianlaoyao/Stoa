@@ -1,0 +1,16 @@
+{
+  "id": "pack-closeup-details",
+  "title": "Closeup details",
+  "goal": "Show the product through tight, human-readable detail shots.",
+  "pointIds": [
+    "closeup-provider-floating-card",
+    "closeup-active-session-indicator",
+    "closeup-terminal-meta-bar",
+    "closeup-project-delete-confirm"
+  ],
+  "platforms": [
+    "x-thread",
+    "x-carousel"
+  ],
+  "note": "Use when the post is about interaction craft rather than broad overview."
+}

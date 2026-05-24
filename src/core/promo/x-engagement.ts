@@ -114,11 +114,12 @@ export async function publishPostCandidate(
       group_title: 'stoa-promo-post'
     })
 
-    const uploadFiles = input.candidate.assetFileNames
-      .map((fileName) => resolvePromoAssetPath({
+    const uploadFiles = input.candidate.assetPaths
+      .slice(0, 4)
+      .map((assetPath) => resolvePromoAssetPath({
         repoRoot: input.repoRoot,
         assetsDir: input.assetsDir,
-        assetReference: fileName
+        assetReference: assetPath
       }))
       .filter((path): path is string => !!path)
 

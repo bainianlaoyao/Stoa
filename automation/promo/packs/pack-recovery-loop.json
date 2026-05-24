@@ -1,0 +1,16 @@
+{
+  "id": "pack-recovery-loop",
+  "title": "Recovery loop",
+  "goal": "Show that archive and restore are first-class workflow behaviors.",
+  "pointIds": [
+    "workflow-archive-restore",
+    "workflow-session-archive-to-restore",
+    "workflow-restore-return",
+    "closeup-workspace-archive-action"
+  ],
+  "platforms": [
+    "x-thread",
+    "x-carousel"
+  ],
+  "note": "Use when the post is about continuity, restoration, and session hygiene."
+}

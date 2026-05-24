@@ -8,8 +8,9 @@ describe('claude-cli', () => {
       args: string[]
       cwd: string
       timeoutMs: number
+      stdin?: string
     }) => ({
-      stdout: '{"structured_output":{"posts":[{"id":"post_1","topic":"context loss","text":"I kept losing context.","publishToday":true,"assetFileNames":[]}],"replies":[]}}',
+      stdout: '{"structured_output":{"posts":[{"id":"post_1","topic":"context loss","text":"I kept losing context.","publishToday":true,"assetPaths":[]}],"replies":[]}}',
       stderr: ''
     }))
 
@@ -42,12 +43,15 @@ describe('claude-cli', () => {
       args: string[]
       cwd: string
       timeoutMs: number
+      stdin?: string
     }>>)[0]?.[0]
     expect(invocation).toBeDefined()
     expect(invocation?.args).toContain('-p')
+    expect(invocation?.args).not.toContain('Generate today output.')
     expect(invocation?.args).toContain('--json-schema')
     expect(invocation?.args).toContain('--output-format')
     expect(invocation?.args).toContain('json')
+    expect(invocation?.stdin).toBe('Generate today output.')
     expect(result).toMatchObject({
       posts: [{ id: 'post_1' }],
       replies: []

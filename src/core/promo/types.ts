@@ -2,13 +2,19 @@ export interface PromoPaths {
   repoRoot: string
   root: string
   assetsDir: string
+  generatedAssetsDir: string
+  packsDir: string
   configDir: string
   outDir: string
   stateDir: string
   searchQueriesPath: string
   settingsPath: string
   voicePath: string
+  manualShotListPath: string
+  assetManifestPath: string
   factPackPath: string
+  weekPlanJsonPath: string
+  weekPlanMarkdownPath: string
   todayPostsJsonPath: string
   todayPostsMarkdownPath: string
   replyQueueJsonPath: string
@@ -23,9 +29,31 @@ export interface PromoRepoFact {
   content: string
 }
 
+export type PromoAssetKind = 'screenshot' | 'gif' | 'video' | 'social-preview' | 'fact-card'
+export type PromoAssetCategory = 'overview' | 'workflow' | 'closeup' | 'meta' | 'trust' | 'pack'
+export type PromoAssetSource = 'readme-sync' | 'electron-capture' | 'manual-capture' | 'fact-card-generator' | 'derived-pack'
+
 export interface PromoAsset {
   fileName: string
+  relativePath: string
   absolutePath: string
+  pointId: string
+  note: string | null
+  alt: string | null
+  category: PromoAssetCategory
+  scene: string
+  kind: PromoAssetKind
+  tags: string[]
+  source: PromoAssetSource
+  derivesFrom: string[]
+}
+
+export interface PromoPackDefinition {
+  id: string
+  title: string
+  goal: string
+  pointIds: string[]
+  platforms: string[]
   note: string | null
 }
 
@@ -66,6 +94,7 @@ export interface PromoFactPack {
   }
   repoFacts: PromoRepoFact[]
   assets: PromoAsset[]
+  packs: PromoPackDefinition[]
   recentPosts: PromoPostHistoryEntry[]
 }
 
@@ -82,7 +111,8 @@ export interface PromoPostCandidate {
   topic: string
   text: string
   publishToday: boolean
-  assetFileNames: string[]
+  packId?: string | null
+  assetPaths: string[]
 }
 
 export interface PromoReplyCandidate {
@@ -99,6 +129,22 @@ export interface PromoModelOutput {
   posts: PromoPostCandidate[]
   replies: PromoReplyCandidate[]
   notes: string[]
+}
+
+export interface PromoWeekPlanDay {
+  date: string
+  topic: string
+  angle: string
+  whyNow: string
+  packId?: string | null
+  assetPaths: string[]
+  seedText: string
+}
+
+export interface PromoWeekPlanArtifact {
+  generatedAt: string
+  notes: string[]
+  days: PromoWeekPlanDay[]
 }
 
 export interface PromoTodayPostsArtifact {
@@ -153,4 +199,3 @@ export interface WebbridgeClient {
   command: <T = unknown>(session: string, action: string, args?: Record<string, unknown>) => Promise<T>
   closeSession: (session: string) => Promise<void>
 }
-

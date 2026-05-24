@@ -1,3 +1,5 @@
+/// <reference lib="dom" />
+
 import { mkdir } from 'node:fs/promises'
 import { expect, type ElectronApplication, type Locator, type Page } from '@playwright/test'
 import type { SessionType } from '@shared/project-session'

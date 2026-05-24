@@ -1,0 +1,16 @@
+{
+  "id": "pack-launch-story",
+  "title": "Launch story",
+  "goal": "Tell the builder story from pain to working product.",
+  "pointIds": [
+    "overview-solution-style",
+    "overview-app-shell",
+    "workflow-new-session",
+    "trust-builder-led-shipping"
+  ],
+  "platforms": [
+    "x-thread",
+    "github-social"
+  ],
+  "note": "Use for intro threads, pinned posts, and launch-context storytelling."
+}

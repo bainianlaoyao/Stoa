@@ -164,6 +164,10 @@ At this stage, improvements are allowed to be breaking changes by default. The p
 - [State Storage and Recovery](docs/operations/state-storage-and-recovery.md)
 - [Release and Update Runbook](docs/operations/release-and-update-runbook.md)
 
+## Community
+
+Stoa actively recognizes and participates in the [LINUX DO community](https://linux.do).
+
 ## FAQ
 
 ### What if Stoa cannot find a CLI tool?

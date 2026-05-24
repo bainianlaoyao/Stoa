@@ -1,0 +1,16 @@
+{
+  "id": "pack-meta-session",
+  "title": "Meta session",
+  "goal": "Explain the meta-session surface as a distinct product idea.",
+  "pointIds": [
+    "meta-meta-session-overview",
+    "meta-meta-session-create-flow",
+    "meta-meta-session-list-and-inspector",
+    "meta-meta-session-action-panel"
+  ],
+  "platforms": [
+    "x-thread",
+    "x-carousel"
+  ],
+  "note": "Use when you want to explain how Stoa keeps coordination visible."
+}

@@ -2,6 +2,7 @@
 import { computed, shallowRef, watch } from 'vue'
 import TerminalViewport from '@renderer/components/TerminalViewport.vue'
 import type { ProjectHierarchyNode } from '@renderer/stores/workspaces'
+import type { ActiveSessionViewModel } from '@shared/observability'
 import type {
   OpenWorkspaceRequest,
   ProjectSummary,
@@ -20,8 +21,10 @@ const props = withDefaults(defineProps<{
   hierarchy: ProjectHierarchyNode[]
   activeProject: ProjectSummary | null
   activeSession: SessionSummary | null
+  activeSessionViewModel?: ActiveSessionViewModel | null
   visible?: boolean
 }>(), {
+  activeSessionViewModel: null,
   visible: true
 })
 
@@ -112,6 +115,7 @@ const activeEphemeralEntry = computed(() => {
       <TerminalViewport
         :project="entry.project"
         :session="entry.session"
+        :active-view-model="entry.session.id === activePersistentSessionId ? props.activeSessionViewModel : null"
         :visible="props.visible && entry.session.id === activePersistentSessionId"
         @open-workspace="emit('openWorkspace', $event)"
       />
@@ -128,6 +132,7 @@ const activeEphemeralEntry = computed(() => {
       <TerminalViewport
         :project="activeEphemeralEntry?.project ?? props.activeProject"
         :session="activeEphemeralSession"
+        :active-view-model="props.activeSessionViewModel"
         :visible="props.visible"
         @open-workspace="emit('openWorkspace', $event)"
       />

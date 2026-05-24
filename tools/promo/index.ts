@@ -5,9 +5,12 @@ import { readFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { appendPostHistory, appendReplyHistory } from '../../src/core/promo/history-store'
+import { captureFinalPromoAssets as defaultCaptureFinalPromoAssetsCore } from '../../src/core/promo/final-asset-capture-runner'
 import { ensurePromoScaffold } from '../../src/core/promo/promo-paths'
 import { createWebbridgeClient } from '../../src/core/promo/webbridge-client'
 import { runDailyOrchestrator as defaultRunDailyOrchestratorCore } from '../../src/core/promo/daily-orchestrator'
+import { buildPromoAssets as defaultBuildPromoAssetsCore } from '../../src/core/promo/asset-factory'
+import { planPromoWeek as defaultPlanPromoWeekCore } from '../../src/core/promo/week-planner'
 import {
   publishPostCandidate,
   sendReplyCandidate,
@@ -26,6 +29,9 @@ interface WritableLike {
 interface RunDependencies {
   repoRoot?: string
   smokeCheck?: () => Promise<unknown>
+  buildAssets?: () => Promise<unknown>
+  captureFinalAssets?: (input: { repoRoot: string; bundle?: string | null }) => Promise<unknown>
+  planWeek?: () => Promise<unknown>
   runDailyOrchestrator?: (input: { repoRoot: string; publish: boolean }) => Promise<unknown>
   publishQueuedPosts?: (input: { repoRoot: string; mode: 'all' | 'id'; postId?: string }) => Promise<unknown>
   previewOrSendReply?: (input: { repoRoot: string; replyId: string; optionIndex: number; confirm: boolean }) => Promise<unknown>
@@ -38,6 +44,10 @@ export const USAGE_TEXT = [
   '',
   'Commands:',
   '  smoke',
+  '  build-assets',
+  '  capture-final-assets [--bundle <bundleName>]',
+  '  plan-week',
+  '  run-full [--publish]',
   '  run-daily [--publish]',
   '  publish-posts [--all|--id <postId>]',
   '  send-reply --id <replyId> --option <n> [--yes]'
@@ -59,6 +69,41 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
     if (command === 'smoke') {
       const smokeCheck = deps.smokeCheck ?? (async () => await defaultSmokeCheck(repoRoot))
       stdout.write(`${JSON.stringify(await smokeCheck(), null, 2)}\n`)
+      return 0
+    }
+
+    if (command === 'build-assets') {
+      const buildAssets = deps.buildAssets ?? (async () => await defaultBuildAssets(repoRoot))
+      stdout.write(`${JSON.stringify(await buildAssets(), null, 2)}\n`)
+      return 0
+    }
+
+    if (command === 'capture-final-assets') {
+      const bundle = parseFlagValue(rest, '--bundle')
+      const captureFinalAssets = deps.captureFinalAssets ?? (async (input: { repoRoot: string; bundle?: string | null }) => {
+        return await defaultCaptureFinalAssets(input.repoRoot, input.bundle ?? null)
+      })
+      stdout.write(`${JSON.stringify(await captureFinalAssets({ repoRoot, bundle }), null, 2)}\n`)
+      return 0
+    }
+
+    if (command === 'plan-week') {
+      const planWeek = deps.planWeek ?? (async () => await defaultPlanWeek(repoRoot))
+      stdout.write(`${JSON.stringify(await planWeek(), null, 2)}\n`)
+      return 0
+    }
+
+    if (command === 'run-full') {
+      const publish = hasFlag(rest, '--publish')
+      const buildAssets = deps.buildAssets ?? (async () => await defaultBuildAssets(repoRoot))
+      const planWeek = deps.planWeek ?? (async () => await defaultPlanWeek(repoRoot))
+      const runDailyOrchestrator = deps.runDailyOrchestrator ?? (async (input: { repoRoot: string; publish: boolean }) => {
+        return await defaultRunDaily(input.repoRoot, input.publish)
+      })
+      const assets = await buildAssets()
+      const week = await planWeek()
+      const daily = await runDailyOrchestrator({ repoRoot, publish })
+      stdout.write(`${JSON.stringify({ assets, week, daily }, null, 2)}\n`)
       return 0
     }
 
@@ -146,6 +191,24 @@ async function defaultRunDaily(repoRoot: string, publish: boolean): Promise<unkn
     ...result,
     published
   }
+}
+
+async function defaultBuildAssets(repoRoot: string): Promise<unknown> {
+  await ensurePromoScaffold(repoRoot)
+  return await defaultBuildPromoAssetsCore({ repoRoot })
+}
+
+async function defaultCaptureFinalAssets(repoRoot: string, bundle?: string | null): Promise<unknown> {
+  await ensurePromoScaffold(repoRoot)
+  return await defaultCaptureFinalPromoAssetsCore({
+    repoRoot,
+    bundle: bundle ?? null
+  })
+}
+
+async function defaultPlanWeek(repoRoot: string): Promise<unknown> {
+  await ensurePromoScaffold(repoRoot)
+  return await defaultPlanPromoWeekCore({ repoRoot })
 }
 
 async function defaultPublishQueuedPosts(

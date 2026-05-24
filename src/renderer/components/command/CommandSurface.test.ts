@@ -256,7 +256,7 @@ describe('CommandSurface', () => {
     expect(statusDot.attributes('data-tone')).toBe('success')
   })
 
-  it('renders blocked observability in the row dot without adding a terminal top bar', () => {
+  it('renders blocked observability in the row dot and exposes a terminal top bar for the active session', () => {
     const pinia = createPinia()
     setActivePinia(pinia)
     const store = useWorkspaceStore(pinia)
@@ -291,8 +291,8 @@ describe('CommandSurface', () => {
 
     expect(statusDot.attributes('data-phase')).toBe('blocked')
     expect(statusDot.attributes('data-tone')).toBe('warning')
-    expect(wrapper.find('[data-testid="terminal-status-bar"]').exists()).toBe(false)
-    expect(terminalViewport.find('[data-testid="terminal-status-bar"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="terminal-status-bar"]').exists()).toBe(true)
+    expect(terminalViewport.find('[data-testid="terminal-status-bar"]').exists()).toBe(true)
   })
 
   it('forwards archiveSession from WorkspaceHierarchyPanel', async () => {

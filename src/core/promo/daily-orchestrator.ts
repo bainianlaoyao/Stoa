@@ -1,12 +1,17 @@
+import { existsSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
 import { buildFactPack, writeFactPackArtifact } from './fact-pack'
 import { appendRunLog, loadPromoHistory } from './history-store'
+import { expandPostCandidatePacks, summarizePacksForPrompt } from './pack-expansion'
 import { ensurePromoScaffold } from './promo-paths'
+import { resolvePromoDateParts } from './promo-time'
 import type {
   PromoModelOutput,
   PromoOrchestratorResult,
   PromoPaths,
-  PromoSearchMatch
+  PromoSearchMatch,
+  PromoWeekPlanArtifact,
+  PromoWeekPlanDay
 } from './types'
 import { createClaudeStructuredOutputClient } from './claude-cli'
 import { createWebbridgeClient } from './webbridge-client'
@@ -28,6 +33,7 @@ export async function runDailyOrchestrator(input: {
     searchMatches: PromoSearchMatch[]
     voicePrompt: string
     historySummary: string[]
+    weekPlanFocus: PromoWeekPlanDay | null
   }) => Promise<PromoModelOutput>
 }): Promise<PromoOrchestratorResult> {
   const paths = await ensurePromoScaffold(input.repoRoot)
@@ -41,8 +47,14 @@ export async function runDailyOrchestrator(input: {
     queries?: string[]
   }
   const settings = JSON.parse(await readFile(paths.settingsPath, 'utf8')) as {
+    defaultPostsToPublish?: number
     defaultSearchLimit?: number
+    timeZone?: string
   }
+  const promoDate = resolvePromoDateParts({
+    nowIso: generatedAt,
+    timeZone: settings.timeZone
+  })
 
   let searchMatches: PromoSearchMatch[] = []
   try {
@@ -56,6 +68,7 @@ export async function runDailyOrchestrator(input: {
     searchMatches = []
   }
 
+  const weekPlanFocus = await loadTodayWeekPlanFocus(paths, promoDate.date)
   const generateStructured = input.generateStructured ?? defaultGenerateStructured
   const structured = await generateStructured({
     repoRoot: input.repoRoot,
@@ -63,13 +76,18 @@ export async function runDailyOrchestrator(input: {
     factPack,
     searchMatches,
     voicePrompt,
-    historySummary: history.posts.map((post) => post.topic)
+    historySummary: history.posts.map((post) => post.topic),
+    weekPlanFocus
   })
+  const posts = limitPublishTodayPosts(
+    expandPostCandidatePacks(structured.posts, factPack),
+    settings.defaultPostsToPublish ?? 1
+  )
 
   const todayArtifact = {
     generatedAt,
     notes: structured.notes,
-    posts: structured.posts
+    posts
   }
   const replyArtifact = {
     generatedAt,
@@ -92,7 +110,7 @@ export async function runDailyOrchestrator(input: {
 
   return {
     generatedAt,
-    posts: structured.posts,
+    posts,
     replies: structured.replies,
     notes: structured.notes,
     outputPaths: {
@@ -102,6 +120,25 @@ export async function runDailyOrchestrator(input: {
       replyQueueMarkdownPath: paths.replyQueueMarkdownPath
     }
   }
+}
+
+function limitPublishTodayPosts<T extends PromoModelOutput['posts'][number]>(posts: T[], maxPublished: number): T[] {
+  const publishLimit = Math.max(0, maxPublished)
+  let publishedCount = 0
+
+  return posts.map((post) => {
+    if (!post.publishToday) {
+      return post
+    }
+    if (publishedCount < publishLimit) {
+      publishedCount += 1
+      return post
+    }
+    return {
+      ...post,
+      publishToday: false
+    }
+  })
 }
 
 function renderTodayPostsMarkdown(input: {
@@ -179,6 +216,7 @@ async function defaultGenerateStructured(input: {
   searchMatches: PromoSearchMatch[]
   voicePrompt: string
   historySummary: string[]
+  weekPlanFocus: PromoWeekPlanDay | null
 }): Promise<PromoModelOutput> {
   const client = createClaudeStructuredOutputClient({})
   return await client.generateObject<PromoModelOutput>({
@@ -190,9 +228,13 @@ async function defaultGenerateStructured(input: {
       'Posts should be short English builder-account posts about Stoa.',
       'Replies should only be drafted when search matches show real pain from likely AI CLI users.',
       'Avoid hype and obvious ads.',
+      'Prefer choosing a reusable packId from factPack.packs when one fits the post.',
+      'Always return assetPaths, but it is valid to leave assetPaths empty when packId is set and the system can expand it.',
       '',
       `Now: ${input.now}`,
       `Recent topics: ${JSON.stringify(input.historySummary)}`,
+      `Week plan focus: ${JSON.stringify(input.weekPlanFocus)}`,
+      `Pack summary: ${JSON.stringify(summarizePacksForPrompt(input.factPack.packs))}`,
       `Fact pack: ${JSON.stringify(input.factPack)}`,
       `Search matches: ${JSON.stringify(input.searchMatches)}`
     ].join('\n'),
@@ -208,12 +250,13 @@ async function defaultGenerateStructured(input: {
               topic: { type: 'string' },
               text: { type: 'string' },
               publishToday: { type: 'boolean' },
-              assetFileNames: {
+              packId: { type: ['string', 'null'] },
+              assetPaths: {
                 type: 'array',
                 items: { type: 'string' }
               }
             },
-            required: ['id', 'topic', 'text', 'publishToday', 'assetFileNames']
+            required: ['id', 'topic', 'text', 'publishToday', 'assetPaths']
           }
         },
         replies: {
@@ -245,3 +288,11 @@ async function defaultGenerateStructured(input: {
   })
 }
 
+async function loadTodayWeekPlanFocus(paths: PromoPaths, today: string): Promise<PromoWeekPlanDay | null> {
+  if (!existsSync(paths.weekPlanJsonPath)) {
+    return null
+  }
+
+  const parsed = JSON.parse(await readFile(paths.weekPlanJsonPath, 'utf8')) as PromoWeekPlanArtifact
+  return parsed.days.find((day) => day.date === today) ?? null
+}

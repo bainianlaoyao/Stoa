@@ -1,4 +1,7 @@
-import { describe, expect, test, vi } from 'vitest'
+import { mkdir, rm, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import { afterEach, describe, expect, test, vi } from 'vitest'
+import { createTestTempDir } from '../../../testing/test-temp'
 import type { PromoPostCandidate, PromoReplyCandidate } from './types'
 import type { WebbridgeClient } from './types'
 import {
@@ -8,7 +11,13 @@ import {
   smokeCheckXCompose
 } from './x-engagement'
 
+const tempDirs: string[] = []
+
 describe('x-engagement', () => {
+  afterEach(async () => {
+    await Promise.allSettled(tempDirs.splice(0).map(async (dir) => rm(dir, { recursive: true, force: true })))
+  })
+
   test('checks X compose availability through webbridge', async () => {
     const client = {
       readStatus: vi.fn(async () => ({ running: true, extension_connected: true })),
@@ -72,7 +81,7 @@ describe('x-engagement', () => {
       topic: 'context loss',
       text: 'I kept losing context across too many AI CLI sessions.',
       publishToday: true,
-      assetFileNames: ['terminal-proof.png']
+      assetPaths: ['overview-terminal-proof/01.png']
     }
     const client = {
       command: vi.fn(async () => ({ success: true })),
@@ -95,6 +104,59 @@ describe('x-engagement', () => {
     expect(client.command).not.toHaveBeenCalledWith('promo-post', 'click', expect.objectContaining({
       selector: 'button[data-testid="tweetButton"]'
     }))
+  })
+
+  test('limits uploaded media to four resolved files for X posts', async () => {
+    const repoRoot = await createTestTempDir('stoa-promo-x-engagement-')
+    tempDirs.push(repoRoot)
+    const assetsDir = join(repoRoot, 'automation', 'promo', 'assets')
+    for (const relativePath of [
+      'generated/overview-app-shell/01.png',
+      'overview-app-shell/01.png',
+      'generated/overview-workspace-multi-session/01.png',
+      'overview-workspace-multi-session/01.png',
+      'generated/overview-provider-mix/01.png'
+    ]) {
+      const absolutePath = join(assetsDir, relativePath)
+      await mkdir(join(absolutePath, '..'), { recursive: true })
+      await writeFile(absolutePath, 'fake-png', 'utf8')
+    }
+
+    const candidate: PromoPostCandidate = {
+      id: 'post_2',
+      topic: 'first impression',
+      text: 'One local desk for AI CLI sessions.',
+      publishToday: true,
+      assetPaths: [
+        'generated/overview-app-shell/01.png',
+        'overview-app-shell/01.png',
+        'generated/overview-workspace-multi-session/01.png',
+        'overview-workspace-multi-session/01.png',
+        'generated/overview-provider-mix/01.png'
+      ]
+    }
+    const client = {
+      command: vi.fn(async () => ({ success: true })),
+      closeSession: vi.fn(async () => undefined)
+    } as unknown as Pick<WebbridgeClient, 'command' | 'closeSession'>
+
+    await publishPostCandidate(client, {
+      repoRoot,
+      sessionName: 'promo-post',
+      assetsDir,
+      candidate,
+      dryRun: true
+    })
+
+    expect(client.command).toHaveBeenCalledWith('promo-post', 'upload', expect.objectContaining({
+      selector: 'input[type="file"]',
+      files: expect.any(Array)
+    }))
+
+    const uploadCall = (client.command as ReturnType<typeof vi.fn>).mock.calls
+      .find((call) => call[1] === 'upload')
+    const files = uploadCall?.[2]?.files as string[] | undefined
+    expect(files).toHaveLength(4)
   })
 
   test('sends a selected reply option only when not in preview mode', async () => {

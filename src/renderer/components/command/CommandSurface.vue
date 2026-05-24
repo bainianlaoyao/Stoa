@@ -5,6 +5,7 @@ import WorkspaceHierarchyPanel from './WorkspaceHierarchyPanel.vue'
 import TerminalSessionDeck from './TerminalSessionDeck.vue'
 import { useWorkspaceStore } from '@renderer/stores/workspaces'
 import { toSessionRowViewModel } from '@renderer/stores/observability-view-models'
+import { toActiveSessionViewModel } from '@renderer/stores/observability-view-models'
 import type { OpenWorkspaceRequest, ProjectSummary, SessionSummary } from '@shared/project-session'
 import type { ProjectHierarchyNode } from '@renderer/stores/workspaces'
 
@@ -51,6 +52,23 @@ const sessionRowViewModels = computed(() => {
 
   return viewModels
 })
+
+const activeSessionViewModel = computed(() => {
+  if (!props.activeSession) {
+    return null
+  }
+
+  const presence = sessionPresenceMap.value[props.activeSession.id]
+  if (!presence) {
+    return null
+  }
+
+  return toActiveSessionViewModel(
+    props.activeSession,
+    presence,
+    new Date().toISOString()
+  )
+})
 </script>
 
 <template>
@@ -76,6 +94,7 @@ const sessionRowViewModels = computed(() => {
           :hierarchy="hierarchy"
           :active-project="activeProject"
           :active-session="activeSession"
+          :active-session-view-model="activeSessionViewModel"
           :visible="visible"
           @open-workspace="emit('openWorkspace', $event)"
         />

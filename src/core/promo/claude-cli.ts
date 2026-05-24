@@ -1,11 +1,11 @@
 import { execFile as nodeExecFile } from 'node:child_process'
-import { promisify } from 'node:util'
 
 type RunCommandInput = {
   command: string
   args: string[]
   cwd: string
   timeoutMs: number
+  stdin?: string
 }
 
 type RunCommand = (input: RunCommandInput) => Promise<{
@@ -22,7 +22,6 @@ interface ClaudeStructuredOutputClient {
   }): Promise<T>
 }
 
-const execFileAsync = promisify(nodeExecFile)
 const DEFAULT_TIMEOUT_MS = 15 * 60 * 1000
 
 export function createClaudeStructuredOutputClient(options: {
@@ -45,7 +44,6 @@ export function createClaudeStructuredOutputClient(options: {
         timeoutMs: input.timeoutMs ?? DEFAULT_TIMEOUT_MS,
         args: [
           '-p',
-          input.prompt,
           '--output-format',
           'json',
           '--permission-mode',
@@ -54,7 +52,8 @@ export function createClaudeStructuredOutputClient(options: {
           '',
           '--json-schema',
           JSON.stringify(input.schema)
-        ]
+        ],
+        stdin: input.prompt
       })
 
       try {
@@ -78,15 +77,24 @@ async function defaultRunCommand(input: RunCommandInput): Promise<{
   stdout: string
   stderr: string
 }> {
-  const result = await execFileAsync(input.command, input.args, {
-    cwd: input.cwd,
-    timeout: input.timeoutMs,
-    windowsHide: true,
-    maxBuffer: 10 * 1024 * 1024
-  })
+  return await new Promise((resolve, reject) => {
+    const child = nodeExecFile(input.command, input.args, {
+      cwd: input.cwd,
+      timeout: input.timeoutMs,
+      windowsHide: true,
+      maxBuffer: 10 * 1024 * 1024
+    }, (error, stdout, stderr) => {
+      if (error) {
+        reject(error)
+        return
+      }
 
-  return {
-    stdout: result.stdout,
-    stderr: result.stderr
-  }
+      resolve({
+        stdout,
+        stderr
+      })
+    })
+
+    child.stdin?.end(input.stdin ?? '')
+  })
 }

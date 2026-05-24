@@ -1,0 +1,17 @@
+{
+  "id": "pack-open-source-trust",
+  "title": "Open source trust",
+  "goal": "Anchor the post in verifiable open-source proof instead of slogans.",
+  "pointIds": [
+    "trust-apache-open-source",
+    "trust-release-velocity",
+    "trust-github-stars-surface",
+    "trust-builder-led-shipping"
+  ],
+  "platforms": [
+    "x-thread",
+    "github-social",
+    "link-post"
+  ],
+  "note": "Use when the post needs credibility, repo proof, or a soft star CTA."
+}

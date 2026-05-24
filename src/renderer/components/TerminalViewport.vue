@@ -5,15 +5,19 @@ import { createTerminalRuntime } from '@renderer/terminal/xterm-runtime'
 import { useSettingsStore } from '@renderer/stores/settings'
 import { useI18n } from 'vue-i18n'
 import WorkspaceQuickActions from './command/WorkspaceQuickActions.vue'
+import TerminalMetaBar from './command/TerminalMetaBar.vue'
 import type { FitAddon } from '@xterm/addon-fit'
 import type { Terminal } from '@xterm/xterm'
+import type { ActiveSessionViewModel } from '@shared/observability'
 import type { OpenWorkspaceRequest, ProjectSummary, SessionSummary, TerminalDataChunk } from '@shared/project-session'
 
 const props = withDefaults(defineProps<{
   project: ProjectSummary | null
   session: SessionSummary | null
+  activeViewModel?: ActiveSessionViewModel | null
   visible?: boolean
 }>(), {
+  activeViewModel: null,
   visible: true
 })
 
@@ -385,6 +389,11 @@ onBeforeUnmount(disposeTerminal)
   <section class="terminal-viewport" data-testid="terminal-viewport">
     <template v-if="project && session">
       <div class="terminal-viewport__xterm" data-testid="terminal-xterm">
+        <TerminalMetaBar
+          :project="project"
+          :session="session"
+          :active-view-model="props.activeViewModel"
+        />
         <WorkspaceQuickActions
           :project="project"
           :session="session"

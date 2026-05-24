@@ -110,14 +110,18 @@ async function disposeElectronAppConnection(electronApp: ElectronApplication): P
 export async function launchElectronApp(options: LaunchOptions = {}): Promise<LaunchedElectronApp> {
   const stateDir = options.stateDir ?? await createStateDir()
   const entryPath = ensureElectronMainEntrypoint()
-  const env = {
+  const mergedEnv: NodeJS.ProcessEnv = {
     ...process.env,
     NODE_ENV: 'test',
     VIBECODING_E2E: '1',
     VIBECODING_STATE_DIR: stateDir,
     ...options.env,
   }
-  delete env.ELECTRON_RENDERER_URL
+  delete mergedEnv.ELECTRON_RENDERER_URL
+
+  const env = Object.fromEntries(
+    Object.entries(mergedEnv).filter((entry): entry is [string, string] => typeof entry[1] === 'string')
+  )
 
   const electronApp = await electron.launch({
     args: [entryPath],

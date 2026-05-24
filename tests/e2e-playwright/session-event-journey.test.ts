@@ -167,7 +167,6 @@ test.describe('Electron push and webhook journeys', () => {
           eventType: 'session.completed',
           payload: {
             intent: 'runtime.exited_clean',
-            runtimeState: 'exited',
             runtimeExitCode: 0,
             runtimeExitReason: 'clean',
             summary: 'session.completed'
@@ -419,7 +418,10 @@ test.describe('Electron push and webhook journeys', () => {
       await expect(statusDot).toHaveAttribute('data-session-status-testid', 'session-status-blocked')
       await expect(statusDot).toHaveAttribute('data-phase', 'blocked')
       await expect(statusDot).toHaveAttribute('data-tone', 'warning')
-      await expect(app.page.getByTestId('terminal-status-bar')).toHaveCount(0)
+      const terminalStatusBar = app.page.getByTestId('terminal-status-bar')
+      await expect(terminalStatusBar).toBeVisible()
+      await expect(terminalStatusBar).toContainText('Blocked')
+      await expect(terminalStatusBar).toContainText('Provider is waiting for permission.')
 
       const terminalViewport = app.page.getByTestId('terminal-viewport')
       await expect(terminalViewport.getByTestId('terminal-xterm')).toBeVisible()
