@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import type { MemoryNotificationEvent } from '@shared/project-session'
+import type { ToastNotification } from '@renderer/stores/memory-notifications'
 
 defineProps<{
-  notifications: MemoryNotificationEvent[]
+  notifications: ToastNotification[]
 }>()
 </script>
 
@@ -19,7 +19,7 @@ defineProps<{
         v-for="notification in notifications"
         :key="notification.id"
         class="memory-toast"
-        :data-kind="notification.kind"
+        :data-kind="'kind' in notification ? notification.kind : 'title-generation'"
         :data-status="notification.status"
         data-testid="memory-toast"
       >

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, ref, onMounted } from 'vue'
+import { reactive, ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Switch } from '@headlessui/vue'
 import { listProviderDescriptors } from '@shared/provider-descriptors'
@@ -12,10 +12,83 @@ const store = useSettingsStore()
 const evolverInferenceProviderOptions = [
   { value: 'claude-code', label: 'Claude Code' }
 ]
-const titleGenerationModelOptions = [
-  { value: 'gpt-5.4-mini', label: 'GPT-5.4 Mini' },
-  { value: 'gpt-5-mini', label: 'GPT-5 Mini' }
-]
+
+const fetchedModels = ref<string[]>([])
+const isCustomModel = ref(false)
+const fetchingModels = ref(false)
+const fetchModelsError = ref<string | null>(null)
+const fetchModelsSuccess = ref(false)
+
+const modelOptions = computed(() => {
+  const options = [
+    { value: 'gpt-5.4-mini', label: 'GPT-5.4 Mini' },
+    { value: 'gpt-5-mini', label: 'GPT-5 Mini' }
+  ]
+  for (const m of fetchedModels.value) {
+    if (!options.some(opt => opt.value === m)) {
+      options.push({ value: m, label: m })
+    }
+  }
+  options.push({ value: 'custom', label: t('providers.titleGeneration.optionCustom') })
+  return options
+})
+
+const modelSelectValue = computed(() => {
+  if (isCustomModel.value) {
+    return 'custom'
+  }
+  const current = store.titleGeneration.model
+  const match = modelOptions.value.find(opt => opt.value === current && opt.value !== 'custom')
+  if (match) {
+    return match.value
+  }
+  return 'custom'
+})
+
+function handleModelSelectChange(value: string): void {
+  if (value === 'custom') {
+    isCustomModel.value = true
+    if (store.titleGeneration.model === 'gpt-5.4-mini' || store.titleGeneration.model === 'gpt-5-mini') {
+      handleTitleGenerationPatch({ model: '' })
+    }
+  } else {
+    isCustomModel.value = false
+    handleTitleGenerationPatch({ model: value })
+  }
+}
+
+function handleCustomModelNameChange(value: string): void {
+  handleTitleGenerationPatch({ model: value })
+}
+
+async function handleFetchModels(): Promise<void> {
+  const baseUrl = store.titleGeneration.baseUrl
+  const apiKey = store.titleGeneration.apiKey
+  if (!baseUrl || !apiKey.trim()) {
+    fetchModelsError.value = t('providers.titleGeneration.missingCredentials')
+    fetchModelsSuccess.value = false
+    return
+  }
+
+  fetchingModels.value = true
+  fetchModelsError.value = null
+  fetchModelsSuccess.value = false
+
+  try {
+    const models = await window.stoa.titleGenerationFetchModels(baseUrl, apiKey)
+    fetchedModels.value = models
+    fetchModelsSuccess.value = true
+    
+    if (models.length > 0 && !store.titleGeneration.model) {
+      isCustomModel.value = false
+      handleTitleGenerationPatch({ model: models[0] })
+    }
+  } catch (err: any) {
+    fetchModelsError.value = err.message || String(err)
+  } finally {
+    fetchingModels.value = false
+  }
+}
 
 const providerList = listProviderDescriptors()
   .filter(provider => provider.providerId !== 'local-shell')
@@ -25,6 +98,12 @@ const detectedPaths = reactive<Record<string, string | null>>({})
 const detecting = ref(true)
 
 onMounted(async () => {
+  const current = store.titleGeneration.model
+  const defaultValues = ['gpt-5.4-mini', 'gpt-5-mini']
+  if (current && !defaultValues.includes(current)) {
+    isCustomModel.value = true
+  }
+
   detecting.value = true
   for (const provider of providerList) {
     detectedPaths[provider.id] = await store.detectAndSetProvider(provider.id)
@@ -144,13 +223,43 @@ function handleTitleGenerationPatch(
           </div>
         </div>
 
-        <div class="settings-inline-field" data-settings-field="title-generation-model">
+        <div class="flex gap-2 items-end">
+          <div class="grow min-w-0 settings-inline-field" data-settings-field="title-generation-model">
+            <GlassFormField
+              :label="t('providers.titleGeneration.modelLabel')"
+              type="select"
+              :model-value="modelSelectValue"
+              :options="modelOptions"
+              @update:model-value="handleModelSelectChange"
+            />
+          </div>
+          <button
+            class="btn-ghost mb-0.5 min-h-[38px] flex items-center justify-center gap-1.5 shrink-0"
+            type="button"
+            :disabled="fetchingModels"
+            @click="handleFetchModels"
+          >
+            <svg v-if="fetchingModels" class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+            </svg>
+            <span>{{ fetchingModels ? t('providers.titleGeneration.fetchingModels') : t('providers.titleGeneration.fetchModels') }}</span>
+          </button>
+        </div>
+
+        <p v-if="fetchModelsError" class="settings-item__hint settings-item__hint--warning">
+          {{ fetchModelsError }}
+        </p>
+        <p v-else-if="fetchModelsSuccess" class="settings-item__hint settings-item__hint--success">
+          {{ t('providers.titleGeneration.fetchModelsSuccess') }}
+        </p>
+
+        <div v-if="isCustomModel" class="settings-inline-field" data-settings-field="title-generation-custom-model">
           <GlassFormField
-            :label="t('providers.titleGeneration.modelLabel')"
-            type="select"
+            :label="t('providers.titleGeneration.customModelLabel')"
             :model-value="store.titleGeneration.model"
-            :options="titleGenerationModelOptions"
-            @update:model-value="handleTitleGenerationPatch({ model: $event })"
+            :placeholder="t('providers.titleGeneration.customModelPlaceholder')"
+            @update:model-value="handleCustomModelNameChange"
           />
         </div>
 
@@ -235,17 +344,26 @@ function handleTitleGenerationPatch(
 </template>
 
 <style scoped>
+.settings-panel {
+  display: grid;
+  gap: 24px;
+  align-content: start;
+}
+
 .settings-panel__header {
   display: grid;
-  gap: 8px;
+  gap: 6px;
+  padding-bottom: 8px;
+  border-b: 1px solid var(--color-line);
 }
 
 .settings-panel__title {
   margin: 0;
   color: var(--color-text-strong);
   font-family: var(--font-ui);
-  font-size: var(--text-title);
-  font-weight: 600;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
 }
 
 .settings-panel__description {
@@ -253,12 +371,28 @@ function handleTitleGenerationPatch(
   color: var(--color-muted);
   line-height: 1.5;
   max-width: 640px;
-  font-size: var(--text-body);
+  font-size: var(--text-body-sm);
 }
 
 .settings-section {
   display: grid;
-  gap: 14px;
+  gap: 20px;
+}
+
+.settings-card {
+  display: grid;
+  gap: 16px;
+  padding: 24px;
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-solid);
+  border: 1px solid var(--color-line-strong);
+  box-shadow: var(--shadow-card);
+  transition: all 0.2s ease;
+}
+
+.settings-card:hover {
+  border-color: rgba(0, 85, 255, 0.15);
+  box-shadow: var(--shadow-soft);
 }
 
 .settings-card__header {
@@ -272,52 +406,57 @@ function handleTitleGenerationPatch(
   margin: 0;
   color: var(--color-text-strong);
   font-family: var(--font-ui);
-  font-size: var(--text-title-sm);
+  font-size: 15px;
   font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 .settings-card__description {
   margin: 0;
   color: var(--color-muted);
-  line-height: 1.5;
+  line-height: 1.4;
   margin-top: 4px;
-  font-size: var(--text-body-sm);
+  font-size: var(--text-meta);
 }
 
 .settings-card__badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 6px 10px;
-  border-radius: 999px;
-  background: var(--color-black-faint);
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.03);
+  border: 1px solid rgba(0, 0, 0, 0.01);
   color: var(--color-muted);
-  font-size: var(--text-caption);
-  font-weight: 600;
+  font-size: 10px;
+  font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   white-space: nowrap;
 }
 
 .settings-card__badge--detected {
-  background: color-mix(in srgb, var(--color-success) 12%, transparent);
+  background: color-mix(in srgb, var(--color-success) 8%, transparent);
   color: var(--color-success);
+  border-color: color-mix(in srgb, var(--color-success) 12%, transparent);
 }
 
 .settings-card__badge--custom {
-  background: var(--color-black-soft);
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
   color: var(--color-accent);
+  border-color: color-mix(in srgb, var(--color-accent) 12%, transparent);
 }
 
 .settings-card__badge--missing {
-  background: var(--color-black-faint);
-  color: var(--color-attention);
+  background: color-mix(in srgb, var(--color-warning) 8%, transparent);
+  color: var(--color-warning);
+  border-color: color-mix(in srgb, var(--color-warning) 12%, transparent);
 }
 
 .settings-field {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
+  gap: 12px;
   align-items: end;
 }
 
@@ -339,22 +478,25 @@ function handleTitleGenerationPatch(
 
 .settings-item__hint {
   margin: 0;
-  color: var(--color-muted);
-  font-size: 12px;
+  color: var(--color-subtle);
+  font-size: var(--text-meta);
+  font-weight: 400;
 }
 
 .settings-item__hint--success {
   color: var(--color-success);
+  font-weight: 500;
 }
 
 .settings-item__hint--warning {
   color: var(--color-attention);
+  font-weight: 500;
 }
 
 .settings-toggle {
-  padding: 12px 14px;
+  padding: 14px 16px;
   border-radius: var(--radius-sm);
-  background: var(--color-surface-solid);
+  background: rgba(0, 0, 0, 0.008);
   border: 1px solid var(--color-line);
 }
 
@@ -367,20 +509,20 @@ function handleTitleGenerationPatch(
 
 .settings-toggle__copy {
   display: grid;
-  gap: 4px;
+  gap: 2px;
   min-width: 0;
 }
 
 .settings-toggle__title {
   color: var(--color-text-strong);
-  font-size: var(--text-body);
+  font-size: var(--text-body-sm);
   font-weight: 600;
 }
 
 .settings-toggle__description {
   color: var(--color-muted);
-  font-size: var(--text-body-sm);
-  line-height: 1.5;
+  font-size: var(--text-meta);
+  line-height: 1.4;
 }
 
 .settings-toggle__description code {
@@ -389,14 +531,14 @@ function handleTitleGenerationPatch(
 
 :deep(.settings-toggle__switch) {
   display: inline-flex;
-  width: 52px;
-  height: 30px;
-  padding: 3px;
+  width: 48px;
+  height: 26px;
+  padding: 2px;
   border-radius: 999px;
-  background: var(--color-black-faint);
-  box-shadow: inset 0 0 0 1px var(--color-line-strong);
+  background: var(--color-black-soft);
+  box-shadow: inset 0 0 0 1px var(--color-line);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
   flex: 0 0 auto;
 }
 
@@ -410,18 +552,18 @@ function handleTitleGenerationPatch(
 }
 
 :deep(.settings-toggle__switch:focus-visible) {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: var(--shadow-focus-ring);
 }
 
 .settings-toggle__thumb {
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   border-radius: 999px;
   background: var(--color-surface-solid);
   border: 1px solid var(--color-line);
   box-shadow: var(--shadow-soft);
-  transition: all 0.2s ease;
+  transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
 :deep(.settings-toggle__switch--active) .settings-toggle__thumb {

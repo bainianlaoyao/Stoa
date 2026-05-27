@@ -6,6 +6,7 @@ import type {
   MemoryNotificationEvent,
   RendererApi,
   SessionSummary,
+  SessionTitleGenerationNotification,
   TerminalDataChunk
 } from '@shared/project-session'
 import type { SessionPresenceSnapshot } from '@shared/observability'
@@ -36,6 +37,11 @@ function createPreloadApi(bus: FakeIpcPushBus): RendererApi {
       const handler = (_event: undefined, snapshot: SessionPresenceSnapshot) => callback(snapshot)
       bus.on(IPC_CHANNELS.observabilitySessionPresenceChanged, handler)
       return () => bus.removeListener(IPC_CHANNELS.observabilitySessionPresenceChanged, handler)
+    },
+    onTitleGenerationNotification(callback) {
+      const handler = (_event: undefined, notification: SessionTitleGenerationNotification) => callback(notification)
+      bus.on(IPC_CHANNELS.titleGenerationNotification, handler)
+      return () => bus.removeListener(IPC_CHANNELS.titleGenerationNotification, handler)
     }
   }
 }
@@ -186,6 +192,34 @@ describe('E2E: IPC Push Harness', () => {
         title: 'Memory recalled',
         message: 'Relevant Evolver context was injected for this turn.',
         createdAt: '2026-04-29T02:00:00.000Z'
+      }
+    ])
+  })
+
+  test('delivers title generation notifications to active subscribers', () => {
+    const bus = new FakeIpcPushBus()
+    const api = createPreloadApi(bus)
+    const received: SessionTitleGenerationNotification[] = []
+
+    api.onTitleGenerationNotification((notification) => {
+      received.push(notification)
+    })
+
+    bus.push(IPC_CHANNELS.titleGenerationNotification, {
+      sessionId: 'session_op_1',
+      projectId: 'project_alpha',
+      trigger: 'manual',
+      status: 'success',
+      title: 'Refine Session Title Push Flow'
+    } satisfies SessionTitleGenerationNotification)
+
+    expect(received).toEqual([
+      {
+        sessionId: 'session_op_1',
+        projectId: 'project_alpha',
+        trigger: 'manual',
+        status: 'success',
+        title: 'Refine Session Title Push Flow'
       }
     ])
   })

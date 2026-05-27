@@ -150,8 +150,8 @@ function sessionTone(session: ProjectHierarchyNode['sessions'][number]): string 
   return sessionRowViewModel(session.id)?.tone ?? 'neutral'
 }
 
-function sessionPrimaryLabel(session: ProjectHierarchyNode['sessions'][number]): string | null {
-  return sessionRowViewModel(session.id)?.primaryLabel ?? null
+function sessionPrimaryLabel(session: ProjectHierarchyNode['sessions'][number]): string {
+  return session.title
 }
 
 function sessionStatusLabel(session: ProjectHierarchyNode['sessions'][number]): string | null {
@@ -328,9 +328,9 @@ onBeforeUnmount(() => {
   <aside class="min-h-0 overflow-y-auto rounded-[var(--radius-sm)] bg-surface" data-testid="workspace-hierarchy-panel" aria-label="Workspace hierarchy">
     <div class="min-h-0 overflow-auto px-2.5 pt-2.5 pb-10 grid gap-3 align-content-start" data-testid="route-body">
       <div class="grid gap-1" data-testid="route-actions">
-        <button class="route-action flex items-center justify-between gap-2 px-2.5 py-2 rounded-[var(--radius-sm)] bg-surface-solid text-text-strong cursor-pointer transition-all duration-200 hover:bg-black-faint focus-visible:bg-black-faint focus-visible:outline-none" type="button" data-testid="workspace.new-project" @click="showNewProject = true">
-          <span class="text-xs font-semibold tracking-[0.05em]">{{ t('workspace.newProject') }}</span>
-          <span class="w-[18px] h-[18px] grid place-items-center rounded-[var(--radius-sm)] bg-canvas text-text-strong text-xs">+</span>
+        <button class="route-action flex items-center justify-between gap-2 px-2.5 py-2 rounded-[var(--radius-sm)] bg-surface-solid text-text-strong cursor-pointer transition-all duration-200 hover:bg-black-soft focus-visible:bg-black-soft focus-visible:outline-none" type="button" data-testid="workspace.new-project" @click="showNewProject = true">
+          <span class="text-[length:var(--text-meta)] font-semibold tracking-[0.05em]">{{ t('workspace.newProject') }}</span>
+          <span class="w-[18px] h-[18px] grid place-items-center rounded-[var(--radius-sm)] bg-canvas text-text-strong text-[length:var(--text-meta)]">+</span>
         </button>
       </div>
 
@@ -427,6 +427,7 @@ onBeforeUnmount(() => {
               />
               <img class="route-provider-icon" :src="providerIcon(session.type)" :alt="session.type" />
               <div class="route-copy route-copy--session">
+                <span class="route-session-name">{{ sessionPrimaryLabel(session) }}</span>
                 <span v-if="sessionStatusLabel(session)" class="route-session-label">{{ sessionStatusLabel(session) }}</span>
               </div>
             </button>
@@ -579,7 +580,7 @@ onBeforeUnmount(() => {
 
 .route-item:hover:not(.route-item--active),
 .route-item:focus-visible {
-  background: var(--color-black-faint);
+  background: var(--color-black-soft);
   outline: none;
 }
 
@@ -649,7 +650,7 @@ onBeforeUnmount(() => {
 }
 
 .route-detail-trigger:hover {
-  background: var(--color-black-faint);
+  background: var(--color-black-soft);
   color: var(--color-text-strong);
 }
 
@@ -660,9 +661,9 @@ onBeforeUnmount(() => {
 }
 
 .route-copy--session {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  display: grid;
+  gap: 2px;
+  min-width: 0;
 }
 
 .route-provider-icon {
@@ -836,7 +837,7 @@ onBeforeUnmount(() => {
   left: 8px;
   top: 50%;
   transform: translateY(-50%);
-  font-size: 10px;
+  font-size: var(--text-caption);
   line-height: 1;
   color: var(--color-muted);
   opacity: 0.5;
@@ -886,13 +887,13 @@ onBeforeUnmount(() => {
 
 .route-icon-button__glyph {
   color: currentColor;
-  font-size: 14px;
+  font-size: var(--text-body);
   line-height: 1;
 }
 
 .route-icon-button__icon {
-  width: 12px;
-  height: 12px;
+  width: var(--text-meta);
+  height: var(--text-meta);
 }
 
 .route-add-session {
@@ -904,7 +905,7 @@ onBeforeUnmount(() => {
   padding: 0;
   background: transparent;
   color: var(--color-muted);
-  font-size: 14px;
+  font-size: var(--text-body);
   line-height: 1;
   font-weight: 400;
   flex: none;

@@ -5,7 +5,6 @@ import { createTerminalRuntime } from '@renderer/terminal/xterm-runtime'
 import { useSettingsStore } from '@renderer/stores/settings'
 import { useI18n } from 'vue-i18n'
 import WorkspaceQuickActions from './command/WorkspaceQuickActions.vue'
-import TerminalMetaBar from './command/TerminalMetaBar.vue'
 import type { FitAddon } from '@xterm/addon-fit'
 import type { Terminal } from '@xterm/xterm'
 import type { ActiveSessionViewModel } from '@shared/observability'
@@ -389,11 +388,6 @@ onBeforeUnmount(disposeTerminal)
   <section class="terminal-viewport" data-testid="terminal-viewport">
     <template v-if="project && session">
       <div class="terminal-viewport__xterm" data-testid="terminal-xterm">
-        <TerminalMetaBar
-          :project="project"
-          :session="session"
-          :active-view-model="props.activeViewModel"
-        />
         <WorkspaceQuickActions
           :project="project"
           :session="session"
@@ -419,7 +413,7 @@ onBeforeUnmount(disposeTerminal)
 .terminal-empty-state {
   min-height: 100%;
   border: 1px solid var(--color-line-strong);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: var(--color-terminal-bg);
   box-shadow: inset 0 1px 0 var(--color-terminal-shell-highlight);
 }

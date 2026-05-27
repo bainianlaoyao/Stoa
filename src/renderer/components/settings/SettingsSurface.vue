@@ -36,43 +36,48 @@ function onTabSelect(tab: SettingsTab) {
 
 <template>
   <section class="settings-surface" data-surface="settings" aria-label="Settings surface">
-    <header class="settings-surface__hero">
-      <div class="settings-surface__hero-copy">
-        <p class="eyebrow">{{ t('settings.eyebrow') }}</p>
-        <h2 class="settings-surface__title">{{ t('settings.title') }}</h2>
-        <p class="settings-surface__lede">
-          {{ t('settings.lede') }}
-        </p>
-      </div>
-      <div class="settings-surface__hero-meta">
-        <span class="settings-surface__hero-label">{{ t('settings.heroLabel') }}</span>
-        <strong class="settings-surface__hero-value">{{ activeTabMeta.label }}</strong>
-        <span class="settings-surface__hero-summary">{{ activeTabMeta.summary }}</span>
-      </div>
-    </header>
-
     <div class="settings-surface__shell">
       <TabGroup>
+        <!-- Sidebar Navigation (Glass) -->
         <aside class="settings-surface__nav-panel" aria-label="Settings sections">
-          <div class="settings-surface__nav-copy">
-            <span class="settings-surface__nav-label">{{ t('settings.navLabel') }}</span>
-            <p class="settings-surface__nav-text">{{ t('settings.navText') }}</p>
+          <!-- Sidebar Header Title -->
+          <div class="settings-surface__sidebar-header">
+            <p class="eyebrow mb-1">{{ t('settings.eyebrow') }}</p>
+            <h2 class="settings-surface__title">{{ t('settings.title') }}</h2>
+            <p class="settings-surface__lede text-xs mt-1.5 text-muted leading-relaxed">
+              {{ t('settings.lede') }}
+            </p>
           </div>
+
+          <!-- Section Label -->
+          <div class="settings-surface__nav-copy mt-2">
+            <span class="settings-surface__nav-label">{{ t('settings.navLabel') }}</span>
+          </div>
+
+          <!-- Tabs -->
           <SettingsTabBar :active-tab="activeTab" @select="onTabSelect" />
+
+          <!-- Dynamic Active Status Panel (At sidebar bottom) -->
+          <div class="settings-surface__hero-meta mt-auto">
+            <span class="settings-surface__hero-label">{{ t('settings.heroLabel') }}</span>
+            <strong class="settings-surface__hero-value">{{ activeTabMeta.label }}</strong>
+            <span class="settings-surface__hero-summary">{{ activeTabMeta.summary }}</span>
+          </div>
         </aside>
 
+        <!-- Right Content Panel (Solid) -->
         <div class="settings-surface__content-panel">
-          <TabPanels>
-            <TabPanel>
+          <TabPanels class="h-full">
+            <TabPanel class="h-full focus:outline-none">
               <GeneralSettings />
             </TabPanel>
-            <TabPanel>
+            <TabPanel class="h-full focus:outline-none">
               <TerminalSettings />
             </TabPanel>
-            <TabPanel>
+            <TabPanel class="h-full focus:outline-none">
               <ProvidersSettings />
             </TabPanel>
-            <TabPanel>
+            <TabPanel class="h-full focus:outline-none">
               <AboutSettings />
             </TabPanel>
           </TabPanels>
@@ -84,27 +89,45 @@ function onTabSelect(tab: SettingsTab) {
 
 <style scoped>
 .settings-surface {
-  display: grid;
-  grid-template-rows: auto 1fr;
-  gap: 18px;
   height: 100%;
   min-height: 0;
-  padding: 22px;
+  padding: 16px;
   overflow: hidden;
 }
 
-.settings-surface__hero {
+.settings-surface__shell {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 240px;
-  gap: 16px;
-  align-items: end;
-  padding: 20px 22px;
+  grid-template-columns: 280px minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
   border: 1px solid var(--color-line);
-  border-radius: var(--radius-lg);
+  border-radius: 4px;
   background: var(--color-surface);
-  box-shadow: var(--shadow-card);
   backdrop-filter: blur(40px) saturate(120%);
   -webkit-backdrop-filter: blur(40px) saturate(120%);
+  box-shadow: var(--shadow-premium);
+  overflow: hidden;
+}
+
+:deep(.settings-surface__shell > *) {
+  display: contents;
+}
+
+.settings-surface__nav-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px;
+  height: 100%;
+  min-height: 0;
+  background: rgba(0, 0, 0, 0.012);
+  border-right: 1px solid var(--color-line);
+  user-select: none;
+}
+
+.settings-surface__sidebar-header {
+  display: flex;
+  flex-direction: column;
 }
 
 .settings-surface__title {
@@ -112,14 +135,39 @@ function onTabSelect(tab: SettingsTab) {
   color: var(--color-text-strong);
   font-family: var(--font-ui);
   font-size: 22px;
-  font-weight: 600;
+  font-weight: 700;
   letter-spacing: -0.02em;
 }
 
-.settings-surface__lede {
-  margin: 0;
-  color: var(--color-muted);
-  line-height: 1.5;
+.settings-surface__nav-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.settings-surface__nav-label {
+  color: var(--color-subtle);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.settings-surface__content-panel {
+  overflow-y: auto;
+  height: 100%;
+  min-height: 0;
+  background: var(--color-surface-solid);
+  padding: 28px 32px;
+  scrollbar-width: thin;
+}
+
+.settings-surface__content-panel::-webkit-scrollbar {
+  width: 6px;
+}
+
+.settings-surface__content-panel::-webkit-scrollbar-thumb {
+  background: var(--color-line-strong);
+  border-radius: var(--radius-sm);
 }
 
 .settings-surface__hero-meta {
@@ -128,8 +176,9 @@ function onTabSelect(tab: SettingsTab) {
   align-content: start;
   padding: 16px;
   border: 1px solid var(--color-line);
-  border-radius: var(--radius-md);
+  border-radius: 2px;
   background: var(--color-surface-solid);
+  box-shadow: var(--shadow-soft);
 }
 
 .settings-surface__hero-label {
@@ -142,67 +191,29 @@ function onTabSelect(tab: SettingsTab) {
 
 .settings-surface__hero-value {
   color: var(--color-text-strong);
-  font-size: 14px;
+  font-size: var(--text-body-sm);
   font-weight: 600;
 }
 
 .settings-surface__hero-summary {
   color: var(--color-muted);
-  font-size: 12px;
+  font-size: var(--text-meta);
+  line-height: 1.4;
 }
 
-.settings-surface__shell {
-  display: grid;
-  grid-template-columns: 280px minmax(0, 1fr);
-  gap: 16px;
-  min-height: 0;
-}
-
-.settings-surface__nav-panel {
-  display: grid;
-  gap: 18px;
-  align-content: start;
-  padding: 18px;
-  min-height: 0;
-  border-radius: var(--radius-lg);
-  background: var(--color-surface);
-  border: 1px solid var(--color-line);
-  backdrop-filter: blur(40px) saturate(120%);
-  -webkit-backdrop-filter: blur(40px) saturate(120%);
-}
-
-.settings-surface__nav-label {
-  color: var(--color-subtle);
-  font-size: var(--text-caption);
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.settings-surface__nav-text {
-  margin: 0;
-  color: var(--color-muted);
-  line-height: 1.5;
-}
-
-.settings-surface__content-panel {
-  overflow: auto;
-  min-height: 0;
-  border-radius: var(--radius-lg);
-  background: var(--color-surface);
-  border: 1px solid var(--color-line);
-  backdrop-filter: blur(40px) saturate(120%);
-  -webkit-backdrop-filter: blur(40px) saturate(120%);
-}
-
-@media (max-width: 980px) {
-  .settings-surface__hero,
+@media (max-width: 900px) {
   .settings-surface__shell {
     grid-template-columns: 1fr;
   }
 
-  .settings-surface {
-    padding: 16px;
+  .settings-surface__nav-panel {
+    border-right: none;
+    border-bottom: 1px solid var(--color-line);
+    height: auto;
+  }
+
+  .settings-surface__hero-meta {
+    display: none;
   }
 }
 </style>

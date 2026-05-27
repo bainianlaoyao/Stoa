@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import MemoryToastHost from './MemoryToastHost.vue'
 import type { MemoryNotificationEvent } from '@shared/project-session'
+import type { TitleGenerationToastNotification } from '@renderer/stores/memory-notifications'
 
 function createNotification(overrides: Partial<MemoryNotificationEvent> = {}): MemoryNotificationEvent {
   return {
@@ -13,6 +14,21 @@ function createNotification(overrides: Partial<MemoryNotificationEvent> = {}): M
     status: 'success',
     title: 'Memory recalled',
     message: 'Relevant Evolver context was injected for this turn.',
+    createdAt: '2026-04-29T02:00:00.000Z',
+    ...overrides
+  }
+}
+
+function createTitleGenerationNotification(
+  overrides: Partial<TitleGenerationToastNotification> = {}
+): TitleGenerationToastNotification {
+  return {
+    id: 'title-toast-1',
+    projectId: 'project_1',
+    sessionId: 'session_1',
+    status: 'pending',
+    title: 'Generating session title',
+    message: 'Summarizing the latest turn before updating the sidebar title.',
     createdAt: '2026-04-29T02:00:00.000Z',
     ...overrides
   }
@@ -57,5 +73,24 @@ describe('MemoryToastHost', () => {
     const toast = wrapper.get('[data-testid="memory-toast"]')
     expect(toast.attributes('data-kind')).toBe('solidify')
     expect(toast.attributes('data-status')).toBe('error')
+  })
+
+  it('renders title-generation notifications with a stable synthetic kind', () => {
+    const wrapper = mount(MemoryToastHost, {
+      props: {
+        notifications: [
+          createTitleGenerationNotification({
+            status: 'success',
+            title: 'Session title updated',
+            message: 'Sidebar title changed to match the latest task.'
+          })
+        ]
+      }
+    })
+
+    const toast = wrapper.get('[data-testid="memory-toast"]')
+    expect(toast.text()).toContain('Session title updated')
+    expect(toast.attributes('data-kind')).toBe('title-generation')
+    expect(toast.attributes('data-status')).toBe('success')
   })
 })

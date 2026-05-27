@@ -82,13 +82,13 @@ const bottomItems: ActivityItem[] = [
 </script>
 
 <template>
-  <nav class="flex min-h-full flex-col items-center py-5 pb-4 bg-transparent" data-testid="activity-bar" aria-label="Global activity">
+  <nav class="flex min-h-full flex-col items-center py-5 pb-4 bg-surface/10 border-r border-line backdrop-blur-md" data-testid="activity-bar" aria-label="Global activity">
     <div data-testid="activity-cluster-top" class="grid gap-3">
       <button
         v-for="item in topItems"
         :key="item.id"
-        class="relative inline-flex h-10 w-10 items-center justify-center border-0 rounded-xl bg-transparent text-muted cursor-pointer transition-all duration-200 ease-in-out hover:text-text-strong hover:bg-black-soft focus-visible:text-text-strong focus-visible:bg-black-soft focus-visible:outline-none"
-        :class="{ 'text-text-strong bg-surface-solid shadow-soft': item.id === activeSurface }"
+        class="relative inline-flex h-10 w-10 items-center justify-center border-0 rounded-[2px] bg-transparent text-muted cursor-pointer transition-all duration-200 ease-in-out hover:text-text-strong hover:bg-black-soft focus-visible:text-text-strong focus-visible:bg-black-soft focus-visible:outline-none"
+        :class="{ 'text-text-strong bg-black-soft/50': item.id === activeSurface }"
         :data-activity-item="item.id"
         :data-active="String(item.id === activeSurface)"
         :aria-current="item.id === activeSurface ? 'true' : undefined"
@@ -97,6 +97,11 @@ const bottomItems: ActivityItem[] = [
         :title="item.title"
         @click="emit('select', item.id)"
       >
+        <!-- Windows 10 Fluent active indicator line on the left -->
+        <span
+          class="absolute left-0 w-[3px] bg-accent transition-all duration-200"
+          :class="item.id === activeSurface ? 'top-[6px] bottom-[6px] opacity-100' : 'top-1/2 bottom-1/2 opacity-0'"
+        />
         <svg
           data-activity-icon
           :data-icon-kind="item.iconKind"
@@ -125,8 +130,8 @@ const bottomItems: ActivityItem[] = [
       <button
         v-for="item in bottomItems"
         :key="item.id"
-        class="relative inline-flex h-10 w-10 items-center justify-center border-0 rounded-xl bg-transparent text-muted cursor-pointer transition-all duration-200 ease-in-out hover:text-text-strong hover:bg-black-soft focus-visible:text-text-strong focus-visible:bg-black-soft focus-visible:outline-none"
-        :class="{ 'text-text-strong bg-surface-solid shadow-soft': item.id === activeSurface }"
+        class="relative inline-flex h-10 w-10 items-center justify-center border-0 rounded-[2px] bg-transparent text-muted cursor-pointer transition-all duration-200 ease-in-out hover:text-text-strong hover:bg-black-soft focus-visible:text-text-strong focus-visible:bg-black-soft focus-visible:outline-none"
+        :class="{ 'text-text-strong bg-black-soft/50': item.id === activeSurface }"
         :data-activity-item="item.id"
         :data-active="String(item.id === activeSurface)"
         :aria-current="item.id === activeSurface ? 'true' : undefined"
@@ -135,6 +140,11 @@ const bottomItems: ActivityItem[] = [
         :title="item.title"
         @click="emit('select', item.id)"
       >
+        <!-- Windows 10 Fluent active indicator line on the left -->
+        <span
+          class="absolute left-0 w-[3px] bg-accent transition-all duration-200"
+          :class="item.id === activeSurface ? 'top-[6px] bottom-[6px] opacity-100' : 'top-1/2 bottom-1/2 opacity-0'"
+        />
         <svg
           data-activity-icon
           :data-icon-kind="item.iconKind"

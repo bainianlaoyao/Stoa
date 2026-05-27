@@ -90,34 +90,45 @@ const selectedLabel = computed(
   justify-content: space-between;
   gap: 8px;
   width: 100%;
-  background: var(--color-surface-solid);
-  border: 1px solid var(--color-line);
+  background: linear-gradient(to bottom, #ffffff 0%, #fafbfc 100%);
+  border: 1px solid var(--color-line-strong);
   border-radius: var(--radius-sm);
-  padding: 7px 10px;
+  padding: 8px 12px;
   font: inherit;
   font-size: var(--text-body-sm);
   color: var(--color-text-strong);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
   text-align: left;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.015);
+}
+
+.glass-listbox__button:hover {
+  background: #ffffff;
+  border-color: rgba(0, 85, 255, 0.35);
 }
 
 .glass-listbox__button:focus {
   outline: none;
   border-color: var(--color-accent);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 12%, transparent);
+  box-shadow: var(--shadow-focus-ring);
 }
 
 .glass-listbox__chevron {
   flex-shrink: 0;
   width: 14px;
   height: 14px;
+  color: var(--color-subtle);
+  transition: transform 0.2s ease, color 0.2s ease;
+}
+
+.glass-listbox__button:hover .glass-listbox__chevron {
   color: var(--color-muted);
-  transition: all 0.2s ease;
 }
 
 .glass-listbox__button[aria-expanded="true"] .glass-listbox__chevron {
   transform: rotate(180deg);
+  color: var(--color-accent);
 }
 
 .glass-listbox__options {
@@ -126,10 +137,12 @@ const selectedLabel = computed(
   width: 100%;
   margin-top: 4px;
   padding: 4px;
-  background: var(--color-surface-solid);
-  border: 1px solid var(--color-line);
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(25px) saturate(120%);
+  -webkit-backdrop-filter: blur(25px) saturate(120%);
+  border: 1px solid var(--color-line-strong);
   border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-glass);
+  box-shadow: 0 12px 30px -8px rgba(0, 0, 0, 0.08), var(--shadow-premium), inset 0 1px 0 rgba(255, 255, 255, 0.5);
   max-height: 240px;
   overflow-y: auto;
   list-style: none;
@@ -140,8 +153,8 @@ const selectedLabel = computed(
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 6px 10px;
-  border-radius: 6px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
   font-size: var(--text-body-sm);
   color: var(--color-text);
   cursor: pointer;
@@ -155,6 +168,7 @@ const selectedLabel = computed(
 
 .glass-listbox__option--selected {
   font-weight: 600;
+  color: var(--color-text-strong);
 }
 
 .glass-listbox__check {

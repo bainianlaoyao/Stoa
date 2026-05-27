@@ -58,10 +58,10 @@
   --color-white-soft: rgba(255, 255, 255, 0.56);
   --color-white-faint: rgba(255, 255, 255, 0.42);
 
-  /* Radius tokens */
-  --radius-lg: 18px;
-  --radius-md: 12px;
-  --radius-sm: 8px;
+  /* Radius tokens - Windows 10 Design Philosophy Override */
+  --radius-lg: 4px;
+  --radius-md: 2px;
+  --radius-sm: 2px;
 
   /* Shadow tokens */
   --shadow-glass: 0 12px 32px -4px rgba(0, 0, 0, 0.08), 0 4px 12px rgba(0, 0, 0, 0.03), inset 0 1px 0 rgba(255, 255, 255, 0.85);
@@ -69,6 +69,8 @@
   --shadow-card: 0 2px 6px rgba(0, 0, 0, 0.02), 0 1px 2px rgba(0, 0, 0, 0.02);
   --shadow-premium: 0 24px 48px -12px rgba(0, 0, 0, 0.08), 0 8px 16px -4px rgba(0, 0, 0, 0.03), 0 1px 2px rgba(0, 0, 0, 0.02);
   --shadow-success-ring: 0 0 0 2px rgba(16, 185, 129, 0.16);
+  --shadow-focus-ring: 0 0 0 3px rgba(0, 85, 255, 0.18);
+  --shadow-active-glow: 0 0 12px rgba(0, 85, 255, 0.35);
 
   /* Font tokens */
   --font-ui: 'SF Pro Text', 'Segoe UI Variable', 'Segoe UI', Inter, 'Noto Sans SC', 'Microsoft YaHei UI', sans-serif;
@@ -121,6 +123,19 @@
     font-size: var(--text-body);
     background: var(--color-canvas);
     color: var(--color-text);
+
+    /* Pure design token aliases */
+    --canvas: var(--color-canvas);
+    --surface: var(--color-surface);
+    --surface-solid: var(--color-surface-solid);
+    --surface-soft: var(--color-surface-soft);
+    --line: var(--color-line);
+    --line-strong: var(--color-line-strong);
+    --text-strong: var(--color-text-strong);
+    --text: var(--color-text);
+    --muted: var(--color-muted);
+    --subtle: var(--color-subtle);
+    --accent: var(--color-accent);
   }
 
   * { box-sizing: border-box; }
@@ -131,9 +146,10 @@
     overflow: hidden;
     line-height: 1.5;
     background:
-      radial-gradient(at 0% 0%, #ffffff 0%, transparent 45%),
-      radial-gradient(at 100% 0%, #e8edf7 0%, transparent 48%),
-      radial-gradient(at 100% 100%, #ffffff 0%, transparent 45%),
+      radial-gradient(at 0% 0%, #ffffff 70%, transparent),
+      radial-gradient(at 90% 10%, #e5e9f8 0%, #f0f4ff 50%, transparent),
+      radial-gradient(at 80% 90%, #fefcf9 0%, #f5f2eb 40%, transparent),
+      radial-gradient(at 20% 80%, #f2f5fd 0%, transparent),
       var(--color-canvas);
   }
 

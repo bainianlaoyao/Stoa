@@ -90,7 +90,7 @@ const emit = defineEmits<{
 .archive-eyebrow {
   margin: 0;
   color: var(--color-muted);
-  font-size: 11px;
+  font-size: var(--text-caption);
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -99,7 +99,7 @@ const emit = defineEmits<{
 .archive-title {
   margin: 0;
   color: var(--color-text-strong);
-  font-size: 18px;
+  font-size: var(--text-title);
   font-weight: 600;
 }
 
@@ -155,20 +155,20 @@ const emit = defineEmits<{
   border-radius: 999px;
   background: var(--color-surface-solid);
   color: var(--color-muted);
-  font-size: 11px;
+  font-size: var(--text-caption);
   line-height: 1.4;
   text-transform: uppercase;
 }
 
 .archive-card__project {
   color: var(--color-text);
-  font-size: 13px;
+  font-size: var(--text-body-sm);
   font-weight: 500;
 }
 
 .archive-card__path {
   color: var(--color-subtle);
-  font: 11px var(--font-mono);
+  font: var(--text-caption) var(--font-mono);
 }
 
 .archive-card__restore {

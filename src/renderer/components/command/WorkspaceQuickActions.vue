@@ -119,7 +119,7 @@ function emitOpenWorkspace(target: OpenWorkspaceRequest['target']): void {
 .workspace-quick-actions__button:hover,
 .workspace-quick-actions__button:focus-visible {
   border-color: var(--color-line-strong);
-  background: var(--color-black-faint);
+  background: var(--color-black-soft);
   outline: none;
 }
 
@@ -139,4 +139,5 @@ function emitOpenWorkspace(target: OpenWorkspaceRequest['target']): void {
   width: 27px;
   height: 27px;
 }
+
 </style>

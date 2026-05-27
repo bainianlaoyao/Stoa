@@ -75,6 +75,12 @@ function onTabClick(tabId: SettingsTab) {
         type="button"
         @click="onTabClick(tab.id)"
       >
+        <!-- Windows 10 style active indicator line on the left -->
+        <span
+          v-if="tab.id === activeTab"
+          class="absolute left-0 w-[3px] bg-accent top-[6px] bottom-[6px]"
+          aria-hidden="true"
+        />
         <span class="settings-tab-bar__icon" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none" focusable="false">
             <path
@@ -100,18 +106,19 @@ function onTabClick(tabId: SettingsTab) {
 <style scoped>
 .settings-tab-bar {
   display: grid;
-  gap: 8px;
+  gap: 4px;
 }
 
 .settings-tab-bar__item {
+  position: relative;
   display: grid;
   grid-template-columns: 34px minmax(0, 1fr);
   gap: 12px;
-  align-items: start;
+  align-items: center;
   width: 100%;
-  padding: 12px;
+  padding: 10px 12px 10px 16px;
   border: 1px solid transparent;
-  border-radius: var(--radius-md);
+  border-radius: 2px;
   background: transparent;
   color: var(--color-muted);
   text-align: left;
@@ -121,15 +128,16 @@ function onTabClick(tabId: SettingsTab) {
 
 .settings-tab-bar__item:hover,
 .settings-tab-bar__item:focus-visible {
-  background: var(--color-black-soft);
+  background: rgba(0, 0, 0, 0.03);
   color: var(--color-text-strong);
   outline: none;
 }
 
 .settings-tab-bar__item--active {
-  background: var(--color-surface-solid);
-  border-color: var(--color-line);
+  background: rgba(0, 0, 0, 0.045);
+  border-color: transparent;
   color: var(--color-text-strong);
+  box-shadow: none;
 }
 
 .settings-tab-bar__icon {
@@ -137,36 +145,43 @@ function onTabClick(tabId: SettingsTab) {
   place-items: center;
   width: 34px;
   height: 34px;
-  border-radius: 10px;
+  border-radius: 2px;
   background: var(--color-black-faint);
+  transition: all 0.2s ease;
 }
 
 .settings-tab-bar__item--active .settings-tab-bar__icon {
-  background: var(--color-black-soft);
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
   color: var(--color-accent);
 }
 
 .settings-tab-bar__icon svg {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
 }
 
 .settings-tab-bar__copy {
   display: grid;
-  gap: 2px;
+  gap: 1px;
   min-width: 0;
 }
 
 .settings-tab-bar__label {
   color: currentColor;
-  font-size: 13px;
+  font-size: var(--text-body-sm);
   font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 .settings-tab-bar__summary {
   margin: 0;
+  color: var(--color-subtle);
+  line-height: 1.3;
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.settings-tab-bar__item--active .settings-tab-bar__summary {
   color: var(--color-muted);
-  line-height: 1.5;
-  font-size: var(--text-meta);
 }
 </style>

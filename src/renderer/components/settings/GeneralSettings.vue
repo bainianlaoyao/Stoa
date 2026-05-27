@@ -257,17 +257,26 @@ async function handleLanguageChange(value: string): Promise<void> {
 </template>
 
 <style scoped>
+.settings-panel {
+  display: grid;
+  gap: 24px;
+  align-content: start;
+}
+
 .settings-panel__header {
   display: grid;
-  gap: 8px;
+  gap: 6px;
+  padding-bottom: 8px;
+  border-b: 1px solid var(--color-line);
 }
 
 .settings-panel__title {
   margin: 0;
   color: var(--color-text-strong);
   font-family: var(--font-ui);
-  font-size: var(--text-title);
-  font-weight: 600;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
 }
 
 .settings-panel__description {
@@ -275,12 +284,28 @@ async function handleLanguageChange(value: string): Promise<void> {
   color: var(--color-muted);
   line-height: 1.5;
   max-width: 640px;
-  font-size: var(--text-body);
+  font-size: var(--text-body-sm);
 }
 
 .settings-section {
   display: grid;
-  gap: 14px;
+  gap: 20px;
+}
+
+.settings-card {
+  display: grid;
+  gap: 16px;
+  padding: 24px;
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-solid);
+  border: 1px solid var(--color-line-strong);
+  box-shadow: var(--shadow-card);
+  transition: all 0.2s ease;
+}
+
+.settings-card:hover {
+  border-color: rgba(0, 85, 255, 0.15);
+  box-shadow: var(--shadow-soft);
 }
 
 .settings-card__header {
@@ -294,28 +319,30 @@ async function handleLanguageChange(value: string): Promise<void> {
   margin: 0;
   color: var(--color-text-strong);
   font-family: var(--font-ui);
-  font-size: var(--text-title-sm);
+  font-size: 15px;
   font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 .settings-card__description {
   margin: 0;
   color: var(--color-muted);
-  line-height: 1.5;
+  line-height: 1.4;
   margin-top: 4px;
-  font-size: var(--text-body-sm);
+  font-size: var(--text-meta);
 }
 
 .settings-card__badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 6px 10px;
-  border-radius: 999px;
-  background: var(--color-black-faint);
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.03);
+  border: 1px solid rgba(0, 0, 0, 0.01);
   color: var(--color-muted);
-  font-size: var(--text-caption);
-  font-weight: 600;
+  font-size: 10px;
+  font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   white-space: nowrap;
@@ -329,7 +356,7 @@ async function handleLanguageChange(value: string): Promise<void> {
 .settings-field {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
+  gap: 12px;
   align-items: end;
 }
 
@@ -347,25 +374,28 @@ async function handleLanguageChange(value: string): Promise<void> {
 
 .settings-item__hint {
   margin: 0;
-  color: var(--color-muted);
-  font-size: 12px;
+  color: var(--color-subtle);
+  font-size: var(--text-meta);
+  font-weight: 400;
 }
 
 .settings-item__hint--success {
   color: var(--color-success);
+  font-weight: 500;
 }
 
 .settings-item__hint--warning {
   color: var(--color-attention);
+  font-weight: 500;
 }
 
 .settings-item__detect-row {
-  margin-top: 4px;
+  margin-top: 2px;
 }
 
 .btn-ghost--sm {
-  font-size: 11px;
-  padding: 3px 8px;
+  font-size: var(--text-caption);
+  padding: 4px 10px;
   min-height: unset;
 }
 

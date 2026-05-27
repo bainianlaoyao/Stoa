@@ -70,7 +70,9 @@ async function handleCheckForUpdates(): Promise<void> {
     <div class="settings-section settings-section--about">
       <section class="settings-card settings-card--hero settings-about" :aria-label="t('about.title')">
         <div class="settings-about__brand">
-          <img :src="stoaLogo" alt="" class="settings-about__logo" aria-hidden="true">
+          <div class="settings-about__logo-container">
+            <img :src="stoaLogo" alt="" class="settings-about__logo" aria-hidden="true">
+          </div>
           <div class="settings-about__identity">
             <h2 class="settings-about__name">Stoa</h2>
             <span class="settings-about__version">v{{ currentVersion }}</span>
@@ -143,21 +145,30 @@ async function handleCheckForUpdates(): Promise<void> {
 </template>
 
 <style scoped>
-.settings-panel__header--about {
-  padding-bottom: 2px;
+.settings-panel {
+  display: grid;
+  gap: 24px;
+  align-content: start;
 }
 
 .settings-panel__header {
   display: grid;
-  gap: 8px;
+  gap: 6px;
+  padding-bottom: 8px;
+  border-b: 1px solid var(--color-line);
+}
+
+.settings-panel__header--about {
+  padding-bottom: 8px;
 }
 
 .settings-panel__title {
   margin: 0;
   color: var(--color-text-strong);
   font-family: var(--font-ui);
-  font-size: var(--text-title);
-  font-weight: 600;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
 }
 
 .settings-panel__description {
@@ -165,16 +176,32 @@ async function handleCheckForUpdates(): Promise<void> {
   color: var(--color-muted);
   line-height: 1.5;
   max-width: 640px;
-  font-size: var(--text-body);
+  font-size: var(--text-body-sm);
 }
 
 .settings-section {
   display: grid;
-  gap: 14px;
+  gap: 20px;
 }
 
 .settings-section--about {
   grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+}
+
+.settings-card {
+  display: grid;
+  gap: 16px;
+  padding: 24px;
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-solid);
+  border: 1px solid var(--color-line-strong);
+  box-shadow: var(--shadow-card);
+  transition: all 0.2s ease;
+}
+
+.settings-card:hover {
+  border-color: rgba(0, 85, 255, 0.15);
+  box-shadow: var(--shadow-soft);
 }
 
 .settings-card--hero {
@@ -192,46 +219,51 @@ async function handleCheckForUpdates(): Promise<void> {
   margin: 0;
   color: var(--color-text-strong);
   font-family: var(--font-ui);
-  font-size: var(--text-title-sm);
+  font-size: 15px;
   font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 .settings-card__description {
   margin: 0;
   color: var(--color-muted);
-  line-height: 1.5;
+  line-height: 1.4;
   margin-top: 4px;
-  font-size: var(--text-body-sm);
+  font-size: var(--text-meta);
 }
 
 .settings-card__badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 6px 10px;
-  border-radius: 999px;
-  background: var(--color-black-faint);
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.03);
+  border: 1px solid rgba(0, 0, 0, 0.01);
   color: var(--color-muted);
-  font-size: var(--text-caption);
-  font-weight: 600;
+  font-size: 10px;
+  font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   white-space: nowrap;
 }
 
 .settings-card__badge--accent {
-  background: var(--color-black-soft);
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
   color: var(--color-accent);
+  border-color: color-mix(in srgb, var(--color-accent) 12%, transparent);
 }
 
 .settings-card__badge--success {
-  background: var(--shadow-success-ring);
+  background: color-mix(in srgb, var(--color-success) 8%, transparent);
   color: var(--color-success);
+  border-color: color-mix(in srgb, var(--color-success) 12%, transparent);
 }
 
 .settings-card__badge--warning {
-  background: var(--color-black-faint);
-  color: var(--color-attention);
+  background: color-mix(in srgb, var(--color-warning) 8%, transparent);
+  color: var(--color-warning);
+  border-color: color-mix(in srgb, var(--color-warning) 12%, transparent);
 }
 
 .settings-about {
@@ -239,32 +271,45 @@ async function handleCheckForUpdates(): Promise<void> {
 }
 
 .settings-about__brand {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 14px;
+  display: flex;
+  gap: 16px;
   align-items: center;
 }
 
+.settings-about__logo-container {
+  display: grid;
+  place-items: center;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,255,255,0.95) 0%, rgba(240,244,255,0.5) 100%);
+  border: 1px solid var(--color-line-strong);
+  box-shadow: 0 8px 24px -6px rgba(0, 85, 255, 0.08), inset 0 1px 0 rgba(255,255,255,0.9);
+  flex-shrink: 0;
+}
+
 .settings-about__logo {
+  height: 32px;
   width: auto;
-  height: 52px;
-  object-fit: contain;
 }
 
 .settings-about__identity {
   display: grid;
-  gap: 4px;
+  gap: 2px;
 }
 
 .settings-about__name {
   margin: 0;
   color: var(--color-text-strong);
   font-family: var(--font-ui);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 
 .settings-about__version {
   color: var(--color-muted);
-  font-size: 12px;
+  font-size: var(--text-meta);
   font-family: var(--font-mono);
 }
 
@@ -272,21 +317,24 @@ async function handleCheckForUpdates(): Promise<void> {
   margin: 0;
   color: var(--color-muted);
   line-height: 1.5;
+  font-size: var(--text-body-sm);
 }
 
 .settings-about__stack {
   color: var(--color-muted);
-  font-size: 12px;
+  font-size: var(--text-meta);
   display: inline-flex;
   width: fit-content;
-  padding: 6px 10px;
-  border-radius: 999px;
-  background: var(--color-black-faint);
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.03);
+  border: 1px solid rgba(0, 0, 0, 0.01);
+  font-weight: 500;
 }
 
 .settings-about__sidebar {
   display: grid;
-  gap: 14px;
+  gap: 20px;
 }
 
 .settings-about__status-card {
@@ -308,12 +356,13 @@ async function handleCheckForUpdates(): Promise<void> {
 
 .settings-about__status-row--stacked {
   display: grid;
+  gap: 4px;
 }
 
 .settings-about__status-label {
   color: var(--color-subtle);
   font-size: var(--text-caption);
-  font-weight: 600;
+  font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -321,24 +370,27 @@ async function handleCheckForUpdates(): Promise<void> {
 .settings-about__status-value {
   color: var(--color-text-strong);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-meta);
+  font-weight: 500;
 }
 
 .settings-about__status-message {
-  margin: 6px 0 0;
+  margin: 0;
   color: var(--color-text);
-  line-height: 1.5;
+  line-height: 1.4;
+  font-size: var(--text-body-sm);
 }
 
 .settings-about__status-meta {
   color: var(--color-muted);
-  font-size: 12px;
+  font-size: var(--text-meta);
   text-align: right;
 }
 
 .settings-about__actions {
   display: flex;
   justify-content: flex-start;
+  margin-top: 4px;
 }
 
 .settings-about__links {
@@ -350,25 +402,34 @@ async function handleCheckForUpdates(): Promise<void> {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 14px;
+  padding: 10px 12px;
   border-radius: var(--radius-sm);
-  background: var(--color-surface-solid);
+  background: rgba(0,0,0,0.008);
   color: var(--color-text-strong);
   text-decoration: none;
   border: 1px solid var(--color-line);
+  font-size: var(--text-body-sm);
+  font-weight: 500;
   transition: all 0.2s ease;
 }
 
 .settings-about__link:hover,
 .settings-about__link:focus-visible {
-  background: var(--color-black-soft);
+  background: rgba(0, 0, 0, 0.03);
+  border-color: var(--color-line-strong);
   outline: none;
 }
 
 .settings-about__link::after {
   content: '\2197';
   color: var(--color-subtle);
-  font-size: 12px;
+  font-size: var(--text-meta);
+  transition: transform 0.2s ease;
+}
+
+.settings-about__link:hover::after {
+  transform: translate(1px, -1px);
+  color: var(--color-accent);
 }
 
 @media (max-width: 980px) {

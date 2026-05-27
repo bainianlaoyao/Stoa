@@ -43,7 +43,8 @@ import type {
   CreateProjectRequest,
   CreateSessionRequest,
   OpenWorkspaceRequest,
-  SessionSummary
+  SessionSummary,
+  SessionTitleGenerationNotification
 } from '@shared/project-session'
 import type { CreateMetaSessionRequest, MetaSessionSummary } from '@shared/meta-session'
 import type { UpdateState } from '@shared/update-state'
@@ -362,6 +363,15 @@ function pushMetaSessionEvent(session: MetaSessionSummary): void {
   win.webContents.send(IPC_CHANNELS.metaSessionEvent, { session })
 }
 
+function pushTitleGenerationNotification(event: SessionTitleGenerationNotification): void {
+  const win = mainWindow
+  if (!win || win.isDestroyed()) {
+    return
+  }
+
+  win.webContents.send(IPC_CHANNELS.titleGenerationNotification, event)
+}
+
 function pushObservabilitySnapshotsForSession(sessionId: string): void {
   if (!mainWindow || mainWindow.isDestroyed() || !projectSessionManager || !observabilityService) {
     return
@@ -591,6 +601,9 @@ app.whenReady().then(async () => {
         syncObservabilityAndPushForSession(sessionId)
       }
       return updated
+    },
+    onNotification(event) {
+      pushTitleGenerationNotification(event)
     }
   })
   const compositeRuntimeController = {
@@ -1378,6 +1391,32 @@ app.whenReady().then(async () => {
 
   ipcMain.handle(IPC_CHANNELS.settingsSet, async (_event, key: string, value: unknown) => {
     await projectSessionManager?.setSetting(key, value)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.titleGenerationFetchModels, async (_event, baseUrl: string, apiKey: string) => {
+    try {
+      const url = `${baseUrl.replace(/\/+$/, '')}/models`
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Accept': 'application/json'
+        }
+      })
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
+      const data = await response.json() as any
+      if (data && Array.isArray(data.data)) {
+        return data.data.map((m: any) => typeof m === 'object' && m !== null && typeof m.id === 'string' ? m.id : String(m))
+      }
+      if (Array.isArray(data)) {
+        return data.map((m: any) => String(m))
+      }
+      throw new Error('Unexpected models response format')
+    } catch (error: any) {
+      throw new Error(`Failed to fetch models: ${error?.message || String(error)}`)
+    }
   })
 
   ipcMain.handle(IPC_CHANNELS.dialogPickFolder, async (_event, options?: { title?: string }) => {

@@ -144,7 +144,14 @@ export default {
       baseUrlPlaceholder: 'https://api.openai.com/v1',
       apiKeyLabel: 'API key',
       apiKeyPlaceholder: 'sk-...',
-      hint: 'Manual regenerate from the session context menu always overwrites the current title when a new result is returned.'
+      hint: 'Manual regenerate from the session context menu always overwrites the current title when a new result is returned.',
+      customModelLabel: 'Custom Model Name',
+      customModelPlaceholder: 'Enter custom model name...',
+      fetchModels: 'Get Models',
+      fetchingModels: 'Fetching...',
+      fetchModelsSuccess: 'Models fetched successfully.',
+      optionCustom: 'Custom...',
+      missingCredentials: 'Base URL and API Key are required to fetch models.'
     },
     sessionProviders: 'Session providers',
     sessionProvidersRadial: 'Session providers (radial)',
@@ -200,6 +207,17 @@ export default {
     dismiss: 'Not now',
     install: 'Install now',
     download: 'Download now'
+  },
+
+  titleGenerationToast: {
+    pendingTitle: 'Generating session title',
+    pendingMessage: 'Summarizing the latest turn for "{title}".',
+    manualSuccessTitle: 'Session title updated',
+    automaticSuccessTitle: 'Session title generated',
+    successMessage: 'Sidebar title updated to "{title}".',
+    errorTitle: 'Session title generation failed',
+    errorFallbackMessage: 'The title generator did not return a usable result.',
+    untitledFallback: 'Untitled session'
   },
 
   newProject: {

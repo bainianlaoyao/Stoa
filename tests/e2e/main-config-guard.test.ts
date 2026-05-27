@@ -179,7 +179,7 @@ describe('E2E: Main Process Config Guard', () => {
       expect(mainSource).toMatch(/resolveDefaultStoaRuntimeRoot\(/)
       expect(mainSource).toMatch(/createHookLeaseManager\(/)
       expect(mainSource).toMatch(/hookLeaseManager\s*:/)
-      expect(mainSource).toMatch(/launchTrackedSessionRuntime\(\{/)
+      expect(mainSource).toMatch(/launchTrackedSessionRuntime\({/)
     })
 
     it('packaged smoke validates Claude command-hook dispatcher contract instead of legacy HTTP hooks', () => {
@@ -276,6 +276,7 @@ describe('E2E: Main Process Config Guard', () => {
         ['setMetaSessionInspectorTarget', 'metaSessionInspectorSetTarget'],
         ['getSettings', 'settingsGet'],
         ['setSetting', 'settingsSet'],
+        ['titleGenerationFetchModels', 'titleGenerationFetchModels'],
         ['pickFolder', 'dialogPickFolder'],
         ['pickFile', 'dialogPickFile'],
         ['detectShell', 'settingsDetectShell'],
@@ -402,6 +403,7 @@ describe('E2E: Main Process Config Guard', () => {
         'sendSessionResize',
         'getSettings',
         'setSetting',
+        'titleGenerationFetchModels',
         'pickFolder',
         'pickFile',
         'detectShell',
@@ -490,6 +492,7 @@ describe('E2E: Main Process Config Guard', () => {
       expect(invMap.get('sendSessionResize')).toBe('session:resize')
       expect(invMap.get('getSettings')).toBe('settings:get')
       expect(invMap.get('setSetting')).toBe('settings:set')
+      expect(invMap.get('titleGenerationFetchModels')).toBe('settings:title-generation-fetch-models')
       expect(invMap.get('pickFolder')).toBe('dialog:pick-folder')
       expect(invMap.get('pickFile')).toBe('dialog:pick-file')
       expect(invMap.get('detectShell')).toBe('settings:detect-shell')
@@ -545,6 +548,7 @@ describe('E2E: Main Process Config Guard', () => {
       expect(constants.get('workspaceOpen')).toBe('workspace:open')
       expect(constants.get('memoryNotification')).toBe('memory:notification')
       expect(constants.get('sessionBinaryInput')).toBe('session:binary-input')
+      expect(constants.get('titleGenerationNotification')).toBe('title-generation:notification')
     })
   })
 
@@ -571,8 +575,16 @@ describe('E2E: Main Process Config Guard', () => {
       expect(preloadSource).toMatch(/ipcRenderer\.on\(\s*IPC_CHANNELS\.memoryNotification/)
     })
 
+    it('preload registers listener for title-generation:notification channel', () => {
+      expect(preloadSource).toMatch(/ipcRenderer\.on\(\s*IPC_CHANNELS\.titleGenerationNotification/)
+    })
+
     it('main process uses webContents.send for update state', () => {
       expect(mainSource).toMatch(/webContents\.send\(\s*IPC_CHANNELS\.updateState/)
+    })
+
+    it('main process uses webContents.send for title generation notifications', () => {
+      expect(mainSource).toMatch(/webContents\.send\(\s*IPC_CHANNELS\.titleGenerationNotification/)
     })
 
     it('main process does not wire memory notifications while memory integration is disabled', () => {

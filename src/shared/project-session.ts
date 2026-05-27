@@ -297,6 +297,18 @@ export interface MemoryNotificationEvent {
   createdAt: string
 }
 
+export type SessionTitleGenerationTrigger = 'manual' | 'automatic'
+export type SessionTitleGenerationNotificationStatus = 'pending' | 'success' | 'error'
+
+export interface SessionTitleGenerationNotification {
+  sessionId: string
+  projectId: string
+  trigger: SessionTitleGenerationTrigger
+  status: SessionTitleGenerationNotificationStatus
+  title?: string
+  errorMessage?: string
+}
+
 export interface RendererApi {
   windowsBuildNumber: number | undefined
   getBootstrapState: () => Promise<BootstrapState>
@@ -314,6 +326,7 @@ export interface RendererApi {
   sendSessionResize: (sessionId: string, cols: number, rows: number) => Promise<void>
   onTerminalData: (callback: (chunk: TerminalDataChunk) => void) => () => void
   onMemoryNotification: (callback: (event: MemoryNotificationEvent) => void) => () => void
+  onTitleGenerationNotification: (callback: (event: SessionTitleGenerationNotification) => void) => () => void
   onSessionEvent: (callback: (event: SessionSummaryEvent) => void) => () => void
   getSessionPresence: (sessionId: string) => Promise<SessionPresenceSnapshot | null>
   getProjectObservability: (projectId: string) => Promise<ProjectObservabilitySnapshot | null>
@@ -327,6 +340,7 @@ export interface RendererApi {
   onAppObservabilityChanged: (callback: (snapshot: AppObservabilitySnapshot) => void) => () => void
   getSettings: () => Promise<AppSettings>
   setSetting: (key: string, value: unknown) => Promise<void>
+  titleGenerationFetchModels: (baseUrl: string, apiKey: string) => Promise<string[]>
   pickFolder: (options?: { title?: string }) => Promise<string | null>
   pickFile: (options?: { title?: string; filters?: Array<{ name: string; extensions: string[] }> }) => Promise<string | null>
   detectShell: () => Promise<string | null>

@@ -316,14 +316,17 @@ describe('WorkspaceHierarchyPanel', () => {
       expect(icons.map((node) => node.attributes('alt'))).toEqual(['opencode', 'claude-code'])
     })
 
-    it('renders status label from row view models in the main branch structure', () => {
+    it('renders session title as the primary row copy and keeps status as secondary copy', () => {
       const wrapper = mountPanel({
         sessionRowViewModels: createSessionRowViewModels()
       })
 
-      const labels = wrapper.findAll('.route-session-label').map((node) => node.text())
-      expect(labels).toContain('Running 10s ago')
-      expect(labels).toContain('Ready 20s ago')
+      const sessionRows = wrapper.findAll('[data-testid="session-row"]')
+      const names = sessionRows.map((node) => node.find('.route-session-name').text())
+      const labels = sessionRows.map((node) => node.find('.route-session-label').text())
+
+      expect(names).toEqual(['deploy gateway', 'need confirmation'])
+      expect(labels).toEqual(['Running 10s ago', 'Ready 20s ago'])
     })
 
     it('uses a real projected row view model without duplicating the status label', () => {
@@ -345,6 +348,8 @@ describe('WorkspaceHierarchyPanel', () => {
       })
 
       const labels = wrapper.findAll('.route-session-label').map((node) => node.text())
+      const names = wrapper.findAll('[data-testid="session-row"] .route-session-name').map((node) => node.text())
+      expect(names).toContain('need confirmation')
       expect(labels).toContain('Ready Just now')
       expect(projectedViewModel.secondaryLabel).toBe('Sonnet')
       expect(labels.join(' | ')).not.toContain('Ready Ready')

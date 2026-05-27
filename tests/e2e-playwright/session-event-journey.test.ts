@@ -382,7 +382,7 @@ test.describe('Electron push and webhook journeys', () => {
     }
   })
 
-  test('claude PermissionRequest hook keeps the terminal mounted', async () => {
+  test('claude PermissionRequest hook keeps the terminal mounted without a terminal top bar', async () => {
     const app = await launchElectronApp()
 
     try {
@@ -419,9 +419,7 @@ test.describe('Electron push and webhook journeys', () => {
       await expect(statusDot).toHaveAttribute('data-phase', 'blocked')
       await expect(statusDot).toHaveAttribute('data-tone', 'warning')
       const terminalStatusBar = app.page.getByTestId('terminal-status-bar')
-      await expect(terminalStatusBar).toBeVisible()
-      await expect(terminalStatusBar).toContainText('Blocked')
-      await expect(terminalStatusBar).toContainText('Provider is waiting for permission.')
+      await expect(terminalStatusBar).toHaveCount(0)
 
       const terminalViewport = app.page.getByTestId('terminal-viewport')
       await expect(terminalViewport.getByTestId('terminal-xterm')).toBeVisible()

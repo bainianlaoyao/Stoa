@@ -47,12 +47,12 @@ function onClose() {
             leave-to="opacity-0 scale-95"
           >
             <DialogPanel
-              class="w-full max-w-[360px] rounded-[18px] border border-line bg-surface-solid p-5 shadow-premium"
+              class="w-full max-w-[360px] rounded-[length:var(--radius-lg)] border border-line bg-surface-solid p-5 shadow-premium"
               data-testid="modal-panel"
             >
               <div class="flex items-center justify-between mb-4">
-                <DialogTitle as="h3" class="text-[15px] font-semibold text-text-strong" data-testid="modal-title">{{ title }}</DialogTitle>
-                <button class="bg-transparent text-muted w-6 h-6 rounded-lg border-none cursor-pointer flex items-center justify-center text-base leading-none hover:bg-black-soft hover:text-text-strong" data-testid="modal-close" @click="onClose">✕</button>
+                <DialogTitle as="h3" class="text-[length:var(--text-title-sm)] font-semibold text-text-strong" data-testid="modal-title">{{ title }}</DialogTitle>
+                <button class="bg-transparent text-muted w-6 h-6 rounded-[length:var(--radius-sm)] border-none cursor-pointer flex items-center justify-center text-base leading-none hover:bg-black-soft hover:text-text-strong" data-testid="modal-close" @click="onClose">✕</button>
               </div>
               <div class="grid gap-4" data-testid="modal-body">
                 <slot />

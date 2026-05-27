@@ -46,21 +46,27 @@ const emit = defineEmits<{
 }
 
 .glass-path-field__input {
-  background: var(--color-surface-solid);
-  border: 1px solid var(--color-line);
+  background: linear-gradient(to bottom, #ffffff 0%, #fafbfc 100%);
+  border: 1px solid var(--color-line-strong);
   border-radius: var(--radius-sm);
-  padding: 7px 10px;
+  padding: 8px 12px;
   font: inherit;
   font-size: var(--text-body-sm);
   color: var(--color-text-strong);
   outline: none;
   width: 100%;
-  transition: all 0.2s ease;
+  transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.015);
+}
+
+.glass-path-field__input:hover {
+  border-color: rgba(0, 85, 255, 0.35);
 }
 
 .glass-path-field__input:focus {
   border-color: var(--color-accent);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 12%, transparent);
+  box-shadow: var(--shadow-focus-ring);
+  background: #ffffff;
 }
 
 .glass-path-field__input::placeholder {

@@ -16,11 +16,11 @@ const emit = defineEmits<{
 
 <template>
   <label class="grid gap-1.5" data-testid="form-field">
-    <span class="text-[11px] font-semibold text-muted uppercase tracking-[0.08em]">{{ label }}</span>
+    <span class="text-[length:var(--text-caption)] font-semibold text-muted uppercase tracking-[0.08em]">{{ label }}</span>
     <input
       v-if="type !== 'select'"
       data-testid="form-input"
-      class="bg-surface-solid border border-line rounded-lg px-2.5 py-2 font-inherit text-text-strong outline-none w-full focus:border-accent focus:ring-2 focus:ring-accent/12 placeholder:text-subtle"
+      class="bg-gradient-to-b from-white to-[#fafbfc] border border-line-strong rounded-[length:var(--radius-sm)] px-3 py-2 font-inherit text-text-strong outline-none w-full shadow-[inset_0_1px_1px_rgba(0,0,0,0.015)] transition-all duration-200 ease-[cubic-bezier(0.25,0.8,0.25,1)] hover:border-accent/35 focus:border-accent focus:bg-white focus:ring-[3px] focus:ring-accent/18 placeholder:text-subtle"
       :value="modelValue"
       :placeholder="placeholder"
       @input="emit('update:modelValue', ($event.target as HTMLInputElement).value)"

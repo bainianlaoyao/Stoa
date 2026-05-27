@@ -1,16 +1,26 @@
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount } from 'vue'
+import { computed, onMounted, onBeforeUnmount } from 'vue'
 import { storeToRefs } from 'pinia'
-import type { OpenWorkspaceRequest, SessionType } from '@shared/project-session'
+import { useI18n } from 'vue-i18n'
+import type {
+  OpenWorkspaceRequest,
+  SessionTitleGenerationNotification,
+  SessionTitleGenerationNotificationStatus,
+  SessionType
+} from '@shared/project-session'
 import AppShell from '@renderer/components/AppShell.vue'
 import MemoryToastHost from '@renderer/components/memory/MemoryToastHost.vue'
 import UpdatePrompt from '@renderer/components/update/UpdatePrompt.vue'
 import { useMetaSessionStore } from '@renderer/stores/meta-session'
-import { useMemoryNotificationsStore } from '@renderer/stores/memory-notifications'
+import {
+  useMemoryNotificationsStore,
+  type TitleGenerationToastNotification
+} from '@renderer/stores/memory-notifications'
 import { useWorkspaceStore } from '@renderer/stores/workspaces'
 import { useSettingsStore } from '@renderer/stores/settings'
 import { useUpdateStore } from '@renderer/stores/update'
 
+const { t } = useI18n()
 const workspaceStore = useWorkspaceStore()
 const metaSessionStore = useMetaSessionStore()
 const settingsStore = useSettingsStore()
@@ -28,6 +38,9 @@ const {
   shouldShowPrompt
 } = storeToRefs(updateStore)
 const { notifications: memoryNotifications } = storeToRefs(memoryNotificationsStore)
+const sessionTitleById = computed(() => {
+  return new Map(workspaceStore.sessions.map((session) => [session.id, session.title]))
+})
 
 function handleProjectSelect(projectId: string): void {
   workspaceStore.setActiveProject(projectId)
@@ -140,19 +153,74 @@ async function handleOpenWorkspace(request: OpenWorkspaceRequest): Promise<void>
 
 let unsubscribeUpdateState: (() => void) | null = null
 let unsubscribeMemoryNotification: (() => void) | null = null
+let unsubscribeTitleGenerationNotification: (() => void) | null = null
 let unsubscribeMetaSessionEvents: (() => void) | null = null
 let unsubscribeSessionEvents: (() => void) | null = null
 let isUnmounted = false
+
+function isActiveSessionNotification(sessionId: string): boolean {
+  return sessionId === activeSessionId.value
+}
+
+function titleGenerationToastStatus(
+  status: SessionTitleGenerationNotificationStatus
+): TitleGenerationToastNotification['status'] {
+  return status
+}
+
+function titleGenerationToastTitle(event: SessionTitleGenerationNotification): string {
+  if (event.status === 'pending') {
+    return t('titleGenerationToast.pendingTitle')
+  }
+
+  if (event.status === 'error') {
+    return t('titleGenerationToast.errorTitle')
+  }
+
+  return event.trigger === 'automatic'
+    ? t('titleGenerationToast.automaticSuccessTitle')
+    : t('titleGenerationToast.manualSuccessTitle')
+}
+
+function titleGenerationToastMessage(event: SessionTitleGenerationNotification): string {
+  if (event.status === 'pending') {
+    const currentTitle = sessionTitleById.value.get(event.sessionId) ?? t('titleGenerationToast.untitledFallback')
+    return t('titleGenerationToast.pendingMessage', { title: currentTitle })
+  }
+
+  if (event.status === 'error') {
+    return event.errorMessage ?? t('titleGenerationToast.errorFallbackMessage')
+  }
+
+  return t('titleGenerationToast.successMessage', {
+    title: event.title ?? t('titleGenerationToast.untitledFallback')
+  })
+}
+
+function applyTitleGenerationNotification(event: SessionTitleGenerationNotification): void {
+  memoryNotificationsStore.enqueueTitleGeneration({
+    id: `title-generation:${event.trigger}:${event.sessionId}:${event.status}:${event.title ?? ''}:${event.errorMessage ?? ''}`,
+    projectId: event.projectId,
+    sessionId: event.sessionId,
+    status: titleGenerationToastStatus(event.status),
+    title: titleGenerationToastTitle(event),
+    message: titleGenerationToastMessage(event),
+    createdAt: new Date().toISOString()
+  })
+}
 
 onMounted(async () => {
   unsubscribeUpdateState = window.stoa.onUpdateState((state) => {
     updateStore.applyState(state)
   })
   unsubscribeMemoryNotification = window.stoa.onMemoryNotification((event) => {
-    if (event.sessionId !== activeSessionId.value) {
+    if (!isActiveSessionNotification(event.sessionId)) {
       return
     }
     memoryNotificationsStore.enqueue(event)
+  })
+  unsubscribeTitleGenerationNotification = window.stoa.onTitleGenerationNotification((event) => {
+    applyTitleGenerationNotification(event)
   })
   unsubscribeSessionEvents = window.stoa.onSessionEvent((event) => {
     workspaceStore.updateSession(event.session.id, event.session)
@@ -196,6 +264,7 @@ onBeforeUnmount(() => {
   isUnmounted = true
   unsubscribeUpdateState?.()
   unsubscribeMemoryNotification?.()
+  unsubscribeTitleGenerationNotification?.()
   unsubscribeMetaSessionEvents?.()
   unsubscribeSessionEvents?.()
   memoryNotificationsStore.reset()

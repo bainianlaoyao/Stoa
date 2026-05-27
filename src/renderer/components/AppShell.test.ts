@@ -200,6 +200,7 @@ describe('AppShell', () => {
       sendSessionResize: vi.fn().mockResolvedValue(undefined),
       onTerminalData: vi.fn().mockReturnValue(() => {}),
       onMemoryNotification: vi.fn().mockReturnValue(() => {}),
+      onTitleGenerationNotification: vi.fn().mockReturnValue(() => {}),
       onSessionEvent: vi.fn().mockReturnValue(() => {}),
       getSessionPresence: vi.fn().mockResolvedValue(null),
       getProjectObservability: vi.fn().mockResolvedValue(null),
@@ -233,6 +234,7 @@ describe('AppShell', () => {
         claudeDangerouslySkipPermissions: false,
         locale: 'en'
       }),
+      titleGenerationFetchModels: vi.fn().mockResolvedValue([]),
       setSetting: vi.fn().mockResolvedValue(undefined),
       pickFolder: vi.fn().mockResolvedValue(null),
       pickFile: vi.fn().mockResolvedValue(null),

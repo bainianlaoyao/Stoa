@@ -10,6 +10,7 @@ import type {
   OpenWorkspaceRequest,
   RendererApi,
   SessionSummaryEvent,
+  SessionTitleGenerationNotification,
   TerminalDataChunk
 } from '@shared/project-session'
 import type { SessionEvidenceSnapshot } from '@shared/memory-runtime'
@@ -156,6 +157,11 @@ const api: RendererApi = {
     ipcRenderer.on(IPC_CHANNELS.memoryNotification, handler)
     return () => ipcRenderer.removeListener(IPC_CHANNELS.memoryNotification, handler)
   },
+  onTitleGenerationNotification(callback: (event: SessionTitleGenerationNotification) => void) {
+    const handler = (_event: Electron.IpcRendererEvent, event: SessionTitleGenerationNotification) => callback(event)
+    ipcRenderer.on(IPC_CHANNELS.titleGenerationNotification, handler)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.titleGenerationNotification, handler)
+  },
   onSessionEvent(callback: (event: SessionSummaryEvent) => void) {
     const handler = (_event: Electron.IpcRendererEvent, event: SessionSummaryEvent) => callback(event)
     ipcRenderer.on(IPC_CHANNELS.sessionEvent, handler)
@@ -206,6 +212,9 @@ const api: RendererApi = {
   },
   async setSetting(key: string, value: unknown) {
     return ipcRenderer.invoke(IPC_CHANNELS.settingsSet, key, value)
+  },
+  async titleGenerationFetchModels(baseUrl: string, apiKey: string) {
+    return ipcRenderer.invoke(IPC_CHANNELS.titleGenerationFetchModels, baseUrl, apiKey) as Promise<string[]>
   },
   async pickFolder(options?: { title?: string }) {
     return ipcRenderer.invoke(IPC_CHANNELS.dialogPickFolder, options) as Promise<string | null>

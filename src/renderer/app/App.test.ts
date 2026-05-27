@@ -9,7 +9,8 @@ import type {
   BootstrapState,
   MemoryNotificationEvent,
   ProjectSummary,
-  SessionSummary
+  SessionSummary,
+  SessionTitleGenerationNotification
 } from '@shared/project-session'
 import type { SessionPresenceSnapshot } from '@shared/observability'
 import type { UpdateState } from '@shared/update-state'
@@ -137,6 +138,18 @@ function createMemoryNotification(overrides: Partial<MemoryNotificationEvent> = 
   }
 }
 
+function createTitleGenerationNotification(
+  overrides: Partial<SessionTitleGenerationNotification> = {}
+): SessionTitleGenerationNotification {
+  return {
+    projectId: 'project_1',
+    sessionId: 'session_1',
+    trigger: 'manual',
+    status: 'pending',
+    ...overrides
+  }
+}
+
 async function flush(): Promise<void> {
   await new Promise((r) => setTimeout(r, 0))
   await new Promise((r) => setTimeout(r, 0))
@@ -168,6 +181,7 @@ function setupStoa(overrides?: Partial<typeof window.stoa>) {
     sendSessionResize: vi.fn().mockResolvedValue(undefined),
     onTerminalData: vi.fn().mockReturnValue(() => {}),
     onMemoryNotification: vi.fn().mockReturnValue(() => {}),
+    onTitleGenerationNotification: vi.fn().mockReturnValue(() => {}),
     onSessionEvent: vi.fn().mockReturnValue(() => {}),
     getSessionPresence: vi.fn().mockResolvedValue(null),
     getProjectObservability: vi.fn().mockResolvedValue(null),
@@ -201,6 +215,7 @@ function setupStoa(overrides?: Partial<typeof window.stoa>) {
       claudeDangerouslySkipPermissions: false,
       locale: 'en'
     }),
+    titleGenerationFetchModels: vi.fn().mockResolvedValue([]),
     setSetting: vi.fn().mockResolvedValue(undefined),
     pickFolder: vi.fn().mockResolvedValue(null),
     pickFile: vi.fn().mockResolvedValue(null),
@@ -330,6 +345,16 @@ describe('App (root)', () => {
       expect(onMemoryNotification).toHaveBeenCalledOnce()
     })
 
+    it('on mount subscribes to pushed title-generation notifications', async () => {
+      const onTitleGenerationNotification = vi.fn().mockReturnValue(() => {})
+      setupStoa({ onTitleGenerationNotification })
+
+      wrapper = await mountApp(pinia)
+      await flush()
+
+      expect(onTitleGenerationNotification).toHaveBeenCalledOnce()
+    })
+
     it('on mount subscribes to pushed session events', async () => {
       const onSessionEvent = vi.fn().mockReturnValue(() => {})
       setupStoa({ onSessionEvent })
@@ -411,6 +436,68 @@ describe('App (root)', () => {
       await flush()
 
       expect(wrapper.find('[data-testid="memory-toast-host"]').exists()).toBe(false)
+    })
+
+    it('renders pushed title-generation notifications for the active session', async () => {
+      let listener: ((event: SessionTitleGenerationNotification) => void) | undefined
+      const hydratedState: BootstrapState = {
+        activeProjectId: 'project_1',
+        activeSessionId: 'session_1',
+        terminalWebhookPort: 0,
+        projects: [{ id: 'project_1', name: 'Proj', path: '/p', createdAt: 't', updatedAt: 't' }],
+        sessions: [createSessionSummary({ id: 'session_1', projectId: 'project_1', title: 'Claude Session' })]
+      }
+
+      setupStoa({
+        getBootstrapState: vi.fn().mockResolvedValue(hydratedState),
+        onTitleGenerationNotification: vi.fn().mockImplementation((callback: (event: SessionTitleGenerationNotification) => void) => {
+          listener = callback
+          return () => {}
+        })
+      })
+
+      wrapper = await mountApp(pinia)
+      await flush()
+      listener?.(createTitleGenerationNotification())
+      await flush()
+
+      const host = wrapper.get('[data-testid="memory-toast-host"]')
+      expect(host.text()).toContain('Generating session title')
+      expect(host.text()).toContain('Summarizing the latest turn for "Claude Session".')
+    })
+
+    it('renders pushed title-generation notifications even when the session is inactive', async () => {
+      let listener: ((event: SessionTitleGenerationNotification) => void) | undefined
+      const hydratedState: BootstrapState = {
+        activeProjectId: 'project_1',
+        activeSessionId: 'session_1',
+        terminalWebhookPort: 0,
+        projects: [{ id: 'project_1', name: 'Proj', path: '/p', createdAt: 't', updatedAt: 't' }],
+        sessions: [createSessionSummary({ id: 'session_1', projectId: 'project_1', title: 'Claude Session' })]
+      }
+
+      setupStoa({
+        getBootstrapState: vi.fn().mockResolvedValue(hydratedState),
+        onTitleGenerationNotification: vi.fn().mockImplementation((callback: (event: SessionTitleGenerationNotification) => void) => {
+          listener = callback
+          return () => {}
+        })
+      })
+
+      wrapper = await mountApp(pinia)
+      await flush()
+      listener?.(createTitleGenerationNotification({
+        sessionId: 'session_2',
+        projectId: 'project_1',
+        trigger: 'automatic',
+        status: 'success',
+        title: 'Updated From Background'
+      }))
+      await flush()
+
+      const host = wrapper.get('[data-testid="memory-toast-host"]')
+      expect(host.text()).toContain('Session title generated')
+      expect(host.text()).toContain('Sidebar title updated to "Updated From Background".')
     })
 
     it('reads update state after subscribing so startup sees the latest transition', async () => {
@@ -646,6 +733,52 @@ describe('App (root)', () => {
 
       expect(window.stoa.regenerateSessionTitle).toHaveBeenCalledWith('s1')
       expect(useWorkspaceStore(pinia).sessions[0]?.title).toBe('Regenerated Title')
+    })
+
+    it('regenerateSessionTitle shows a pending toast when main pushes a pending notification while the request is in flight', async () => {
+      let resolveRequest: ((value: SessionSummary) => void) | undefined
+      let listener: ((event: SessionTitleGenerationNotification) => void) | undefined
+      const hydratedState: BootstrapState = {
+        activeProjectId: 'p1',
+        activeSessionId: 's1',
+        terminalWebhookPort: 0,
+        projects: [{ id: 'p1', name: 'P', path: '/p', createdAt: 't', updatedAt: 't' }],
+        sessions: [createSessionSummary({ id: 's1', projectId: 'p1', title: 'Original Title' })]
+      }
+      setupStoa({
+        getBootstrapState: vi.fn().mockResolvedValue(hydratedState),
+        onTitleGenerationNotification: vi.fn().mockImplementation((callback: (event: SessionTitleGenerationNotification) => void) => {
+          listener = callback
+          return () => {}
+        }),
+        regenerateSessionTitle: vi.fn().mockImplementation(
+          () => new Promise<SessionSummary>((resolve) => {
+            resolveRequest = resolve
+          })
+        )
+      })
+
+      wrapper = await mountApp(pinia)
+      await flush()
+
+      const appShell = wrapper.findComponent({ name: 'AppShell' })
+      await appShell.vm.$emit('regenerateSessionTitle', 's1')
+      await flush()
+
+      listener?.(createTitleGenerationNotification({
+        sessionId: 's1',
+        projectId: 'p1',
+        trigger: 'manual',
+        status: 'pending'
+      }))
+      await flush()
+
+      const host = wrapper.get('[data-testid="memory-toast-host"]')
+      expect(host.text()).toContain('Generating session title')
+      expect(host.text()).toContain('Summarizing the latest turn for "Original Title".')
+
+      resolveRequest?.(createSessionSummary({ id: 's1', projectId: 'p1', title: 'Regenerated Title' }))
+      await flush()
     })
   })
 
@@ -985,6 +1118,20 @@ describe('App (root)', () => {
       wrapper = undefined
 
       expect(unsubscribeUpdate).toHaveBeenCalledOnce()
+    })
+
+    it('unsubscribes title-generation listeners on unmount', async () => {
+      const unsubscribeTitleGeneration = vi.fn()
+      setupStoa({
+        onTitleGenerationNotification: vi.fn().mockReturnValue(unsubscribeTitleGeneration)
+      })
+
+      wrapper = await mountApp(pinia)
+      await flush()
+      wrapper.unmount()
+      wrapper = undefined
+
+      expect(unsubscribeTitleGeneration).toHaveBeenCalledOnce()
     })
 
     it('unsubscribes observability listeners on unmount', async () => {

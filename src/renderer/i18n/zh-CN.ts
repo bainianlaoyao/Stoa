@@ -144,7 +144,14 @@ export default {
       baseUrlPlaceholder: 'https://api.openai.com/v1',
       apiKeyLabel: 'API Key',
       apiKeyPlaceholder: 'sk-...',
-      hint: '\u5F53\u53F3\u952E\u83DC\u5355\u624B\u52A8\u89E6\u53D1\u91CD\u65B0\u751F\u6210\u4E14\u8FD4\u56DE\u65B0\u7ED3\u679C\u65F6\uFF0C\u4F1A\u76F4\u63A5\u8986\u76D6\u5F53\u524D\u6807\u9898\u3002'
+      hint: '\u5F53\u53F3\u952E\u83DC\u5355\u624B\u52A8\u89E6\u53D1\u91CD\u65B0\u751F\u6210\u4E14\u8FD4\u56DE\u65B0\u7ED3\u679C\u65F6\uFF0C\u4F1A\u76F4\u63A5\u8986\u76D6\u5F53\u524D\u6807\u9898\u3002',
+      customModelLabel: '自定义模型名称',
+      customModelPlaceholder: '输入自定义模型名称...',
+      fetchModels: '获取模型',
+      fetchingModels: '获取中...',
+      fetchModelsSuccess: '模型获取成功。',
+      optionCustom: '自定义...',
+      missingCredentials: '需要 Base URL 和 API Key 才能获取模型。'
     },
     sessionProviders: '\u4F1A\u8BDD\u63D0\u4F9B\u5546',
     sessionProvidersRadial: '\u4F1A\u8BDD\u63D0\u4F9B\u5546\uFF08\u73AF\u5F62\uFF09',
@@ -200,6 +207,17 @@ export default {
     dismiss: '\u4EE5\u540E\u518D\u8BF4',
     install: '\u7ACB\u5373\u5B89\u88C5',
     download: '\u7ACB\u5373\u4E0B\u8F7D'
+  },
+
+  titleGenerationToast: {
+    pendingTitle: '\u6B63\u5728\u751F\u6210\u4F1A\u8BDD\u6807\u9898',
+    pendingMessage: '\u6B63\u5728\u4E3A\u300C{title}\u300D\u603B\u7ED3\u6700\u65B0 turn\u3002',
+    manualSuccessTitle: '\u4F1A\u8BDD\u6807\u9898\u5DF2\u66F4\u65B0',
+    automaticSuccessTitle: '\u5DF2\u81EA\u52A8\u751F\u6210\u4F1A\u8BDD\u6807\u9898',
+    successMessage: '\u4FA7\u8FB9\u680F\u6807\u9898\u5DF2\u66F4\u65B0\u4E3A\u300C{title}\u300D\u3002',
+    errorTitle: '\u4F1A\u8BDD\u6807\u9898\u751F\u6210\u5931\u8D25',
+    errorFallbackMessage: '\u6807\u9898\u751F\u6210\u5668\u6CA1\u6709\u8FD4\u56DE\u53EF\u7528\u7ED3\u679C\u3002',
+    untitledFallback: '\u672A\u547D\u540D\u4F1A\u8BDD'
   },
 
   newProject: {

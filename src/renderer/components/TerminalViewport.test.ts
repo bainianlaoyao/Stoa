@@ -301,52 +301,6 @@ describe('TerminalViewport', () => {
     expect(wrapper.find('.terminal-viewport__shell').exists()).toBe(true)
     expect(wrapper.find('.terminal-viewport__xterm-mount').exists()).toBe(true)
     expect(wrapper.find('.terminal-viewport__xterm-shell').exists()).toBe(false)
-    expect(wrapper.find('[data-testid="terminal-status-bar"]').exists()).toBe(false)
-  })
-
-  test('renders the terminal meta bar when an active session view model is provided', async () => {
-    const activeViewModel = toActiveSessionViewModel(baseSession, {
-      sessionId: 'session_op_1',
-      projectId: 'project_alpha',
-      providerId: 'opencode',
-      providerLabel: 'OpenCode',
-      modelLabel: 'GPT-5',
-      phase: 'running',
-      runtimeState: 'alive',
-      turnState: 'running',
-      turnEpoch: 1,
-      lastTurnOutcome: 'none',
-      hasUnseenCompletion: false,
-      runtimeExitCode: null,
-      runtimeExitReason: null,
-      confidence: 'authoritative',
-      health: 'healthy',
-      blockingReason: null,
-      failureReason: null,
-      lastAssistantSnippet: 'Building the workspace view.',
-      lastEventAt: '2026-04-24T08:00:00.000Z',
-      lastEvidenceType: null,
-      hasUnreadTurn: false,
-      recoveryPointerState: 'trusted',
-      evidenceSequence: 1,
-      sourceSequence: 1,
-      updatedAt: '2026-04-24T08:00:00.000Z',
-    }, '2026-04-24T08:00:10.000Z')
-
-    const { default: TerminalViewport } = await import('./TerminalViewport.vue')
-    const wrapper = mount(TerminalViewport, {
-      props: {
-        project: baseProject,
-        session: baseSession,
-        activeViewModel
-      },
-    })
-    await flushTerminal()
-
-    expect(wrapper.find('[data-testid="terminal-status-bar"]').exists()).toBe(true)
-    expect(wrapper.text()).toContain('Deploy')
-    expect(wrapper.text()).toContain('OpenCode')
-    expect(wrapper.text()).toContain('Building the workspace view.')
   })
 
   test('running terminal structure keeps the xterm mount inside the visual shell wrapper', async () => {
@@ -776,51 +730,6 @@ describe('TerminalViewport', () => {
 
     expect(instances).toHaveLength(1)
     expect(wrapper.find('.terminal-viewport__xterm').exists()).toBe(true)
-  })
-
-  test('blocked active session view model renders permission explanation text', async () => {
-    const blockedPresence: SessionPresenceSnapshot = {
-      sessionId: 'session_op_1',
-      projectId: 'project_alpha',
-      providerId: 'opencode',
-      providerLabel: 'OpenCode',
-      modelLabel: 'GPT-5',
-      phase: 'blocked',
-      runtimeState: 'alive',
-      turnState: 'running',
-      turnEpoch: 1,
-      lastTurnOutcome: 'none',
-      hasUnseenCompletion: false,
-      runtimeExitCode: null,
-      runtimeExitReason: null,
-      confidence: 'authoritative',
-      health: 'healthy',
-      blockingReason: 'permission',
-      failureReason: null,
-      lastAssistantSnippet: 'Waiting on permission.',
-      lastEventAt: '2026-04-24T08:00:00.000Z',
-      lastEvidenceType: null,
-      hasUnreadTurn: false,
-      recoveryPointerState: 'trusted',
-      evidenceSequence: 1,
-      sourceSequence: 1,
-      updatedAt: '2026-04-24T08:00:00.000Z',
-    }
-    const activeViewModel = toActiveSessionViewModel(baseSession, blockedPresence, '2026-04-24T08:00:10.000Z')
-
-    const { default: TerminalViewport } = await import('./TerminalViewport.vue')
-    const wrapper = mount(TerminalViewport, {
-      props: {
-        project: baseProject,
-        session: baseSession,
-        activeViewModel
-      },
-    })
-    await flushTerminal()
-
-    expect(wrapper.find('[data-testid="terminal-status-bar"]').exists()).toBe(true)
-    expect(wrapper.text()).toContain('Blocked')
-    expect(wrapper.text()).toContain('Provider is waiting for permission.')
   })
 
   test('defers initial resize until a hidden terminal becomes visible', async () => {
