@@ -26,7 +26,7 @@ export class SessionTitleGenerator {
     }
 
     const response = await this.fetchImpl(
-      `${settings.baseUrl.replace(/\/+$/, '')}/responses`,
+      `${settings.baseUrl.replace(/\/+$/, '')}/chat/completions`,
       {
         method: 'POST',
         headers: {
@@ -35,12 +35,7 @@ export class SessionTitleGenerator {
         },
         body: JSON.stringify({
           model: settings.model,
-          input: buildPrompt(input),
-          text: {
-            format: {
-              type: 'text'
-            }
-          }
+          messages: buildMessages(input)
         })
       }
     )
@@ -51,6 +46,11 @@ export class SessionTitleGenerator {
     }
 
     const payload = await response.json() as {
+      choices?: Array<{
+        message?: {
+          content?: unknown
+        }
+      }>
       output_text?: unknown
       output?: Array<{
         type?: string
@@ -66,24 +66,39 @@ export class SessionTitleGenerator {
   }
 }
 
-function buildPrompt(input: GenerateTitleInput): string {
+function buildMessages(input: GenerateTitleInput): Array<{ role: 'system' | 'user'; content: string }> {
+  return [
+    {
+      role: 'system',
+      content: 'Generate a concise work-session title. Return only the title text. Use 2 to 5 words, imperative or task-focused, with no quotes or trailing punctuation.'
+    },
+    {
+      role: 'user',
+      content: buildUserPrompt(input)
+    }
+  ]
+}
+
+function buildUserPrompt(input: GenerateTitleInput): string {
   const promptLine = input.prompt?.trim() ? `User prompt: ${input.prompt.trim()}` : 'User prompt: unavailable'
   const assistantLine = input.assistantSnippet?.trim()
     ? `Assistant summary: ${input.assistantSnippet.trim()}`
     : 'Assistant summary: unavailable'
 
   return [
-    'Generate a concise work-session title.',
-    'Requirements: 2 to 5 words, imperative or task-focused, no quotes, no trailing punctuation.',
     `Project: ${input.projectName}`,
     `Session provider: ${input.sessionType}`,
     promptLine,
-    assistantLine,
-    'Return only the title text.'
+    assistantLine
   ].join('\n')
 }
 
 function extractResponseText(payload: {
+  choices?: Array<{
+    message?: {
+      content?: unknown
+    }
+  }>
   output_text?: unknown
   output?: Array<{
     type?: string
@@ -93,6 +108,11 @@ function extractResponseText(payload: {
     }>
   }>
 }): string | null {
+  const choiceText = extractChoiceText(payload.choices)
+  if (choiceText) {
+    return choiceText
+  }
+
   if (typeof payload.output_text === 'string' && payload.output_text.trim()) {
     return payload.output_text
   }
@@ -102,6 +122,40 @@ function extractResponseText(payload: {
       if (content.type === 'output_text' && typeof content.text === 'string' && content.text.trim()) {
         return content.text
       }
+    }
+  }
+
+  return null
+}
+
+function extractChoiceText(
+  choices: Array<{
+    message?: {
+      content?: unknown
+    }
+  }> | undefined
+): string | null {
+  const content = choices?.[0]?.message?.content
+  if (typeof content === 'string' && content.trim()) {
+    return content
+  }
+
+  if (!Array.isArray(content)) {
+    return null
+  }
+
+  for (const part of content) {
+    if (typeof part === 'string' && part.trim()) {
+      return part
+    }
+    if (
+      typeof part === 'object'
+      && part !== null
+      && 'text' in part
+      && typeof part.text === 'string'
+      && part.text.trim()
+    ) {
+      return part.text
     }
   }
 

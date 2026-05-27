@@ -52,11 +52,17 @@ describe('SessionTitleGenerator', () => {
     expect(fetchImpl).not.toHaveBeenCalled()
   })
 
-  test('sends an OpenAI Responses API request and trims the returned title', async () => {
+  test('sends a chat completions request and trims the returned title', async () => {
     const fetchImpl = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
-        output_text: '  Fix Provider Hook Handshake  '
+        choices: [
+          {
+            message: {
+              content: '  Fix Provider Hook Handshake  '
+            }
+          }
+        ]
       })
     })
     const generator = new SessionTitleGenerator({ fetchImpl })
@@ -71,7 +77,7 @@ describe('SessionTitleGenerator', () => {
 
     expect(result).toBe('Fix Provider Hook Handshake')
     expect(fetchImpl).toHaveBeenCalledWith(
-      'https://api.openai.com/v1/responses',
+      'https://api.openai.com/v1/chat/completions',
       expect.objectContaining({
         method: 'POST',
         headers: expect.objectContaining({
@@ -84,18 +90,58 @@ describe('SessionTitleGenerator', () => {
 
     const requestBody = JSON.parse(fetchImpl.mock.calls[0]![1].body as string) as {
       model: string
-      input: string
-      text: { format: { type: string } }
+      messages: Array<{ role: string; content: string }>
     }
     expect(requestBody.model).toBe('gpt-5.4-mini')
-    expect(requestBody.input).toContain('Project: alpha')
-    expect(requestBody.input).toContain('Session provider: codex')
-    expect(requestBody.input).toContain('User prompt: stabilize the provider hook handshake for the first turn')
-    expect(requestBody.input).toContain('Assistant summary: The handshake now persists the resolved session id before resume.')
-    expect(requestBody.text.format.type).toBe('text')
+    expect(requestBody.messages).toEqual([
+      {
+        role: 'system',
+        content: 'Generate a concise work-session title. Return only the title text. Use 2 to 5 words, imperative or task-focused, with no quotes or trailing punctuation.'
+      },
+      {
+        role: 'user',
+        content: [
+          'Project: alpha',
+          'Session provider: codex',
+          'User prompt: stabilize the provider hook handshake for the first turn',
+          'Assistant summary: The handshake now persists the resolved session id before resume.'
+        ].join('\n')
+      }
+    ])
   })
 
-  test('falls back to structured output content when output_text is absent', async () => {
+  test('falls back to structured message content arrays when message content is not a string', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        choices: [
+          {
+            message: {
+              content: [
+                {
+                  type: 'text',
+                  text: 'Investigate PTY Cleanup'
+                }
+              ]
+            }
+          }
+        ]
+      })
+    })
+    const generator = new SessionTitleGenerator({ fetchImpl })
+
+    const result = await generator.generateTitle({
+      settings: baseSettings,
+      projectName: 'alpha',
+      sessionType: 'opencode',
+      prompt: 'investigate pty cleanup ordering',
+      assistantSnippet: null
+    })
+
+    expect(result).toBe('Investigate PTY Cleanup')
+  })
+
+  test('falls back to Responses-style output_text for providers that still return it', async () => {
     const fetchImpl = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
