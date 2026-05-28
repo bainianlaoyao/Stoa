@@ -437,7 +437,31 @@ describe('E2E: Main Process Config Guard', () => {
         'minimizeWindow',
         'maximizeWindow',
         'closeWindow',
-        'isWindowMaximized'
+        'isWindowMaximized',
+        'getSidebarState',
+        'setSidebarState',
+        'fsReadDir',
+        'fsReadFile',
+        'fsWriteFile',
+        'fsCreate',
+        'fsRename',
+        'fsDelete',
+        'fsSearch',
+        'gitStatus',
+        'gitStage',
+        'gitUnstage',
+        'gitDiscard',
+        'gitCommit',
+        'gitPush',
+        'gitPull',
+        'gitFetch',
+        'gitRebase',
+        'gitMerge',
+        'gitBranches',
+        'gitLog',
+        'gitDiff',
+        'gitCheckout',
+        'gitCreateBranch'
       ]
 
       for (const method of knownInvokeMethods) {
