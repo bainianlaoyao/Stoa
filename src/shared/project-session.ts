@@ -17,6 +17,24 @@ import type {
   MetaSessionEvent,
   MetaSessionSummary,
 } from './meta-session'
+import type {
+  DirEntry,
+  FileCreateRequest,
+  FileDeleteRequest,
+  FileRenameRequest,
+  FileWriteRequest,
+  FsChangedEvent,
+  GitBranchInfo,
+  GitCommitRequest,
+  GitLogEntry,
+  GitMergeRequest,
+  GitPushRequest,
+  GitRebaseRequest,
+  GitStatusResult,
+  SearchOptions,
+  SearchResult,
+  SidebarState,
+} from './sidebar-types'
 
 export type SessionType = 'shell' | 'opencode' | 'codex' | 'claude-code'
 export type EvolverInferenceProvider = 'claude-code'
@@ -376,6 +394,34 @@ export interface RendererApi {
   dispatchMetaSessionProposal?: (proposalId: string) => Promise<MetaSessionProposal | null>
   setMetaSessionInspectorTarget?: (target: MetaSessionInspectorTarget | null) => Promise<void>
   onMetaSessionEvent?: (callback: (event: MetaSessionEvent) => void) => () => void
+
+  getSidebarState: () => Promise<SidebarState>
+  setSidebarState: (state: Partial<SidebarState>) => Promise<void>
+
+  fsReadDir: (projectPath: string, relativePath?: string) => Promise<DirEntry[]>
+  fsReadFile: (projectPath: string, relativePath: string) => Promise<string>
+  fsWriteFile: (request: FileWriteRequest) => Promise<void>
+  fsCreate: (request: FileCreateRequest) => Promise<void>
+  fsRename: (request: FileRenameRequest) => Promise<void>
+  fsDelete: (request: FileDeleteRequest) => Promise<void>
+  fsSearch: (options: SearchOptions) => Promise<SearchResult>
+  onFsChanged: (callback: (event: FsChangedEvent) => void) => () => void
+
+  gitStatus: (projectPath: string) => Promise<GitStatusResult>
+  gitStage: (projectPath: string, paths: string[]) => Promise<void>
+  gitUnstage: (projectPath: string, paths: string[]) => Promise<void>
+  gitDiscard: (projectPath: string, paths: string[]) => Promise<void>
+  gitCommit: (request: GitCommitRequest) => Promise<void>
+  gitPush: (request: GitPushRequest) => Promise<void>
+  gitPull: (projectPath: string) => Promise<void>
+  gitFetch: (projectPath: string) => Promise<void>
+  gitRebase: (request: GitRebaseRequest) => Promise<void>
+  gitMerge: (request: GitMergeRequest) => Promise<void>
+  gitBranches: (projectPath: string) => Promise<GitBranchInfo>
+  gitLog: (projectPath: string, limit?: number) => Promise<GitLogEntry[]>
+  gitDiff: (projectPath: string, filePath?: string, staged?: boolean) => Promise<string>
+  gitCheckout: (projectPath: string, branch: string) => Promise<void>
+  gitCreateBranch: (projectPath: string, branch: string) => Promise<void>
 }
 
 export interface CanonicalSessionEvent {
