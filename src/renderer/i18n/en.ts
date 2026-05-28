@@ -281,7 +281,9 @@ export default {
     command: 'Command panel',
     metaSession: 'Meta Session',
     archive: 'Archive',
-    settings: 'Settings'
+    settings: 'Settings',
+    openSidebar: 'Toggle Sidebar',
+    closeSidebar: 'Toggle Sidebar'
   },
 
   windowControls: {

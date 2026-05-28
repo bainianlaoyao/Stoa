@@ -281,7 +281,9 @@ export default {
     command: '\u547D\u4EE4\u9762\u677F',
     metaSession: '\u5143\u4F1A\u8BDD',
     archive: '\u5F52\u6863',
-    settings: '\u8BBE\u7F6E'
+    settings: '\u8BBE\u7F6E',
+    openSidebar: '\u5207\u6362\u4FA7\u8FB9\u680F',
+    closeSidebar: '\u5207\u6362\u4FA7\u8FB9\u680F'
   },
 
   windowControls: {
