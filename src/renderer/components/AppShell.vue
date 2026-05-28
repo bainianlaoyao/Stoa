@@ -6,6 +6,7 @@ import CommandSurface from './command/CommandSurface.vue'
 import MetaSessionSurface from './meta-session/MetaSessionSurface.vue'
 import ArchiveSurface from './archive/ArchiveSurface.vue'
 import SettingsSurface from './settings/SettingsSurface.vue'
+import RightSidebar from './right-sidebar/RightSidebar.vue'
 import type { OpenWorkspaceRequest, ProjectSummary, SessionSummary } from '@shared/project-session'
 import type { ProjectHierarchyNode } from '@renderer/stores/workspaces'
 import type { AppSurface } from './GlobalActivityBar.vue'
@@ -47,10 +48,10 @@ const archivedSessions = computed(() => {
 <template>
   <div class="flex flex-col h-full">
     <TitleBar />
-    <main class="grid grid-cols-[56px_1fr] flex-1 min-h-0 p-0 gap-0">
+    <main class="grid grid-cols-[56px_1fr_auto] flex-1 min-h-0 p-0 gap-0">
       <GlobalActivityBar :active-surface="activeSurface" @select="activeSurface = $event" />
 
-      <section class="min-w-0 min-h-0 m-3 ml-0 border border-line rounded-[length:var(--radius-lg)] bg-surface backdrop-blur-[40px] saturate-[1.2] shadow-premium overflow-hidden" data-testid="app-viewport" aria-label="Application viewport">
+      <section class="min-w-0 min-h-0 m-3 ml-0 border border-black/[0.04] rounded-2xl bg-surface backdrop-blur-[40px] saturate-[1.2] shadow-premium overflow-hidden" data-testid="app-viewport" aria-label="Application viewport">
         <CommandSurface
           v-show="activeSurface === 'command'"
           aria-label="Command surface"
@@ -82,6 +83,8 @@ const archivedSessions = computed(() => {
         />
         <SettingsSurface v-if="activeSurface === 'settings'" />
       </section>
+
+      <RightSidebar />
     </main>
   </div>
 </template>

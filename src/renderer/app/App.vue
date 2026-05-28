@@ -12,13 +12,11 @@ import AppShell from '@renderer/components/AppShell.vue'
 import MemoryToastHost from '@renderer/components/memory/MemoryToastHost.vue'
 import UpdatePrompt from '@renderer/components/update/UpdatePrompt.vue'
 import { useMetaSessionStore } from '@renderer/stores/meta-session'
-import {
-  useMemoryNotificationsStore,
-  type TitleGenerationToastNotification
-} from '@renderer/stores/memory-notifications'
+import { useMemoryNotificationsStore } from '@renderer/stores/memory-notifications'
 import { useWorkspaceStore } from '@renderer/stores/workspaces'
 import { useSettingsStore } from '@renderer/stores/settings'
 import { useUpdateStore } from '@renderer/stores/update'
+import { useSidebarStore } from '@renderer/stores/sidebar'
 
 const { t } = useI18n()
 const workspaceStore = useWorkspaceStore()
@@ -26,6 +24,7 @@ const metaSessionStore = useMetaSessionStore()
 const settingsStore = useSettingsStore()
 const updateStore = useUpdateStore()
 const memoryNotificationsStore = useMemoryNotificationsStore()
+const sidebarStore = useSidebarStore()
 const {
   projectHierarchy,
   activeProjectId,
@@ -248,7 +247,8 @@ onMounted(async () => {
 
   await Promise.all([
     settingsStore.loadSettings(),
-    updateStore.refresh()
+    updateStore.refresh(),
+    sidebarStore.hydrate(),
   ])
   if (isUnmounted) {
     return
