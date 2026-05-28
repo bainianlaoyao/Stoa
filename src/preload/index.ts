@@ -22,6 +22,24 @@ import type {
 } from '@shared/observability'
 import type { MetaSessionInspectorTarget, MetaSessionProposal, MetaSessionEvent } from '@shared/meta-session'
 import type { UpdateState } from '@shared/update-state'
+import type {
+  DirEntry,
+  FileCreateRequest,
+  FileDeleteRequest,
+  FileRenameRequest,
+  FileWriteRequest,
+  FsChangedEvent,
+  GitBranchInfo,
+  GitCommitRequest,
+  GitLogEntry,
+  GitMergeRequest,
+  GitPushRequest,
+  GitRebaseRequest,
+  GitStatusResult,
+  SearchOptions,
+  SearchResult,
+  SidebarState,
+} from '@shared/sidebar-types'
 
 interface PreloadKeyboardEvent {
   key: string
@@ -247,7 +265,87 @@ const api: RendererApi = {
     const handler = (_event: Electron.IpcRendererEvent, maximized: boolean) => callback(maximized)
     ipcRenderer.on(IPC_CHANNELS.windowMaximizeChanged, handler)
     return () => ipcRenderer.removeListener(IPC_CHANNELS.windowMaximizeChanged, handler)
-  }
+  },
+
+  async getSidebarState() {
+    return ipcRenderer.invoke(IPC_CHANNELS.sidebarGetState) as Promise<SidebarState>
+  },
+  async setSidebarState(state: Partial<SidebarState>) {
+    return ipcRenderer.invoke(IPC_CHANNELS.sidebarSetState, state)
+  },
+
+  async fsReadDir(projectPath: string, relativePath?: string) {
+    return ipcRenderer.invoke(IPC_CHANNELS.fsReadDir, projectPath, relativePath) as Promise<DirEntry[]>
+  },
+  async fsReadFile(projectPath: string, relativePath: string) {
+    return ipcRenderer.invoke(IPC_CHANNELS.fsReadFile, projectPath, relativePath) as Promise<string>
+  },
+  async fsWriteFile(request: FileWriteRequest) {
+    return ipcRenderer.invoke(IPC_CHANNELS.fsWriteFile, request)
+  },
+  async fsCreate(request: FileCreateRequest) {
+    return ipcRenderer.invoke(IPC_CHANNELS.fsCreate, request)
+  },
+  async fsRename(request: FileRenameRequest) {
+    return ipcRenderer.invoke(IPC_CHANNELS.fsRename, request)
+  },
+  async fsDelete(request: FileDeleteRequest) {
+    return ipcRenderer.invoke(IPC_CHANNELS.fsDelete, request)
+  },
+  async fsSearch(options: SearchOptions) {
+    return ipcRenderer.invoke(IPC_CHANNELS.fsSearch, options) as Promise<SearchResult>
+  },
+  onFsChanged(callback: (event: FsChangedEvent) => void) {
+    const handler = (_event: Electron.IpcRendererEvent, event: FsChangedEvent) => callback(event)
+    ipcRenderer.on(IPC_CHANNELS.fsChanged, handler)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.fsChanged, handler)
+  },
+
+  async gitStatus(projectPath: string) {
+    return ipcRenderer.invoke(IPC_CHANNELS.gitStatus, projectPath) as Promise<GitStatusResult>
+  },
+  async gitStage(projectPath: string, paths: string[]) {
+    return ipcRenderer.invoke(IPC_CHANNELS.gitStage, projectPath, paths)
+  },
+  async gitUnstage(projectPath: string, paths: string[]) {
+    return ipcRenderer.invoke(IPC_CHANNELS.gitUnstage, projectPath, paths)
+  },
+  async gitDiscard(projectPath: string, paths: string[]) {
+    return ipcRenderer.invoke(IPC_CHANNELS.gitDiscard, projectPath, paths)
+  },
+  async gitCommit(request: GitCommitRequest) {
+    return ipcRenderer.invoke(IPC_CHANNELS.gitCommit, request)
+  },
+  async gitPush(request: GitPushRequest) {
+    return ipcRenderer.invoke(IPC_CHANNELS.gitPush, request)
+  },
+  async gitPull(projectPath: string) {
+    return ipcRenderer.invoke(IPC_CHANNELS.gitPull, projectPath)
+  },
+  async gitFetch(projectPath: string) {
+    return ipcRenderer.invoke(IPC_CHANNELS.gitFetch, projectPath)
+  },
+  async gitRebase(request: GitRebaseRequest) {
+    return ipcRenderer.invoke(IPC_CHANNELS.gitRebase, request)
+  },
+  async gitMerge(request: GitMergeRequest) {
+    return ipcRenderer.invoke(IPC_CHANNELS.gitMerge, request)
+  },
+  async gitBranches(projectPath: string) {
+    return ipcRenderer.invoke(IPC_CHANNELS.gitBranches, projectPath) as Promise<GitBranchInfo>
+  },
+  async gitLog(projectPath: string, limit?: number) {
+    return ipcRenderer.invoke(IPC_CHANNELS.gitLog, projectPath, limit) as Promise<GitLogEntry[]>
+  },
+  async gitDiff(projectPath: string, filePath?: string, staged?: boolean) {
+    return ipcRenderer.invoke(IPC_CHANNELS.gitDiff, projectPath, filePath, staged) as Promise<string>
+  },
+  async gitCheckout(projectPath: string, branch: string) {
+    return ipcRenderer.invoke(IPC_CHANNELS.gitCheckout, projectPath, branch)
+  },
+  async gitCreateBranch(projectPath: string, branch: string) {
+    return ipcRenderer.invoke(IPC_CHANNELS.gitCreateBranch, projectPath, branch)
+  },
 }
 
 contextBridge.exposeInMainWorld('stoa', api)
