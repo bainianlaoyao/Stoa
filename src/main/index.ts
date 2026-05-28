@@ -38,6 +38,8 @@ import { UpdateService } from './update-service'
 import { resolveDefaultStoaRuntimeRoot } from './stoa-runtime-root'
 import { createHookLeaseManager } from './hook-lease-manager'
 import { SessionDimensionsRegistry } from './session-dimensions'
+import { registerFilesystemHandlers } from './sidebar-fs-handlers'
+import { registerGitHandlers } from './sidebar-git-handlers'
 import { DEFAULT_SETTINGS } from '@shared/project-session'
 import type {
   CreateProjectRequest,
@@ -1244,6 +1246,8 @@ app.whenReady().then(async () => {
     }
   }
 
+  registerGitHandlers(ipcMain)
+
   ipcMain.handle(IPC_CHANNELS.projectBootstrap, async () => {
     return projectSessionManager?.snapshot() ?? {
       activeProjectId: null,
@@ -1441,6 +1445,8 @@ app.whenReady().then(async () => {
     })
     return result.canceled ? null : result.filePaths[0] ?? null
   })
+
+  registerFilesystemHandlers(ipcMain, () => mainWindow)
 
   ipcMain.handle(IPC_CHANNELS.settingsDetectShell, async () => {
     return detectShell()
