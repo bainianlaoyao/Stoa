@@ -28,6 +28,7 @@ export class SessionRuntimeController implements SessionRuntimeManager {
   private readonly terminalBacklogs = new Map<string, string>()
   private readonly pendingTerminalBatches = new Map<string, string>()
   private batchFlushTimer: ReturnType<typeof setTimeout> | null = null
+  private readonly sessionTokens = new Map<string, string>()
 
   constructor(
     private readonly manager: ProjectSessionManager,
@@ -48,11 +49,13 @@ export class SessionRuntimeController implements SessionRuntimeManager {
   }
 
   async markRuntimeExited(sessionId: string, exitCode: number | null, summary: string): Promise<void> {
+    this.sessionTokens.delete(sessionId)
     await this.manager.markRuntimeExited(sessionId, exitCode, summary)
     this.finishSessionStateChange(sessionId)
   }
 
   async markRuntimeFailedToStart(sessionId: string, summary: string): Promise<void> {
+    this.sessionTokens.delete(sessionId)
     await this.manager.markRuntimeFailedToStart(sessionId, summary)
     this.finishSessionStateChange(sessionId)
   }
@@ -109,6 +112,18 @@ export class SessionRuntimeController implements SessionRuntimeManager {
     }
 
     this.pendingTerminalBatches.clear()
+  }
+
+  registerSessionToken(sessionId: string, token: string): void {
+    this.sessionTokens.set(sessionId, token)
+  }
+
+  getSessionToken(sessionId: string): string | undefined {
+    return this.sessionTokens.get(sessionId)
+  }
+
+  invalidateSessionToken(sessionId: string): void {
+    this.sessionTokens.delete(sessionId)
   }
 
   async getTerminalReplay(sessionId: string): Promise<string> {

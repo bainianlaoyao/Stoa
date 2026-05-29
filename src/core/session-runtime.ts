@@ -9,6 +9,7 @@ export interface SessionRuntimeManager {
   markRuntimeExited: (sessionId: string, exitCode: number | null, summary: string) => Promise<void>
   markRuntimeFailedToStart: (sessionId: string, summary: string) => Promise<void>
   appendTerminalData: (chunk: { sessionId: string; data: string }) => Promise<void>
+  registerSessionToken?: (sessionId: string, token: string) => void
 }
 
 interface SessionRuntimePtyHost {

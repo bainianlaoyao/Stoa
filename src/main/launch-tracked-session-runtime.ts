@@ -58,6 +58,12 @@ export async function launchTrackedSessionRuntime(options: LaunchTrackedSessionR
 
   if (hookLease?.lease.sessionSecret) {
     options.sessionEventBridge.registerSessionSecret(session.id, hookLease.lease.sessionSecret)
+    options.runtimeController.registerSessionToken?.(session.id, hookLease.lease.sessionSecret)
+  }
+
+  const commandEnv = {
+    ...options.commandEnv,
+    STOA_CTL_SESSION_TOKEN: hookLease?.lease.sessionSecret ?? ''
   }
 
   if (session.type === 'codex') {
@@ -91,7 +97,7 @@ export async function launchTrackedSessionRuntime(options: LaunchTrackedSessionR
     providerPath,
     claudeDangerouslySkipPermissions,
     initialDimensions: options.initialDimensions,
-    commandEnv: options.commandEnv,
+    commandEnv,
     initialPrompt: options.initialPrompt,
     launchToken: options.launchToken,
     isLaunchTokenCurrent: options.isLaunchTokenCurrent,

@@ -60,7 +60,8 @@ describe('launchTrackedSessionRuntime', () => {
         markRuntimeAlive: vi.fn(async () => {}),
         markRuntimeExited: vi.fn(async () => {}),
         markRuntimeFailedToStart: vi.fn(async () => {}),
-        appendTerminalData: vi.fn(async () => {})
+        appendTerminalData: vi.fn(async () => {}),
+        registerSessionToken: vi.fn()
       },
       sessionEventBridge: {
         registerSessionSecret
@@ -127,7 +128,9 @@ describe('launchTrackedSessionRuntime', () => {
         markRuntimeFailedToStart: vi.fn(async () => {}),
         appendTerminalData: vi.fn(async () => {})
       },
-      sessionEventBridge: {} as never,
+      sessionEventBridge: {
+        registerSessionSecret: vi.fn()
+      } as never,
       hookLeaseManager: {
         ensureLease: vi.fn(async () => null)
       } as never,
@@ -391,6 +394,258 @@ describe('launchTrackedSessionRuntime', () => {
       expect.objectContaining({
         session: expect.objectContaining({
           sessionSecret: 'lease-secret-1'
+        })
+      })
+    )
+  })
+
+  test('injects STOA_CTL_SESSION_TOKEN from lease sessionSecret into commandEnv', async () => {
+    const globalStatePath = await createTestGlobalStatePath()
+    const manager = await ProjectSessionManager.create({
+      webhookPort: null,
+      globalStatePath
+    })
+    const project = await manager.createProject({
+      path: await createTestWorkspace('launch-token-'),
+      name: 'token-project'
+    })
+    const session = await manager.createSession({
+      projectId: project.id,
+      type: 'claude-code',
+      title: 'Token Session'
+    })
+
+    const provider = { providerId: 'claude-code' }
+    const getProvider = vi.fn(() => provider)
+    const resolveRuntimePaths = vi.fn(async () => ({
+      shellPath: null,
+      providerPath: 'claude',
+      claudeDangerouslySkipPermissions: false
+    }))
+    const ensureLease = vi.fn(async () => ({
+      path: 'D:/tmp/runtime/hook-leases/token-session.json',
+      lease: {
+        version: 1,
+        sessionId: session.id,
+        projectId: project.id,
+        provider: 'claude-code',
+        leaseState: 'active',
+        ownerInstanceId: 'instance-token',
+        generation: 1,
+        webhookBaseUrl: 'http://127.0.0.1:43127',
+        sessionSecret: 'lease-token-secret-42',
+        commitLockNonce: 'nonce-1',
+        commitToken: 'token-1',
+        createdAt: '2026-05-10T12:00:00.000Z',
+        updatedAt: '2026-05-10T12:00:00.000Z',
+        heartbeatAt: '2026-05-10T12:00:00.000Z',
+        expiresAt: '2026-05-10T12:00:20.000Z'
+      }
+    }))
+    const registerSessionSecret = vi.fn()
+    const startRuntime = vi.fn(async () => {})
+
+    await launchTrackedSessionRuntime({
+      sessionId: session.id,
+      manager,
+      webhookPort: 43127,
+      ptyHost: { start: vi.fn(() => ({ runtimeId: session.id })) } as never,
+      runtimeController: {
+        markRuntimeStarting: vi.fn(async () => {}),
+        markRuntimeAlive: vi.fn(async () => {}),
+        markRuntimeExited: vi.fn(async () => {}),
+        markRuntimeFailedToStart: vi.fn(async () => {}),
+        appendTerminalData: vi.fn(async () => {})
+      },
+      sessionEventBridge: {
+        registerSessionSecret
+      } as never,
+      hookLeaseManager: {
+        ensureLease
+      } as never,
+      resolveRuntimePaths,
+      getProvider: getProvider as never,
+      startRuntime,
+      commandEnv: { EXISTING_VAR: 'kept' }
+    })
+
+    expect(startRuntime).toHaveBeenCalledWith(
+      expect.objectContaining({
+        commandEnv: expect.objectContaining({
+          EXISTING_VAR: 'kept',
+          STOA_CTL_SESSION_TOKEN: 'lease-token-secret-42'
+        })
+      })
+    )
+  })
+
+  test('registers lease-derived session token on the runtime controller when available', async () => {
+    const globalStatePath = await createTestGlobalStatePath()
+    const manager = await ProjectSessionManager.create({
+      webhookPort: null,
+      globalStatePath
+    })
+    const project = await manager.createProject({
+      path: await createTestWorkspace('launch-register-token-'),
+      name: 'register-token-project'
+    })
+    const session = await manager.createSession({
+      projectId: project.id,
+      type: 'claude-code',
+      title: 'Register Token Session'
+    })
+
+    const registerSessionToken = vi.fn()
+    const startRuntime = vi.fn(async () => {})
+
+    await launchTrackedSessionRuntime({
+      sessionId: session.id,
+      manager,
+      webhookPort: 43127,
+      ptyHost: { start: vi.fn(() => ({ runtimeId: session.id })) } as never,
+      runtimeController: {
+        markRuntimeStarting: vi.fn(async () => {}),
+        markRuntimeAlive: vi.fn(async () => {}),
+        markRuntimeExited: vi.fn(async () => {}),
+        markRuntimeFailedToStart: vi.fn(async () => {}),
+        appendTerminalData: vi.fn(async () => {}),
+        registerSessionToken
+      },
+      sessionEventBridge: {
+        registerSessionSecret: vi.fn()
+      } as never,
+      hookLeaseManager: {
+        ensureLease: vi.fn(async () => ({
+          path: 'D:/tmp/runtime/hook-leases/register-token-session.json',
+          lease: {
+            version: 1,
+            sessionId: session.id,
+            projectId: project.id,
+            provider: 'claude-code',
+            leaseState: 'active',
+            ownerInstanceId: 'instance-token',
+            generation: 1,
+            webhookBaseUrl: 'http://127.0.0.1:43127',
+            sessionSecret: 'lease-token-secret-99',
+            commitLockNonce: 'nonce-1',
+            commitToken: 'token-1',
+            createdAt: '2026-05-10T12:00:00.000Z',
+            updatedAt: '2026-05-10T12:00:00.000Z',
+            heartbeatAt: '2026-05-10T12:00:00.000Z',
+            expiresAt: '2026-05-10T12:00:20.000Z'
+          }
+        }))
+      } as never,
+      resolveRuntimePaths: vi.fn(async () => ({
+        shellPath: null,
+        providerPath: 'claude',
+        claudeDangerouslySkipPermissions: false
+      })),
+      startRuntime
+    })
+
+    expect(registerSessionToken).toHaveBeenCalledWith(session.id, 'lease-token-secret-99')
+  })
+
+  test('does not register a session token when the lease secret is absent', async () => {
+    const globalStatePath = await createTestGlobalStatePath()
+    const manager = await ProjectSessionManager.create({
+      webhookPort: null,
+      globalStatePath
+    })
+    const project = await manager.createProject({
+      path: await createTestWorkspace('launch-no-register-token-'),
+      name: 'no-register-token-project'
+    })
+    const session = await manager.createSession({
+      projectId: project.id,
+      type: 'shell',
+      title: 'No Register Token Session'
+    })
+
+    const registerSessionToken = vi.fn()
+    const startRuntime = vi.fn(async () => {})
+
+    await launchTrackedSessionRuntime({
+      sessionId: session.id,
+      manager,
+      webhookPort: 43127,
+      ptyHost: { start: vi.fn(() => ({ runtimeId: session.id })) } as never,
+      runtimeController: {
+        markRuntimeStarting: vi.fn(async () => {}),
+        markRuntimeAlive: vi.fn(async () => {}),
+        markRuntimeExited: vi.fn(async () => {}),
+        markRuntimeFailedToStart: vi.fn(async () => {}),
+        appendTerminalData: vi.fn(async () => {}),
+        registerSessionToken
+      },
+      sessionEventBridge: {
+        registerSessionSecret: vi.fn()
+      } as never,
+      hookLeaseManager: {
+        ensureLease: vi.fn(async () => null)
+      } as never,
+      resolveRuntimePaths: vi.fn(async () => ({
+        shellPath: null,
+        providerPath: null,
+        claudeDangerouslySkipPermissions: false
+      })),
+      startRuntime
+    })
+
+    expect(registerSessionToken).not.toHaveBeenCalled()
+  })
+
+  test('STOA_CTL_SESSION_TOKEN is empty string when lease has no sessionSecret', async () => {
+    const globalStatePath = await createTestGlobalStatePath()
+    const manager = await ProjectSessionManager.create({
+      webhookPort: null,
+      globalStatePath
+    })
+    const project = await manager.createProject({
+      path: await createTestWorkspace('launch-no-secret-'),
+      name: 'no-secret-project'
+    })
+    const session = await manager.createSession({
+      projectId: project.id,
+      type: 'shell',
+      title: 'No Secret'
+    })
+
+    const startRuntime = vi.fn(async () => {})
+
+    await launchTrackedSessionRuntime({
+      sessionId: session.id,
+      manager,
+      webhookPort: 43127,
+      ptyHost: { start: vi.fn(() => ({ runtimeId: session.id })) } as never,
+      runtimeController: {
+        markRuntimeStarting: vi.fn(async () => {}),
+        markRuntimeAlive: vi.fn(async () => {}),
+        markRuntimeExited: vi.fn(async () => {}),
+        markRuntimeFailedToStart: vi.fn(async () => {}),
+        appendTerminalData: vi.fn(async () => {}),
+        registerSessionToken: vi.fn()
+      },
+      sessionEventBridge: {
+        registerSessionSecret: vi.fn()
+      } as never,
+      hookLeaseManager: {
+        ensureLease: vi.fn(async () => null)
+      } as never,
+      resolveRuntimePaths: vi.fn(async () => ({
+        shellPath: null,
+        providerPath: null,
+        claudeDangerouslySkipPermissions: false
+      })),
+      startRuntime,
+      commandEnv: {}
+    })
+
+    expect(startRuntime).toHaveBeenCalledWith(
+      expect.objectContaining({
+        commandEnv: expect.objectContaining({
+          STOA_CTL_SESSION_TOKEN: ''
         })
       })
     )

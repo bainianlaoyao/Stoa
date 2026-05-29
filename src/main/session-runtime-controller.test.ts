@@ -535,4 +535,63 @@ describe('SessionRuntimeController', () => {
     })
     vi.useRealTimers()
   })
+
+  describe('session token registry', () => {
+    test('registerSessionToken stores a token retrievable by getSessionToken', async () => {
+      const { window: win } = createMockWindow()
+      const controller = new SessionRuntimeController(manager, () => win)
+
+      controller.registerSessionToken('session-1', 'tok-abc')
+
+      expect(controller.getSessionToken('session-1')).toBe('tok-abc')
+    })
+
+    test('getSessionToken returns undefined for unregistered session', async () => {
+      const { window: win } = createMockWindow()
+      const controller = new SessionRuntimeController(manager, () => win)
+
+      expect(controller.getSessionToken('no-such-session')).toBeUndefined()
+    })
+
+    test('invalidateSessionToken removes the token', async () => {
+      const { window: win } = createMockWindow()
+      const controller = new SessionRuntimeController(manager, () => win)
+
+      controller.registerSessionToken('session-1', 'tok-abc')
+      controller.invalidateSessionToken('session-1')
+
+      expect(controller.getSessionToken('session-1')).toBeUndefined()
+    })
+
+    test('markRuntimeExited invalidates the session token', async () => {
+      const { window: win } = createMockWindow()
+      const project = await manager.createProject({ path: await createTestWorkspace('ctrl-token-exit-'), name: 'test' })
+      const session = await manager.createSession({ projectId: project.id, type: 'shell', title: 'S1' })
+      const controller = new SessionRuntimeController(manager, () => win)
+
+      controller.registerSessionToken(session.id, 'tok-xyz')
+      await controller.markRuntimeExited(session.id, 0, 'exited')
+
+      expect(controller.getSessionToken(session.id)).toBeUndefined()
+    })
+
+    test('markRuntimeFailedToStart invalidates the session token', async () => {
+      const { window: win } = createMockWindow()
+      const project = await manager.createProject({ path: await createTestWorkspace('ctrl-token-failed-start-'), name: 'test' })
+      const session = await manager.createSession({ projectId: project.id, type: 'shell', title: 'S1' })
+      const controller = new SessionRuntimeController(manager, () => win)
+
+      controller.registerSessionToken(session.id, 'tok-failed')
+      await controller.markRuntimeFailedToStart(session.id, 'failed to start')
+
+      expect(controller.getSessionToken(session.id)).toBeUndefined()
+    })
+
+    test('invalidateSessionToken is a no-op for an unknown session', async () => {
+      const { window: win } = createMockWindow()
+      const controller = new SessionRuntimeController(manager, () => win)
+
+      expect(() => controller.invalidateSessionToken('no-such-session')).not.toThrow()
+    })
+  })
 })
