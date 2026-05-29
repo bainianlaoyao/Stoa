@@ -405,7 +405,7 @@ describe('ProjectSessionManager', () => {
       ]
     }, globalStatePath)
     await stateStore.writeProjectSessions(projectDir, {
-      version: 6,
+      version: 7,
       project_id: 'project_real',
       sessions: []
     })
@@ -441,12 +441,14 @@ describe('ProjectSessionManager', () => {
       ]
     }, globalStatePath)
     await stateStore.writeProjectSessions(projectDir, {
-      version: 6,
+      version: 7,
       project_id: 'project_real',
       sessions: [
         {
           session_id: 'session_real',
           project_id: 'project_real',
+          parent_session_id: null,
+          created_by_session_id: null,
           type: 'shell',
           title: 'Alpha shell',
           runtime_state: 'alive',
@@ -506,12 +508,14 @@ describe('ProjectSessionManager', () => {
       ]
     }, globalStatePath)
     await stateStore.writeProjectSessions(projectDir, {
-      version: 6,
+      version: 7,
       project_id: 'project_real',
       sessions: [
         {
           session_id: 'session_real',
           project_id: 'project_missing',
+          parent_session_id: null,
+          created_by_session_id: null,
           type: 'shell',
           title: 'Orphan shell',
           runtime_state: 'alive',
@@ -833,13 +837,213 @@ describe('ProjectSessionManager', () => {
       expect(second.title).toBe('shell-2')
     })
 
-    test('createSession generates provider title when title is omitted', async () => {
+  test('createSession generates provider title when title is omitted', async () => {
       const manager = ProjectSessionManager.createForTest()
       const project = await manager.createProject({ name: 'myproj', path: 'D:/repo' })
 
       const session = await manager.createSession({ projectId: project.id, type: 'codex', title: '' })
 
       expect(session.title).toBe('codex-myproj')
+    })
+
+    test('createSession stores lineage for child sessions and persists it', async () => {
+      const globalStatePath = await createTempGlobalStatePath()
+      const projectDir = await createTempProjectDir()
+      const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
+      const project = await manager.createProject({ path: projectDir, name: 'tree' })
+      const parent = await manager.createSession({ projectId: project.id, type: 'shell', title: 'root' })
+
+      const child = await manager.createSession({
+        projectId: project.id,
+        type: 'codex',
+        title: 'child',
+        parentSessionId: parent.id,
+        createdBySessionId: parent.id
+      })
+
+      expect(child.parentSessionId).toBe(parent.id)
+      expect(child.createdBySessionId).toBe(parent.id)
+
+      const persisted = await readProjectSessions(projectDir)
+      expect(persisted.version).toBe(7)
+      expect(persisted.sessions.find((session) => session.session_id === child.id)).toMatchObject({
+        parent_session_id: parent.id,
+        created_by_session_id: parent.id
+      })
+
+      const reloaded = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
+      expect(reloaded.snapshot().sessions.find((session) => session.id === child.id)).toMatchObject({
+        parentSessionId: parent.id,
+        createdBySessionId: parent.id
+      })
+    })
+
+    test('createSession rejects invalid parent ids and cross-project parents', async () => {
+      const manager = ProjectSessionManager.createForTest()
+      const alpha = await manager.createProject({ name: 'alpha', path: 'D:/alpha' })
+      const beta = await manager.createProject({ name: 'beta', path: 'D:/beta' })
+      const betaRoot = await manager.createSession({ projectId: beta.id, type: 'shell', title: 'beta-root' })
+
+      await expect(manager.createSession({
+        projectId: alpha.id,
+        type: 'shell',
+        title: 'missing-parent',
+        parentSessionId: 'session_missing'
+      })).rejects.toThrow('Parent session must exist')
+
+      await expect(manager.createSession({
+        projectId: alpha.id,
+        type: 'shell',
+        title: 'cross-project-child',
+        parentSessionId: betaRoot.id
+      })).rejects.toThrow('Parent session must belong to the same project')
+    })
+
+    test('createSession rejects archived parent sessions', async () => {
+      const manager = ProjectSessionManager.createForTest()
+      const project = await manager.createProject({ name: 'alpha', path: 'D:/alpha' })
+      const root = await manager.createSession({ projectId: project.id, type: 'shell', title: 'root' })
+
+      await manager.archiveSession(root.id)
+
+      await expect(manager.createSession({
+        projectId: project.id,
+        type: 'shell',
+        title: 'child-on-archived-parent',
+        parentSessionId: root.id,
+        createdBySessionId: root.id
+      })).rejects.toThrow('Parent session must be live')
+    })
+
+    test('createSession rejects invalid creator ids, cross-project creators, and parent creator mismatch', async () => {
+      const manager = ProjectSessionManager.createForTest()
+      const alpha = await manager.createProject({ name: 'alpha', path: 'D:/alpha' })
+      const beta = await manager.createProject({ name: 'beta', path: 'D:/beta' })
+      const alphaRoot = await manager.createSession({ projectId: alpha.id, type: 'shell', title: 'alpha-root' })
+      const betaRoot = await manager.createSession({ projectId: beta.id, type: 'shell', title: 'beta-root' })
+
+      await expect(manager.createSession({
+        projectId: alpha.id,
+        type: 'shell',
+        title: 'missing-creator',
+        createdBySessionId: 'session_missing'
+      })).rejects.toThrow('Creator session must exist')
+
+      await expect(manager.createSession({
+        projectId: alpha.id,
+        type: 'shell',
+        title: 'cross-project-creator',
+        createdBySessionId: betaRoot.id
+      })).rejects.toThrow('Creator session must belong to the same project')
+
+      await expect(manager.createSession({
+        projectId: alpha.id,
+        type: 'shell',
+        title: 'mismatch',
+        parentSessionId: alphaRoot.id,
+        createdBySessionId: null
+      })).rejects.toThrow('Creator session must equal parent session for direct children')
+
+      await expect(manager.createSession({
+        projectId: alpha.id,
+        type: 'shell',
+        title: 'mismatch-2',
+        parentSessionId: alphaRoot.id,
+        createdBySessionId: betaRoot.id
+      })).rejects.toThrow('Creator session must belong to the same project')
+    })
+
+    test('createSession allows root sessions with null creator lineage', async () => {
+      const manager = ProjectSessionManager.createForTest()
+      const project = await manager.createProject({ name: 'alpha', path: 'D:/alpha' })
+
+      const root = await manager.createSession({
+        projectId: project.id,
+        type: 'shell',
+        title: 'root',
+        createdBySessionId: null
+      })
+
+      expect(root.parentSessionId).toBeNull()
+      expect(root.createdBySessionId).toBeNull()
+    })
+
+    test('createSession rejects creator lineage on root sessions without a parent', async () => {
+      const manager = ProjectSessionManager.createForTest()
+      const project = await manager.createProject({ name: 'alpha', path: 'D:/alpha' })
+      const creator = await manager.createSession({ projectId: project.id, type: 'shell', title: 'creator' })
+
+      await expect(manager.createSession({
+        projectId: project.id,
+        type: 'shell',
+        title: 'invalid-root',
+        createdBySessionId: creator.id
+      })).rejects.toThrow('Root sessions cannot declare createdBySessionId without parentSessionId')
+    })
+
+    test('derives session node snapshots with tree metadata', async () => {
+      const manager = ProjectSessionManager.createForTest()
+      const project = await manager.createProject({ name: 'alpha', path: 'D:/alpha' })
+      const root = await manager.createSession({ projectId: project.id, type: 'shell', title: 'root' })
+      const childA = await manager.createSession({
+        projectId: project.id,
+        type: 'codex',
+        title: 'child-a',
+        parentSessionId: root.id,
+        createdBySessionId: root.id
+      })
+      const childB = await manager.createSession({
+        projectId: project.id,
+        type: 'shell',
+        title: 'child-b',
+        parentSessionId: root.id,
+        createdBySessionId: root.id
+      })
+      const grandchild = await manager.createSession({
+        projectId: project.id,
+        type: 'claude-code',
+        title: 'grandchild',
+        parentSessionId: childA.id,
+        createdBySessionId: childA.id
+      })
+
+      expect(manager.getSessionNodeSnapshot(root.id)).toMatchObject({
+        session: { id: root.id },
+        tree: {
+          rootSessionId: root.id,
+          depth: 0,
+          childCount: 2,
+          descendantCount: 3
+        }
+      })
+      expect(manager.getSessionNodeSnapshot(childA.id)).toMatchObject({
+        session: { id: childA.id },
+        tree: {
+          rootSessionId: root.id,
+          depth: 1,
+          childCount: 1,
+          descendantCount: 1
+        }
+      })
+      expect(manager.getSessionNodeSnapshot(grandchild.id)).toMatchObject({
+        session: { id: grandchild.id },
+        tree: {
+          rootSessionId: root.id,
+          depth: 2,
+          childCount: 0,
+          descendantCount: 0
+        }
+      })
+      expect(manager.getSessionNodeSnapshot(childB.id)).toMatchObject({
+        session: { id: childB.id },
+        tree: {
+          rootSessionId: root.id,
+          depth: 1,
+          childCount: 0,
+          descendantCount: 0
+        }
+      })
+      expect(manager.getSessionNodeSnapshot('missing-session')).toBeNull()
     })
 
     test('updateSessionTitle overwrites title and persists title generation context', async () => {
@@ -1013,7 +1217,7 @@ describe('ProjectSessionManager', () => {
       expect(updated.lastStateSequence).toBe(3)
     })
 
-    test('persists project session schema v6 without legacy status', async () => {
+    test('persists project session schema v7 without legacy status', async () => {
       const globalStatePath = await createTempGlobalStatePath()
       const projectDir = await createTempProjectDir()
       const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
@@ -1023,7 +1227,7 @@ describe('ProjectSessionManager', () => {
       await manager.markRuntimeStarting(session.id, 'starting...', null)
 
       const diskSessions = await readProjectSessions(projectDir)
-      expect(diskSessions.version).toBe(6)
+      expect(diskSessions.version).toBe(7)
       expect(diskSessions.sessions[0]).toMatchObject({
         runtime_state: 'starting',
         turn_state: 'idle',
@@ -1327,6 +1531,7 @@ describe('ProjectSessionManager', () => {
       expect(manager.snapshot().activeProjectId).toBe(p1.id)
       await manager.setActiveProject(p2.id)
       expect(manager.snapshot().activeProjectId).toBe(p2.id)
+      expect(manager.snapshot().activeSessionId).toBeNull()
     })
 
     test('setActiveSession updates both activeSessionId and activeProjectId', async () => {
@@ -1364,6 +1569,25 @@ describe('ProjectSessionManager', () => {
       const before = manager.snapshot().activeSessionId
       await manager.setActiveSession('nonexistent')
       expect(manager.snapshot().activeSessionId).toBe(before)
+    })
+
+    test('deleteProject clears dangling activeSessionId after switching active project', async () => {
+      const globalStatePath = await createTempGlobalStatePath()
+      const dir1 = await createTempProjectDir()
+      const dir2 = await createTempProjectDir()
+      const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
+      const p1 = await manager.createProject({ path: dir1, name: 'P1' })
+      const p2 = await manager.createProject({ path: dir2, name: 'P2' })
+      const s1 = await manager.createSession({ projectId: p1.id, type: 'shell', title: 'S1' })
+      await manager.createSession({ projectId: p2.id, type: 'shell', title: 'S2' })
+
+      await manager.setActiveSession(s1.id)
+      await manager.setActiveProject(p2.id)
+      await manager.deleteProject(p1.id)
+
+      const snapshot = manager.snapshot()
+      expect(snapshot.activeProjectId).toBe(p2.id)
+      expect(snapshot.activeSessionId).toBeNull()
     })
   })
 
@@ -1448,6 +1672,359 @@ describe('ProjectSessionManager', () => {
       const manager2 = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
       const restored = manager2.snapshot().sessions.find(s => s.id === session.id)!
       expect(restored.archived).toBe(true)
+    })
+
+    test('archiveSession archives the full subtree', async () => {
+      const manager = ProjectSessionManager.createForTest()
+      const project = await manager.createProject({ name: 'alpha', path: 'D:/alpha' })
+      const root = await manager.createSession({ projectId: project.id, type: 'shell', title: 'root' })
+      const child = await manager.createSession({
+        projectId: project.id,
+        type: 'codex',
+        title: 'child',
+        parentSessionId: root.id,
+        createdBySessionId: root.id
+      })
+      const grandchild = await manager.createSession({
+        projectId: project.id,
+        type: 'claude-code',
+        title: 'grandchild',
+        parentSessionId: child.id,
+        createdBySessionId: child.id
+      })
+
+      await manager.archiveSession(root.id)
+
+      const snapshot = manager.snapshot()
+      expect(snapshot.sessions.find((session) => session.id === root.id)?.archived).toBe(true)
+      expect(snapshot.sessions.find((session) => session.id === child.id)?.archived).toBe(true)
+      expect(snapshot.sessions.find((session) => session.id === grandchild.id)?.archived).toBe(true)
+      expect(manager.snapshot().activeSessionId).toBeNull()
+    })
+
+    test('archiveSession on a child archives only the requested subtree', async () => {
+      const manager = ProjectSessionManager.createForTest()
+      const project = await manager.createProject({ name: 'alpha', path: 'D:/alpha' })
+      const root = await manager.createSession({ projectId: project.id, type: 'shell', title: 'root' })
+      const child = await manager.createSession({
+        projectId: project.id,
+        type: 'codex',
+        title: 'child',
+        parentSessionId: root.id,
+        createdBySessionId: root.id
+      })
+      const sibling = await manager.createSession({
+        projectId: project.id,
+        type: 'shell',
+        title: 'sibling',
+        parentSessionId: root.id,
+        createdBySessionId: root.id
+      })
+      const grandchild = await manager.createSession({
+        projectId: project.id,
+        type: 'claude-code',
+        title: 'grandchild',
+        parentSessionId: child.id,
+        createdBySessionId: child.id
+      })
+
+      await manager.archiveSession(child.id)
+
+      const snapshot = manager.snapshot()
+      expect(snapshot.sessions.find((session) => session.id === root.id)?.archived).toBe(false)
+      expect(snapshot.sessions.find((session) => session.id === child.id)?.archived).toBe(true)
+      expect(snapshot.sessions.find((session) => session.id === sibling.id)?.archived).toBe(false)
+      expect(snapshot.sessions.find((session) => session.id === grandchild.id)?.archived).toBe(true)
+    })
+
+    test('restoreSession restores only the requested subtree and activates the requested session', async () => {
+      const manager = ProjectSessionManager.createForTest()
+      const project = await manager.createProject({ name: 'alpha', path: 'D:/alpha' })
+      const root = await manager.createSession({ projectId: project.id, type: 'shell', title: 'root' })
+      const child = await manager.createSession({
+        projectId: project.id,
+        type: 'codex',
+        title: 'child',
+        parentSessionId: root.id,
+        createdBySessionId: root.id
+      })
+      const grandchild = await manager.createSession({
+        projectId: project.id,
+        type: 'claude-code',
+        title: 'grandchild',
+        parentSessionId: child.id,
+        createdBySessionId: child.id
+      })
+
+      await manager.archiveSession(root.id)
+      await manager.restoreSession(child.id)
+
+      const snapshot = manager.snapshot()
+      expect(snapshot.sessions.find((session) => session.id === root.id)?.archived).toBe(true)
+      expect(snapshot.sessions.find((session) => session.id === child.id)?.archived).toBe(false)
+      expect(snapshot.sessions.find((session) => session.id === grandchild.id)?.archived).toBe(false)
+      expect(snapshot.activeProjectId).toBe(project.id)
+      expect(snapshot.activeSessionId).toBe(child.id)
+    })
+
+    test('restoreSession does not restore archived ancestors outside the requested subtree', async () => {
+      const manager = ProjectSessionManager.createForTest()
+      const project = await manager.createProject({ name: 'alpha', path: 'D:/alpha' })
+      const root = await manager.createSession({ projectId: project.id, type: 'shell', title: 'root' })
+      const child = await manager.createSession({
+        projectId: project.id,
+        type: 'codex',
+        title: 'child',
+        parentSessionId: root.id,
+        createdBySessionId: root.id
+      })
+      const sibling = await manager.createSession({
+        projectId: project.id,
+        type: 'shell',
+        title: 'sibling',
+        parentSessionId: root.id,
+        createdBySessionId: root.id
+      })
+
+      await manager.archiveSession(root.id)
+      await manager.restoreSession(child.id)
+
+      const snapshot = manager.snapshot()
+      expect(snapshot.sessions.find((session) => session.id === root.id)?.archived).toBe(true)
+      expect(snapshot.sessions.find((session) => session.id === child.id)?.archived).toBe(false)
+      expect(snapshot.sessions.find((session) => session.id === sibling.id)?.archived).toBe(true)
+    })
+
+    test('buildBootstrapRecoveryPlan orders parents before descendants and excludes archived subtrees', async () => {
+      const manager = ProjectSessionManager.createForTest()
+      const project = await manager.createProject({ name: 'alpha', path: 'D:/alpha' })
+      const root = await manager.createSession({
+        projectId: project.id,
+        type: 'claude-code',
+        title: 'root'
+      })
+      const child = await manager.createSession({
+        projectId: project.id,
+        type: 'codex',
+        title: 'child',
+        parentSessionId: root.id,
+        createdBySessionId: root.id
+      })
+      const grandchild = await manager.createSession({
+        projectId: project.id,
+        type: 'shell',
+        title: 'grandchild',
+        parentSessionId: child.id,
+        createdBySessionId: child.id
+      })
+      const siblingRoot = await manager.createSession({
+        projectId: project.id,
+        type: 'opencode',
+        title: 'sibling',
+        externalSessionId: 'sibling-ext'
+      })
+
+      await manager.archiveSession(siblingRoot.id)
+
+      const plan = manager.buildBootstrapRecoveryPlan()
+      expect(plan.map((entry) => entry.sessionId)).toEqual([root.id, child.id, grandchild.id])
+      expect(plan).toEqual([
+        {
+          sessionId: root.id,
+          action: 'resume-external',
+          externalSessionId: root.externalSessionId
+        },
+        {
+          sessionId: child.id,
+          action: 'fresh-shell'
+        },
+        {
+          sessionId: grandchild.id,
+          action: 'fresh-shell'
+        }
+      ])
+    })
+
+    test('buildBootstrapRecoveryPlan includes orphan sessions as additional roots', async () => {
+      const globalStatePath = await createTempGlobalStatePath()
+      const projectDir = await createTempProjectDir()
+      const now = new Date().toISOString()
+
+      await stateStore.writeGlobalState({
+        version: 4,
+        active_project_id: 'project_real',
+        active_session_id: null,
+        projects: [
+          {
+            project_id: 'project_real',
+            name: 'alpha',
+            path: projectDir,
+            default_session_type: 'shell',
+            created_at: now,
+            updated_at: now
+          }
+        ]
+      }, globalStatePath)
+      await stateStore.writeProjectSessions(projectDir, {
+        version: 7,
+        project_id: 'project_real',
+        sessions: [
+          {
+            session_id: 'session_orphan',
+            project_id: 'project_real',
+            parent_session_id: 'session_missing_parent',
+            created_by_session_id: 'session_missing_parent',
+            type: 'shell',
+            title: 'orphan',
+            runtime_state: 'created',
+            turn_state: 'idle',
+            turn_epoch: 0,
+            last_turn_outcome: 'none',
+            blocking_reason: null,
+            failure_reason: null,
+            has_unseen_completion: false,
+            runtime_exit_code: null,
+            runtime_exit_reason: null,
+            last_state_sequence: 0,
+            last_summary: 'Waiting',
+            external_session_id: null,
+            title_generation: {
+              prompt: null,
+              assistantSnippet: null,
+              contextUpdatedAt: null,
+              autoGeneratedTurnEpoch: null
+            },
+            created_at: now,
+            updated_at: now,
+            last_activated_at: now,
+            recovery_mode: 'fresh-shell',
+            archived: false
+          }
+        ]
+      })
+
+      const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
+      expect(manager.buildBootstrapRecoveryPlan()).toEqual([
+        { sessionId: 'session_orphan', action: 'fresh-shell' }
+      ])
+      expect(manager.getSessionNodeSnapshot('session_orphan')).toMatchObject({
+        tree: {
+          rootSessionId: 'session_orphan',
+          depth: 0,
+          childCount: 0,
+          descendantCount: 0
+        }
+      })
+    })
+
+    test('tree traversal helpers tolerate lineage cycles without infinite loops', async () => {
+      const globalStatePath = await createTempGlobalStatePath()
+      const projectDir = await createTempProjectDir()
+      const now = new Date().toISOString()
+
+      await stateStore.writeGlobalState({
+        version: 4,
+        active_project_id: 'project_real',
+        active_session_id: null,
+        projects: [
+          {
+            project_id: 'project_real',
+            name: 'alpha',
+            path: projectDir,
+            default_session_type: 'shell',
+            created_at: now,
+            updated_at: now
+          }
+        ]
+      }, globalStatePath)
+      await stateStore.writeProjectSessions(projectDir, {
+        version: 7,
+        project_id: 'project_real',
+        sessions: [
+          {
+            session_id: 'session_a',
+            project_id: 'project_real',
+            parent_session_id: 'session_b',
+            created_by_session_id: 'session_b',
+            type: 'shell',
+            title: 'A',
+            runtime_state: 'created',
+            turn_state: 'idle',
+            turn_epoch: 0,
+            last_turn_outcome: 'none',
+            blocking_reason: null,
+            failure_reason: null,
+            has_unseen_completion: false,
+            runtime_exit_code: null,
+            runtime_exit_reason: null,
+            last_state_sequence: 0,
+            last_summary: 'Waiting',
+            external_session_id: null,
+            title_generation: {
+              prompt: null,
+              assistantSnippet: null,
+              contextUpdatedAt: null,
+              autoGeneratedTurnEpoch: null
+            },
+            created_at: now,
+            updated_at: now,
+            last_activated_at: now,
+            recovery_mode: 'fresh-shell',
+            archived: false
+          },
+          {
+            session_id: 'session_b',
+            project_id: 'project_real',
+            parent_session_id: 'session_a',
+            created_by_session_id: 'session_a',
+            type: 'shell',
+            title: 'B',
+            runtime_state: 'created',
+            turn_state: 'idle',
+            turn_epoch: 0,
+            last_turn_outcome: 'none',
+            blocking_reason: null,
+            failure_reason: null,
+            has_unseen_completion: false,
+            runtime_exit_code: null,
+            runtime_exit_reason: null,
+            last_state_sequence: 0,
+            last_summary: 'Waiting',
+            external_session_id: null,
+            title_generation: {
+              prompt: null,
+              assistantSnippet: null,
+              contextUpdatedAt: null,
+              autoGeneratedTurnEpoch: null
+            },
+            created_at: now,
+            updated_at: now,
+            last_activated_at: now,
+            recovery_mode: 'fresh-shell',
+            archived: false
+          }
+        ]
+      })
+
+      const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
+
+      const plan = manager.buildBootstrapRecoveryPlan()
+      expect(plan.map((entry) => entry.sessionId).sort()).toEqual(['session_a', 'session_b'])
+
+      expect(manager.getSessionNodeSnapshot('session_a')).toMatchObject({
+        tree: {
+          childCount: 1,
+          descendantCount: 1
+        }
+      })
+      expect(manager.getSessionNodeSnapshot('session_b')).toMatchObject({
+        tree: {
+          childCount: 1,
+          descendantCount: 1
+        }
+      })
+      expect(['session_a', 'session_b']).toContain(manager.getSessionNodeSnapshot('session_a')?.tree.rootSessionId)
+      expect(['session_a', 'session_b']).toContain(manager.getSessionNodeSnapshot('session_b')?.tree.rootSessionId)
     })
   })
 })

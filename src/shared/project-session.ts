@@ -284,6 +284,8 @@ export interface CreateSessionRequest {
   projectId: string
   type: SessionType
   title: string
+  parentSessionId?: string | null
+  createdBySessionId?: string | null
   externalSessionId?: string | null
   initialCols?: number
   initialRows?: number

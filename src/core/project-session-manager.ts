@@ -9,10 +9,12 @@ import type {
   PersistedProjectSessions,
   PersistedSession,
   ProjectSummary,
+  SessionNodeSnapshot,
   SessionTitleGenerationContext,
   SessionStateIntent,
   SessionStatePatchEvent,
   SessionSummary,
+  SessionTreeMeta,
   SessionType
 } from '@shared/project-session'
 import { DEFAULT_SETTINGS } from '@shared/project-session'
@@ -63,6 +65,8 @@ function toPersistedSession(session: SessionSummary): PersistedSession {
   return {
     session_id: session.id,
     project_id: session.projectId,
+    parent_session_id: session.parentSessionId,
+    created_by_session_id: session.createdBySessionId,
     type: session.type,
     title: session.title,
     runtime_state: session.runtimeState,
@@ -90,6 +94,8 @@ function toSessionSummary(session: PersistedSession): SessionSummary {
   return {
     id: session.session_id,
     projectId: session.project_id,
+    parentSessionId: session.parent_session_id,
+    createdBySessionId: session.created_by_session_id,
     type: session.type,
     runtimeState: session.runtime_state,
     turnState: session.turn_state,
@@ -326,7 +332,8 @@ export class ProjectSessionManager {
   }
 
   buildBootstrapRecoveryPlan() {
-    return this.state.sessions.filter(s => !s.archived).map((session) => {
+    const activeSessions = this.getSessionsInTreeOrder().filter((session) => !session.archived)
+    return activeSessions.map((session) => {
       if (!shouldResumeViaExternalSession(session)) {
         return { sessionId: session.id, action: 'fresh-shell' as const }
       }
@@ -337,6 +344,18 @@ export class ProjectSessionManager {
         externalSessionId: session.externalSessionId
       }
     })
+  }
+
+  getSessionNodeSnapshot(sessionId: string): SessionNodeSnapshot | null {
+    const session = this.state.sessions.find((candidate) => candidate.id === sessionId)
+    if (!session) {
+      return null
+    }
+
+    return {
+      session: { ...session, titleGenerationContext: { ...session.titleGenerationContext } },
+      tree: this.deriveSessionTreeMeta(sessionId)
+    }
   }
 
   async createProject(request: CreateProjectRequest): Promise<ProjectSummary> {
@@ -421,6 +440,10 @@ export class ProjectSessionManager {
     const project = this.state.projects.find(p => p.id === projectId)
     if (!project) return
     this.state.activeProjectId = projectId
+    const activeSession = this.state.sessions.find((session) => session.id === this.state.activeSessionId)
+    if (!activeSession || activeSession.projectId !== projectId) {
+      this.state.activeSessionId = null
+    }
     await this.persist()
   }
 
@@ -445,12 +468,8 @@ export class ProjectSessionManager {
 
     if (this.state.activeProjectId === projectId) {
       this.state.activeProjectId = this.state.projects[0]?.id ?? null
-      if (this.state.activeProjectId) {
-        this.state.activeSessionId = this.state.sessions.find(s => s.projectId === this.state.activeProjectId)?.id ?? null
-      } else {
-        this.state.activeSessionId = null
-      }
     }
+    this.reconcileActiveState()
 
     await this.persist()
   }
@@ -458,9 +477,13 @@ export class ProjectSessionManager {
   async archiveSession(sessionId: string): Promise<void> {
     const session = this.state.sessions.find(s => s.id === sessionId)
     if (!session) return
-    session.archived = true
-    session.updatedAt = new Date().toISOString()
-    if (this.state.activeSessionId === sessionId) {
+    const now = new Date().toISOString()
+    const subtree = this.getSessionSubtree(sessionId)
+    for (const node of subtree) {
+      node.archived = true
+      node.updatedAt = now
+    }
+    if (this.state.activeSessionId && subtree.some((node) => node.id === this.state.activeSessionId)) {
       this.state.activeSessionId = null
     }
     await this.persist()
@@ -469,10 +492,14 @@ export class ProjectSessionManager {
   async restoreSession(sessionId: string): Promise<void> {
     const session = this.state.sessions.find(s => s.id === sessionId)
     if (!session) return
-    session.archived = false
+    const now = new Date().toISOString()
+    const subtree = this.getSessionSubtree(sessionId)
+    for (const node of subtree) {
+      node.archived = false
+      node.updatedAt = now
+    }
     this.state.activeProjectId = session.projectId
     this.state.activeSessionId = session.id
-    session.updatedAt = new Date().toISOString()
     await this.persist()
   }
 
@@ -484,6 +511,34 @@ export class ProjectSessionManager {
     const project = this.state.projects.find((candidate) => candidate.id === request.projectId)
     if (!project) {
       throw new Error('Session must belong to an existing project')
+    }
+
+    const parentSession = request.parentSessionId
+      ? this.state.sessions.find((candidate) => candidate.id === request.parentSessionId)
+      : null
+    if (request.parentSessionId && !parentSession) {
+      throw new Error('Parent session must exist')
+    }
+    if (parentSession && parentSession.projectId !== project.id) {
+      throw new Error('Parent session must belong to the same project')
+    }
+    if (parentSession?.archived) {
+      throw new Error('Parent session must be live')
+    }
+    const creatorSession = request.createdBySessionId
+      ? this.state.sessions.find((candidate) => candidate.id === request.createdBySessionId)
+      : null
+    if (request.createdBySessionId && !creatorSession) {
+      throw new Error('Creator session must exist')
+    }
+    if (creatorSession && creatorSession.projectId !== project.id) {
+      throw new Error('Creator session must belong to the same project')
+    }
+    if (!parentSession && request.createdBySessionId != null) {
+      throw new Error('Root sessions cannot declare createdBySessionId without parentSessionId')
+    }
+    if (parentSession && request.createdBySessionId !== parentSession.id) {
+      throw new Error('Creator session must equal parent session for direct children')
     }
 
     const resolvedTitle = request.title?.trim()
@@ -499,6 +554,8 @@ export class ProjectSessionManager {
     const session: SessionSummary = {
       id: `session_${randomUUID()}`,
       projectId: request.projectId,
+      parentSessionId: parentSession?.id ?? null,
+      createdBySessionId: creatorSession?.id ?? null,
       type: request.type,
       runtimeState: 'created',
       turnState: 'idle',
@@ -701,7 +758,7 @@ export class ProjectSessionManager {
     for (const project of persistedProjects) {
       const projectSessions = byProject.get(project.project_id) ?? []
       const data: PersistedProjectSessions = {
-        version: 6,
+        version: 7,
         project_id: project.project_id,
         sessions: projectSessions
       }
@@ -796,6 +853,120 @@ export class ProjectSessionManager {
       summary,
       externalSessionId: options.externalSessionId,
       runtimeExitCode: options.runtimeExitCode
+    }
+  }
+
+  private getSessionSubtree(rootSessionId: string): SessionSummary[] {
+    const byParent = this.buildChildrenByParentMap()
+    const root = this.state.sessions.find((session) => session.id === rootSessionId)
+    if (!root) {
+      return []
+    }
+
+    const ordered: SessionSummary[] = []
+    const visited = new Set<string>()
+    const queue: SessionSummary[] = [root]
+    while (queue.length > 0) {
+      const session = queue.shift()!
+      if (visited.has(session.id)) {
+        continue
+      }
+      visited.add(session.id)
+      ordered.push(session)
+      queue.push(...(byParent.get(session.id) ?? []))
+    }
+    return ordered
+  }
+
+  private getSessionsInTreeOrder(): SessionSummary[] {
+    const byId = new Map(this.state.sessions.map((session) => [session.id, session]))
+    const byParent = this.buildChildrenByParentMap()
+    const roots = this.state.sessions.filter((session) => !session.parentSessionId || !byId.has(session.parentSessionId))
+
+    const ordered: SessionSummary[] = []
+    const visited = new Set<string>()
+    const visit = (session: SessionSummary) => {
+      if (visited.has(session.id)) {
+        return
+      }
+      visited.add(session.id)
+      ordered.push(session)
+      for (const child of byParent.get(session.id) ?? []) {
+        visit(child)
+      }
+    }
+
+    for (const root of roots) {
+      visit(root)
+    }
+
+    for (const session of this.state.sessions) {
+      visit(session)
+    }
+
+    return ordered
+  }
+
+  private deriveSessionTreeMeta(sessionId: string): SessionTreeMeta {
+    const session = this.state.sessions.find((candidate) => candidate.id === sessionId)
+    if (!session) {
+      throw new Error(`Unknown session: ${sessionId}`)
+    }
+
+    const childSessions = this.state.sessions.filter((candidate) => candidate.parentSessionId === session.id)
+    let depth = 0
+    let rootSessionId = session.id
+    let cursor: SessionSummary | undefined = session
+    const visited = new Set<string>([session.id])
+    while (cursor?.parentSessionId) {
+      const parent = this.state.sessions.find((candidate) => candidate.id === cursor!.parentSessionId)
+      if (!parent) {
+        break
+      }
+      if (visited.has(parent.id)) {
+        break
+      }
+      visited.add(parent.id)
+      depth += 1
+      rootSessionId = parent.id
+      cursor = parent
+    }
+
+    const descendantCount = this.getSessionSubtree(session.id).length - 1
+    return {
+      rootSessionId,
+      depth,
+      childCount: childSessions.length,
+      descendantCount
+    }
+  }
+
+  private buildChildrenByParentMap(): Map<string, SessionSummary[]> {
+    const byParent = new Map<string, SessionSummary[]>()
+    for (const session of this.state.sessions) {
+      if (!session.parentSessionId) {
+        continue
+      }
+
+      const siblings = byParent.get(session.parentSessionId) ?? []
+      siblings.push(session)
+      byParent.set(session.parentSessionId, siblings)
+    }
+
+    return byParent
+  }
+
+  private reconcileActiveState(): void {
+    const activeProject = this.state.projects.find((project) => project.id === this.state.activeProjectId) ?? null
+    if (!activeProject) {
+      this.state.activeProjectId = null
+      this.state.activeSessionId = null
+      return
+    }
+
+    const activeSession = this.state.sessions.find((session) => session.id === this.state.activeSessionId) ?? null
+    if (!activeSession || activeSession.projectId !== activeProject.id) {
+      this.state.activeSessionId = null
     }
   }
 }
