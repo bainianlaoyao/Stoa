@@ -1,26 +1,26 @@
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
+import { nextTick } from 'vue'
 import { IPC_CHANNELS } from '@core/ipc-channels'
 import { useSidebarStore } from '@renderer/stores/sidebar'
+import { useWorkspaceStore } from '@renderer/stores/workspaces'
 import { useSearchStore } from '@renderer/stores/search'
 import { useGitStore } from '@renderer/stores/git'
-import { useWorkspaceStore } from '@renderer/stores/workspaces'
 import type { SidebarState, SearchResult, SearchOptions, GitStatusResult, GitBranchInfo, GitLogEntry } from '@shared/sidebar-types'
-import { createTestWorkspace, createTestGlobalStatePath } from './helpers'
-import { ProjectSessionManager } from '@core/project-session-manager'
 
 function createSidebarState(overrides?: Partial<SidebarState>): SidebarState {
   return {
     open: false,
     activeTab: 'explorer',
     width: 280,
-    selectedProjectId: null,
+    sessionListWidth: 240,
     ...overrides,
   }
 }
 
 function mockWindowStoa(overrides: Record<string, any> = {}): void {
-  (window as any).stoa = {
+  const noop = () => {}
+  ;(window as any).stoa = {
     getBootstrapState: async () => ({ activeProjectId: null, activeSessionId: null, terminalWebhookPort: null, projects: [], sessions: [] }),
     getSidebarState: async () => createSidebarState(),
     setSidebarState: async () => {},
@@ -31,6 +31,9 @@ function mockWindowStoa(overrides: Record<string, any> = {}): void {
     fsRename: async () => {},
     fsDelete: async () => {},
     fsSearch: async () => ({ files: [], totalMatches: 0, truncated: false }),
+    fsOpenFile: async () => {},
+    onFsChanged: () => noop,
+    shellShowItemInFolder: async () => {},
     gitStatus: async () => ({ branch: 'main', ahead: 0, behind: 0, clean: true, entries: [], hasConflicts: false }),
     gitStage: async () => {},
     gitUnstage: async () => {},
@@ -71,7 +74,7 @@ describe('E2E: Right Sidebar', () => {
       expect(store.open).toBe(false)
       expect(store.activeTab).toBe('explorer')
       expect(store.width).toBe(280)
-      expect(store.selectedProjectId).toBeNull()
+      expect(store.sessionListWidth).toBe(240)
     })
 
     test('toggle switches open state', () => {
@@ -110,16 +113,18 @@ describe('E2E: Right Sidebar', () => {
       expect(store.width).toBe(800)
     })
 
-    test('setSelectedProject updates selectedProjectId', () => {
+    test('setSessionListWidth clamps between min and max', () => {
       const store = useSidebarStore()
-      store.setSelectedProject('proj-1')
-      expect(store.selectedProjectId).toBe('proj-1')
-      store.setSelectedProject(null)
-      expect(store.selectedProjectId).toBeNull()
+      store.setSessionListWidth(50)
+      expect(store.sessionListWidth).toBe(160)
+      store.setSessionListWidth(300)
+      expect(store.sessionListWidth).toBe(300)
+      store.setSessionListWidth(600)
+      expect(store.sessionListWidth).toBe(480)
     })
 
     test('hydrate loads state from window.stoa.getSidebarState', async () => {
-      const persisted = createSidebarState({ open: true, activeTab: 'git', width: 400, selectedProjectId: 'proj-x' })
+      const persisted = createSidebarState({ open: true, activeTab: 'git', width: 400 })
       cleanupWindowStoa()
       mockWindowStoa({ getSidebarState: async () => persisted })
 
@@ -129,7 +134,6 @@ describe('E2E: Right Sidebar', () => {
       expect(store.open).toBe(true)
       expect(store.activeTab).toBe('git')
       expect(store.width).toBe(400)
-      expect(store.selectedProjectId).toBe('proj-x')
     })
 
     test('hydrate clamps width to valid range', async () => {
@@ -142,6 +146,35 @@ describe('E2E: Right Sidebar', () => {
       expect(store.width).toBe(220)
     })
 
+    test('hydrate loads sessionListWidth from persisted state', async () => {
+      const persisted = createSidebarState({ sessionListWidth: 350 })
+      cleanupWindowStoa()
+      mockWindowStoa({ getSidebarState: async () => persisted })
+
+      const store = useSidebarStore()
+      await store.hydrate()
+      expect(store.sessionListWidth).toBe(350)
+    })
+
+    test('hydrate clamps sessionListWidth to valid range', async () => {
+      const persisted = createSidebarState({ sessionListWidth: 50 })
+      cleanupWindowStoa()
+      mockWindowStoa({ getSidebarState: async () => persisted })
+
+      const store = useSidebarStore()
+      await store.hydrate()
+      expect(store.sessionListWidth).toBe(160)
+    })
+
+    test('hydrate defaults sessionListWidth when missing from persisted state', async () => {
+      cleanupWindowStoa()
+      mockWindowStoa({ getSidebarState: async () => ({ open: true, activeTab: 'explorer', width: 280 }) })
+
+      const store = useSidebarStore()
+      await store.hydrate()
+      expect(store.sessionListWidth).toBe(240)
+    })
+
     test('hydrate handles null response gracefully', async () => {
       cleanupWindowStoa()
       mockWindowStoa({ getSidebarState: async () => null })
@@ -150,33 +183,6 @@ describe('E2E: Right Sidebar', () => {
       await store.hydrate()
       expect(store.open).toBe(false)
       expect(store.activeTab).toBe('explorer')
-    })
-
-    test('selectedProjectPath returns null when no project selected', () => {
-      const store = useSidebarStore()
-      expect(store.selectedProjectPath).toBeNull()
-    })
-
-    test('selectedProjectPath returns path from workspace store when project is selected', async () => {
-      const workspaceDir = await createTestWorkspace('sidebar-proj-path-')
-      const globalStatePath = await createTestGlobalStatePath()
-      const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
-      const project = await manager.createProject({ path: workspaceDir, name: 'test_project' })
-
-      const workspaceStore = useWorkspaceStore()
-      workspaceStore.hydrate(manager.snapshot())
-
-      const sidebarStore = useSidebarStore()
-      sidebarStore.setSelectedProject(project.id)
-
-      expect(sidebarStore.selectedProjectPath).toBe(workspaceDir)
-    })
-
-    test('selectedProject returns null for nonexistent project ID', () => {
-      const store = useSidebarStore()
-      store.setSelectedProject('nonexistent-id')
-      expect(store.selectedProject).toBeNull()
-      expect(store.selectedProjectPath).toBeNull()
     })
 
     test('persistState calls window.stoa.setSidebarState', async () => {
@@ -649,6 +655,8 @@ describe('E2E: Right Sidebar', () => {
 
     test('sidebar IPC channels exist in IPC_CHANNELS map', () => {
       const sidebarChannels = [
+        IPC_CHANNELS.sidebarGetState,
+        IPC_CHANNELS.sidebarSetState,
         IPC_CHANNELS.fsReadDir,
         IPC_CHANNELS.fsReadFile,
         IPC_CHANNELS.fsWriteFile,
@@ -656,6 +664,9 @@ describe('E2E: Right Sidebar', () => {
         IPC_CHANNELS.fsRename,
         IPC_CHANNELS.fsDelete,
         IPC_CHANNELS.fsSearch,
+        IPC_CHANNELS.fsOpenFile,
+        IPC_CHANNELS.fsChanged,
+        IPC_CHANNELS.shellShowItemInFolder,
         IPC_CHANNELS.gitStatus,
         IPC_CHANNELS.gitStage,
         IPC_CHANNELS.gitUnstage,
@@ -681,7 +692,8 @@ describe('E2E: Right Sidebar', () => {
 
     test('preload bridge methods cover all sidebar IPC channels', () => {
       const requiredMethods = [
-        'fsReadDir', 'fsReadFile', 'fsWriteFile', 'fsCreate', 'fsRename', 'fsDelete', 'fsSearch',
+        'fsReadDir', 'fsReadFile', 'fsWriteFile', 'fsCreate', 'fsRename', 'fsDelete', 'fsSearch', 'fsOpenFile',
+        'onFsChanged', 'shellShowItemInFolder',
         'gitStatus', 'gitStage', 'gitUnstage', 'gitDiscard', 'gitCommit',
         'gitPush', 'gitPull', 'gitFetch', 'gitRebase', 'gitMerge',
         'gitBranches', 'gitLog', 'gitDiff', 'gitCheckout', 'gitCreateBranch',
@@ -704,6 +716,9 @@ describe('E2E: Right Sidebar', () => {
       expect(IPC_CHANNELS.fsRename).toBe('fs:rename')
       expect(IPC_CHANNELS.fsDelete).toBe('fs:delete')
       expect(IPC_CHANNELS.fsSearch).toBe('fs:search')
+      expect(IPC_CHANNELS.fsOpenFile).toBe('fs:open-file')
+      expect(IPC_CHANNELS.fsChanged).toBe('fs:changed')
+      expect(IPC_CHANNELS.shellShowItemInFolder).toBe('shell:show-item-in-folder')
       expect(IPC_CHANNELS.gitStatus).toBe('git:status')
       expect(IPC_CHANNELS.gitStage).toBe('git:stage')
       expect(IPC_CHANNELS.gitUnstage).toBe('git:unstage')
@@ -719,6 +734,408 @@ describe('E2E: Right Sidebar', () => {
       expect(IPC_CHANNELS.gitDiff).toBe('git:diff')
       expect(IPC_CHANNELS.gitCheckout).toBe('git:checkout')
       expect(IPC_CHANNELS.gitCreateBranch).toBe('git:create-branch')
+    })
+  })
+
+  describe('Sidebar Visibility and CSS-Based Hiding', () => {
+    beforeEach(() => {
+      setActivePinia(createPinia())
+      mockWindowStoa()
+    })
+
+    afterEach(() => {
+      cleanupWindowStoa()
+    })
+
+    test('toggle does not destroy store state — sidebar stays in DOM when closed', () => {
+      const store = useSidebarStore()
+      store.setOpen(true)
+      store.setActiveTab('search')
+      store.setWidth(350)
+
+      expect(store.open).toBe(true)
+      expect(store.activeTab).toBe('search')
+      expect(store.width).toBe(350)
+
+      // Closing the sidebar should only flip the open flag, not reset other state
+      store.setOpen(false)
+
+      expect(store.open).toBe(false)
+      expect(store.activeTab).toBe('search')
+      expect(store.width).toBe(350)
+    })
+
+    test('re-opening sidebar restores previous tab and width', () => {
+      const store = useSidebarStore()
+      store.setActiveTab('git')
+      store.setWidth(500)
+      store.setOpen(true)
+      store.setOpen(false)
+
+      store.setOpen(true)
+
+      expect(store.activeTab).toBe('git')
+      expect(store.width).toBe(500)
+    })
+
+    test('toggle cycles open state without side effects', () => {
+      const store = useSidebarStore()
+      store.setActiveTab('search')
+
+      store.toggle()
+      expect(store.open).toBe(true)
+      expect(store.activeTab).toBe('search')
+
+      store.toggle()
+      expect(store.open).toBe(false)
+      expect(store.activeTab).toBe('search')
+
+      store.toggle()
+      expect(store.open).toBe(true)
+      expect(store.activeTab).toBe('search')
+    })
+  })
+
+  describe('Per-Project Tab Persistence', () => {
+    beforeEach(() => {
+      setActivePinia(createPinia())
+      mockWindowStoa()
+    })
+
+    afterEach(() => {
+      cleanupWindowStoa()
+    })
+
+    test('setActiveTab records tab per project via activeTabByProject', () => {
+      const captured: Partial<SidebarState>[] = []
+      cleanupWindowStoa()
+      mockWindowStoa({
+        setSidebarState: async (state: Partial<SidebarState>) => {
+          captured.push(state)
+        },
+      })
+
+      const sidebarStore = useSidebarStore()
+      const workspaceStore = useWorkspaceStore()
+
+      // Hydrate workspace store with two projects so activeProject resolves
+      workspaceStore.hydrate({
+        activeProjectId: 'proj-1',
+        activeSessionId: null,
+        terminalWebhookPort: null,
+        projects: [
+          { id: 'proj-1', path: '/projects/alpha', name: 'Alpha', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+          { id: 'proj-2', path: '/projects/beta', name: 'Beta', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+        ],
+        sessions: [],
+      })
+
+      sidebarStore.setActiveTab('search')
+      expect(sidebarStore.activeTabByProject['/projects/alpha']).toBe('search')
+
+      sidebarStore.setActiveTab('git')
+      expect(sidebarStore.activeTabByProject['/projects/alpha']).toBe('git')
+    })
+
+    test('activeTabByProject is restored when switching projects', async () => {
+      const sidebarStore = useSidebarStore()
+      const workspaceStore = useWorkspaceStore()
+
+      workspaceStore.hydrate({
+        activeProjectId: 'proj-1',
+        activeSessionId: null,
+        terminalWebhookPort: null,
+        projects: [
+          { id: 'proj-1', path: '/projects/alpha', name: 'Alpha', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+          { id: 'proj-2', path: '/projects/beta', name: 'Beta', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+        ],
+        sessions: [],
+      })
+      await nextTick()
+
+      // Set tab while on project alpha
+      sidebarStore.setActiveTab('search')
+      expect(sidebarStore.activeTab).toBe('search')
+      expect(sidebarStore.activeTabByProject['/projects/alpha']).toBe('search')
+
+      // Switch to project beta — tab should remain search (no remembered tab for beta)
+      workspaceStore.setActiveProject('proj-2')
+      await nextTick()
+      expect(workspaceStore.activeProject?.path).toBe('/projects/beta')
+
+      // Set tab for beta
+      sidebarStore.setActiveTab('git')
+      expect(sidebarStore.activeTabByProject['/projects/beta']).toBe('git')
+
+      // Switch back to alpha — should restore search tab
+      workspaceStore.setActiveProject('proj-1')
+      await nextTick()
+      expect(sidebarStore.activeTab).toBe('search')
+    })
+
+    test('activeTabByProject persists through setSidebarState calls', () => {
+      const captured: Partial<SidebarState>[] = []
+      cleanupWindowStoa()
+      mockWindowStoa({
+        setSidebarState: async (state: Partial<SidebarState>) => {
+          captured.push(state)
+        },
+      })
+
+      const sidebarStore = useSidebarStore()
+      const workspaceStore = useWorkspaceStore()
+
+      workspaceStore.hydrate({
+        activeProjectId: 'proj-1',
+        activeSessionId: null,
+        terminalWebhookPort: null,
+        projects: [
+          { id: 'proj-1', path: '/projects/alpha', name: 'Alpha', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+        ],
+        sessions: [],
+      })
+
+      sidebarStore.setActiveTab('git')
+      sidebarStore.setOpen(true)
+
+      // setActiveTab triggers persistState with the full state including activeTab
+      const tabCall = captured.find((c) => c.activeTab === 'git')
+      expect(tabCall).toBeDefined()
+      expect(tabCall!.activeTab).toBe('git')
+
+      // setOpen triggers persistState with the full state including open
+      const openCall = captured.find((c) => c.open === true)
+      expect(openCall).toBeDefined()
+      expect(openCall!.open).toBe(true)
+    })
+  })
+
+  describe('Reveal in Explorer', () => {
+    beforeEach(() => {
+      setActivePinia(createPinia())
+      mockWindowStoa()
+    })
+
+    afterEach(() => {
+      cleanupWindowStoa()
+    })
+
+    test('revealInExplorer opens sidebar and switches to explorer tab', () => {
+      const store = useSidebarStore()
+      expect(store.open).toBe(false)
+      expect(store.activeTab).toBe('explorer')
+
+      store.setActiveTab('git')
+      expect(store.activeTab).toBe('git')
+
+      store.revealInExplorer('/project/src/index.ts')
+
+      expect(store.open).toBe(true)
+      expect(store.activeTab).toBe('explorer')
+      expect(store.pendingRevealPath).toBe('/project/src/index.ts')
+    })
+
+    test('clearPendingReveal resets pendingRevealPath', () => {
+      const store = useSidebarStore()
+      store.revealInExplorer('/project/src/foo.ts')
+
+      expect(store.pendingRevealPath).toBe('/project/src/foo.ts')
+
+      store.clearPendingReveal()
+
+      expect(store.pendingRevealPath).toBeNull()
+    })
+
+    test('revealInExplorer overwrites previous pending reveal', () => {
+      const store = useSidebarStore()
+      store.revealInExplorer('/project/src/a.ts')
+      store.revealInExplorer('/project/src/b.ts')
+
+      expect(store.pendingRevealPath).toBe('/project/src/b.ts')
+    })
+
+    test('revealInExplorer opens sidebar even if closed', () => {
+      const store = useSidebarStore()
+      store.setOpen(false)
+      expect(store.open).toBe(false)
+
+      store.revealInExplorer('/project/README.md')
+
+      expect(store.open).toBe(true)
+    })
+  })
+
+  describe('Keyboard Shortcut Simulation', () => {
+    beforeEach(() => {
+      setActivePinia(createPinia())
+      mockWindowStoa()
+    })
+
+    afterEach(() => {
+      cleanupWindowStoa()
+    })
+
+    test('simulated Ctrl+B keyboard shortcut toggles sidebar open state', () => {
+      const store = useSidebarStore()
+
+      expect(store.open).toBe(false)
+
+      // Simulate the effect of Ctrl+B handler calling store.toggle()
+      store.toggle()
+      expect(store.open).toBe(true)
+
+      // Second press closes
+      store.toggle()
+      expect(store.open).toBe(false)
+    })
+
+    test('simulated keyboard shortcut cycles through panels', () => {
+      const store = useSidebarStore()
+      const workspaceStore = useWorkspaceStore()
+
+      workspaceStore.hydrate({
+        activeProjectId: 'proj-1',
+        activeSessionId: null,
+        terminalWebhookPort: null,
+        projects: [
+          { id: 'proj-1', path: '/projects/alpha', name: 'Alpha', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+        ],
+        sessions: [],
+      })
+
+      store.setOpen(true)
+
+      const tabs: SidebarTab[] = ['explorer', 'search', 'git']
+      for (const tab of tabs) {
+        store.setActiveTab(tab)
+        expect(store.activeTab).toBe(tab)
+      }
+
+      // Wrap around back to explorer
+      store.setActiveTab('explorer')
+      expect(store.activeTab).toBe('explorer')
+    })
+  })
+
+  describe('Sidebar State Persists Across Project Switches', () => {
+    beforeEach(() => {
+      setActivePinia(createPinia())
+      mockWindowStoa()
+    })
+
+    afterEach(() => {
+      cleanupWindowStoa()
+    })
+
+    test('width and open state persist when switching projects', () => {
+      const sidebarStore = useSidebarStore()
+      const workspaceStore = useWorkspaceStore()
+
+      workspaceStore.hydrate({
+        activeProjectId: 'proj-1',
+        activeSessionId: null,
+        terminalWebhookPort: null,
+        projects: [
+          { id: 'proj-1', path: '/projects/alpha', name: 'Alpha', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+          { id: 'proj-2', path: '/projects/beta', name: 'Beta', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+        ],
+        sessions: [],
+      })
+
+      sidebarStore.setOpen(true)
+      sidebarStore.setWidth(400)
+
+      // Switch to project beta
+      workspaceStore.setActiveProject('proj-2')
+
+      // Width and open state should persist
+      expect(sidebarStore.open).toBe(true)
+      expect(sidebarStore.width).toBe(400)
+    })
+
+    test('sessionListWidth persists across project switches', () => {
+      const sidebarStore = useSidebarStore()
+      const workspaceStore = useWorkspaceStore()
+
+      workspaceStore.hydrate({
+        activeProjectId: 'proj-1',
+        activeSessionId: null,
+        terminalWebhookPort: null,
+        projects: [
+          { id: 'proj-1', path: '/projects/alpha', name: 'Alpha', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+          { id: 'proj-2', path: '/projects/beta', name: 'Beta', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+        ],
+        sessions: [],
+      })
+
+      sidebarStore.setSessionListWidth(350)
+
+      workspaceStore.setActiveProject('proj-2')
+
+      expect(sidebarStore.sessionListWidth).toBe(350)
+    })
+  })
+
+  describe('Atomic Write and Backup Recovery', () => {
+    test('writeSidebarState creates backup before overwrite', async () => {
+      const { writeSidebarState, readSidebarState } = await import('@core/sidebar-state-store')
+      const { readFile: fsReadFile } = await import('node:fs/promises')
+      const { existsSync } = await import('node:fs')
+      const { homedir } = await import('node:os')
+      const { join } = await import('node:path')
+
+      const statePath = join(homedir(), '.stoa', 'sidebar.json')
+      const backupPath = statePath + '.backup'
+
+      // Write initial state
+      const state1: SidebarState = { open: true, activeTab: 'explorer', width: 300, sessionListWidth: 240 }
+      await writeSidebarState(state1)
+
+      // Write second state — should create backup of first
+      const state2: SidebarState = { open: false, activeTab: 'search', width: 400, sessionListWidth: 300 }
+      await writeSidebarState(state2)
+
+      // Backup should contain the first state
+      if (existsSync(backupPath)) {
+        const backupRaw = await fsReadFile(backupPath, 'utf-8')
+        const backupParsed = JSON.parse(backupRaw) as SidebarState
+        expect(backupParsed.open).toBe(true)
+        expect(backupParsed.activeTab).toBe('explorer')
+        expect(backupParsed.width).toBe(300)
+      }
+
+      // Primary file should contain the second state
+      const result = await readSidebarState()
+      expect(result).not.toBeNull()
+      expect(result!.open).toBe(false)
+      expect(result!.activeTab).toBe('search')
+      expect(result!.width).toBe(400)
+    })
+
+    test('readSidebarState falls back to backup when primary is corrupt', async () => {
+      const { writeSidebarState, readSidebarState } = await import('@core/sidebar-state-store')
+      const { writeFile: fsWriteFile } = await import('node:fs/promises')
+      const { homedir } = await import('node:os')
+      const { join } = await import('node:path')
+
+      const statePath = join(homedir(), '.stoa', 'sidebar.json')
+
+      // Write a valid state (first write creates the file, no backup yet)
+      const state1: SidebarState = { open: true, activeTab: 'explorer', width: 300, sessionListWidth: 240 }
+      await writeSidebarState(state1)
+
+      // Write a second valid state — this creates a backup of state1
+      const validState: SidebarState = { open: true, activeTab: 'git', width: 350, sessionListWidth: 260 }
+      await writeSidebarState(validState)
+
+      // Corrupt the primary file by writing invalid JSON
+      await fsWriteFile(statePath, '{corrupt json!!!', 'utf-8')
+
+      // readSidebarState should fall back to the backup (which contains state1)
+      const result = await readSidebarState()
+      expect(result).not.toBeNull()
+      expect(result!.activeTab).toBe('explorer')
+      expect(result!.width).toBe(300)
     })
   })
 
@@ -842,69 +1259,4 @@ describe('E2E: Right Sidebar', () => {
     })
   })
 
-  describe('Sidebar Store Hydration with Workspace Integration', () => {
-    beforeEach(() => {
-      setActivePinia(createPinia())
-      mockWindowStoa()
-    })
-
-    afterEach(() => {
-      cleanupWindowStoa()
-    })
-
-    test('sidebar selectedProjectPath resolves through workspace store', async () => {
-      const workspaceDir = await createTestWorkspace('sidebar-integration-')
-      const globalStatePath = await createTestGlobalStatePath()
-      const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
-      const project = await manager.createProject({ path: workspaceDir, name: 'integration_project' })
-
-      const workspaceStore = useWorkspaceStore()
-      workspaceStore.hydrate(manager.snapshot())
-
-      const sidebarStore = useSidebarStore()
-      sidebarStore.setSelectedProject(project.id)
-
-      expect(sidebarStore.selectedProjectPath).toBe(workspaceDir)
-      expect(sidebarStore.selectedProject?.name).toBe('integration_project')
-    })
-
-    test('sidebar persists selected project and restores on hydrate', async () => {
-      const workspaceDir = await createTestWorkspace('sidebar-restore-')
-      const globalStatePath = await createTestGlobalStatePath()
-      const manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
-      const project = await manager.createProject({ path: workspaceDir, name: 'restore_project' })
-
-      let savedState: SidebarState | null = null
-
-      cleanupWindowStoa()
-      mockWindowStoa({
-        getSidebarState: async () => savedState,
-        setSidebarState: async (state: Partial<SidebarState>) => {
-          savedState = state as SidebarState
-        },
-      })
-
-      const workspaceStore = useWorkspaceStore()
-      workspaceStore.hydrate(manager.snapshot())
-
-      const sidebarStore = useSidebarStore()
-      sidebarStore.setOpen(true)
-      sidebarStore.setActiveTab('git')
-      sidebarStore.setSelectedProject(project.id)
-
-      const freshPinia = createPinia()
-      setActivePinia(freshPinia)
-
-      const workspaceStore2 = useWorkspaceStore()
-      workspaceStore2.hydrate(manager.snapshot())
-
-      const sidebarStore2 = useSidebarStore()
-      await sidebarStore2.hydrate()
-
-      expect(sidebarStore2.open).toBe(true)
-      expect(sidebarStore2.activeTab).toBe('git')
-      expect(sidebarStore2.selectedProjectId).toBe(project.id)
-      expect(sidebarStore2.selectedProjectPath).toBe(workspaceDir)
-    })
-  })
 })

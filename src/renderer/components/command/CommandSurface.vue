@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import WorkspaceHierarchyPanel from './WorkspaceHierarchyPanel.vue'
 import TerminalSessionDeck from './TerminalSessionDeck.vue'
 import { useWorkspaceStore } from '@renderer/stores/workspaces'
+import { useSidebarStore } from '@renderer/stores/sidebar'
+import { usePanelResize } from '@renderer/composables/useSidebarResize'
 import { toSessionRowViewModel } from '@renderer/stores/observability-view-models'
 import { toActiveSessionViewModel } from '@renderer/stores/observability-view-models'
 import type { OpenWorkspaceRequest, ProjectSummary, SessionSummary } from '@shared/project-session'
@@ -34,6 +36,20 @@ const emit = defineEmits<{
 
 const workspaceStore = useWorkspaceStore()
 const { sessionPresenceMap } = storeToRefs(workspaceStore)
+
+const sidebarStore = useSidebarStore()
+const { sessionListWidth } = storeToRefs(sidebarStore)
+const sessionListRef = ref<HTMLElement | null>(null)
+
+const { onResizeStart } = usePanelResize({
+  containerRef: sessionListRef,
+  currentWidth: sessionListWidth,
+  minWidth: 160,
+  maxWidth: 480,
+  direction: 'grow-right',
+  onWidthChange: (w) => sidebarStore.setSessionListWidth(w),
+  onWidthCommit: () => sidebarStore.commitSessionListWidth(),
+})
 
 const sessionRowViewModels = computed(() => {
   const nowIso = new Date().toISOString()
@@ -74,21 +90,29 @@ const activeSessionViewModel = computed(() => {
 <template>
   <section class="h-full min-h-0" data-surface="command" data-command-surface="true" data-testid="command-panel">
     <div class="h-full p-2.5 min-h-0 grid" data-testid="command-body">
-      <div class="h-full grid grid-cols-[240px_minmax(0,1fr)] gap-2.5 min-h-0 items-stretch" data-testid="command-layout">
-        <WorkspaceHierarchyPanel
-          :hierarchy="hierarchy"
-          :active-project-id="activeProjectId"
-          :active-session-id="activeSessionId"
-          :session-row-view-models="sessionRowViewModels"
-          @select-project="emit('selectProject', $event)"
-          @select-session="emit('selectSession', $event)"
-          @create-project="emit('createProject', $event)"
-          @create-session="emit('createSession', $event)"
-          @delete-project="emit('deleteProject', $event)"
-          @archive-session="emit('archiveSession', $event)"
-          @regenerate-session-title="emit('regenerateSessionTitle', $event)"
-          @restart-session="emit('restartSession', $event)"
-        />
+      <div class="h-full grid gap-2.5 min-h-0 items-stretch" :style="{ gridTemplateColumns: sessionListWidth + 'px minmax(0,1fr)' }" data-testid="command-layout">
+        <div ref="sessionListRef" class="relative min-h-0">
+          <WorkspaceHierarchyPanel
+            :hierarchy="hierarchy"
+            :active-project-id="activeProjectId"
+            :active-session-id="activeSessionId"
+            :session-row-view-models="sessionRowViewModels"
+            @select-project="emit('selectProject', $event)"
+            @select-session="emit('selectSession', $event)"
+            @create-project="emit('createProject', $event)"
+            @create-session="emit('createSession', $event)"
+            @delete-project="emit('deleteProject', $event)"
+            @archive-session="emit('archiveSession', $event)"
+            @regenerate-session-title="emit('regenerateSessionTitle', $event)"
+            @restart-session="emit('restartSession', $event)"
+          />
+
+          <div
+            class="absolute top-0 right-0 w-1 h-full cursor-col-resize z-10 hover:bg-[var(--color-accent)]/10 active:bg-[var(--color-accent)]/20 transition-colors"
+            @mousedown="onResizeStart"
+            data-testid="session-list-resize-handle"
+          />
+        </div>
 
         <TerminalSessionDeck
           :hierarchy="hierarchy"

@@ -1,26 +1,25 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, watch } from 'vue'
 import type { SidebarTab, SidebarState } from '@shared/sidebar-types'
-import { useWorkspaceStore } from './workspaces'
+import { useWorkspaceStore } from '@renderer/stores/workspaces'
 
 const DEFAULT_WIDTH = 280
 const MIN_WIDTH = 220
 const MAX_WIDTH = 800
 
-export const useSidebarStore = defineStore('sidebar', () => {
-  const workspaceStore = useWorkspaceStore()
+const DEFAULT_SESSION_LIST_WIDTH = 240
+const SESSION_LIST_MIN_WIDTH = 160
+const SESSION_LIST_MAX_WIDTH = 480
 
+export const useSidebarStore = defineStore('sidebar', () => {
   const open = ref(false)
   const activeTab = ref<SidebarTab>('explorer')
   const width = ref(DEFAULT_WIDTH)
-  const selectedProjectId = ref<string | null>(null)
+  const sessionListWidth = ref(DEFAULT_SESSION_LIST_WIDTH)
 
-  const selectedProject = computed(() => {
-    if (!selectedProjectId.value) return null
-    return workspaceStore.projects.find(p => p.id === selectedProjectId.value) ?? null
-  })
-
-  const selectedProjectPath = computed(() => selectedProject.value?.path ?? null)
+  // ── Per-project tab memory & reveal support ──
+  const activeTabByProject = ref<Record<string, string>>({})
+  const pendingRevealPath = ref<string | null>(null)
 
   function setOpen(value: boolean): void {
     open.value = value
@@ -33,6 +32,17 @@ export const useSidebarStore = defineStore('sidebar', () => {
 
   function setActiveTab(tab: SidebarTab): void {
     activeTab.value = tab
+
+    // Record the tab for the current project so we can restore on project switch
+    const workspaceStore = useWorkspaceStore()
+    const projectPath = workspaceStore.activeProject?.path
+    if (projectPath) {
+      activeTabByProject.value = {
+        ...activeTabByProject.value,
+        [projectPath]: tab,
+      }
+    }
+
     void persistState()
   }
 
@@ -44,10 +54,45 @@ export const useSidebarStore = defineStore('sidebar', () => {
     void persistState()
   }
 
-  function setSelectedProject(projectId: string | null): void {
-    selectedProjectId.value = projectId
+  function setSessionListWidth(newWidth: number): void {
+    sessionListWidth.value = Math.max(SESSION_LIST_MIN_WIDTH, Math.min(SESSION_LIST_MAX_WIDTH, newWidth))
+  }
+
+  function commitSessionListWidth(): void {
     void persistState()
   }
+
+  // ── Reveal-in-explorer support ──
+
+  function revealInExplorer(path: string): void {
+    open.value = true
+    activeTab.value = 'explorer'
+    pendingRevealPath.value = path
+  }
+
+  function clearPendingReveal(): void {
+    pendingRevealPath.value = null
+  }
+
+  // ── Per-project tab restore ──
+
+  function restoreProjectTab(projectPath: string): void {
+    const remembered = activeTabByProject.value[projectPath]
+    if (remembered) {
+      activeTab.value = remembered as SidebarTab
+    }
+  }
+
+  // Watch for active project changes and restore the remembered tab
+  const workspaceStore = useWorkspaceStore()
+  watch(
+    () => workspaceStore.activeProject?.path ?? null,
+    (newPath, oldPath) => {
+      if (newPath != null && newPath !== oldPath) {
+        restoreProjectTab(newPath)
+      }
+    },
+  )
 
   async function hydrate(): Promise<void> {
     try {
@@ -56,7 +101,9 @@ export const useSidebarStore = defineStore('sidebar', () => {
         open.value = state.open
         activeTab.value = state.activeTab
         width.value = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, state.width))
-        selectedProjectId.value = state.selectedProjectId
+        if (typeof state.sessionListWidth === 'number') {
+          sessionListWidth.value = Math.max(SESSION_LIST_MIN_WIDTH, Math.min(SESSION_LIST_MAX_WIDTH, state.sessionListWidth))
+        }
       }
     } catch {
       // Sidebar state is optional — defaults are fine
@@ -69,7 +116,7 @@ export const useSidebarStore = defineStore('sidebar', () => {
         open: open.value,
         activeTab: activeTab.value,
         width: width.value,
-        selectedProjectId: selectedProjectId.value,
+        sessionListWidth: sessionListWidth.value,
       })
     } catch {
       // Non-critical — sidebar state is ephemeral
@@ -80,15 +127,19 @@ export const useSidebarStore = defineStore('sidebar', () => {
     open,
     activeTab,
     width,
-    selectedProjectId,
-    selectedProject,
-    selectedProjectPath,
+    sessionListWidth,
+    activeTabByProject,
+    pendingRevealPath,
     setOpen,
     toggle,
     setActiveTab,
     setWidth,
     commitWidth,
-    setSelectedProject,
+    setSessionListWidth,
+    commitSessionListWidth,
+    revealInExplorer,
+    clearPendingReveal,
+    restoreProjectTab,
     hydrate,
   }
 })

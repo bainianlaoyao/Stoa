@@ -258,7 +258,7 @@ async function isTrackedPath(projectPath: string, filePath: string): Promise<boo
 export function registerGitHandlers(ipcMain: Electron.IpcMain): void {
   ipcMain.handle(IPC_CHANNELS.gitStatus, async (_event, projectPath: string) => {
     try {
-      const { stdout } = await execGit(projectPath, ['status', '--porcelain=v2', '--branch'])
+      const { stdout } = await execGit(projectPath, ['-c', 'core.quotePath=false', 'status', '--porcelain=v2', '--branch', '--untracked-files=all'])
       return parseGitStatus(stdout)
     } catch (error) {
       throw formatGitError('status', error)
@@ -275,7 +275,8 @@ export function registerGitHandlers(ipcMain: Electron.IpcMain): void {
 
   ipcMain.handle(IPC_CHANNELS.gitUnstage, async (_event, projectPath: string, paths: string[]) => {
     try {
-      await execGit(projectPath, ['reset', 'HEAD', '--', ...paths])
+      // git restore --staged works for both tracked and untracked (staged as added) files
+      await execGit(projectPath, ['restore', '--staged', '--', ...paths])
     } catch (error) {
       throw formatGitError('unstage', error)
     }
@@ -284,12 +285,20 @@ export function registerGitHandlers(ipcMain: Electron.IpcMain): void {
   ipcMain.handle(IPC_CHANNELS.gitDiscard, async (_event, projectPath: string, paths: string[]) => {
     try {
       for (const filePath of paths) {
-        if (await isTrackedPath(projectPath, filePath)) {
-          await execGit(projectPath, ['checkout', '--', filePath])
-          continue
+        // Use git ls-files --error-unmatch to check if tracked
+        let isTracked = false
+        try {
+          await execGit(projectPath, ['ls-files', '--error-unmatch', '--', filePath])
+          isTracked = true
+        } catch {
+          isTracked = false
         }
 
-        await execGit(projectPath, ['clean', '-f', '--', filePath])
+        if (isTracked) {
+          await execGit(projectPath, ['restore', '--', filePath])
+        } else {
+          await execGit(projectPath, ['clean', '-fd', '--', filePath])
+        }
       }
     } catch (error) {
       throw formatGitError('discard', error)

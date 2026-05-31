@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import GlobalActivityBar from './GlobalActivityBar.vue'
 import TitleBar from './TitleBar.vue'
 import CommandSurface from './command/CommandSurface.vue'
@@ -7,6 +7,7 @@ import MetaSessionSurface from './meta-session/MetaSessionSurface.vue'
 import ArchiveSurface from './archive/ArchiveSurface.vue'
 import SettingsSurface from './settings/SettingsSurface.vue'
 import RightSidebar from './right-sidebar/RightSidebar.vue'
+import { useSidebarStore } from '@renderer/stores/sidebar'
 import type { OpenWorkspaceRequest, ProjectSummary, SessionSummary } from '@shared/project-session'
 import type { ProjectHierarchyNode } from '@renderer/stores/workspaces'
 import type { AppSurface } from './GlobalActivityBar.vue'
@@ -33,6 +34,21 @@ const emit = defineEmits<{
 }>()
 
 const activeSurface = ref<AppSurface>('command')
+
+// Auto-hide sidebar when navigating to a full-page surface (settings, archive, meta-session)
+// and restore it when returning to the command surface.
+const sidebarStore = useSidebarStore()
+let sidebarWasOpenBeforeAutoHide = false
+
+watch(activeSurface, (surface, prevSurface) => {
+  if (surface !== 'command' && sidebarStore.open) {
+    sidebarWasOpenBeforeAutoHide = true
+    sidebarStore.setOpen(false)
+  } else if (surface === 'command' && prevSurface !== 'command' && sidebarWasOpenBeforeAutoHide) {
+    sidebarStore.setOpen(true)
+    sidebarWasOpenBeforeAutoHide = false
+  }
+})
 
 const archivedSessions = computed(() => {
   return props.hierarchy.flatMap((project) =>

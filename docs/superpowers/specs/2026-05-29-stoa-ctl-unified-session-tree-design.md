@@ -286,37 +286,6 @@ R(depth 0)
 
 这正是“同一深度的所有线程可见，以及当前 session 的所有下属 session 可见”的产品语义。
 
-### 递归解释
-
-这个规则对 root session 和任意深度的 sub session **完全一致**。
-
-它不是“沿用 parent 的可见集”，而是“每个 session 站在自己的位置重新计算可见集”。
-
-也就是说：
-
-- root session 从 depth `0` 看 tree
-- child session 从 depth `1` 看 tree
-- grandchild session 从 depth `2` 看 tree
-
-如果上面的例子继续扩展：
-
-```text
-R
-├─ A
-│  └─ A1
-│     └─ A1a
-└─ B
-   └─ B1
-      └─ B1a
-```
-
-则：
-
-- `A1` 可见：`A1, B1, A1a`
-- `A1` 不可见：`A, R, B, B1a`
-
-这就是“sub session 也只关心 session tree 里的同级和下级 session”的精确定义。
-
 ### 归档对象
 
 默认 `session list` 不返回 archived session。
@@ -348,8 +317,6 @@ session 自己通过 `stoa-ctl` 调用时，权限如下：
 | `prompt` | 允许 | 允许 | 允许 | 不允许 | 不允许 | 不允许 |
 | `create` | 允许，且只创建 direct child | 不允许 | 不允许 | 不允许 | 不允许 | 不允许 |
 | `destroy` | 允许 | 不允许 | 允许 | 不允许 | 不允许 | 不允许 |
-
-这个矩阵对任意深度 session 等价适用，不因为它是 root、child 还是 grandchild 而改变。
 
 设计理由：
 
@@ -388,12 +355,7 @@ session 相关 UI 收束到现有 workspace / command surface。
 - project 列
 - root sessions
 - child session tree
-- archived subtree section
 - active session terminal deck
-
-独立 archive activity surface 不再作为 session 管理主路径。
-
-archived session 必须保留在同一个 command surface 内，以 project-local 的 archived section 呈现，而不是跳到另一套 session 管理 surface。
 
 ### 3. Sub Session 是用户可见一等对象
 
@@ -465,9 +427,6 @@ stoa-ctl session destroy <sessionId>
 
 - 用户上下文：列出全局 session
 - session 上下文：只列出可见集合 `V(S)`
-- 返回对象必须是 `SessionNodeSnapshot[]`，不是裸 `SessionSummary[]`
-- 默认 JSON 输出是平面节点数组，节点之间靠 `session.id` 与 `session.parentSessionId` 关联
-- 人类可读输出可以按 project/tree 打印缩进视图，但这只是 display format，不是权威数据结构
 
 #### `session create`
 
@@ -565,24 +524,6 @@ stoa-ctl session destroy <sessionId>
 - 默认 `stdout` 输出 JSON envelope
 - `context --level full` 默认输出纯文本
 - `stderr` 只放诊断
-
-### `session list` JSON 形状
-
-`session list` 的 `data` 必须至少包含：
-
-```ts
-interface SessionListResponseData {
-  nodes: SessionNodeSnapshot[]
-}
-```
-
-约束：
-
-- `nodes` 是 caller-filtered 结果
-- local-user caller 收到全局节点
-- session caller 收到 `V(S)` 内节点
-- `SessionNodeSnapshot.tree.depth` 与 `rootSessionId` 始终由主机侧派生
-- CLI 不自行在本地推导 tree metadata 作为权威值
 
 ## 后端架构
 
@@ -780,7 +721,6 @@ interface SessionGraphEvent {
 - renderer 用 `graphVersion` 去重和拒绝过期事件
 - `kind = "created"` 是 parent auto-expand 的唯一触发器
 - push event 本身永远不负责切换 active session
-- `node` 必须始终携带创建/更新后的完整 `SessionNodeSnapshot`
 
 ### 2. renderer 收到未知 session 时必须插入
 
@@ -815,39 +755,6 @@ bootstrap 也必须直接返回 `SessionNodeSnapshot[]`，而不是只返回裸 
 
 renderer 只基于主机派生后的 node snapshots 做 tree 渲染，不自行计算 depth/root 作为权威值。
 
-### 4.1 Archived projection 也保留 tree 结构
-
-为了让用户能稳定检查和管理 sub session，archived session 不能退化成“丢失 parent 信息的平面回收站列表”。
-
-renderer 必须在每个 project 内同时维护两棵 forest：
-
-- `liveRoots`
-- `archivedRoots`
-
-其中：
-
-- `liveRoots` = `archived = false` 且 `parentSessionId = null` 的 roots
-- `archivedRoots` = `archived = true`，且满足以下任一条件的 archived subtree 入口：
-  - `parentSessionId = null`
-  - parent 不存在
-  - parent 存在但 `parent.archived = false`
-
-解释：
-
-- 如果 destroy 的是 root subtree，则整个 subtree 进入 project 的 archived roots
-- 如果 destroy 的是一个 active parent 下面的 child subtree，则这个 child 作为 archived subtree 入口出现在 project 的 archived section 中
-- archived subtree 内部的 parent / child 关系继续保留，不允许被投影成平面孤立行
-
-### 4.2 Archived section 的 UI 规则
-
-每个 project 在 command surface 内必须有一个可折叠 archived section：
-
-- collapsed by default
-- 使用与 live tree 相同的递归 row renderer
-- 节点继续显示 child count / provider / runtime / archived badge
-- `Restore` 对 archived subtree root 与其中的 archived descendants 都可见
-- 不要求自动切到 archived 节点，但要求用户能稳定展开并定位它
-
 ### 5. 背景创建 child session 时不自动抢焦点
 
 如果 child session 不是由当前前端用户直接创建：
@@ -876,13 +783,6 @@ renderer 必须在每个 project 内同时维护两棵 forest：
 - archived state
 - child count
 - 是否 sub session 的层级缩进
-
-project row 下的结构固定为：
-
-- live session tree
-- archived section
-
-不再存在独立 meta-session tree，也不再存在另一套平面 archived session surface 作为主管理入口。
 
 ### Session Row 动作
 
@@ -978,10 +878,8 @@ renderer 继续只通过 Electron preload / IPC 与主机交互。
 
 - `upsertSession` 可以插入未知 session
 - `projectHierarchy` 正确投影 parent / child 关系
-- `projectHierarchy` 正确投影 archived subtree 入口与 archived descendants
 - 背景 child create 不抢 active session
 - parent auto-expand 与 badge 更新
-- grandchild session 只看见同 depth peer 与自身 descendants
 
 ### E2E
 
@@ -989,7 +887,6 @@ renderer 继续只通过 Electron preload / IPC 与主机交互。
 - session 通过 `stoa-ctl` 创建 child session
 - child session 自动显示在前端 tree
 - sibling session 通过 `stoa-ctl` 可 inspect / prompt 同深度 peer
-- grandchild session 通过 `stoa-ctl` 只能看见同 depth peer 与自身 descendants
 - sibling session 无法 destroy 同深度 peer
 - root session 可以看到并管理整棵 tree
 
@@ -1026,10 +923,8 @@ npm run test:behavior-coverage
 - session 内调用 `stoa-ctl` 时，只能看到：
   - 同 tree 同 depth session
   - 当前 session 的 descendants
-- 这个规则对任意深度 sub session 等价生效
 - session 内调用 `destroy` 时，不能销毁 same-depth peer
 - 后台创建的 child session 会自动显示在前端
-- archived subtree 在同一个 command surface 内保持 tree 结构可见
 - 前端统一只保留一个 session 管理主 surface
 - 所有实现通过仓库质量门禁
 

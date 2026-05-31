@@ -75,6 +75,7 @@ export const IPC_CHANNELS = {
   fsDelete: 'fs:delete',
   fsStat: 'fs:stat',
   fsSearch: 'fs:search',
+  fsOpenFile: 'fs:open-file',
   fsChanged: 'fs:changed',
 
   gitStatus: 'git:status',
@@ -92,4 +93,6 @@ export const IPC_CHANNELS = {
   gitDiff: 'git:diff',
   gitCheckout: 'git:checkout',
   gitCreateBranch: 'git:create-branch',
+
+  shellShowItemInFolder: 'shell:show-item-in-folder',
 } as const

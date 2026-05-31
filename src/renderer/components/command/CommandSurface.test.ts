@@ -9,6 +9,7 @@ import { useWorkspaceStore } from '@renderer/stores/workspaces'
 import type { ProjectHierarchyNode } from '@renderer/stores/workspaces'
 import type { SessionPresenceSnapshot } from '@shared/observability'
 import type { ProjectSummary, SessionSummary } from '@shared/project-session'
+import { createSessionSummaryFixture } from '@shared/test-fixtures'
 
 const defaultTitleGenerationContext = {
   prompt: null,
@@ -28,53 +29,57 @@ const hierarchy: ProjectHierarchyNode[] = [
     archivedSessions: [],
     sessions: [
       {
-        id: 'session_1',
-        projectId: 'project_alpha',
-        type: 'opencode',
-        runtimeState: 'alive',
-        turnState: 'running',
-        turnEpoch: 1,
-        lastTurnOutcome: 'none',
-        hasUnseenCompletion: false,
-        runtimeExitCode: null,
-        runtimeExitReason: null,
-        lastStateSequence: 1,
-        blockingReason: null,
-        failureReason: null,
-        title: 'deploy gateway',
-        summary: 'running',
-        titleGenerationContext: defaultTitleGenerationContext,
-        recoveryMode: 'resume-external',
-        externalSessionId: 'sess_1',
-        createdAt: 'a',
-        updatedAt: 'a',
-        lastActivatedAt: 'a',
-        archived: false,
+        ...createSessionSummaryFixture({
+          id: 'session_1',
+          projectId: 'project_alpha',
+          type: 'opencode',
+          runtimeState: 'alive',
+          turnState: 'running',
+          turnEpoch: 1,
+          lastTurnOutcome: 'none',
+          hasUnseenCompletion: false,
+          runtimeExitCode: null,
+          runtimeExitReason: null,
+          lastStateSequence: 1,
+          blockingReason: null,
+          failureReason: null,
+          title: 'deploy gateway',
+          summary: 'running',
+          titleGenerationContext: defaultTitleGenerationContext,
+          recoveryMode: 'resume-external',
+          externalSessionId: 'sess_1',
+          createdAt: 'a',
+          updatedAt: 'a',
+          lastActivatedAt: 'a',
+          archived: false
+        }),
         active: true
       },
       {
-        id: 'session_2',
-        projectId: 'project_alpha',
-        type: 'codex',
-        runtimeState: 'alive',
-        turnState: 'idle',
-        turnEpoch: 0,
-        lastTurnOutcome: 'none',
-        hasUnseenCompletion: false,
-        runtimeExitCode: null,
-        runtimeExitReason: null,
-        lastStateSequence: 2,
-        blockingReason: null,
-        failureReason: null,
-        title: 'review release diff',
-        summary: 'waiting',
-        titleGenerationContext: defaultTitleGenerationContext,
-        recoveryMode: 'resume-external',
-        externalSessionId: 'sess_2',
-        createdAt: 'a',
-        updatedAt: 'a',
-        lastActivatedAt: 'b',
-        archived: false,
+        ...createSessionSummaryFixture({
+          id: 'session_2',
+          projectId: 'project_alpha',
+          type: 'codex',
+          runtimeState: 'alive',
+          turnState: 'idle',
+          turnEpoch: 0,
+          lastTurnOutcome: 'none',
+          hasUnseenCompletion: false,
+          runtimeExitCode: null,
+          runtimeExitReason: null,
+          lastStateSequence: 2,
+          blockingReason: null,
+          failureReason: null,
+          title: 'review release diff',
+          summary: 'waiting',
+          titleGenerationContext: defaultTitleGenerationContext,
+          recoveryMode: 'resume-external',
+          externalSessionId: 'sess_2',
+          createdAt: 'a',
+          updatedAt: 'a',
+          lastActivatedAt: 'b',
+          archived: false
+        }),
         active: false
       }
     ]
@@ -89,7 +94,7 @@ const activeProject: ProjectSummary = {
   updatedAt: 'a'
 }
 
-const activeSession: SessionSummary = {
+const activeSession: SessionSummary = createSessionSummaryFixture({
   id: 'session_1',
   projectId: 'project_alpha',
   type: 'opencode',
@@ -112,9 +117,9 @@ const activeSession: SessionSummary = {
   updatedAt: 'a',
   lastActivatedAt: 'a',
   archived: false
-}
+})
 
-const secondAiSession: SessionSummary = {
+const secondAiSession: SessionSummary = createSessionSummaryFixture({
   id: 'session_2',
   projectId: 'project_alpha',
   type: 'codex',
@@ -137,9 +142,9 @@ const secondAiSession: SessionSummary = {
   updatedAt: 'a',
   lastActivatedAt: 'b',
   archived: false
-}
+})
 
-const shellSession: SessionSummary = {
+const shellSession: SessionSummary = createSessionSummaryFixture({
   id: 'session_shell_1',
   projectId: 'project_alpha',
   type: 'shell',
@@ -162,7 +167,7 @@ const shellSession: SessionSummary = {
   updatedAt: 'a',
   lastActivatedAt: 'c',
   archived: false
-}
+})
 
 function createPresenceSnapshot(overrides: Partial<SessionPresenceSnapshot> = {}): SessionPresenceSnapshot {
   return {

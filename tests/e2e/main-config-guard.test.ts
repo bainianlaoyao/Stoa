@@ -383,6 +383,24 @@ describe('E2E: Main Process Config Guard', () => {
         expect(mainSource).toMatch(new RegExp(`ipcMain\\.handle\\(\\s*IPC_CHANNELS\\.${channel}\\b`))
       }
     })
+
+    it('main/index.ts registers sidebar state handlers', () => {
+      expect(mainSource).toMatch(/ipcMain\.handle\(\s*IPC_CHANNELS\.sidebarGetState\b/)
+      expect(mainSource).toMatch(/ipcMain\.handle\(\s*IPC_CHANNELS\.sidebarSetState\b/)
+    })
+
+    it('main/index.ts registers fs:open-file handler', () => {
+      expect(mainSource).toMatch(/ipcMain\.handle\(\s*IPC_CHANNELS\.fsOpenFile\b/)
+    })
+
+    it('main/index.ts registers shell:show-item-in-folder handler', () => {
+      expect(mainSource).toMatch(/ipcMain\.handle\(\s*IPC_CHANNELS\.shellShowItemInFolder\b/)
+    })
+
+    it('main/index.ts imports and calls registerFilesystemHandlers', () => {
+      expect(mainSource).toMatch(/import.*registerFilesystemHandlers.*from.*sidebar-fs-handlers/)
+      expect(mainSource).toMatch(/registerFilesystemHandlers\(ipcMain/)
+    })
   })
 
   describe('Preload type contract completeness', () => {
@@ -447,6 +465,7 @@ describe('E2E: Main Process Config Guard', () => {
         'fsRename',
         'fsDelete',
         'fsSearch',
+        'fsOpenFile',
         'gitStatus',
         'gitStage',
         'gitUnstage',
@@ -461,7 +480,8 @@ describe('E2E: Main Process Config Guard', () => {
         'gitLog',
         'gitDiff',
         'gitCheckout',
-        'gitCreateBranch'
+        'gitCreateBranch',
+        'shellShowItemInFolder',
       ]
 
       for (const method of knownInvokeMethods) {
@@ -573,6 +593,43 @@ describe('E2E: Main Process Config Guard', () => {
       expect(constants.get('memoryNotification')).toBe('memory:notification')
       expect(constants.get('sessionBinaryInput')).toBe('session:binary-input')
       expect(constants.get('titleGenerationNotification')).toBe('title-generation:notification')
+    })
+
+    it('IPC_CHANNELS defines sidebar and filesystem channel constants with expected names', () => {
+      const constants = extractChannelConstants(channelsSource)
+
+      expect(constants.get('sidebarGetState')).toBe('sidebar:get-state')
+      expect(constants.get('sidebarSetState')).toBe('sidebar:set-state')
+      expect(constants.get('fsReadDir')).toBe('fs:read-dir')
+      expect(constants.get('fsReadFile')).toBe('fs:read-file')
+      expect(constants.get('fsWriteFile')).toBe('fs:write-file')
+      expect(constants.get('fsCreate')).toBe('fs:create')
+      expect(constants.get('fsRename')).toBe('fs:rename')
+      expect(constants.get('fsDelete')).toBe('fs:delete')
+      expect(constants.get('fsSearch')).toBe('fs:search')
+      expect(constants.get('fsOpenFile')).toBe('fs:open-file')
+      expect(constants.get('fsChanged')).toBe('fs:changed')
+      expect(constants.get('shellShowItemInFolder')).toBe('shell:show-item-in-folder')
+    })
+
+    it('IPC_CHANNELS defines git channel constants with expected names', () => {
+      const constants = extractChannelConstants(channelsSource)
+
+      expect(constants.get('gitStatus')).toBe('git:status')
+      expect(constants.get('gitStage')).toBe('git:stage')
+      expect(constants.get('gitUnstage')).toBe('git:unstage')
+      expect(constants.get('gitDiscard')).toBe('git:discard')
+      expect(constants.get('gitCommit')).toBe('git:commit')
+      expect(constants.get('gitPush')).toBe('git:push')
+      expect(constants.get('gitPull')).toBe('git:pull')
+      expect(constants.get('gitFetch')).toBe('git:fetch')
+      expect(constants.get('gitRebase')).toBe('git:rebase')
+      expect(constants.get('gitMerge')).toBe('git:merge')
+      expect(constants.get('gitBranches')).toBe('git:branches')
+      expect(constants.get('gitLog')).toBe('git:log')
+      expect(constants.get('gitDiff')).toBe('git:diff')
+      expect(constants.get('gitCheckout')).toBe('git:checkout')
+      expect(constants.get('gitCreateBranch')).toBe('git:create-branch')
     })
   })
 

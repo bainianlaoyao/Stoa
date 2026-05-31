@@ -238,7 +238,7 @@ function queueWatcherEvent(projectPath: string, absolutePath: string, kind: FsCh
 async function runRipgrepSearch(options: SearchOptions): Promise<SearchResult> {
   const pattern = buildSearchPattern(options)
   const maxResults = Math.min(Math.max(options.maxResults, 1), RG_MAX_COUNT)
-  const args = ['--json', '--max-count', String(RG_MAX_COUNT), '--max-filesize', RG_MAX_FILESIZE]
+  const args = ['--json', '--max-count', String(RG_MAX_COUNT), '--max-filesize', RG_MAXSIZE]
 
   if (options.caseSensitive) {
     args.push('--case-sensitive')
@@ -250,10 +250,7 @@ async function runRipgrepSearch(options: SearchOptions): Promise<SearchResult> {
     args.push('--word-regexp')
   }
 
-  if (!options.useRegex) {
-    args.push('--regexp')
-  }
-
+  // Glob filters must come BEFORE the pattern
   if (options.includePattern.trim()) {
     args.push('--glob', options.includePattern.trim())
   }
@@ -262,7 +259,16 @@ async function runRipgrepSearch(options: SearchOptions): Promise<SearchResult> {
     args.push('--glob', `!${options.excludePattern.trim()}`)
   }
 
-  args.push('--glob', '!.git', pattern, '.')
+  // Note: rg already skips .git by default (respects .gitignore + hidden files)
+
+  // --regexp (or raw pattern) must be the LAST argument before the path
+  if (!options.useRegex) {
+    args.push('--regexp', pattern)
+  } else {
+    args.push(pattern)
+  }
+
+  args.push('.')
 
   const result = await spawnCommand('rg', args, options.rootPath)
   if (result.code === 1) {
@@ -293,7 +299,9 @@ async function runRipgrepSearch(options: SearchOptions): Promise<SearchResult> {
       continue
     }
 
-    const relativePath = parsed.data.path.text
+    const rawRelativePath = parsed.data.path.text
+    // Strip leading .\ or ./ prefix that rg produces on Windows
+    const relativePath = rawRelativePath.replace(/^\.[\\/]/, '')
     const filePath = path.join(options.rootPath, relativePath)
     const lineNumber = parsed.data.line_number ?? 1
     const lineContent = parsed.data.lines.text.replace(/[\r\n]+$/, '')
@@ -482,7 +490,8 @@ export function registerFilesystemHandlers(ipcMain: Electron.IpcMain, getMainWin
 
   ipcMain.handle(IPC_CHANNELS.fsReadDir, async (_event, projectPath: string, relativePath?: string) => {
     try {
-      await startFsWatcher(projectPath)
+      // Start watcher in background — do not block listing on watcher startup
+      void startFsWatcher(projectPath).catch(() => {})
       return await listDirectory(projectPath, relativePath)
     } catch (error) {
       throw formatHandlerError('read-dir', error)

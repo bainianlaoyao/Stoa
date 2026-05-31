@@ -6,7 +6,19 @@ export interface SidebarState {
   open: boolean
   activeTab: SidebarTab
   width: number
-  selectedProjectId: string | null
+  sessionListWidth: number
+}
+
+// ── Panel Registry ──
+
+export interface SidebarPanelDefinition {
+  id: string
+  icon: string
+  label: string
+  component: unknown
+  gitOnly?: boolean
+  sshOnly?: boolean
+  shortcut?: string
 }
 
 // ── File System ──

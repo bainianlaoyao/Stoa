@@ -9,19 +9,62 @@ export interface TreeNode {
   depth: number
 }
 
-const dirCache = ref<Record<string, { children: DirEntry[]; loading: boolean }>>({})
+export type DirCache = {
+  children: TreeNode[]
+  loading: boolean
+}
+
+const dirCache = ref<Record<string, DirCache>>({})
 const expandedDirs = ref<Set<string>>(new Set())
 
+/**
+ * Convert absolute dirPath into a relative path for the IPC call.
+ * Handles both forward-slash and backslash separators.
+ */
+function toRelative(dirPath: string, projectPath: string): string | undefined {
+  if (!dirPath.startsWith(projectPath)) return undefined
+  const rel = dirPath.slice(projectPath.length)
+  if (!rel || rel === '/' || rel === '\\') return undefined
+  // Strip leading separator
+  return rel.startsWith('/') || rel.startsWith('\\') ? rel.slice(1) : rel
+}
+
+/**
+ * Load directory contents via IPC. Skips if already cached with children.
+ * Preserves existing children during reload for smooth UX.
+ */
 async function loadDir(projectPath: string, dirPath?: string): Promise<void> {
   const key = dirPath ?? projectPath
-  if (dirCache.value[key]?.loading) return
+  const existing = dirCache.value[key]
 
-  dirCache.value = { ...dirCache.value, [key]: { children: [], loading: true } }
+  // Already cached with children — skip
+  if (existing && existing.children.length > 0 && !existing.loading) return
+
+  // Set loading state while preserving any previous children
+  dirCache.value = {
+    ...dirCache.value,
+    [key]: { children: existing?.children ?? [], loading: true },
+  }
 
   try {
-    const children = await window.stoa.fsReadDir(projectPath, dirPath ? dirPath.slice(projectPath.length + 1) : undefined)
+    const relativePath = dirPath ? toRelative(dirPath, projectPath) : undefined
+    const entries: DirEntry[] = await window.stoa.fsReadDir(projectPath, relativePath)
+
+    // Map DirEntry → TreeNode
+    const depth = dirPath
+      ? (dirPath.slice(projectPath.length).split(/[\\/]/).length - 1)
+      : 0
+    const children: TreeNode[] = entries.map((entry) => ({
+      name: entry.name,
+      path: entry.path,
+      relativePath: entry.relativePath,
+      isDirectory: entry.isDirectory,
+      depth,
+    }))
+
     dirCache.value = { ...dirCache.value, [key]: { children, loading: false } }
-  } catch {
+  } catch (error) {
+    console.error('[useFileTree] loadDir failed for', key, error)
     dirCache.value = { ...dirCache.value, [key]: { children: [], loading: false } }
   }
 }
@@ -32,7 +75,11 @@ function toggleExpand(projectPath: string, dirPath: string): void {
     next.delete(dirPath)
   } else {
     next.add(dirPath)
-    void loadDir(projectPath, dirPath)
+    // Load children if not cached
+    const cached = dirCache.value[dirPath]
+    if (!cached || cached.children.length === 0) {
+      void loadDir(projectPath, dirPath)
+    }
   }
   expandedDirs.value = next
 }
@@ -45,7 +92,7 @@ function invalidatePath(dirPath: string): void {
   const cache = { ...dirCache.value }
   delete cache[dirPath]
   for (const key of Object.keys(cache)) {
-    if (key.startsWith(dirPath + '/') || key.startsWith(dirPath + '\\')) {
+    if (key === dirPath || key.startsWith(dirPath + '/') || key.startsWith(dirPath + '\\')) {
       delete cache[key]
     }
   }
@@ -55,46 +102,40 @@ function invalidatePath(dirPath: string): void {
 export function useFileTree(projectPath: ref<string | null>) {
   const loading = ref(false)
 
+  /**
+   * Flatten the directory tree into a renderable list using depth-first traversal.
+   * Pattern matches Orca's useFileExplorerTree.flatRows.
+   */
   const flatRows = computed<TreeNode[]>(() => {
     const root = projectPath.value
     if (!root) return []
 
-    const rows: TreeNode[] = []
-    const queue: Array<{ path: string; depth: number }> = [{ path: root, depth: 0 }]
+    const result: TreeNode[] = []
+    const expanded = expandedDirs.value
+    const cache = dirCache.value
 
-    while (queue.length > 0) {
-      const { path: dirPath, depth } = queue.shift()!
-      const cached = dirCache.value[dirPath]
-      if (!cached) continue
+    function addChildren(parentPath: string): void {
+      const cached = cache[parentPath]
+      if (!cached?.children.length) return
 
       for (const child of cached.children) {
-        const node: TreeNode = {
-          name: child.name,
-          path: child.path,
-          relativePath: child.relativePath,
-          isDirectory: child.isDirectory,
-          depth,
-        }
-        rows.push(node)
-
-        if (child.isDirectory && expandedDirs.value.has(child.path)) {
-          queue.push({ path: child.path, depth: depth + 1 })
+        result.push(child)
+        if (child.isDirectory && expanded.has(child.path)) {
+          addChildren(child.path)
         }
       }
     }
 
-    return rows
+    addChildren(root)
+    return result
   })
 
   async function refreshTree(): Promise<void> {
     if (!projectPath.value) return
-    const root = projectPath.value
     loading.value = true
-
     dirCache.value = {}
     expandedDirs.value = new Set()
-
-    await loadDir(root)
+    await loadDir(projectPath.value)
     loading.value = false
   }
 

@@ -1,18 +1,26 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { storeToRefs } from 'pinia'
-import { useSidebarStore } from '@renderer/stores/sidebar'
+import { useWorkspaceStore } from '@renderer/stores/workspaces'
 import { useGitStore } from '@renderer/stores/git'
-import type { GitStatusEntry, GitFileStatus } from '@shared/sidebar-types'
+import { useGitStatusPolling } from '@renderer/composables/useGitStatusPolling'
+import type { GitFileStatus } from '@shared/sidebar-types'
 
-const sidebarStore = useSidebarStore()
-const { selectedProjectPath } = storeToRefs(sidebarStore)
+const workspaceStore = useWorkspaceStore()
+const selectedProjectPath = computed(() => workspaceStore.activeProject?.path ?? null)
 const gitStore = useGitStore()
-
 const {
   status, branches, log, loading, commitMessage, operationInProgress, operationError,
-  staged, unstaged, untracked, hasChanges, currentBranch,
-} = gitStore
+} = storeToRefs(gitStore)
+
+const { staged, unstaged, untracked, hasChanges, currentBranch } = gitStore
+
+const { refreshing, refreshGitStatus } = useGitStatusPolling(selectedProjectPath)
+
+// Load git data immediately when project changes or panel first renders
+watch(selectedProjectPath, (path) => {
+  if (path) void gitStore.refreshAll(path)
+}, { immediate: true })
 
 const sectionCollapsed = ref<Record<string, boolean>>({})
 const showBranchDropdown = ref(false)
@@ -94,16 +102,30 @@ function handleMerge(): void {
   showMergeDialog.value = false
 }
 
-onMounted(() => {
-  if (selectedProjectPath.value) {
-    void gitStore.refreshAll(selectedProjectPath.value)
+// Close branch dropdown when clicking outside
+function handleDocumentClick(e: MouseEvent): void {
+  const target = e.target as HTMLElement
+  if (!target.closest('[data-testid="git-branch-selector"]') && !target.closest('.branch-dropdown')) {
+    showBranchDropdown.value = false
+  }
+  if (!target.closest('.more-menu-container')) {
+    showMoreMenu.value = false
+  }
+}
+
+// Auto-dismiss errors after 8 seconds
+let errorTimer: ReturnType<typeof setTimeout> | null = null
+watch(operationError, (err) => {
+  if (errorTimer) clearTimeout(errorTimer)
+  if (err) {
+    errorTimer = setTimeout(() => gitStore.clearError(), 8000)
   }
 })
 
-watch(selectedProjectPath, (path) => {
-  if (path) {
-    void gitStore.refreshAll(path)
-  }
+onMounted(() => document.addEventListener('click', handleDocumentClick))
+onBeforeUnmount(() => {
+  document.removeEventListener('click', handleDocumentClick)
+  if (errorTimer) clearTimeout(errorTimer)
 })
 </script>
 
@@ -125,7 +147,7 @@ watch(selectedProjectPath, (path) => {
           </button>
           <div
             v-if="showBranchDropdown"
-            class="absolute left-0 right-0 top-full mt-1 py-1 z-40 max-h-48 overflow-y-auto"
+            class="branch-dropdown absolute left-0 right-0 top-full mt-1 py-1 z-40 max-h-48 overflow-y-auto"
             style="background: var(--color-surface-solid); border: 1px solid var(--color-line); border-radius: var(--radius-sm); box-shadow: var(--shadow-soft);"
           >
             <button
@@ -184,7 +206,19 @@ watch(selectedProjectPath, (path) => {
           <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></svg>
         </button>
 
-        <div class="relative">
+        <button
+          type="button"
+          class="inline-flex items-center justify-center h-6 w-6 border-0 rounded cursor-pointer transition-colors shrink-0"
+          :style="{ background: 'transparent', color: refreshing ? 'var(--color-accent)' : 'var(--color-muted)' }"
+          title="Refresh"
+          @click="void refreshGitStatus()"
+          @mouseenter="(($event.currentTarget) as HTMLElement).style.background = 'var(--color-black-soft)'"
+          @mouseleave="(($event.currentTarget) as HTMLElement).style.background = ''"
+        >
+          <svg class="w-3.5 h-3.5" :class="{ 'animate-spin': refreshing }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>
+        </button>
+
+        <div class="relative more-menu-container">
           <button
             type="button"
             class="inline-flex items-center justify-center h-6 w-6 border-0 rounded cursor-pointer transition-colors shrink-0"
@@ -234,7 +268,7 @@ watch(selectedProjectPath, (path) => {
       </div>
     </div>
 
-    <div v-if="operationError" class="flex items-center gap-1 px-2 py-1.5 border-b" style="border-color: var(--color-line); background: var(--color-black-soft);">
+    <div v-if="operationError" class="flex items-center gap-1 px-2 py-1.5 border-b" style="border-color: var(--color-line); background: var(--color-black-soft);" @click="gitStore.clearError()">
       <span class="flex-1 truncate" style="font-size: var(--text-caption); color: var(--color-error);">{{ operationError }}</span>
       <button
         type="button"
@@ -270,7 +304,7 @@ watch(selectedProjectPath, (path) => {
 
     <div class="flex-1 overflow-y-auto min-h-0" style="scrollbar-width: thin;">
       <div v-if="!selectedProjectPath" class="flex items-center justify-center py-8" style="color: var(--color-muted); font-size: var(--text-body-sm);">
-        Select a project
+        No active project
       </div>
 
       <div v-else-if="loading && !status" class="flex items-center justify-center py-8" style="color: var(--color-muted); font-size: var(--text-body-sm);">

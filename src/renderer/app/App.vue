@@ -17,6 +17,7 @@ import { useWorkspaceStore } from '@renderer/stores/workspaces'
 import { useSettingsStore } from '@renderer/stores/settings'
 import { useUpdateStore } from '@renderer/stores/update'
 import { useSidebarStore } from '@renderer/stores/sidebar'
+import { useSidebarShortcuts } from '@renderer/composables/useSidebarShortcuts'
 
 const { t } = useI18n()
 const workspaceStore = useWorkspaceStore()
@@ -25,6 +26,10 @@ const settingsStore = useSettingsStore()
 const updateStore = useUpdateStore()
 const memoryNotificationsStore = useMemoryNotificationsStore()
 const sidebarStore = useSidebarStore()
+
+// Register global keyboard shortcuts (Ctrl+B toggle, Ctrl+Shift+E/F/G tab jumps)
+useSidebarShortcuts()
+
 const {
   projectHierarchy,
   activeProjectId,

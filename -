@@ -1,0 +1,57 @@
+修改文件列表：
+
+- `src/shared/test-fixtures.ts`
+- `src/shared/project-session.test.ts`
+- `src/shared/session-state-reducer.test.ts`
+- `src/shared/observability-projection.test.ts`
+- `src/renderer/stores/observability-view-models.test.ts`
+- `src/renderer/stores/workspaces.test.ts`
+- `src/renderer/stores/meta-session.test.ts`
+- `src/renderer/stores/update.test.ts`
+- `src/renderer/stores/settings.test.ts`
+- `src/renderer/components/AppShell.test.ts`
+- `src/renderer/components/TerminalViewport.test.ts`
+- `src/renderer/components/PanelExtensions.test.ts`
+- `src/renderer/components/meta-session/MetaSessionSurface.test.ts`
+- `src/renderer/components/command/CommandSurface.test.ts`
+- `src/renderer/components/command/WorkspaceQuickActions.test.ts`
+- `src/renderer/components/command/TerminalSessionDeck.test.ts`
+- `src/renderer/components/settings/AboutSettings.test.ts`
+- `src/renderer/components/settings/GeneralSettings.test.ts`
+- `src/renderer/components/settings/ProvidersSettings.test.ts`
+
+每类修改摘要：
+
+- `SessionSummary` 测试夹具补齐
+  - 先读取了 `src/shared/project-session.ts`，当前导出的 `SessionSummary` 里还没看到 `parentSessionId / createdBySessionId`。
+  - 因为任务要求补齐这两个字段，我在测试辅助里新增了 `SessionSummaryFixture = SessionSummary & { parentSessionId: string | null; createdBySessionId: string | null }`，并让共享 fixture 默认带上这两个字段。
+  - 所有相关测试夹具和直写 session 对象都改为走这个共享 fixture，避免继续散落漏字段。
+
+- `RendererApi` mock 签名补齐
+  - 新增并统一复用了测试侧 `createRendererApiMock()`。
+  - 已补齐这次改造直接打断的新增必填方法：`getSidebarState`、`setSidebarState`、`fsReadDir/fsReadFile/fsWriteFile/fsCreate/fsRename/fsDelete/fsSearch/onFsChanged`、`gitStatus/gitStage/gitUnstage/gitDiscard/gitCommit/gitPush/gitPull/gitFetch/gitRebase/gitMerge/gitBranches/gitLog/gitDiff/gitCheckout/gitCreateBranch`。
+  - 同时把若干 `createStoaMock(...overrides)` 从“对象字面量 + spread”改成 `Object.assign(baseMock, overrides)`，避免 `Partial<RendererApi>` 把必填方法推成可选后再触发类型错误。
+
+- 测试断言随现状收口
+  - `AppShell.test.ts` 里活动栏现在包含 `sidebar-toggle`，旧断言还是 4 项，我更新成 5 项。
+  - 未改任何生产实现。
+
+验证结果：
+
+- 已通过定向测试：
+  - `18` 个测试文件
+  - `183` 个测试全部通过
+
+建议主代理运行的最小验证命令：
+
+```powershell
+rtk npx vitest run src/shared/project-session.test.ts src/shared/session-state-reducer.test.ts src/shared/observability-projection.test.ts src/renderer/stores/observability-view-models.test.ts src/renderer/stores/workspaces.test.ts src/renderer/stores/meta-session.test.ts src/renderer/stores/update.test.ts src/renderer/stores/settings.test.ts src/renderer/components/AppShell.test.ts src/renderer/components/TerminalViewport.test.ts src/renderer/components/PanelExtensions.test.ts src/renderer/components/command/CommandSurface.test.ts src/renderer/components/command/WorkspaceQuickActions.test.ts src/renderer/components/command/TerminalSessionDeck.test.ts src/renderer/components/settings/AboutSettings.test.ts src/renderer/components/settings/GeneralSettings.test.ts src/renderer/components/settings/ProvidersSettings.test.ts src/renderer/components/meta-session/MetaSessionSurface.test.ts
+```
+
+补充说明：
+
+- 我没有处理你明确排除的右侧栏生产代码类型错误。
+- 全量 `typecheck` 目前仍会被仓库里的无关问题挡住，包括：
+  - `src/renderer/app/App.test.ts` 也有同类 `RendererApi` mock 问题，但它不在你这次允许范围内，我没有动。
+  - 多个右侧栏/生产文件类型错误。
+  - 还有一次 `tsconfig.web.tsbuildinfo` 写入 `EPERM`。

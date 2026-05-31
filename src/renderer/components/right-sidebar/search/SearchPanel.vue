@@ -1,22 +1,45 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch, onUnmounted } from 'vue'
 import { storeToRefs } from 'pinia'
-import { useSidebarStore } from '@renderer/stores/sidebar'
+import { useWorkspaceStore } from '@renderer/stores/workspaces'
 import { useSearchStore } from '@renderer/stores/search'
 import type { SearchFileResult, SearchMatch } from '@shared/sidebar-types'
 
-const sidebarStore = useSidebarStore()
-const { selectedProjectPath } = storeToRefs(sidebarStore)
-const searchStore = useSearchStore()
+const SEARCH_DEBOUNCE_MS = 300
 
-const { query, caseSensitive, wholeWord, useRegex, results, searching, error, hasResults } = searchStore
+const workspaceStore = useWorkspaceStore()
+const selectedProjectPath = computed(() => workspaceStore.activeProject?.path ?? null)
+const searchStore = useSearchStore()
+const { query, caseSensitive, wholeWord, useRegex, results, searching, error } = storeToRefs(searchStore)
+const { hasResults } = searchStore
 const showFilters = ref(false)
 const collapsedFiles = ref<Set<string>>(new Set())
+
+// Debounce timer for auto-search
+let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
 const summaryText = computed(() => {
   if (!results.value) return ''
   const { totalMatches, files } = results.value
   return `${totalMatches} result${totalMatches !== 1 ? 's' : ''} in ${files.length} file${files.length !== 1 ? 's' : ''}`
+})
+
+// Debounced auto-search: triggers 300ms after query changes
+watch(query, (newVal) => {
+  if (debounceTimer) clearTimeout(debounceTimer)
+  if (!newVal.trim()) {
+    searchStore.clearResults()
+    return
+  }
+  debounceTimer = setTimeout(() => {
+    if (selectedProjectPath.value) {
+      void searchStore.search(selectedProjectPath.value)
+    }
+  }, SEARCH_DEBOUNCE_MS)
+})
+
+onUnmounted(() => {
+  if (debounceTimer) clearTimeout(debounceTimer)
 })
 
 function toggleFileCollapse(filePath: string): void {
@@ -30,6 +53,8 @@ function toggleFileCollapse(filePath: string): void {
 }
 
 function executeSearch(): void {
+  // Immediate search bypasses debounce (Enter key)
+  if (debounceTimer) clearTimeout(debounceTimer)
   if (!selectedProjectPath.value) return
   void searchStore.search(selectedProjectPath.value)
 }
@@ -38,6 +63,11 @@ function handleQueryKeydown(e: KeyboardEvent): void {
   if (e.key === 'Enter') {
     executeSearch()
   }
+}
+
+function handleMatchClick(fileResult: SearchFileResult, match: SearchMatch): void {
+  // Open file at line in the system's default editor
+  void window.stoa.fsOpenFile(fileResult.filePath, match.line, match.column)
 }
 
 function highlightLine(content: string, match: SearchMatch): Array<{ text: string; highlight: boolean }> {
@@ -180,6 +210,8 @@ function highlightLine(content: string, match: SearchMatch): Array<{ text: strin
             class="flex items-start gap-2 px-2 transition-colors cursor-pointer"
             style="min-height: 24px;"
             :style="{ paddingLeft: '32px' }"
+            :data-testid="`search-match-${file.relativePath}-${match.line}`"
+            @click="handleMatchClick(file, match)"
             @mouseenter="(($event.currentTarget) as HTMLElement).style.background = 'var(--color-black-soft)'"
             @mouseleave="(($event.currentTarget) as HTMLElement).style.background = ''"
           >

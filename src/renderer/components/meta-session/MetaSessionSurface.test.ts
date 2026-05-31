@@ -5,169 +5,81 @@ import { createPinia, setActivePinia } from 'pinia'
 import { defineComponent } from 'vue'
 import MetaSessionSurface from './MetaSessionSurface.vue'
 import type { RendererApi } from '@shared/project-session'
+import { createRendererApiMock } from '@shared/test-fixtures'
 import { useMetaSessionStore } from '@renderer/stores/meta-session'
 
 function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
-  return {
-    windowsBuildNumber: undefined,
-    getBootstrapState: vi.fn().mockResolvedValue({
-      activeProjectId: null,
-      activeSessionId: null,
-      terminalWebhookPort: null,
-      projects: [],
-      sessions: []
-    }),
-    createProject: vi.fn().mockResolvedValue(null),
-    deleteProject: vi.fn().mockResolvedValue(undefined),
-    createSession: vi.fn().mockResolvedValue(null),
-    openWorkspace: vi.fn().mockResolvedValue(undefined),
-    setActiveProject: vi.fn().mockResolvedValue(undefined),
-    setActiveSession: vi.fn().mockResolvedValue(undefined),
-    archiveSession: vi.fn().mockResolvedValue(undefined),
-    regenerateSessionTitle: vi.fn().mockResolvedValue(null),
-    restoreSession: vi.fn().mockResolvedValue(undefined),
-    listArchivedSessions: vi.fn().mockResolvedValue([]),
-    getTerminalReplay: vi.fn().mockResolvedValue(''),
-    sendSessionInput: vi.fn(),
-    sendSessionBinaryInput: vi.fn(),
-    sendSessionResize: vi.fn().mockResolvedValue(undefined),
-    onTerminalData: vi.fn().mockReturnValue(() => {}),
-    onMemoryNotification: vi.fn().mockReturnValue(() => {}),
-    onTitleGenerationNotification: vi.fn().mockReturnValue(() => {}),
-    onSessionEvent: vi.fn().mockReturnValue(() => {}),
-    getSessionPresence: vi.fn().mockResolvedValue(null),
-    getProjectObservability: vi.fn().mockResolvedValue(null),
-    getAppObservability: vi.fn().mockResolvedValue(null),
-    listSessionObservationEvents: vi.fn().mockResolvedValue({ events: [], nextCursor: null }),
-    onSessionPresenceChanged: vi.fn().mockReturnValue(() => {}),
-    onProjectObservabilityChanged: vi.fn().mockReturnValue(() => {}),
-    onAppObservabilityChanged: vi.fn().mockReturnValue(() => {}),
-    getSettings: vi.fn().mockResolvedValue({
-      shellPath: '',
-      terminal: {},
-      providers: {},
-      titleGeneration: {
-        enabled: false,
-        apiKey: '',
-        baseUrl: 'https://api.openai.com/v1',
-        model: 'gpt-5.4-mini'
-      },
-      evolverInferenceProvider: 'claude-code',
-      evolverExecutionMode: 'workspace-shell',
-      workspaceIde: { id: 'vscode', executablePath: '' },
-      claudeDangerouslySkipPermissions: false,
-      locale: 'en'
-    }),
-    titleGenerationFetchModels: vi.fn().mockResolvedValue([]),
-    setSetting: vi.fn().mockResolvedValue(undefined),
-    pickFolder: vi.fn().mockResolvedValue(null),
-    pickFile: vi.fn().mockResolvedValue(null),
-    detectShell: vi.fn().mockResolvedValue(null),
-    detectProvider: vi.fn().mockResolvedValue(null),
-    detectVscode: vi.fn().mockResolvedValue(null),
-    minimizeWindow: vi.fn().mockResolvedValue(undefined),
-    maximizeWindow: vi.fn().mockResolvedValue(undefined),
-    closeWindow: vi.fn().mockResolvedValue(undefined),
-    isWindowMaximized: vi.fn().mockResolvedValue(false),
-    onWindowMaximizeChange: vi.fn().mockReturnValue(() => {}),
-    getUpdateState: vi.fn().mockResolvedValue({
-      phase: 'idle',
-      currentVersion: '0.1.0',
-      availableVersion: null,
-      downloadedVersion: null,
-      downloadProgressPercent: null,
-      lastCheckedAt: null,
-      message: null,
-      requiresSessionWarning: false
-    }),
-    checkForUpdates: vi.fn().mockResolvedValue({
-      phase: 'idle',
-      currentVersion: '0.1.0',
-      availableVersion: null,
-      downloadedVersion: null,
-      downloadProgressPercent: null,
-      lastCheckedAt: null,
-      message: null,
-      requiresSessionWarning: false
-    }),
-    downloadUpdate: vi.fn().mockResolvedValue({
-      phase: 'idle',
-      currentVersion: '0.1.0',
-      availableVersion: null,
-      downloadedVersion: null,
-      downloadProgressPercent: null,
-      lastCheckedAt: null,
-      message: null,
-      requiresSessionWarning: false
-    }),
-    quitAndInstallUpdate: vi.fn().mockResolvedValue(undefined),
-    dismissUpdate: vi.fn().mockResolvedValue(undefined),
-    onUpdateState: vi.fn().mockReturnValue(() => {}),
-    uninstallSidecars: vi.fn().mockResolvedValue(undefined),
-    listSessionEvidence: vi.fn().mockResolvedValue([]),
-    contextExportFullText: vi.fn().mockResolvedValue({ text: '', truncated: false, totalTurns: 0 }),
-    contextExportSlimText: vi.fn().mockResolvedValue({ text: '', truncated: false, totalTurns: 0 }),
-    getMetaSessionBootstrapState: vi.fn().mockResolvedValue({
-      activeMetaSessionId: 'meta_session_1',
-      sessions: [{
-        id: 'meta_session_1',
-        title: 'global-triage',
-        status: 'running',
-        backendSessionType: 'claude-code',
-        capabilityLevel: 2,
-        pendingProposalCount: 1,
-        activeTargetCount: 3,
-        lastSummary: 'Collecting blocked sessions.',
-        lastRisk: 'Two sessions are editing the same module.',
-        backendSessionId: 'backend-session-1',
-        createdAt: '2026-05-07T08:00:00.000Z',
-        updatedAt: '2026-05-07T08:05:00.000Z',
-        lastActivatedAt: '2026-05-07T08:05:00.000Z',
-        archived: false
-      }],
-      inspectorTarget: {
-        kind: 'app'
-      }
-    }),
-    createMetaSession: vi.fn().mockResolvedValue(null),
-    setActiveMetaSession: vi.fn().mockResolvedValue(undefined),
-    archiveMetaSession: vi.fn().mockResolvedValue(undefined),
-    restoreMetaSession: vi.fn().mockResolvedValue(undefined),
-    setMetaSessionInspectorTarget: vi.fn().mockResolvedValue(undefined),
-    listMetaSessionProposals: vi.fn().mockResolvedValue([{
-      id: 'proposal_1',
-      metaSessionId: 'meta_session_1',
-      kind: 'prompt',
-      targetSessionIds: ['session_1'],
-      riskLevel: 3,
-      status: 'pending_approval',
-      summary: 'Prompt injection for session_1',
-      reason: 'Freeform prompt injection requires explicit approval.',
-      promptText: 'Refactor and edit the code now.',
-      presetName: null,
-      snapshot: {
+  return Object.assign(
+    createRendererApiMock({
+      getBootstrapState: vi.fn().mockResolvedValue({
+        activeProjectId: null,
+        activeSessionId: null,
+        terminalWebhookPort: null,
+        projects: [],
+        sessions: []
+      }),
+      getAppObservability: vi.fn().mockResolvedValue(null),
+      getMetaSessionBootstrapState: vi.fn().mockResolvedValue({
+        activeMetaSessionId: 'meta_session_1',
         sessions: [{
-          sessionId: 'session_1',
-          lastStateSequence: 17,
-          turnEpoch: 4,
-          updatedAt: '2026-05-07T08:05:00.000Z'
-        }]
-      },
-      createdAt: '2026-05-07T08:05:00.000Z',
-      updatedAt: '2026-05-07T08:05:00.000Z',
-      approvedAt: null,
-      rejectedAt: null,
-      executedAt: null,
-      executionResult: null
-    }]),
-    getMetaSessionProposal: vi.fn().mockResolvedValue(null),
-    approveMetaSessionProposal: vi.fn().mockResolvedValue(null),
-    rejectMetaSessionProposal: vi.fn().mockResolvedValue(null),
-    dispatchMetaSessionProposal: vi.fn().mockResolvedValue(null),
-    onMetaSessionEvent: vi.fn().mockReturnValue(() => {}),
-    ...overrides,
-    restartSession: overrides.restartSession ?? vi.fn().mockResolvedValue(undefined)
-  }
+          id: 'meta_session_1',
+          title: 'global-triage',
+          status: 'running',
+          backendSessionType: 'claude-code',
+          capabilityLevel: 2,
+          pendingProposalCount: 1,
+          activeTargetCount: 3,
+          lastSummary: 'Collecting blocked sessions.',
+          lastRisk: 'Two sessions are editing the same module.',
+          backendSessionId: 'backend-session-1',
+          createdAt: '2026-05-07T08:00:00.000Z',
+          updatedAt: '2026-05-07T08:05:00.000Z',
+          lastActivatedAt: '2026-05-07T08:05:00.000Z',
+          archived: false
+        }],
+        inspectorTarget: {
+          kind: 'app'
+        }
+      }),
+      createMetaSession: vi.fn().mockResolvedValue(null),
+      setActiveMetaSession: vi.fn().mockResolvedValue(undefined),
+      archiveMetaSession: vi.fn().mockResolvedValue(undefined),
+      restoreMetaSession: vi.fn().mockResolvedValue(undefined),
+      setMetaSessionInspectorTarget: vi.fn().mockResolvedValue(undefined),
+      listMetaSessionProposals: vi.fn().mockResolvedValue([{
+        id: 'proposal_1',
+        metaSessionId: 'meta_session_1',
+        kind: 'prompt',
+        targetSessionIds: ['session_1'],
+        riskLevel: 3,
+        status: 'pending_approval',
+        summary: 'Prompt injection for session_1',
+        reason: 'Freeform prompt injection requires explicit approval.',
+        promptText: 'Refactor and edit the code now.',
+        presetName: null,
+        snapshot: {
+          sessions: [{
+            sessionId: 'session_1',
+            lastStateSequence: 17,
+            turnEpoch: 4,
+            updatedAt: '2026-05-07T08:05:00.000Z'
+          }]
+        },
+        createdAt: '2026-05-07T08:05:00.000Z',
+        updatedAt: '2026-05-07T08:05:00.000Z',
+        approvedAt: null,
+        rejectedAt: null,
+        executedAt: null,
+        executionResult: null
+      }]),
+      getMetaSessionProposal: vi.fn().mockResolvedValue(null),
+      approveMetaSessionProposal: vi.fn().mockResolvedValue(null),
+      rejectMetaSessionProposal: vi.fn().mockResolvedValue(null),
+      dispatchMetaSessionProposal: vi.fn().mockResolvedValue(null),
+      onMetaSessionEvent: vi.fn().mockReturnValue(() => {})
+    }),
+    overrides
+  )
 }
 
 describe('MetaSessionSurface', () => {

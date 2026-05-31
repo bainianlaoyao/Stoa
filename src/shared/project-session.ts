@@ -405,7 +405,10 @@ export interface RendererApi {
   fsRename: (request: FileRenameRequest) => Promise<void>
   fsDelete: (request: FileDeleteRequest) => Promise<void>
   fsSearch: (options: SearchOptions) => Promise<SearchResult>
+  fsOpenFile: (filePath: string, line?: number, column?: number) => Promise<void>
   onFsChanged: (callback: (event: FsChangedEvent) => void) => () => void
+
+  shellShowItemInFolder: (filePath: string) => Promise<void>
 
   gitStatus: (projectPath: string) => Promise<GitStatusResult>
   gitStage: (projectPath: string, paths: string[]) => Promise<void>

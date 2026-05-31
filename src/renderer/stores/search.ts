@@ -15,8 +15,14 @@ export const useSearchStore = defineStore('search', () => {
 
   const hasResults = computed(() => (results.value?.totalMatches ?? 0) > 0)
 
+  // Monotonic counter to cancel stale in-flight searches
+  let latestSearchId = 0
+
   async function search(rootPath: string): Promise<void> {
     if (!query.value.trim()) return
+
+    latestSearchId += 1
+    const searchId = latestSearchId
 
     searching.value = true
     error.value = null
@@ -33,11 +39,18 @@ export const useSearchStore = defineStore('search', () => {
     }
 
     try {
-      results.value = await window.stoa.fsSearch(options)
+      const result = await window.stoa.fsSearch(options)
+      if (latestSearchId === searchId) {
+        results.value = result
+      }
     } catch (e) {
-      error.value = e instanceof Error ? e.message : String(e)
+      if (latestSearchId === searchId) {
+        error.value = e instanceof Error ? e.message : String(e)
+      }
     } finally {
-      searching.value = false
+      if (latestSearchId === searchId) {
+        searching.value = false
+      }
     }
   }
 

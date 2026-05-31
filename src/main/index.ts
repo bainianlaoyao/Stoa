@@ -24,6 +24,7 @@ import { ensureStoaCtlShim, ensureStoaCtlSystemShim } from '@core/stoa-ctl-shim'
 import { writePortFile as writeCtlPortFile, deletePortFile as deleteCtlPortFile, generateSecret, type PortFileData } from '@core/stoa-ctl-port-file'
 import { openWorkspace } from '@core/workspace-launcher'
 import { resolveRuntimePaths as resolveProviderRuntimePaths } from '@core/provider-path-resolver'
+import { readSidebarState, writeSidebarState, cleanupSidebarTempFile } from '@core/sidebar-state-store'
 import { getProvider } from '@extensions/providers'
 import { getProviderDescriptorByProviderId, getProviderDescriptorBySessionType } from '@shared/provider-descriptors'
 import { derivePresencePhase } from '@shared/session-state-reducer'
@@ -761,6 +762,7 @@ app.whenReady().then(async () => {
     logger: console
   })
   installMainE2EDebugApi()
+  await cleanupSidebarTempFile()
 
   async function resolveRuntimePaths(sessionType: CreateSessionRequest['type']): Promise<{
     shellPath: string | null
@@ -1447,6 +1449,23 @@ app.whenReady().then(async () => {
   })
 
   registerFilesystemHandlers(ipcMain, () => mainWindow)
+
+  ipcMain.handle(IPC_CHANNELS.shellShowItemInFolder, async (_event, filePath: string) => {
+    shell.showItemInFolder(filePath)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.fsOpenFile, async (_event, filePath: string, _line?: number, _column?: number) => {
+    await shell.openPath(filePath)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.sidebarGetState, async () => {
+    return await readSidebarState()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.sidebarSetState, async (_event, state: Partial<import('@shared/sidebar-types').SidebarState>) => {
+    const current = await readSidebarState() ?? { open: false, activeTab: 'explorer' as const, width: 280, sessionListWidth: 240 }
+    await writeSidebarState({ ...current, ...state })
+  })
 
   ipcMain.handle(IPC_CHANNELS.settingsDetectShell, async () => {
     return detectShell()

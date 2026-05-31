@@ -5,6 +5,7 @@ import { createPinia } from 'pinia'
 import { defineComponent, h, mergeProps } from 'vue'
 import AppShell from './AppShell.vue'
 import type { ProjectSummary, RendererApi, SessionSummary } from '@shared/project-session'
+import { createRendererApiMock, createSessionSummaryFixture } from '@shared/test-fixtures'
 import type { ProjectHierarchyNode } from '@renderer/stores/workspaces'
 
 const baseProject: ProjectSummary = {
@@ -23,28 +24,30 @@ const defaultTitleGenerationContext = {
 }
 
 const baseSession: SessionSummary = {
-  id: 'session-1',
-  projectId: 'project-1',
-  type: 'shell',
-  runtimeState: 'starting',
-  turnState: 'idle',
-  turnEpoch: 0,
-  lastTurnOutcome: 'none',
-  hasUnseenCompletion: false,
-  runtimeExitCode: null,
-  runtimeExitReason: null,
-  lastStateSequence: 0,
-  blockingReason: null,
-  failureReason: null,
-  title: 'Alpha shell',
-  summary: 'Preparing the terminal session.',
-  titleGenerationContext: defaultTitleGenerationContext,
-  recoveryMode: 'fresh-shell',
-  externalSessionId: null,
-  createdAt: '2026-04-21T00:00:00.000Z',
-  updatedAt: '2026-04-21T00:00:00.000Z',
-  lastActivatedAt: '2026-04-21T00:00:00.000Z',
-  archived: false
+  ...createSessionSummaryFixture({
+    id: 'session-1',
+    projectId: 'project-1',
+    type: 'shell',
+    runtimeState: 'starting',
+    turnState: 'idle',
+    turnEpoch: 0,
+    lastTurnOutcome: 'none',
+    hasUnseenCompletion: false,
+    runtimeExitCode: null,
+    runtimeExitReason: null,
+    lastStateSequence: 0,
+    blockingReason: null,
+    failureReason: null,
+    title: 'Alpha shell',
+    summary: 'Preparing the terminal session.',
+    titleGenerationContext: defaultTitleGenerationContext,
+    recoveryMode: 'fresh-shell',
+    externalSessionId: null,
+    createdAt: '2026-04-21T00:00:00.000Z',
+    updatedAt: '2026-04-21T00:00:00.000Z',
+    lastActivatedAt: '2026-04-21T00:00:00.000Z',
+    archived: false
+  })
 }
 
 const CommandSurfaceStub = defineComponent({
@@ -150,6 +153,43 @@ const SettingsSurfaceStub = defineComponent({
   }
 })
 
+const TabBarStub = defineComponent({
+  name: 'TabBar',
+  props: {
+    activeTab: { type: String, required: true }
+  },
+  emits: ['select'],
+  setup(props, { emit }) {
+    return () =>
+      h(
+        'div',
+        { 'data-testid': 'sidebar-tabs', 'data-active-tab': props.activeTab },
+        'Tab Bar'
+      )
+  }
+})
+
+const FileExplorerStub = defineComponent({
+  name: 'FileExplorer',
+  setup() {
+    return () => h('div', { 'data-testid': 'file-explorer' }, 'File Explorer')
+  }
+})
+
+const SearchPanelStub = defineComponent({
+  name: 'SearchPanel',
+  setup() {
+    return () => h('div', { 'data-testid': 'search-panel' }, 'Search Panel')
+  }
+})
+
+const SourceControlPanelStub = defineComponent({
+  name: 'SourceControlPanel',
+  setup() {
+    return () => h('div', { 'data-testid': 'source-control-panel' }, 'Source Control')
+  }
+})
+
 function mountAppShell(props: {
   hierarchy: ProjectHierarchyNode[]
   activeProjectId: string | null
@@ -164,7 +204,11 @@ function mountAppShell(props: {
         CommandSurface: CommandSurfaceStub,
         MetaSessionSurface: MetaSessionSurfaceStub,
         ArchiveSurface: ArchiveSurfaceStub,
-        SettingsSurface: SettingsSurfaceStub
+        SettingsSurface: SettingsSurfaceStub,
+        TabBar: TabBarStub,
+        FileExplorer: FileExplorerStub,
+        SearchPanel: SearchPanelStub,
+        SourceControlPanel: SourceControlPanelStub
       }
     },
     props
@@ -173,37 +217,10 @@ function mountAppShell(props: {
 
 describe('AppShell', () => {
   beforeEach(() => {
-    const stoaMock: RendererApi = {
-      windowsBuildNumber: undefined,
-      getBootstrapState: vi.fn().mockResolvedValue({
-        activeProjectId: null,
-        activeSessionId: null,
-        terminalWebhookPort: 0,
-        projects: [],
-        sessions: []
-      }),
+    const stoaMock: RendererApi = createRendererApiMock({
       createProject: vi.fn().mockResolvedValue(baseProject),
-      deleteProject: vi.fn().mockResolvedValue(undefined),
       createSession: vi.fn().mockResolvedValue(baseSession),
-      openWorkspace: vi.fn().mockResolvedValue(undefined),
-      archiveSession: vi.fn().mockResolvedValue(undefined),
       regenerateSessionTitle: vi.fn().mockResolvedValue(baseSession),
-      restoreSession: vi.fn().mockResolvedValue(undefined),
-      restartSession: vi.fn().mockResolvedValue(undefined),
-      listArchivedSessions: vi.fn().mockResolvedValue([]),
-
-      setActiveProject: vi.fn().mockResolvedValue(undefined),
-      setActiveSession: vi.fn().mockResolvedValue(undefined),
-      getTerminalReplay: vi.fn().mockResolvedValue(''),
-      sendSessionInput: vi.fn(),
-      sendSessionBinaryInput: vi.fn(),
-      sendSessionResize: vi.fn().mockResolvedValue(undefined),
-      onTerminalData: vi.fn().mockReturnValue(() => {}),
-      onMemoryNotification: vi.fn().mockReturnValue(() => {}),
-      onTitleGenerationNotification: vi.fn().mockReturnValue(() => {}),
-      onSessionEvent: vi.fn().mockReturnValue(() => {}),
-      getSessionPresence: vi.fn().mockResolvedValue(null),
-      getProjectObservability: vi.fn().mockResolvedValue(null),
       getAppObservability: vi.fn().mockResolvedValue({
         blockedProjectCount: 0,
         failedProjectCount: 0,
@@ -214,38 +231,6 @@ describe('AppShell', () => {
         sourceSequence: 0,
         updatedAt: '2026-04-21T00:00:00.000Z'
       }),
-      listSessionObservationEvents: vi.fn().mockResolvedValue({ events: [], nextCursor: null }),
-      onSessionPresenceChanged: vi.fn().mockReturnValue(() => {}),
-      onProjectObservabilityChanged: vi.fn().mockReturnValue(() => {}),
-      onAppObservabilityChanged: vi.fn().mockReturnValue(() => {}),
-      getSettings: vi.fn().mockResolvedValue({
-        shellPath: '',
-        terminal: {},
-        providers: {},
-        titleGeneration: {
-          enabled: false,
-          apiKey: '',
-          baseUrl: 'https://api.openai.com/v1',
-          model: 'gpt-5.4-mini'
-        },
-        evolverInferenceProvider: 'claude-code',
-        evolverExecutionMode: 'workspace-shell',
-        workspaceIde: { id: 'vscode', executablePath: '' },
-        claudeDangerouslySkipPermissions: false,
-        locale: 'en'
-      }),
-      titleGenerationFetchModels: vi.fn().mockResolvedValue([]),
-      setSetting: vi.fn().mockResolvedValue(undefined),
-      pickFolder: vi.fn().mockResolvedValue(null),
-      pickFile: vi.fn().mockResolvedValue(null),
-      detectShell: vi.fn().mockResolvedValue(null),
-      detectProvider: vi.fn().mockResolvedValue(null),
-      detectVscode: vi.fn().mockResolvedValue(null),
-      minimizeWindow: vi.fn().mockResolvedValue(undefined),
-      maximizeWindow: vi.fn().mockResolvedValue(undefined),
-      closeWindow: vi.fn().mockResolvedValue(undefined),
-      isWindowMaximized: vi.fn().mockResolvedValue(false),
-      onWindowMaximizeChange: vi.fn().mockReturnValue(() => {}),
       getUpdateState: vi.fn().mockResolvedValue({
         phase: 'idle',
         currentVersion: '0.1.0',
@@ -276,14 +261,29 @@ describe('AppShell', () => {
         message: 'Update 0.2.0 is ready to install.',
         requiresSessionWarning: false
       }),
-      quitAndInstallUpdate: vi.fn().mockResolvedValue(undefined),
-      dismissUpdate: vi.fn().mockResolvedValue(undefined),
-      onUpdateState: vi.fn().mockReturnValue(() => {}),
-      uninstallSidecars: vi.fn().mockResolvedValue(undefined),
-      listSessionEvidence: vi.fn().mockResolvedValue([]),
-      contextExportFullText: vi.fn().mockResolvedValue({ text: '', truncated: false, totalTurns: 0 }),
-      contextExportSlimText: vi.fn().mockResolvedValue({ text: '', truncated: false, totalTurns: 0 })
-    }
+      gitStatus: vi.fn().mockResolvedValue({
+        branch: 'main',
+        entries: [],
+        ahead: 0,
+        behind: 0
+      }),
+      gitBranches: vi.fn().mockResolvedValue({
+        current: 'main',
+        locals: ['main', 'develop'],
+        remotes: []
+      }),
+      gitLog: vi.fn().mockResolvedValue([]),
+      gitStage: vi.fn().mockResolvedValue(undefined),
+      gitUnstage: vi.fn().mockResolvedValue(undefined),
+      gitDiscard: vi.fn().mockResolvedValue(undefined),
+      gitPush: vi.fn().mockResolvedValue(undefined),
+      gitPull: vi.fn().mockResolvedValue(undefined),
+      gitFetch: vi.fn().mockResolvedValue(undefined),
+      gitCheckoutBranch: vi.fn().mockResolvedValue(undefined),
+      gitCreateBranch: vi.fn().mockResolvedValue(undefined),
+      gitRebase: vi.fn().mockResolvedValue(undefined),
+      gitMerge: vi.fn().mockResolvedValue(undefined)
+    })
 
     window.stoa = stoaMock
   })
@@ -304,7 +304,7 @@ describe('AppShell', () => {
     const archiveButton = wrapper.get('button[aria-label="Archive"]')
     const settingsButton = wrapper.get('button[aria-label="Settings"]')
 
-    expect(labels).toEqual(['command', 'meta-session', 'archive', 'settings'])
+    expect(labels).toEqual(['command', 'meta-session', 'sidebar-toggle', 'archive', 'settings'])
     expect(navigation).toBeTruthy()
     expect(commandButton.attributes('aria-current')).toBe('true')
     expect(metaSessionButton.attributes('aria-current')).toBeUndefined()
@@ -426,10 +426,11 @@ describe('AppShell', () => {
       const items = wrapper.findAll('[data-activity-item]')
       const icons = wrapper.findAll('[data-activity-icon]')
 
-      expect(items).toHaveLength(4)
-      expect(icons).toHaveLength(4)
+      expect(items).toHaveLength(5)
+      expect(icons).toHaveLength(5)
       expect(wrapper.get('[data-activity-item="command"]').find('[data-activity-icon]').exists()).toBe(true)
       expect(wrapper.get('[data-activity-item="meta-session"]').find('[data-activity-icon]').exists()).toBe(true)
+      expect(wrapper.get('[data-activity-item="sidebar-toggle"]').find('[data-activity-icon]').exists()).toBe(true)
       expect(wrapper.get('[data-activity-item="archive"]').find('[data-activity-icon]').exists()).toBe(true)
       expect(wrapper.get('[data-activity-item="settings"]').find('[data-activity-icon]').exists()).toBe(true)
     }
@@ -521,5 +522,187 @@ describe('AppShell', () => {
     expect(wrapper.emitted('openWorkspace')).toEqual([
       [{ sessionId: 'session-1', target: 'ide' }]
     ])
+  })
+
+  describe('Sidebar toggle integration', () => {
+    it('sidebar is not visible by default', () => {
+      const wrapper = mountAppShell({
+        hierarchy: [],
+        activeProjectId: null,
+        activeSessionId: null,
+        activeProject: null,
+        activeSession: null
+      })
+
+      const sidebar = wrapper.get('[data-testid="right-sidebar"]')
+      expect(sidebar.classes()).toContain('right-sidebar-closed')
+    })
+
+    it('clicking sidebar toggle makes sidebar visible', async () => {
+      const wrapper = mountAppShell({
+        hierarchy: [],
+        activeProjectId: null,
+        activeSessionId: null,
+        activeProject: null,
+        activeSession: null
+      })
+
+      const toggleButton = wrapper.get('[data-activity-item="sidebar-toggle"]')
+      await toggleButton.trigger('click')
+
+      const sidebar = wrapper.get('[data-testid="right-sidebar"]')
+      expect(sidebar.classes()).not.toContain('right-sidebar-closed')
+    })
+
+    it('clicking sidebar toggle twice hides sidebar again', async () => {
+      const wrapper = mountAppShell({
+        hierarchy: [],
+        activeProjectId: null,
+        activeSessionId: null,
+        activeProject: null,
+        activeSession: null
+      })
+
+      const toggleButton = wrapper.get('[data-activity-item="sidebar-toggle"]')
+      await toggleButton.trigger('click')
+      await toggleButton.trigger('click')
+
+      const sidebar = wrapper.get('[data-testid="right-sidebar"]')
+      expect(sidebar.classes()).toContain('right-sidebar-closed')
+    })
+
+    it('sidebar toggle button reflects sidebar open state', async () => {
+      const wrapper = mountAppShell({
+        hierarchy: [],
+        activeProjectId: null,
+        activeSessionId: null,
+        activeProject: null,
+        activeSession: null
+      })
+
+      const toggleButton = wrapper.get('[data-activity-item="sidebar-toggle"]')
+
+      expect(toggleButton.attributes('aria-pressed')).toBe('false')
+
+      await toggleButton.trigger('click')
+      expect(toggleButton.attributes('aria-pressed')).toBe('true')
+
+      await toggleButton.trigger('click')
+      expect(toggleButton.attributes('aria-pressed')).toBe('false')
+    })
+
+    it('sidebar toggle has correct active styling class', async () => {
+      const wrapper = mountAppShell({
+        hierarchy: [],
+        activeProjectId: null,
+        activeSessionId: null,
+        activeProject: null,
+        activeSession: null
+      })
+
+      const toggleButton = wrapper.get('[data-activity-item="sidebar-toggle"]')
+
+      expect(toggleButton.classes()).not.toContain('text-text-strong')
+
+      await toggleButton.trigger('click')
+      expect(toggleButton.classes()).toContain('text-text-strong')
+
+      await toggleButton.trigger('click')
+      expect(toggleButton.classes()).not.toContain('text-text-strong')
+    })
+
+    it('sidebar toggle does not change the active surface', async () => {
+      const wrapper = mountAppShell({
+        hierarchy: [],
+        activeProjectId: null,
+        activeSessionId: null,
+        activeProject: null,
+        activeSession: null
+      })
+
+      const commandButton = wrapper.get('button[aria-label="Command panel"]')
+      expect(commandButton.attributes('aria-current')).toBe('true')
+
+      const toggleButton = wrapper.get('[data-activity-item="sidebar-toggle"]')
+      await toggleButton.trigger('click')
+
+      expect(wrapper.find('[data-surface="command"]').exists()).toBe(true)
+      expect(commandButton.attributes('aria-current')).toBe('true')
+    })
+
+    it('sidebar auto-hides when navigating to a non-command surface', async () => {
+      const wrapper = mountAppShell({
+        hierarchy: [],
+        activeProjectId: null,
+        activeSessionId: null,
+        activeProject: null,
+        activeSession: null
+      })
+
+      const toggleButton = wrapper.get('[data-activity-item="sidebar-toggle"]')
+      await toggleButton.trigger('click')
+      const sidebar = wrapper.get('[data-testid="right-sidebar"]')
+      expect(sidebar.classes()).not.toContain('right-sidebar-closed')
+
+      await wrapper.get('button[aria-label="Settings"]').trigger('click')
+      expect(sidebar.classes()).toContain('right-sidebar-closed')
+    })
+
+    it('sidebar auto-restores when returning to command surface', async () => {
+      const wrapper = mountAppShell({
+        hierarchy: [],
+        activeProjectId: null,
+        activeSessionId: null,
+        activeProject: null,
+        activeSession: null
+      })
+
+      const toggleButton = wrapper.get('[data-activity-item="sidebar-toggle"]')
+      await toggleButton.trigger('click')
+      const sidebar = wrapper.get('[data-testid="right-sidebar"]')
+      expect(sidebar.classes()).not.toContain('right-sidebar-closed')
+
+      await wrapper.get('button[aria-label="Settings"]').trigger('click')
+      expect(sidebar.classes()).toContain('right-sidebar-closed')
+
+      await wrapper.get('button[aria-label="Command panel"]').trigger('click')
+      expect(sidebar.classes()).not.toContain('right-sidebar-closed')
+    })
+
+    it('sidebar stays hidden on return to command if it was not open before navigation', async () => {
+      const wrapper = mountAppShell({
+        hierarchy: [],
+        activeProjectId: null,
+        activeSessionId: null,
+        activeProject: null,
+        activeSession: null
+      })
+
+      // Sidebar is closed by default
+      const sidebar = wrapper.get('[data-testid="right-sidebar"]')
+      expect(sidebar.classes()).toContain('right-sidebar-closed')
+
+      await wrapper.get('button[aria-label="Settings"]').trigger('click')
+      await wrapper.get('button[aria-label="Command panel"]').trigger('click')
+
+      // Should still be closed -- nothing to restore
+      expect(sidebar.classes()).toContain('right-sidebar-closed')
+    })
+
+    it('sidebar width matches store default', async () => {
+      const wrapper = mountAppShell({
+        hierarchy: [],
+        activeProjectId: null,
+        activeSessionId: null,
+        activeProject: null,
+        activeSession: null
+      })
+
+      const toggleButton = wrapper.get('[data-activity-item="sidebar-toggle"]')
+      await toggleButton.trigger('click')
+
+      const sidebar = wrapper.get('[data-testid="right-sidebar"]')
+      expect(sidebar.attributes('style')).toContain('280px')
+    })
   })
 })

@@ -295,10 +295,17 @@ const api: RendererApi = {
   async fsSearch(options: SearchOptions) {
     return ipcRenderer.invoke(IPC_CHANNELS.fsSearch, options) as Promise<SearchResult>
   },
+  async fsOpenFile(filePath: string, line?: number, column?: number) {
+    return ipcRenderer.invoke(IPC_CHANNELS.fsOpenFile, filePath, line, column) as Promise<void>
+  },
   onFsChanged(callback: (event: FsChangedEvent) => void) {
     const handler = (_event: Electron.IpcRendererEvent, event: FsChangedEvent) => callback(event)
     ipcRenderer.on(IPC_CHANNELS.fsChanged, handler)
     return () => ipcRenderer.removeListener(IPC_CHANNELS.fsChanged, handler)
+  },
+
+  async shellShowItemInFolder(filePath: string) {
+    return ipcRenderer.invoke(IPC_CHANNELS.shellShowItemInFolder, filePath) as Promise<void>
   },
 
   async gitStatus(projectPath: string) {
