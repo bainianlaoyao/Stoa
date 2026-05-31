@@ -122,6 +122,8 @@ export interface ProjectSummary {
 export interface SessionSummary {
   id: string
   projectId: string
+  parentSessionId: string | null
+  createdBySessionId: string | null
   type: SessionType
   runtimeState: SessionRuntimeState
   turnState: TurnState
@@ -163,6 +165,8 @@ export interface PersistedProject {
 export interface PersistedSession {
   session_id: string
   project_id: string
+  parent_session_id: string | null
+  created_by_session_id: string | null
   type: SessionType
   title: string
   runtime_state: SessionRuntimeState
@@ -257,7 +261,7 @@ export interface PersistedGlobalStateV4 {
 }
 
 export interface PersistedProjectSessions {
-  version: 6
+  version: 7
   project_id: string
   sessions: PersistedSession[]
 }
@@ -292,6 +296,26 @@ export interface TerminalDataChunk {
 
 export interface SessionSummaryEvent {
   session: SessionSummary
+}
+
+export interface SessionTreeMeta {
+  rootSessionId: string
+  depth: number
+  childCount: number
+  descendantCount: number
+}
+
+export interface SessionNodeSnapshot {
+  session: SessionSummary
+  tree: SessionTreeMeta
+}
+
+export interface SessionGraphEvent {
+  kind: 'created' | 'updated' | 'archived' | 'restored' | 'destroyed'
+  graphVersion: number
+  origin: 'renderer' | 'local-cli' | 'session' | 'system'
+  initiatorSessionId: string | null
+  node: SessionNodeSnapshot
 }
 
 export interface ObservationEventListOptions {

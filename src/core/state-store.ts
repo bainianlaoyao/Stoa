@@ -34,7 +34,7 @@ export const DEFAULT_GLOBAL_STATE: PersistedGlobalStateV4 = {
 }
 
 export const DEFAULT_PROJECT_SESSIONS: PersistedProjectSessions = {
-  version: 6,
+  version: 7,
   project_id: '',
   sessions: []
 }
@@ -131,7 +131,7 @@ function isValidProjectSessions(value: unknown): value is PersistedProjectSessio
   if (!(typeof value === 'object'
     && value !== null
     && 'version' in value
-    && value.version === 6
+    && value.version === 7
     && 'project_id' in value
     && typeof value.project_id === 'string'
     && 'sessions' in value
@@ -147,6 +147,8 @@ function isValidPersistedSession(value: unknown): value is PersistedSession {
     && value !== null
     && hasString(value, 'session_id')
     && hasString(value, 'project_id')
+    && hasNullableString(value, 'parent_session_id')
+    && hasNullableString(value, 'created_by_session_id')
     && hasEnumValue<SessionType>(value, 'type', ['shell', 'opencode', 'codex', 'claude-code'])
     && hasString(value, 'title')
     && hasEnumValue<SessionRuntimeState>(value, 'runtime_state', ['created', 'starting', 'alive', 'exited', 'failed_to_start'])
@@ -237,7 +239,7 @@ function isProjectSessionsWithUnsupportedVersion(value: unknown): value is { ver
   return typeof value === 'object'
     && value !== null
     && 'version' in value
-    && value.version !== 6
+    && value.version !== 7
 }
 
 export function createAtomicTempFilePath(filePath: string): string {
@@ -375,7 +377,7 @@ export async function readProjectSessions(projectPath: string): Promise<Persiste
       const parsed = JSON.parse(raw) as unknown
       if (isProjectSessionsWithUnsupportedVersion(parsed)) {
         return {
-          version: 6,
+          version: 7,
           project_id: typeof parsed.project_id === 'string' ? parsed.project_id : '',
           sessions: []
         }
@@ -384,7 +386,7 @@ export async function readProjectSessions(projectPath: string): Promise<Persiste
       if (!isValidProjectSessions(parsed)) {
         if (isVersionSixProjectSessionsWrapper(parsed)) {
           return {
-            version: 6,
+            version: 7,
             project_id: parsed.project_id,
             sessions: []
           }
@@ -412,7 +414,7 @@ function isVersionSixProjectSessionsWrapper(value: unknown): value is { version:
   return typeof value === 'object'
     && value !== null
     && 'version' in value
-    && value.version === 6
+    && (value.version === 6 || value.version === 7)
     && 'project_id' in value
     && typeof value.project_id === 'string'
     && 'sessions' in value
@@ -451,7 +453,7 @@ export async function writeProjectSessions(
   const filePath = getProjectSessionsFilePath(projectPath)
 
   await writeJsonAtomically(filePath, {
-    version: 6,
+    version: 7,
     project_id: data.project_id,
     sessions: data.sessions
   } satisfies PersistedProjectSessions)
