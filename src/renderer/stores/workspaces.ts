@@ -1,6 +1,12 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
-import type { BootstrapState, ProjectSummary, SessionSummary } from '@shared/project-session'
+import type {
+  BootstrapState,
+  ProjectSummary,
+  SessionGraphEvent,
+  SessionSummary,
+  SessionTreeMeta
+} from '@shared/project-session'
 import { buildSessionPresenceSnapshot } from '@shared/observability-projection'
 import type {
   AppObservabilitySnapshot,
@@ -8,16 +14,33 @@ import type {
   SessionPresenceSnapshot
 } from '@shared/observability'
 
+interface SessionTreeProjection {
+  treeDepth: number
+  treeRootSessionId: string
+  treeChildCount: number
+  treeDescendantCount: number
+}
+
+type ProjectHierarchySessionNode = SessionSummary & {
+  active: boolean
+  treeDepth?: number
+  treeRootSessionId?: string
+  treeChildCount?: number
+  treeDescendantCount?: number
+}
+
 export interface ProjectHierarchyNode extends ProjectSummary {
   active: boolean
-  sessions: Array<SessionSummary & { active: boolean }>
-  archivedSessions: Array<SessionSummary & { active: boolean }>
+  sessions: ProjectHierarchySessionNode[]
+  archivedSessions: ProjectHierarchySessionNode[]
 }
 
 interface SequencedSnapshot {
   sourceSequence: number
   updatedAt: string
 }
+
+interface SessionRecord extends SessionSummary, SessionTreeProjection {}
 
 function isStaleSnapshot(current: SequencedSnapshot, next: SequencedSnapshot): boolean {
   if (current.sourceSequence > next.sourceSequence) {
@@ -27,9 +50,123 @@ function isStaleSnapshot(current: SequencedSnapshot, next: SequencedSnapshot): b
   return current.sourceSequence === next.sourceSequence && current.updatedAt >= next.updatedAt
 }
 
+function fallbackTreeProjection(session: SessionSummary, hint?: SessionTreeMeta): SessionTreeProjection {
+  return {
+    treeDepth: hint?.depth ?? 0,
+    treeRootSessionId: hint?.rootSessionId ?? session.id,
+    treeChildCount: hint?.childCount ?? 0,
+    treeDescendantCount: hint?.descendantCount ?? 0
+  }
+}
+
+function projectSessionsIntoTree(
+  sessionList: SessionSummary[],
+  treeHints: ReadonlyMap<string, SessionTreeMeta>
+): SessionRecord[] {
+  if (sessionList.length === 0) {
+    return []
+  }
+
+  const sessionById = new Map(sessionList.map((session) => [session.id, session]))
+  const indexById = new Map(sessionList.map((session, index) => [session.id, index]))
+  const childrenByParentId = new Map<string, SessionSummary[]>()
+
+  for (const session of sessionList) {
+    if (!session.parentSessionId || !sessionById.has(session.parentSessionId)) {
+      continue
+    }
+
+    const siblings = childrenByParentId.get(session.parentSessionId) ?? []
+    siblings.push(session)
+    childrenByParentId.set(session.parentSessionId, siblings)
+  }
+
+  const derivedMetaById = new Map<string, SessionTreeProjection>()
+  const orderedSessionIds: string[] = []
+  const orderedSessionIdSet = new Set<string>()
+
+  function orderedChildrenFor(parentId: string): SessionSummary[] {
+    return [...(childrenByParentId.get(parentId) ?? [])].sort((left, right) => {
+      return (indexById.get(left.id) ?? 0) - (indexById.get(right.id) ?? 0)
+    })
+  }
+
+  function visit(session: SessionSummary, rootSessionId: string, depth: number, lineage: Set<string>): SessionTreeProjection {
+    const existing = derivedMetaById.get(session.id)
+    if (existing) {
+      return existing
+    }
+
+    if (!orderedSessionIdSet.has(session.id)) {
+      orderedSessionIds.push(session.id)
+      orderedSessionIdSet.add(session.id)
+    }
+
+    if (lineage.has(session.id)) {
+      const fallback = fallbackTreeProjection(session, treeHints.get(session.id))
+      derivedMetaById.set(session.id, fallback)
+      return fallback
+    }
+
+    lineage.add(session.id)
+
+    const childSessions = orderedChildrenFor(session.id).filter((child) => !lineage.has(child.id))
+    let descendantCount = 0
+
+    for (const child of childSessions) {
+      const childMeta = visit(child, rootSessionId, depth + 1, lineage)
+      descendantCount += 1 + childMeta.treeDescendantCount
+    }
+
+    lineage.delete(session.id)
+
+    const meta: SessionTreeProjection = {
+      treeDepth: depth,
+      treeRootSessionId: rootSessionId,
+      treeChildCount: childSessions.length,
+      treeDescendantCount: descendantCount
+    }
+    derivedMetaById.set(session.id, meta)
+    return meta
+  }
+
+  const rootSessions = sessionList
+    .filter((session) => !session.parentSessionId || !sessionById.has(session.parentSessionId))
+    .sort((left, right) => (indexById.get(left.id) ?? 0) - (indexById.get(right.id) ?? 0))
+
+  for (const rootSession of rootSessions) {
+    const hint = treeHints.get(rootSession.id)
+    visit(rootSession, hint?.rootSessionId ?? rootSession.id, hint?.depth ?? 0, new Set<string>())
+  }
+
+  for (const session of sessionList.sort((left, right) => (indexById.get(left.id) ?? 0) - (indexById.get(right.id) ?? 0))) {
+    if (derivedMetaById.has(session.id)) {
+      continue
+    }
+
+    const hint = treeHints.get(session.id)
+    visit(session, hint?.rootSessionId ?? session.id, hint?.depth ?? 0, new Set<string>())
+  }
+
+  return orderedSessionIds
+    .map((sessionId) => sessionById.get(sessionId))
+    .filter((session): session is SessionSummary => Boolean(session))
+    .map((session) => {
+      const hint = treeHints.get(session.id)
+      const derived = derivedMetaById.get(session.id) ?? fallbackTreeProjection(session, hint)
+      return {
+        ...session,
+        treeDepth: hint?.depth ?? derived.treeDepth,
+        treeRootSessionId: hint?.rootSessionId ?? derived.treeRootSessionId,
+        treeChildCount: derived.treeChildCount,
+        treeDescendantCount: derived.treeDescendantCount
+      }
+    })
+}
+
 export const useWorkspaceStore = defineStore('workspaces', () => {
   const projects = ref<ProjectSummary[]>([])
-  const sessions = ref<SessionSummary[]>([])
+  const sessions = ref<SessionRecord[]>([])
   const activeProjectId = ref<string | null>(null)
   const activeSessionId = ref<string | null>(null)
   const terminalWebhookPort = ref<number | null>(null)
@@ -41,6 +178,7 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
   const unsubscribeProjectObservabilityChanged = ref<(() => void) | null>(null)
   const unsubscribeAppObservabilityChanged = ref<(() => void) | null>(null)
   const backendSessionPresenceIds = new Set<string>()
+  const sessionTreeHints = new Map<string, SessionTreeMeta>()
 
   const activeProject = computed(() => {
     return projects.value.find((project) => project.id === activeProjectId.value) ?? null
@@ -63,14 +201,14 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
 
   const projectHierarchy = computed<ProjectHierarchyNode[]>(() => {
     return projects.value.map((project) => {
-      const projectSessions = sessions.value
+      const projectSessions: ProjectHierarchySessionNode[] = sessions.value
         .filter((session) => session.projectId === project.id && !session.archived)
         .map((session) => ({
           ...session,
           active: session.id === activeSessionId.value
         }))
 
-      const archivedProjectSessions = sessions.value
+      const archivedProjectSessions: ProjectHierarchySessionNode[] = sessions.value
         .filter((session) => session.projectId === project.id && session.archived)
         .map((session) => ({
           ...session,
@@ -88,7 +226,8 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
 
   function hydrate(state: BootstrapState): void {
     projects.value = state.projects
-    sessions.value = state.sessions
+    sessionTreeHints.clear()
+    sessions.value = projectSessionsIntoTree(state.sessions, sessionTreeHints)
     activeProjectId.value = state.activeProjectId
     activeSessionId.value = state.activeSessionId
     terminalWebhookPort.value = state.terminalWebhookPort
@@ -262,16 +401,38 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
     projects.value.push(project)
   }
 
+  function reprojectSessions(nextSessions: SessionSummary[]): void {
+    sessions.value = projectSessionsIntoTree(nextSessions, sessionTreeHints)
+  }
+
+  function upsertSession(session: SessionSummary, treeMeta?: SessionTreeMeta): void {
+    if (treeMeta) {
+      sessionTreeHints.set(session.id, treeMeta)
+    }
+
+    const existingIndex = sessions.value.findIndex((candidate) => candidate.id === session.id)
+    const nextSessions: SessionSummary[] = sessions.value.map((candidate) => ({
+      ...candidate
+    }))
+
+    if (existingIndex === -1) {
+      nextSessions.push(session)
+    } else {
+      nextSessions.splice(existingIndex, 1, { ...nextSessions[existingIndex], ...session })
+    }
+
+    reprojectSessions(nextSessions)
+    syncSessionPresenceFromSummary(sessions.value.find((candidate) => candidate.id === session.id) ?? session)
+  }
+
   function addSession(session: SessionSummary): void {
-    sessions.value.push(session)
-    syncSessionPresenceFromSummary(session)
+    upsertSession(session)
   }
 
   function updateSession(sessionId: string, patch: Partial<SessionSummary>): void {
     const session = sessions.value.find((s) => s.id === sessionId)
     if (!session) return
-    Object.assign(session, patch)
-    syncSessionPresenceFromSummary(session)
+    upsertSession({ ...session, ...patch })
   }
 
   function syncSessionPresenceFromSummary(session: SessionSummary): void {
@@ -308,7 +469,7 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
   function archiveSession(sessionId: string): void {
     const session = sessions.value.find(s => s.id === sessionId)
     if (!session) return
-    session.archived = true
+    upsertSession({ ...session, archived: true })
     if (activeSessionId.value === sessionId) {
       activeSessionId.value = null
     }
@@ -317,7 +478,45 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
   function restoreSession(sessionId: string): void {
     const session = sessions.value.find(s => s.id === sessionId)
     if (!session) return
-    session.archived = false
+    upsertSession({ ...session, archived: false })
+  }
+
+  function applySessionGraphEvent(event: SessionGraphEvent): void {
+    const { kind, origin, node } = event
+    const incoming = node.session
+
+    switch (kind) {
+      case 'created': {
+        upsertSession(incoming, node.tree)
+        if (origin === 'renderer') {
+          setActiveSession(incoming.id)
+        }
+        break
+      }
+      case 'updated': {
+        upsertSession(incoming, node.tree)
+        break
+      }
+      case 'archived': {
+        upsertSession({ ...incoming, archived: true }, node.tree)
+        if (activeSessionId.value === incoming.id) {
+          activeSessionId.value = null
+        }
+        break
+      }
+      case 'restored': {
+        upsertSession({ ...incoming, archived: false }, node.tree)
+        break
+      }
+      case 'destroyed': {
+        sessionTreeHints.delete(incoming.id)
+        reprojectSessions(sessions.value.filter(s => s.id !== incoming.id))
+        if (activeSessionId.value === incoming.id) {
+          activeSessionId.value = null
+        }
+        break
+      }
+    }
   }
 
   return {
@@ -348,6 +547,7 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
     archiveSession,
     restoreSession,
     removeProject,
-    unsubscribeObservability
+    unsubscribeObservability,
+    applySessionGraphEvent
   }
 })

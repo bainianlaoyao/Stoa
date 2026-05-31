@@ -3,7 +3,7 @@ import { useI18n } from 'vue-i18n'
 import { useSidebarStore } from '@renderer/stores/sidebar'
 import { storeToRefs } from 'pinia'
 
-export type AppSurface = 'command' | 'meta-session' | 'archive' | 'settings'
+export type AppSurface = 'command' | 'settings'
 
 const { t } = useI18n()
 const sidebarStore = useSidebarStore()
@@ -41,31 +41,10 @@ const topItems: ActivityItem[] = [
       'm8 10 2.25 2.25L7.75 14.5',
       'M12.75 14.5h3.75'
     ]
-  },
-  {
-    id: 'meta-session',
-    title: t('activityBar.metaSession'),
-    iconKind: 'meta-session-orbit',
-    iconPaths: [
-      'M12 5.25v13.5',
-      'M5.25 12h13.5',
-      'M7.5 7.5l9 9',
-      'M16.5 7.5l-9 9'
-    ]
   }
 ]
 
 const bottomItems: ActivityItem[] = [
-  {
-    id: 'archive',
-    title: t('activityBar.archive'),
-    iconKind: 'archive-box',
-    iconPaths: [
-      'M5.75 5.75h12.5A1.25 1.25 0 0 1 19.5 7v2.25H4.5V7a1.25 1.25 0 0 1 1.25-1.25Z',
-      'M5.25 9.25h13.5v8A1.75 1.75 0 0 1 17 19H7a1.75 1.75 0 0 1-1.75-1.75v-8Z',
-      'M9.25 12h5.5'
-    ]
-  },
   {
     id: 'settings',
     title: t('activityBar.settings'),

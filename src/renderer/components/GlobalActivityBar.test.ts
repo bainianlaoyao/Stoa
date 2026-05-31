@@ -4,12 +4,14 @@ import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import GlobalActivityBar from './GlobalActivityBar.vue'
 
-type AppSurface = 'command' | 'meta-session' | 'archive' | 'settings'
+type AppSurface = 'command' | 'settings'
 
 function mountBar(props: { activeSurface?: AppSurface } = {}) {
+  const pinia = createPinia()
+  setActivePinia(pinia)
   return mount(GlobalActivityBar, {
     global: {
-      plugins: [createPinia()]
+      plugins: [pinia]
     },
     props: {
       activeSurface: props.activeSurface ?? 'command'
@@ -18,38 +20,37 @@ function mountBar(props: { activeSurface?: AppSurface } = {}) {
 }
 
 describe('GlobalActivityBar', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
   it('renders activity-bar nav element', () => {
     const wrapper = mountBar()
     expect(wrapper.find('nav[data-testid="activity-bar"]').exists()).toBe(true)
   })
 
-  it('renders 5 activity items including sidebar toggle with correct data-activity-item values', () => {
+  it('renders 3 elements with data-activity-item: command, sidebar-toggle, settings', () => {
     const wrapper = mountBar()
     const items = wrapper.findAll('[data-activity-item]')
-    expect(items).toHaveLength(5)
+    expect(items).toHaveLength(3)
     const ids = items.map((el) => el.attributes('data-activity-item'))
-    expect(ids).toEqual(['command', 'meta-session', 'sidebar-toggle', 'archive', 'settings'])
+    expect(ids).toEqual(['command', 'sidebar-toggle', 'settings'])
   })
 
   it('renders one stable svg icon for each activity item', () => {
     const wrapper = mountBar()
 
-    expect(wrapper.findAll('[data-activity-icon]')).toHaveLength(5)
+    expect(wrapper.findAll('[data-activity-icon]')).toHaveLength(3)
     expect(wrapper.get('[data-activity-item="command"]').find('[data-activity-icon]').exists()).toBe(true)
-    expect(wrapper.get('[data-activity-item="meta-session"]').find('[data-activity-icon]').exists()).toBe(true)
-    expect(wrapper.get('[data-activity-item="sidebar-toggle"]').find('[data-activity-icon]').exists()).toBe(true)
-    expect(wrapper.get('[data-activity-item="archive"]').find('[data-activity-icon]').exists()).toBe(true)
     expect(wrapper.get('[data-activity-item="settings"]').find('[data-activity-icon]').exists()).toBe(true)
   })
 
-  it('uses semantic sidebar icons for command, meta-session, archive, and settings', () => {
+  it('uses semantic sidebar icons for command and settings', () => {
     const wrapper = mountBar()
 
     expect(wrapper.get('[data-activity-item="command"]').find('[data-icon-kind="terminal-command"]').exists()).toBe(true)
-    expect(wrapper.get('[data-activity-item="meta-session"]').find('[data-icon-kind="meta-session-orbit"]').exists()).toBe(true)
-    expect(wrapper.get('[data-activity-item="sidebar-toggle"]').find('[data-icon-kind="sidebar-toggle"]').exists()).toBe(true)
-    expect(wrapper.get('[data-activity-item="archive"]').find('[data-icon-kind="archive-box"]').exists()).toBe(true)
     expect(wrapper.get('[data-activity-item="settings"]').find('[data-icon-kind="settings-sliders"]').exists()).toBe(true)
+    expect(wrapper.find('[data-activity-item="meta-session"]').exists()).toBe(false)
     expect(wrapper.get('[data-activity-item="settings"]').findAll('circle')).toHaveLength(0)
   })
 
@@ -81,34 +82,14 @@ describe('GlobalActivityBar', () => {
     expect(wrapper.emitted('select')![0]).toEqual(['command'])
   })
 
-  it('renders command and meta-session in top cluster and sidebar-toggle, archive, settings in bottom cluster', () => {
+  it('renders command in top cluster and sidebar-toggle + settings in bottom cluster', () => {
     const wrapper = mountBar()
     const topCluster = wrapper.find('[data-testid="activity-cluster-top"]')
     const bottomCluster = wrapper.find('[data-testid="activity-cluster-bottom"]')
     expect(topCluster.find('[data-activity-item="command"]').exists()).toBe(true)
-    expect(topCluster.find('[data-activity-item="meta-session"]').exists()).toBe(true)
+    expect(topCluster.find('[data-activity-item="meta-session"]').exists()).toBe(false)
     expect(bottomCluster.find('[data-activity-item="sidebar-toggle"]').exists()).toBe(true)
-    expect(bottomCluster.find('[data-activity-item="archive"]').exists()).toBe(true)
     expect(bottomCluster.find('[data-activity-item="settings"]').exists()).toBe(true)
-    expect(bottomCluster.findAll('[data-activity-item]').map((node) => node.attributes('data-activity-item'))).toEqual(['sidebar-toggle', 'archive', 'settings'])
-  })
-
-  it('sidebar toggle button has correct aria attributes', () => {
-    const wrapper = mountBar()
-    const toggleButton = wrapper.get('[data-activity-item="sidebar-toggle"]')
-
-    expect(toggleButton.attributes('type')).toBe('button')
-    expect(toggleButton.attributes('aria-pressed')).toBe('false')
-  })
-
-  it('sidebar toggle button updates aria-pressed after click', async () => {
-    const wrapper = mountBar()
-    const toggleButton = wrapper.get('[data-activity-item="sidebar-toggle"]')
-
-    await toggleButton.trigger('click')
-    expect(toggleButton.attributes('aria-pressed')).toBe('true')
-
-    await toggleButton.trigger('click')
-    expect(toggleButton.attributes('aria-pressed')).toBe('false')
+    expect(bottomCluster.findAll('[data-activity-item]').map((node) => node.attributes('data-activity-item'))).toEqual(['sidebar-toggle', 'settings'])
   })
 })

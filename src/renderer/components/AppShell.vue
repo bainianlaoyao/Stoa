@@ -1,10 +1,8 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { ref, watch } from 'vue'
 import GlobalActivityBar from './GlobalActivityBar.vue'
 import TitleBar from './TitleBar.vue'
 import CommandSurface from './command/CommandSurface.vue'
-import MetaSessionSurface from './meta-session/MetaSessionSurface.vue'
-import ArchiveSurface from './archive/ArchiveSurface.vue'
 import SettingsSurface from './settings/SettingsSurface.vue'
 import RightSidebar from './right-sidebar/RightSidebar.vue'
 import { useSidebarStore } from '@renderer/stores/sidebar'
@@ -49,16 +47,6 @@ watch(activeSurface, (surface, prevSurface) => {
     sidebarWasOpenBeforeAutoHide = false
   }
 })
-
-const archivedSessions = computed(() => {
-  return props.hierarchy.flatMap((project) =>
-    project.archivedSessions.map((session) => ({
-      ...session,
-      projectName: project.name,
-      projectPath: project.path
-    }))
-  )
-})
 </script>
 
 <template>
@@ -85,17 +73,8 @@ const archivedSessions = computed(() => {
           @archive-session="emit('archiveSession', $event)"
           @regenerate-session-title="emit('regenerateSessionTitle', $event)"
           @restart-session="emit('restartSession', $event)"
-          @open-workspace="emit('openWorkspace', $event)"
-        />
-        <MetaSessionSurface
-          v-if="activeSurface === 'meta-session'"
-          aria-label="Meta session surface"
-          @create-workspace-session="emit('createSession', $event)"
-        />
-        <ArchiveSurface
-          v-if="activeSurface === 'archive'"
-          :archived-sessions="archivedSessions"
           @restore-session="emit('restoreSession', $event)"
+          @open-workspace="emit('openWorkspace', $event)"
         />
         <SettingsSurface v-if="activeSurface === 'settings'" />
       </section>

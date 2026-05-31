@@ -7,7 +7,13 @@ export interface AuthorityResult {
   reason?: string
 }
 
-export class SessionVisibilityService {
+export interface SessionVisibilityReader {
+  visibleSessionIds(sessionId: string): string[]
+  isVisible(viewerId: string, targetId: string): boolean
+  checkAuthority(viewerId: string, targetId: string, action: AuthorityAction): AuthorityResult
+}
+
+export class SessionVisibilityService implements SessionVisibilityReader {
   private readonly nodes: SessionNodeSnapshot[]
   private readonly byId: Map<string, SessionNodeSnapshot>
 

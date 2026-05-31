@@ -29,6 +29,7 @@ const emit = defineEmits<{
   createSession: [payload: { projectId: string; type: string; title: string }]
   deleteProject: [projectId: string]
   archiveSession: [sessionId: string]
+  restoreSession: [sessionId: string]
   regenerateSessionTitle: [sessionId: string]
   restartSession: [sessionId: string]
   openWorkspace: [request: OpenWorkspaceRequest]
@@ -103,6 +104,7 @@ const activeSessionViewModel = computed(() => {
             @create-session="emit('createSession', $event)"
             @delete-project="emit('deleteProject', $event)"
             @archive-session="emit('archiveSession', $event)"
+            @restore-session="emit('restoreSession', $event)"
             @regenerate-session-title="emit('regenerateSessionTitle', $event)"
             @restart-session="emit('restartSession', $event)"
           />

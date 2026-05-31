@@ -4,7 +4,6 @@ import { sessionRestoreJourney } from '../journeys/session-restore.journey'
 import { archiveTopology } from '../topology/archive.topology'
 import {
   generateClaudeLifecyclePlaywrightSkeleton,
-  generateMetaSessionSurfaceSessionFlowPlaywrightSkeleton,
   generatePlaywrightSkeleton,
   generateWorkspaceQuickAccessPlaywrightSkeleton
 } from './generate-playwright'
@@ -31,11 +30,12 @@ describe('playwright skeleton generator', () => {
     expect(generated).toContain('const session = await createSession(app.page, projectRow')
     expect(generated).toContain("app.page.getByRole('button', { name: `Archive ${session.title}` }).click()")
     expect(generated).not.toContain("app.page.getByRole('button', { name: 'Archive' }).click()")
-    expect(generated).toContain("app.page.locator('[data-activity-item=\"archive\"]').click()")
-    expect(generated).toContain("app.page.getByTestId('surface.archive')")
+    expect(generated).not.toContain("app.page.locator('[data-activity-item=\"archive\"]').click()")
+    expect(generated).toContain("app.page.getByTestId('command-panel')")
     expect(generated).toContain("app.page.getByTestId('archive.session.restore')")
     expect(generated).toContain('await expect(root).toBeVisible()')
     expect(generated).toContain('await expect(sessionRow).toHaveCount(1)')
+    expect(generated).toContain('await sessionRow.first().hover()')
     expect(generated).toContain('await restoreButton.click()')
     expect(generated).toContain('await expect(sessionRow).toHaveCount(0)')
     expect(generated.indexOf('await expect(root).toBeVisible()')).toBeLessThan(
@@ -85,20 +85,5 @@ describe('playwright skeleton generator', () => {
     expect(generated).toContain("app.page.getByTestId('workspace.open-file-manager').click()")
     expect(generated).toContain("{ sessionId, target: 'ide' }")
     expect(generated).toContain("{ sessionId, target: 'file-manager' }")
-  })
-
-  it('generates a deterministic meta session surface session flow skeleton', () => {
-    const generated = generateMetaSessionSurfaceSessionFlowPlaywrightSkeleton()
-
-    expect(generated).toContain('AUTO-GENERATED FILE. DO NOT EDIT.')
-    expect(generated).toContain("id: 'journey.meta-session.surface.session-flow'")
-    expect(generated).toContain("behaviorIds: ['meta-session.surface.session-flow']")
-    expect(generated).toContain("app.page.locator('[data-activity-item=\"meta-session\"]').click()")
-    expect(generated).toContain("app.page.getByTestId('surface.meta-session')")
-    expect(generated).toContain("const initialCount = await app.page.getByTestId('meta-session.session.item').count()")
-    expect(generated).toContain("app.page.getByTestId('meta-session.session.create').click()")
-    expect(generated).toContain("app.page.getByTestId('provider-card')).toBeVisible()")
-    expect(generated).toContain("[data-testid=\"provider-card.item\"][data-provider-type=\"claude-code\"]")
-    expect(generated).toContain("app.page.getByTestId('meta-session.session.item')).toHaveCount(initialCount + 1)")
   })
 })

@@ -68,6 +68,7 @@ const CommandSurfaceStub = defineComponent({
     'createSession',
     'deleteProject',
     'archiveSession',
+    'restoreSession',
     'restartSession',
     'openWorkspace'
   ],
@@ -83,56 +84,6 @@ const CommandSurfaceStub = defineComponent({
         props.activeSession
           ? [h('div', { 'data-testid': 'terminal-xterm' })]
           : [h('div', { class: 'terminal-empty-state' }, 'No session selected')]
-      )
-  }
-})
-
-const MetaSessionSurfaceStub = defineComponent({
-  name: 'MetaSessionSurface',
-  inheritAttrs: false,
-  setup(_props, { attrs }) {
-    return () =>
-      h(
-        'section',
-        mergeProps(attrs, {
-          'data-surface': 'meta-session',
-          'data-testid': 'surface.meta-session',
-          'aria-label': 'Meta session surface'
-        }),
-        [h('h2', 'Meta Session')]
-      )
-  }
-})
-
-const ArchiveSurfaceStub = defineComponent({
-  name: 'ArchiveSurface',
-  inheritAttrs: false,
-  props: {
-    archivedSessions: { type: Array, required: true }
-  },
-  emits: ['restoreSession'],
-  setup(props, { attrs, emit }) {
-    return () =>
-      h(
-        'section',
-        mergeProps(attrs, {
-          'data-surface': 'archive',
-          'data-testid': 'surface.archive',
-          'aria-label': 'Archive surface'
-        }),
-        [
-          h('h2', 'Archived sessions'),
-          ...(props.archivedSessions as Array<{ id: string }>).map((session) =>
-            h(
-              'button',
-              {
-                'data-archive-restore': session.id,
-                onClick: () => emit('restoreSession', session.id)
-              },
-              'Restore'
-            )
-          )
-        ]
       )
   }
 })
@@ -202,8 +153,6 @@ function mountAppShell(props: {
       plugins: [createPinia()],
       stubs: {
         CommandSurface: CommandSurfaceStub,
-        MetaSessionSurface: MetaSessionSurfaceStub,
-        ArchiveSurface: ArchiveSurfaceStub,
         SettingsSurface: SettingsSurfaceStub,
         TabBar: TabBarStub,
         FileExplorer: FileExplorerStub,
@@ -288,7 +237,7 @@ describe('AppShell', () => {
     window.stoa = stoaMock
   })
 
-  it('shows all top-level activity items and defaults to command view', () => {
+  it('shows command/sidebar/settings activity items and defaults to command view', () => {
     const wrapper = mountAppShell({
       hierarchy: [],
       activeProjectId: null,
@@ -300,15 +249,11 @@ describe('AppShell', () => {
     const labels = wrapper.findAll('[data-activity-item]').map((node) => node.attributes('data-activity-item'))
     const navigation = wrapper.get('nav[aria-label="Global activity"]')
     const commandButton = wrapper.get('button[aria-label="Command panel"]')
-    const metaSessionButton = wrapper.get('button[aria-label="Meta Session"]')
-    const archiveButton = wrapper.get('button[aria-label="Archive"]')
     const settingsButton = wrapper.get('button[aria-label="Settings"]')
 
-    expect(labels).toEqual(['command', 'meta-session', 'sidebar-toggle', 'archive', 'settings'])
+    expect(labels).toEqual(['command', 'sidebar-toggle', 'settings'])
     expect(navigation).toBeTruthy()
     expect(commandButton.attributes('aria-current')).toBe('true')
-    expect(metaSessionButton.attributes('aria-current')).toBeUndefined()
-    expect(archiveButton.attributes('aria-current')).toBeUndefined()
     expect(settingsButton.attributes('aria-current')).toBeUndefined()
     expect(wrapper.find('[data-command-surface="true"]').exists()).toBe(true)
     expect(wrapper.find('[data-surface="command"][aria-label="Command surface"]').exists()).toBe(true)
@@ -337,59 +282,6 @@ describe('AppShell', () => {
     expect(wrapper.find('.terminal-empty-state').exists()).toBe(false)
     expect(wrapper.find('[data-testid="terminal-xterm"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="terminal-status-bar"]').exists()).toBe(false)
-  })
-
-  it('keeps command surface mounted and hidden when the meta-session activity is selected', async () => {
-    const wrapper = mountAppShell({
-      hierarchy: [],
-      activeProjectId: null,
-      activeSessionId: null,
-      activeProject: null,
-      activeSession: null
-    })
-
-    const commandSurface = wrapper.get('[data-surface="command"][aria-label="Command surface"]')
-
-    await wrapper.get('button[aria-label="Meta Session"]').trigger('click')
-
-    expect(wrapper.get('[data-surface="meta-session"][aria-label="Meta session surface"]')).toBeTruthy()
-    expect(wrapper.get('button[aria-label="Meta Session"]').attributes('aria-current')).toBe('true')
-    expect(wrapper.get('[data-surface="command"][aria-label="Command surface"]').element).toBe(commandSurface.element)
-    expect(wrapper.get('[data-surface="command"][aria-label="Command surface"]').attributes('style')).toContain('display: none;')
-    expect(wrapper.find('[data-surface="command"][aria-label="Command surface"]').exists()).toBe(true)
-    expect(wrapper.findComponent({ name: 'CommandSurface' }).props('visible')).toBe(false)
-  })
-
-  it('keeps command surface mounted and hidden when the archive activity is selected', async () => {
-    const wrapper = mountAppShell({
-      hierarchy: [{
-        ...baseProject,
-        active: false,
-        sessions: [],
-        archivedSessions: [{
-          ...baseSession,
-          id: 'session-archived',
-          archived: true,
-          active: false
-        }]
-      }],
-      activeProjectId: null,
-      activeSessionId: null,
-      activeProject: null,
-      activeSession: null
-    })
-
-    const commandSurface = wrapper.get('[data-surface="command"][aria-label="Command surface"]')
-
-    await wrapper.get('button[aria-label="Archive"]').trigger('click')
-
-    expect(wrapper.get('[data-surface="archive"][aria-label="Archive surface"]')).toBeTruthy()
-    expect(wrapper.get('button[aria-label="Archive"]').attributes('aria-current')).toBe('true')
-    expect(wrapper.get('[data-surface="command"][aria-label="Command surface"]').element).toBe(commandSurface.element)
-    expect(wrapper.get('[data-surface="command"][aria-label="Command surface"]').attributes('style')).toContain('display: none;')
-    expect(wrapper.find('[data-surface="command"][aria-label="Command surface"]').exists()).toBe(true)
-    expect(wrapper.findComponent({ name: 'CommandSurface' }).props('visible')).toBe(false)
-    expect(wrapper.text()).toContain('Archived sessions')
   })
 
   it('keeps command surface mounted and hidden when the settings activity is selected', async () => {
@@ -426,12 +318,10 @@ describe('AppShell', () => {
       const items = wrapper.findAll('[data-activity-item]')
       const icons = wrapper.findAll('[data-activity-icon]')
 
-      expect(items).toHaveLength(5)
-      expect(icons).toHaveLength(5)
+      expect(items).toHaveLength(3)
+      expect(icons).toHaveLength(3)
       expect(wrapper.get('[data-activity-item="command"]').find('[data-activity-icon]').exists()).toBe(true)
-      expect(wrapper.get('[data-activity-item="meta-session"]').find('[data-activity-icon]').exists()).toBe(true)
       expect(wrapper.get('[data-activity-item="sidebar-toggle"]').find('[data-activity-icon]').exists()).toBe(true)
-      expect(wrapper.get('[data-activity-item="archive"]').find('[data-activity-icon]').exists()).toBe(true)
       expect(wrapper.get('[data-activity-item="settings"]').find('[data-activity-icon]').exists()).toBe(true)
     }
 
@@ -440,17 +330,11 @@ describe('AppShell', () => {
     await wrapper.get('button[aria-label="Settings"]').trigger('click')
     expectStableIcons()
 
-    await wrapper.get('button[aria-label="Meta Session"]').trigger('click')
-    expectStableIcons()
-
-    await wrapper.get('button[aria-label="Archive"]').trigger('click')
-    expectStableIcons()
-
     await wrapper.get('button[aria-label="Command panel"]').trigger('click')
     expectStableIcons()
   })
 
-  it('forwards restoreSession from archive surface', async () => {
+  it('forwards restoreSession from command surface', async () => {
     const wrapper = mountAppShell({
       hierarchy: [{
         ...baseProject,
@@ -469,8 +353,7 @@ describe('AppShell', () => {
       activeSession: null
     })
 
-    await wrapper.get('button[aria-label="Archive"]').trigger('click')
-    await wrapper.get('[data-archive-restore="session-archived"]').trigger('click')
+    await wrapper.findComponent({ name: 'CommandSurface' }).vm.$emit('restoreSession', 'session-archived')
 
     expect(wrapper.emitted('restoreSession')).toEqual([['session-archived']])
   })

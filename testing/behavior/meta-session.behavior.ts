@@ -1,29 +1,5 @@
 import { defineBehavior } from '../contracts/testing-contracts'
 
-export const metaSessionSurfaceSessionFlowBehavior = defineBehavior({
-  id: 'meta-session.surface.session-flow',
-  actor: 'user',
-  goal: 'use the meta session surface to create a meta session by selecting a backend and switch between meta sessions while preserving the embedded terminal workspace',
-  entities: ['meta-session', 'meta-session-surface', 'meta-session-terminal', 'meta-session-inspector'],
-  usageModes: ['active_workflow'],
-  preconditions: ['meta-session.surface.available', 'bridge.meta-session.bootstrap.ready'],
-  action: 'meta-session.session.selectBackendCreateAndActivate',
-  expects: [
-    'activity.metaSessionVisible',
-    'meta-session.providerPickerVisible',
-    'meta-session.sessionCreated',
-    'meta-session.sessionActivated',
-    'meta-session.terminalDeckVisible',
-    'meta-session.inspectorVisible'
-  ],
-  invalidPreconditions: ['bridge.meta-session.bootstrap.missing'],
-  interruptions: ['app.relaunch.duringMetaSession', 'meta-session.runtime.failedToStart'],
-  recovery: ['meta-session.resumePointerPreserved', 'meta-session.surfaceRehydrates'],
-  observationLayers: ['ui', 'renderer-store'],
-  risk: 'medium',
-  coverageBudget: 'high'
-})
-
 export const metaSessionReadFullContextAndGatePromptBehavior = defineBehavior({
   id: 'meta-session.read-full-context-and-gate-prompt',
   actor: 'system',

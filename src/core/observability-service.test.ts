@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ObservationEvent } from '../shared/observability'
 import type { SessionSummary } from '../shared/project-session'
+import { createSessionSummaryFixture } from '../shared/test-fixtures'
 import { InMemoryObservationStore } from './observation-store'
 import { ObservabilityService } from './observability-service'
 
@@ -20,27 +21,30 @@ function createTitleGenerationContext() {
 }
 
 const session = (overrides: Partial<SessionSummary> = {}): SessionSummary => ({
-  id: 'session-1',
-  projectId: 'project-1',
-  type: 'codex',
-  title: 'Codex session',
-  summary: 'Working',
-  runtimeState: 'alive',
-  turnState: 'running',
-  turnEpoch: 1,
-  lastTurnOutcome: 'none',
-  blockingReason: null,
-  failureReason: null,
-  hasUnseenCompletion: false,
-  runtimeExitCode: null,
-  runtimeExitReason: null,
-  lastStateSequence: 0,
-  recoveryMode: 'resume-external',
-  externalSessionId: 'external-1',
-  createdAt: '2026-01-01T00:00:00.000Z',
-  updatedAt: '2026-01-01T00:00:00.000Z',
-  lastActivatedAt: null,
-  archived: false,
+  ...createSessionSummaryFixture({
+    id: 'session-1',
+    projectId: 'project-1',
+    type: 'codex',
+    title: 'Codex session',
+    summary: 'Working',
+    runtimeState: 'alive',
+    turnState: 'running',
+    turnEpoch: 1,
+    lastTurnOutcome: 'none',
+    blockingReason: null,
+    failureReason: null,
+    hasUnseenCompletion: false,
+    runtimeExitCode: null,
+    runtimeExitReason: null,
+    lastStateSequence: 0,
+    recoveryMode: 'resume-external',
+    externalSessionId: 'external-1',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    lastActivatedAt: null,
+    archived: false,
+    titleGenerationContext: createTitleGenerationContext()
+  }),
   ...overrides,
   titleGenerationContext: overrides.titleGenerationContext ?? createTitleGenerationContext()
 })

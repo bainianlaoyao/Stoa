@@ -13,6 +13,7 @@ import ProviderRadialMenu from './ProviderRadialMenu.vue'
 import type { ProjectHierarchyNode } from '@renderer/stores/workspaces'
 import type { SessionRowViewModel } from '@shared/observability'
 import { buildSessionPresenceSnapshot, buildSessionRowViewModel } from '@shared/observability-projection'
+import { createSessionSummaryFixture } from '@shared/test-fixtures'
 
 const workspaceHierarchyPanelPath = resolve(dirname(fileURLToPath(import.meta.url)), 'WorkspaceHierarchyPanel.vue')
 
@@ -54,54 +55,123 @@ function createHierarchy(): ProjectHierarchyNode[] {
       archivedSessions: [],
       sessions: [
         {
-          id: 'session_1',
-          projectId: 'project_alpha',
-          type: 'opencode',
-          runtimeState: 'alive',
-          turnState: 'running',
-          turnEpoch: 1,
-          lastTurnOutcome: 'none',
-          hasUnseenCompletion: false,
-          runtimeExitCode: null,
-          runtimeExitReason: null,
-          lastStateSequence: 1,
-          blockingReason: null,
-          failureReason: null,
-          title: 'deploy gateway',
-          summary: 'running',
-          titleGenerationContext: defaultTitleGenerationContext,
-          recoveryMode: 'resume-external',
-          externalSessionId: 'sess_1',
-          createdAt: 'a',
-          updatedAt: 'a',
-          lastActivatedAt: 'a',
+          ...createSessionSummaryFixture({
+            id: 'session_1',
+            projectId: 'project_alpha',
+            type: 'opencode',
+            runtimeState: 'alive',
+            turnState: 'running',
+            turnEpoch: 1,
+            lastTurnOutcome: 'none',
+            lastStateSequence: 1,
+            title: 'deploy gateway',
+            summary: 'running',
+            titleGenerationContext: defaultTitleGenerationContext,
+            recoveryMode: 'resume-external',
+            externalSessionId: 'sess_1',
+            createdAt: 'a',
+            updatedAt: 'a',
+            lastActivatedAt: 'a'
+          }),
           archived: false,
           active: false
         },
         {
-          id: 'session_2',
-          projectId: 'project_alpha',
-          type: 'claude-code',
-          runtimeState: 'alive',
-          turnState: 'idle',
-          turnEpoch: 0,
-          lastTurnOutcome: 'none',
-          hasUnseenCompletion: false,
-          runtimeExitCode: null,
-          runtimeExitReason: null,
-          lastStateSequence: 1,
-          blockingReason: null,
-          failureReason: null,
-          title: 'need confirmation',
-          summary: 'awaiting',
-          titleGenerationContext: defaultTitleGenerationContext,
-          recoveryMode: 'resume-external',
-          externalSessionId: 'sess_2',
-          createdAt: 'b',
-          updatedAt: 'b',
-          lastActivatedAt: 'b',
+          ...createSessionSummaryFixture({
+            id: 'session_2',
+            projectId: 'project_alpha',
+            parentSessionId: 'session_1',
+            createdBySessionId: 'session_1',
+            type: 'claude-code',
+            runtimeState: 'alive',
+            turnState: 'idle',
+            turnEpoch: 0,
+            lastTurnOutcome: 'none',
+            lastStateSequence: 1,
+            title: 'need confirmation',
+            summary: 'awaiting',
+            titleGenerationContext: defaultTitleGenerationContext,
+            recoveryMode: 'resume-external',
+            externalSessionId: 'sess_2',
+            createdAt: 'b',
+            updatedAt: 'b',
+            lastActivatedAt: 'b'
+          }),
           archived: false,
-          active: true
+          active: true,
+          treeDepth: 1,
+          treeRootSessionId: 'session_1',
+          treeChildCount: 0,
+          treeDescendantCount: 0
+        }
+      ]
+    }
+  ]
+}
+
+function createHierarchyWithArchivedTree(): ProjectHierarchyNode[] {
+  const baseHierarchy = createHierarchy()
+  return [
+    {
+      ...baseHierarchy[0]!,
+      archivedSessions: [
+        {
+          ...createSessionSummaryFixture({
+            id: 'session_archived_parent',
+            projectId: 'project_alpha',
+            type: 'opencode',
+            runtimeState: 'exited',
+            turnState: 'idle',
+            turnEpoch: 0,
+            lastTurnOutcome: 'none',
+            runtimeExitCode: 0,
+            runtimeExitReason: 'clean',
+            lastStateSequence: 1,
+            title: 'archived parent',
+            summary: 'done',
+            titleGenerationContext: defaultTitleGenerationContext,
+            recoveryMode: 'resume-external',
+            externalSessionId: 'sess_archived_parent',
+            createdAt: 'c',
+            updatedAt: 'c',
+            lastActivatedAt: 'c'
+          }),
+          archived: true,
+          active: false,
+          treeDepth: 0,
+          treeRootSessionId: 'session_archived_parent',
+          treeChildCount: 1,
+          treeDescendantCount: 1
+        },
+        {
+          ...createSessionSummaryFixture({
+            id: 'session_archived_child',
+            projectId: 'project_alpha',
+            parentSessionId: 'session_archived_parent',
+            createdBySessionId: 'session_archived_parent',
+            type: 'shell',
+            runtimeState: 'exited',
+            turnState: 'idle',
+            turnEpoch: 0,
+            lastTurnOutcome: 'none',
+            runtimeExitCode: 0,
+            runtimeExitReason: 'clean',
+            lastStateSequence: 1,
+            title: 'archived child',
+            summary: 'done',
+            titleGenerationContext: defaultTitleGenerationContext,
+            recoveryMode: 'fresh-shell',
+            externalSessionId: null,
+            createdAt: 'd',
+            updatedAt: 'd',
+            lastActivatedAt: 'd'
+          }),
+          archived: true,
+          active: false,
+          treeDepth: 1,
+          treeRootSessionId: 'session_archived_parent',
+          treeChildCount: 0,
+          treeDescendantCount: 0
         }
       ]
     }
@@ -120,27 +190,24 @@ function createTwoProjectHierarchy(): ProjectHierarchyNode[] {
       archivedSessions: [],
       sessions: [
         {
-          id: 'session_1',
-          projectId: 'project_alpha',
-          type: 'opencode',
-          runtimeState: 'alive',
-          turnState: 'running',
-          turnEpoch: 1,
-          lastTurnOutcome: 'none',
-          hasUnseenCompletion: false,
-          runtimeExitCode: null,
-          runtimeExitReason: null,
-          lastStateSequence: 1,
-          blockingReason: null,
-          failureReason: null,
-          title: 'deploy gateway',
-          summary: 'running',
-          titleGenerationContext: defaultTitleGenerationContext,
-          recoveryMode: 'resume-external',
-          externalSessionId: 'sess_1',
-          createdAt: 'a',
-          updatedAt: 'a',
-          lastActivatedAt: 'a',
+          ...createSessionSummaryFixture({
+            id: 'session_1',
+            projectId: 'project_alpha',
+            type: 'opencode',
+            runtimeState: 'alive',
+            turnState: 'running',
+            turnEpoch: 1,
+            lastTurnOutcome: 'none',
+            lastStateSequence: 1,
+            title: 'deploy gateway',
+            summary: 'running',
+            titleGenerationContext: defaultTitleGenerationContext,
+            recoveryMode: 'resume-external',
+            externalSessionId: 'sess_1',
+            createdAt: 'a',
+            updatedAt: 'a',
+            lastActivatedAt: 'a'
+          }),
           archived: false,
           active: false
         }
@@ -156,27 +223,26 @@ function createTwoProjectHierarchy(): ProjectHierarchyNode[] {
       archivedSessions: [],
       sessions: [
         {
-          id: 'session_3',
-          projectId: 'project_beta',
-          type: 'shell',
-          runtimeState: 'exited',
-          turnState: 'idle',
-          turnEpoch: 0,
-          lastTurnOutcome: 'none',
-          hasUnseenCompletion: false,
-          runtimeExitCode: 0,
-          runtimeExitReason: 'clean',
-          lastStateSequence: 1,
-          blockingReason: null,
-          failureReason: null,
-          title: 'etl run',
-          summary: 'done',
-          titleGenerationContext: defaultTitleGenerationContext,
-          recoveryMode: 'fresh-shell',
-          externalSessionId: null,
-          createdAt: 'c',
-          updatedAt: 'c',
-          lastActivatedAt: 'c',
+          ...createSessionSummaryFixture({
+            id: 'session_3',
+            projectId: 'project_beta',
+            type: 'shell',
+            runtimeState: 'exited',
+            turnState: 'idle',
+            turnEpoch: 0,
+            lastTurnOutcome: 'none',
+            runtimeExitCode: 0,
+            runtimeExitReason: 'clean',
+            lastStateSequence: 1,
+            title: 'etl run',
+            summary: 'done',
+            titleGenerationContext: defaultTitleGenerationContext,
+            recoveryMode: 'fresh-shell',
+            externalSessionId: null,
+            createdAt: 'c',
+            updatedAt: 'c',
+            lastActivatedAt: 'c'
+          }),
           archived: false,
           active: false
         }
@@ -302,7 +368,7 @@ describe('WorkspaceHierarchyPanel', () => {
       expect(wrapper.find('.route-project .route-item--parent .route-path').exists()).toBe(false)
     })
 
-    it('renders one child session button per active session', () => {
+    it('renders one session button per visible live tree node', () => {
       const wrapper = mountPanel()
       const children = wrapper.findAll('.route-item.child')
       expect(children).toHaveLength(2)
@@ -440,23 +506,29 @@ describe('WorkspaceHierarchyPanel', () => {
       expect(labels).toEqual(['Archive deploy gateway', 'Archive need confirmation'])
     })
 
-    it('does not show archived sessions in the hierarchy panel', () => {
+    it('renders recursive live session tree depth metadata', () => {
       const wrapper = mountPanel({
-        hierarchy: [{
-          ...createHierarchy()[0]!,
-          sessions: [createHierarchy()[0]!.sessions[0]!],
-          archivedSessions: [{
-            ...createHierarchy()[0]!.sessions[1]!,
-            id: 'session_archived',
-            title: 'old shell',
-            archived: true,
-            active: false
-          }]
-        }]
+        hierarchy: createHierarchy()
       })
 
-      expect(wrapper.find('[data-archived-group="project_alpha"]').exists()).toBe(false)
-      expect(wrapper.find('[data-archived-session="session_archived"]').exists()).toBe(false)
+      const rows = wrapper.findAll('[data-testid="session-row"]')
+      expect(rows).toHaveLength(2)
+      expect(rows[0]?.attributes('data-session-id')).toBe('session_1')
+      expect(rows[0]?.attributes('data-tree-depth')).toBe('0')
+      expect(rows[1]?.attributes('data-session-id')).toBe('session_2')
+      expect(rows[1]?.attributes('data-tree-depth')).toBe('1')
+    })
+
+    it('renders archived subtree roots and descendants inside the project-local hierarchy panel', () => {
+      const wrapper = mountPanel({
+        hierarchy: createHierarchyWithArchivedTree()
+      })
+
+      expect(wrapper.find('[data-archived-group="project_alpha"]').exists()).toBe(true)
+      expect(wrapper.find('[data-archived-session="session_archived_parent"]').exists()).toBe(true)
+      expect(wrapper.find('[data-archived-session="session_archived_child"]').exists()).toBe(true)
+      expect(wrapper.find('[data-archived-session="session_archived_parent"]')?.attributes('data-tree-depth')).toBe('0')
+      expect(wrapper.find('[data-archived-session="session_archived_child"]')?.attributes('data-tree-depth')).toBe('1')
     })
   })
 
@@ -498,6 +570,17 @@ describe('WorkspaceHierarchyPanel', () => {
       const wrapper = mountPanel()
       await wrapper.find('[data-row-archive="session_1"]').trigger('click')
       expect(wrapper.emitted('archiveSession')).toEqual([['session_1']])
+      expect(wrapper.emitted('selectSession')).toBeUndefined()
+    })
+
+    it('clicking archived restore action emits restoreSession without selecting the row', async () => {
+      const wrapper = mountPanel({
+        hierarchy: createHierarchyWithArchivedTree()
+      })
+
+      await wrapper.find('[data-row-restore="session_archived_parent"]').trigger('click')
+
+      expect(wrapper.emitted('restoreSession')).toEqual([['session_archived_parent']])
       expect(wrapper.emitted('selectSession')).toBeUndefined()
     })
 

@@ -1319,7 +1319,7 @@ describe('E2E: Provider Integration', () => {
     })
 
     test('real Codex app-server sees project hooks as trusted after sidecar install', async () => {
-      const workspaceDir = await createTempDir('stoa-codex-real-hooks-list-')
+      const workspaceDir = await createExternalTempDir('stoa-codex-real-hooks-list-')
       const provider = getProvider('codex')
       const target = createTarget({ path: workspaceDir, type: 'codex' })
 

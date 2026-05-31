@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events'
 import { describe, expect, test, vi } from 'vitest'
 import { UpdateService } from './update-service'
 import type { BootstrapState, SessionSummary } from '@shared/project-session'
+import { createSessionSummaryFixture } from '@shared/test-fixtures'
 
 class FakeUpdater extends EventEmitter {
   autoDownload = true
@@ -22,7 +23,7 @@ function createSnapshot(overrides?: Partial<BootstrapState>): BootstrapState {
 }
 
 function createSessionSummary(overrides: Partial<SessionSummary> = {}): SessionSummary {
-  return {
+  return createSessionSummaryFixture({
     id: 'session-1',
     projectId: 'project-1',
     type: 'shell',
@@ -51,7 +52,7 @@ function createSessionSummary(overrides: Partial<SessionSummary> = {}): SessionS
     lastActivatedAt: '2026-04-24T00:00:00.000Z',
     archived: false,
     ...overrides
-  }
+  })
 }
 
 describe('UpdateService', () => {

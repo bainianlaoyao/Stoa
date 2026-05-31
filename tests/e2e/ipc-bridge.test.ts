@@ -1,8 +1,5 @@
 import { describe, test, expect, beforeEach } from 'vitest'
 import { IPC_CHANNELS } from '@core/ipc-channels'
-import { MetaSessionCommandDispatcher } from '@core/meta-session-command-dispatcher'
-import { MetaSessionManager } from '@core/meta-session-manager'
-import { MetaSessionProposalStore } from '@core/meta-session-proposal-store'
 import { ProjectSessionManager } from '@core/project-session-manager'
 import { createTestWorkspace, createTestGlobalStatePath, tempDirs } from './helpers'
 import type {
@@ -21,7 +18,6 @@ import type {
   ProjectObservabilitySnapshot,
   SessionPresenceSnapshot
 } from '@shared/observability'
-import type { CreateMetaSessionRequest, MetaSessionBootstrapState, MetaSessionInspectorTarget, MetaSessionProposal } from '@shared/meta-session'
 
 class FakeIpcBus {
   private handlers = new Map<string, (...args: any[]) => Promise<any>>()
@@ -68,17 +64,6 @@ const RENDERER_API_INVOKE_CHANNELS = [
   IPC_CHANNELS.projectSetActive,
   IPC_CHANNELS.sessionSetActive,
   IPC_CHANNELS.sessionRegenerateTitle,
-  IPC_CHANNELS.metaSessionBootstrap,
-  IPC_CHANNELS.metaSessionCreate,
-  IPC_CHANNELS.metaSessionSetActive,
-  IPC_CHANNELS.metaSessionArchive,
-  IPC_CHANNELS.metaSessionRestore,
-  IPC_CHANNELS.metaSessionProposalList,
-  IPC_CHANNELS.metaSessionProposalGet,
-  IPC_CHANNELS.metaSessionProposalApprove,
-  IPC_CHANNELS.metaSessionProposalReject,
-  IPC_CHANNELS.metaSessionProposalDispatch,
-  IPC_CHANNELS.metaSessionInspectorSetTarget,
   IPC_CHANNELS.observabilityGetSessionPresence,
   IPC_CHANNELS.observabilityGetProject,
   IPC_CHANNELS.observabilityGetApp,
@@ -173,19 +158,8 @@ function createPreloadApi(bus: FakeIpcBus): RendererApi {
     openWorkspace: (request: OpenWorkspaceRequest) => bus.invoke(IPC_CHANNELS.workspaceOpen, request),
     setActiveProject: (projectId: string) => bus.invoke(IPC_CHANNELS.projectSetActive, projectId),
     setActiveSession: (sessionId: string) => bus.invoke(IPC_CHANNELS.sessionSetActive, sessionId),
-    getMetaSessionBootstrapState: () => bus.invoke(IPC_CHANNELS.metaSessionBootstrap),
-    createMetaSession: (request: CreateMetaSessionRequest) => bus.invoke(IPC_CHANNELS.metaSessionCreate, request),
-    setActiveMetaSession: (sessionId: string) => bus.invoke(IPC_CHANNELS.metaSessionSetActive, sessionId),
-    archiveMetaSession: (sessionId: string) => bus.invoke(IPC_CHANNELS.metaSessionArchive, sessionId),
-    restoreMetaSession: (sessionId: string) => bus.invoke(IPC_CHANNELS.metaSessionRestore, sessionId),
     restartSession: (sessionId: string) => bus.invoke(IPC_CHANNELS.sessionRestart, sessionId),
     regenerateSessionTitle: (sessionId: string) => bus.invoke(IPC_CHANNELS.sessionRegenerateTitle, sessionId),
-    listMetaSessionProposals: () => bus.invoke(IPC_CHANNELS.metaSessionProposalList),
-    getMetaSessionProposal: (proposalId: string) => bus.invoke(IPC_CHANNELS.metaSessionProposalGet, proposalId),
-    approveMetaSessionProposal: (proposalId: string) => bus.invoke(IPC_CHANNELS.metaSessionProposalApprove, proposalId),
-    rejectMetaSessionProposal: (proposalId: string, reason?: string) => bus.invoke(IPC_CHANNELS.metaSessionProposalReject, proposalId, reason),
-    dispatchMetaSessionProposal: (proposalId: string) => bus.invoke(IPC_CHANNELS.metaSessionProposalDispatch, proposalId),
-    setMetaSessionInspectorTarget: (target: MetaSessionInspectorTarget | null) => bus.invoke(IPC_CHANNELS.metaSessionInspectorSetTarget, target),
     getSessionPresence: (sessionId: string) => bus.invoke(IPC_CHANNELS.observabilityGetSessionPresence, sessionId),
     getProjectObservability: (projectId: string) => bus.invoke(IPC_CHANNELS.observabilityGetProject, projectId),
     getAppObservability: () => bus.invoke(IPC_CHANNELS.observabilityGetApp),
@@ -213,17 +187,6 @@ async function registerMainHandlers(
     webhookPort: null,
     globalStatePath
   })
-  const metaSessionManager = await MetaSessionManager.create({ statePath: `${globalStatePath}.meta-session.json` })
-  const proposals = new MetaSessionProposalStore()
-  const dispatcher = new MetaSessionCommandDispatcher({
-    snapshotSource: manager,
-    sessionInput: {
-      async send() {
-        return
-      }
-    },
-    proposals
-  })
 
   bus.handle(IPC_CHANNELS.projectBootstrap, async () => {
     return manager.snapshot()
@@ -247,56 +210,6 @@ async function registerMainHandlers(
 
   bus.handle(IPC_CHANNELS.sessionSetActive, async (_event, sessionId: string) => {
     await manager.setActiveSession(sessionId)
-  })
-
-  bus.handle(IPC_CHANNELS.metaSessionBootstrap, async (): Promise<MetaSessionBootstrapState> => {
-    const snapshot = metaSessionManager.snapshot()
-    return {
-      activeMetaSessionId: snapshot.activeMetaSessionId,
-      sessions: snapshot.sessions,
-      inspectorTarget: snapshot.inspectorTarget
-    }
-  })
-
-  bus.handle(IPC_CHANNELS.metaSessionCreate, async (_event, payload: CreateMetaSessionRequest) => {
-    return await metaSessionManager.createSession(payload)
-  })
-
-  bus.handle(IPC_CHANNELS.metaSessionSetActive, async (_event, sessionId: string) => {
-    await metaSessionManager.setActiveSession(sessionId)
-  })
-
-  bus.handle(IPC_CHANNELS.metaSessionArchive, async (_event, sessionId: string) => {
-    await metaSessionManager.archiveSession(sessionId)
-  })
-
-  bus.handle(IPC_CHANNELS.metaSessionRestore, async (_event, sessionId: string) => {
-    await metaSessionManager.restoreSession(sessionId)
-  })
-
-  bus.handle(IPC_CHANNELS.metaSessionProposalList, async (): Promise<MetaSessionProposal[]> => {
-    return proposals.list()
-  })
-
-  bus.handle(IPC_CHANNELS.metaSessionProposalGet, async (_event, proposalId: string): Promise<MetaSessionProposal | null> => {
-    return proposals.get(proposalId)
-  })
-
-  bus.handle(IPC_CHANNELS.metaSessionProposalApprove, async (_event, proposalId: string): Promise<MetaSessionProposal | null> => {
-    return await proposals.markApproved(proposalId)
-  })
-
-  bus.handle(IPC_CHANNELS.metaSessionProposalReject, async (_event, proposalId: string, reason?: string): Promise<MetaSessionProposal | null> => {
-    return await proposals.markRejected(proposalId, reason)
-  })
-
-  bus.handle(IPC_CHANNELS.metaSessionProposalDispatch, async (_event, proposalId: string): Promise<MetaSessionProposal | null> => {
-    await dispatcher.dispatchProposal(proposalId)
-    return proposals.get(proposalId)
-  })
-
-  bus.handle(IPC_CHANNELS.metaSessionInspectorSetTarget, async (_event, target: MetaSessionInspectorTarget | null) => {
-    await metaSessionManager.setInspectorTarget(target)
   })
 
   bus.handle(IPC_CHANNELS.observabilityGetSessionPresence, async () => defaultPresenceSnapshot)
@@ -400,17 +313,6 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
       expect(IPC_CHANNELS.sessionCreate).toBe('session:create')
       expect(IPC_CHANNELS.workspaceOpen).toBe('workspace:open')
       expect(IPC_CHANNELS.sessionSetActive).toBe('session:set-active')
-      expect(IPC_CHANNELS.metaSessionBootstrap).toBe('meta-session:bootstrap')
-      expect(IPC_CHANNELS.metaSessionCreate).toBe('meta-session:create')
-      expect(IPC_CHANNELS.metaSessionSetActive).toBe('meta-session:set-active')
-      expect(IPC_CHANNELS.metaSessionArchive).toBe('meta-session:archive')
-      expect(IPC_CHANNELS.metaSessionRestore).toBe('meta-session:restore')
-      expect(IPC_CHANNELS.metaSessionProposalList).toBe('meta-session:proposal-list')
-      expect(IPC_CHANNELS.metaSessionProposalGet).toBe('meta-session:proposal-get')
-      expect(IPC_CHANNELS.metaSessionProposalApprove).toBe('meta-session:proposal-approve')
-      expect(IPC_CHANNELS.metaSessionProposalReject).toBe('meta-session:proposal-reject')
-      expect(IPC_CHANNELS.metaSessionProposalDispatch).toBe('meta-session:proposal-dispatch')
-      expect(IPC_CHANNELS.metaSessionInspectorSetTarget).toBe('meta-session:inspector-set-target')
       expect(IPC_CHANNELS.observabilityGetSessionPresence).toBe('observability:get-session-presence')
       expect(IPC_CHANNELS.observabilityGetProject).toBe('observability:get-project-observability')
       expect(IPC_CHANNELS.observabilityGetApp).toBe('observability:get-app-observability')
@@ -446,16 +348,6 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
       expect(state).toHaveProperty('terminalWebhookPort')
       expect(Array.isArray(state.projects)).toBe(true)
       expect(Array.isArray(state.sessions)).toBe(true)
-    })
-
-    test('getMetaSessionBootstrapState round-trip returns an isolated meta session bootstrap payload', async () => {
-      const state = await api.getMetaSessionBootstrapState?.()
-
-      expect(state).toEqual({
-        activeMetaSessionId: null,
-        sessions: [],
-        inspectorTarget: { kind: 'app' }
-      })
     })
 
     test('createProject round-trip creates real project and returns ProjectSummary', async () => {
@@ -533,133 +425,6 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
       expect(state1.sessions).toHaveLength(1)
       expect(state1.projects[0]!.id).toBe(project.id)
       expect(state1.sessions[0]!.id).toBe(session.id)
-    })
-
-    test('createMetaSession / setActiveMetaSession / archiveMetaSession / restoreMetaSession round-trip updates isolated meta session state', async () => {
-      const created = await api.createMetaSession?.({
-        title: 'global-triage',
-        backendSessionType: 'claude-code',
-        capabilityLevel: 2
-      })
-
-      expect(created?.id).toMatch(/^meta_session_/)
-      expect(created?.backendSessionId).toMatch(
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-      )
-
-      await api.setActiveMetaSession?.(created!.id)
-      let bootstrap = await api.getMetaSessionBootstrapState?.()
-      expect(bootstrap?.activeMetaSessionId).toBe(created!.id)
-
-      await api.archiveMetaSession?.(created!.id)
-      bootstrap = await api.getMetaSessionBootstrapState?.()
-      expect(bootstrap?.sessions.find((session) => session.id === created!.id)?.archived).toBe(true)
-      expect(bootstrap?.activeMetaSessionId).toBeNull()
-
-      await api.restoreMetaSession?.(created!.id)
-      bootstrap = await api.getMetaSessionBootstrapState?.()
-      expect(bootstrap?.sessions.find((session) => session.id === created!.id)?.archived).toBe(false)
-      expect(bootstrap?.activeMetaSessionId).toBe(created!.id)
-    })
-
-    test('meta session proposal and inspector IPC round-trip can list approve reject dispatch and persist inspector target', async () => {
-      const workspaceDir = await createTestWorkspace('ipc-meta-session-proposal-')
-      const project = await api.createProject({
-        name: 'proposal_host',
-        path: workspaceDir
-      })
-      const workSession = await api.createSession({
-        projectId: project.id,
-        type: 'codex',
-        title: 'Worker'
-      })
-      const metaSession = await api.createMetaSession?.({
-        title: 'global-triage',
-        backendSessionType: 'claude-code',
-        capabilityLevel: 3
-      })
-
-      const proposalStore = new MetaSessionProposalStore()
-      const proposal = proposalStore.createPromptProposal({
-        metaSessionId: metaSession!.id,
-        targetSessionId: workSession.id,
-        text: 'Refactor and edit the code now.',
-        targetSession: workSession
-      })
-      bus.handle(IPC_CHANNELS.metaSessionProposalList, async () => proposalStore.list())
-      bus.handle(IPC_CHANNELS.metaSessionProposalGet, async (_event, proposalId: string) => proposalStore.get(proposalId))
-      bus.handle(IPC_CHANNELS.metaSessionProposalApprove, async (_event, proposalId: string) => await proposalStore.markApproved(proposalId))
-      bus.handle(IPC_CHANNELS.metaSessionProposalReject, async (_event, proposalId: string, reason?: string) => await proposalStore.markRejected(proposalId, reason))
-      bus.handle(IPC_CHANNELS.metaSessionProposalDispatch, async (_event, proposalId: string) => {
-        const liveDispatcher = new MetaSessionCommandDispatcher({
-          snapshotSource: manager,
-          sessionInput: {
-            async send() {
-              return
-            }
-          },
-          proposals: proposalStore
-        })
-        await liveDispatcher.dispatchProposal(proposalId)
-        return proposalStore.get(proposalId)
-      })
-
-      await expect(api.listMetaSessionProposals?.()).resolves.toEqual([
-        expect.objectContaining({
-          id: proposal.id,
-          status: 'pending_approval'
-        })
-      ])
-      await expect(api.getMetaSessionProposal?.(proposal.id)).resolves.toEqual(
-        expect.objectContaining({
-          id: proposal.id,
-          promptText: 'Refactor and edit the code now.'
-        })
-      )
-      await expect(api.approveMetaSessionProposal?.(proposal.id)).resolves.toEqual(
-        expect.objectContaining({
-          id: proposal.id,
-          status: 'approved'
-        })
-      )
-
-      const proposal2 = proposalStore.createPromptProposal({
-        metaSessionId: metaSession!.id,
-        targetSessionId: workSession.id,
-        text: 'Unsafe dispatch.',
-        targetSession: workSession
-      })
-      await expect(api.rejectMetaSessionProposal?.(proposal2.id, 'Unsafe dispatch.')).resolves.toEqual(
-        expect.objectContaining({
-          id: proposal2.id,
-          status: 'rejected',
-          executionResult: 'Unsafe dispatch.'
-        })
-      )
-
-      const proposal3 = proposalStore.createPromptProposal({
-        metaSessionId: metaSession!.id,
-        targetSessionId: workSession.id,
-        text: 'Run the prompt.',
-        targetSession: workSession
-      })
-      await expect(api.dispatchMetaSessionProposal?.(proposal3.id)).resolves.toEqual(
-        expect.objectContaining({
-          id: proposal3.id,
-          status: 'completed'
-        })
-      )
-
-      await api.setMetaSessionInspectorTarget?.({
-        kind: 'proposal',
-        proposalId: proposal3.id
-      })
-
-      const bootstrap = await api.getMetaSessionBootstrapState?.()
-      expect(bootstrap?.inspectorTarget).toEqual({
-        kind: 'proposal',
-        proposalId: proposal3.id
-      })
     })
 
     test('getTerminalReplay round-trip returns the current session backlog payload', async () => {
@@ -824,17 +589,6 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
         openWorkspace: IPC_CHANNELS.workspaceOpen,
         setActiveProject: IPC_CHANNELS.projectSetActive,
         setActiveSession: IPC_CHANNELS.sessionSetActive,
-        getMetaSessionBootstrapState: IPC_CHANNELS.metaSessionBootstrap,
-        createMetaSession: IPC_CHANNELS.metaSessionCreate,
-        setActiveMetaSession: IPC_CHANNELS.metaSessionSetActive,
-        archiveMetaSession: IPC_CHANNELS.metaSessionArchive,
-        restoreMetaSession: IPC_CHANNELS.metaSessionRestore,
-        listMetaSessionProposals: IPC_CHANNELS.metaSessionProposalList,
-        getMetaSessionProposal: IPC_CHANNELS.metaSessionProposalGet,
-        approveMetaSessionProposal: IPC_CHANNELS.metaSessionProposalApprove,
-        rejectMetaSessionProposal: IPC_CHANNELS.metaSessionProposalReject,
-        dispatchMetaSessionProposal: IPC_CHANNELS.metaSessionProposalDispatch,
-        setMetaSessionInspectorTarget: IPC_CHANNELS.metaSessionInspectorSetTarget,
         getSessionPresence: IPC_CHANNELS.observabilityGetSessionPresence,
         getProjectObservability: IPC_CHANNELS.observabilityGetProject,
         getAppObservability: IPC_CHANNELS.observabilityGetApp,
@@ -853,7 +607,7 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
       }
 
       const methods = Object.keys(apiMethodToChannel)
-      expect(methods).toHaveLength(32)
+      expect(methods).toHaveLength(21)
 
       const channelValues = Object.values(apiMethodToChannel)
       const uniqueChannels = new Set(channelValues)

@@ -6,7 +6,7 @@ import type {
   ProjectObservabilitySnapshot,
   SessionPresenceSnapshot
 } from '@shared/observability'
-import type { RendererApi, SessionSummary } from '@shared/project-session'
+import type { RendererApi, SessionGraphEvent, SessionSummary, SessionTreeMeta } from '@shared/project-session'
 import { createRendererApiMock, createSessionSummaryFixture } from '@shared/test-fixtures'
 import { useWorkspaceStore } from './workspaces'
 
@@ -20,28 +20,43 @@ function deferred<T>() {
 }
 
 function createStoaMock(overrides: Partial<RendererApi> = {}): RendererApi {
-  return Object.assign(
-    createRendererApiMock({
-      getBootstrapState: vi.fn().mockResolvedValue({
-        activeProjectId: null,
-        activeSessionId: null,
-        terminalWebhookPort: null,
-        projects: [],
-        sessions: []
-      }),
-      getAppObservability: vi.fn().mockResolvedValue({
-        blockedProjectCount: 0,
-        failedProjectCount: 0,
-        totalUnreadTurns: 0,
-        projectsNeedingAttention: [],
-        providerHealthSummary: {},
-        lastGlobalEventAt: null,
-        sourceSequence: 0,
-        updatedAt: '2026-04-24T08:00:00.000Z'
-      })
+  return createRendererApiMock({
+    getBootstrapState: vi.fn().mockResolvedValue({
+      activeProjectId: null,
+      activeSessionId: null,
+      terminalWebhookPort: null,
+      projects: [],
+      sessions: []
     }),
-    overrides
-  )
+    getAppObservability: vi.fn().mockResolvedValue({
+      blockedProjectCount: 0,
+      failedProjectCount: 0,
+      totalUnreadTurns: 0,
+      projectsNeedingAttention: [],
+      providerHealthSummary: {},
+      lastGlobalEventAt: null,
+      sourceSequence: 0,
+      updatedAt: '2026-04-24T08:00:00.000Z'
+    }),
+    getSettings: vi.fn().mockResolvedValue({
+      shellPath: '',
+      terminal: {},
+      providers: {},
+      titleGeneration: {
+        enabled: false,
+        apiKey: '',
+        baseUrl: 'https://api.openai.com/v1',
+        model: 'gpt-5.4-mini'
+      },
+      evolverInferenceProvider: 'claude-code',
+      evolverExecutionMode: 'workspace-shell',
+      workspaceIde: { id: 'vscode', executablePath: '' },
+      claudeDangerouslySkipPermissions: false,
+      locale: 'en'
+    }),
+    ...overrides,
+    restartSession: overrides.restartSession ?? vi.fn().mockResolvedValue(undefined)
+  })
 }
 
 function sessionPresenceFixture(patch: Partial<SessionPresenceSnapshot> = {}): SessionPresenceSnapshot {
@@ -141,9 +156,11 @@ function createTitleGenerationContext() {
 }
 
 function sessionSummaryFixture(patch: Partial<SessionSummary> = {}): SessionSummary {
-  return createSessionSummaryFixture({
+  return {
     id: 'session_op_1',
     projectId: 'project_alpha',
+    parentSessionId: null,
+    createdBySessionId: null,
     type: 'opencode',
     runtimeState: 'alive',
     turnState: 'running',
@@ -165,7 +182,7 @@ function sessionSummaryFixture(patch: Partial<SessionSummary> = {}): SessionSumm
     archived: false,
     ...patch,
     titleGenerationContext: patch.titleGenerationContext ?? createTitleGenerationContext()
-  })
+  }
 }
 
 describe('project/session renderer store', () => {
@@ -191,7 +208,7 @@ describe('project/session renderer store', () => {
         }
       ],
       sessions: [
-        sessionSummaryFixture({
+        createSessionSummaryFixture({
           id: 'session_op_1',
           projectId: 'project_alpha',
           type: 'opencode',
@@ -1140,7 +1157,7 @@ describe('project/session renderer store', () => {
         sessions: []
       })
 
-      store.addSession(sessionSummaryFixture({
+      store.addSession(createSessionSummaryFixture({
         id: 'session_claude_1',
         projectId: 'project_alpha',
         type: 'claude-code',
@@ -1277,6 +1294,381 @@ describe('project/session renderer store', () => {
         cursor: '10',
         limit: 50
       })
+    })
+  })
+
+  describe('applySessionGraphEvent', () => {
+    test('upserts unknown child session from graph event created by renderer', () => {
+      const store = useWorkspaceStore()
+      store.hydrate({
+        activeProjectId: 'project_alpha',
+        activeSessionId: 'session_root',
+        terminalWebhookPort: 43127,
+        projects: [
+          { id: 'project_alpha', name: 'alpha', path: 'D:/alpha', createdAt: 'a', updatedAt: 'a' }
+        ],
+        sessions: [
+          sessionSummaryFixture({
+            id: 'session_root',
+            projectId: 'project_alpha',
+            type: 'opencode',
+            title: 'root',
+            summary: 'root session',
+            recoveryMode: 'resume-external',
+            externalSessionId: 'ext-root',
+            createdAt: 'a',
+            updatedAt: 'a',
+            lastActivatedAt: 'a',
+            archived: false
+          })
+        ]
+      })
+
+      const childCreatedEvent: SessionGraphEvent = {
+        kind: 'created',
+        graphVersion: 1,
+        origin: 'renderer',
+        initiatorSessionId: 'session_root',
+        node: {
+          session: sessionSummaryFixture({
+            id: 'session_child',
+            projectId: 'project_alpha',
+            parentSessionId: 'session_root',
+            createdBySessionId: 'session_root',
+            type: 'opencode',
+            title: 'child',
+            summary: 'child session',
+            recoveryMode: 'resume-external',
+            externalSessionId: 'ext-child',
+            createdAt: 'b',
+            updatedAt: 'b',
+            lastActivatedAt: null,
+            archived: false
+          }),
+          tree: {
+            rootSessionId: 'session_root',
+            depth: 1,
+            childCount: 0,
+            descendantCount: 0
+          }
+        }
+      }
+
+      store.applySessionGraphEvent(childCreatedEvent)
+
+      expect(store.sessions.find(s => s.id === 'session_child')).toBeDefined()
+      expect(store.projectHierarchy[0]!.sessions.find(s => s.id === 'session_child')).toBeDefined()
+    })
+
+    test('recursive hierarchy projection includes child session in root projectHierarchy', () => {
+      const store = useWorkspaceStore()
+      store.hydrate({
+        activeProjectId: 'project_alpha',
+        activeSessionId: 'session_root',
+        terminalWebhookPort: 43127,
+        projects: [
+          { id: 'project_alpha', name: 'alpha', path: 'D:/alpha', createdAt: 'a', updatedAt: 'a' }
+        ],
+        sessions: [
+          sessionSummaryFixture({
+            id: 'session_root',
+            projectId: 'project_alpha',
+            type: 'opencode',
+            title: 'root',
+            summary: 'root session',
+            recoveryMode: 'resume-external',
+            externalSessionId: 'ext-root',
+            createdAt: 'a',
+            updatedAt: 'a',
+            lastActivatedAt: 'a',
+            archived: false
+          })
+        ]
+      })
+
+      const childCreatedEvent: SessionGraphEvent = {
+        kind: 'created',
+        graphVersion: 1,
+        origin: 'renderer',
+        initiatorSessionId: 'session_root',
+        node: {
+          session: sessionSummaryFixture({
+            id: 'session_child',
+            projectId: 'project_alpha',
+            parentSessionId: 'session_root',
+            createdBySessionId: 'session_root',
+            type: 'opencode',
+            title: 'child',
+            summary: 'child session',
+            recoveryMode: 'resume-external',
+            externalSessionId: 'ext-child',
+            createdAt: 'b',
+            updatedAt: 'b',
+            lastActivatedAt: null,
+            archived: false
+          }),
+          tree: {
+            rootSessionId: 'session_root',
+            depth: 1,
+            childCount: 0,
+            descendantCount: 0
+          }
+        }
+      }
+
+      store.applySessionGraphEvent(childCreatedEvent)
+
+      expect(store.projectHierarchy[0]!.sessions.map((session) => ({
+        id: session.id,
+        depth: session.treeDepth,
+        rootSessionId: session.treeRootSessionId,
+        childCount: session.treeChildCount,
+        descendantCount: session.treeDescendantCount
+      }))).toEqual([
+        {
+          id: 'session_root',
+          depth: 0,
+          rootSessionId: 'session_root',
+          childCount: 1,
+          descendantCount: 1
+        },
+        {
+          id: 'session_child',
+          depth: 1,
+          rootSessionId: 'session_root',
+          childCount: 0,
+          descendantCount: 0
+        }
+      ])
+    })
+
+    test('archived tree section includes archived sessions', () => {
+      const store = useWorkspaceStore()
+      store.hydrate({
+        activeProjectId: 'project_alpha',
+        activeSessionId: 'session_active',
+        terminalWebhookPort: 43127,
+        projects: [
+          { id: 'project_alpha', name: 'alpha', path: 'D:/alpha', createdAt: 'a', updatedAt: 'a' }
+        ],
+        sessions: [
+          sessionSummaryFixture({
+            id: 'session_active',
+            projectId: 'project_alpha',
+            type: 'opencode',
+            title: 'active',
+            summary: 'active session',
+            recoveryMode: 'resume-external',
+            externalSessionId: 'ext-active',
+            createdAt: 'a',
+            updatedAt: 'a',
+            lastActivatedAt: 'a',
+            archived: false
+          }),
+          sessionSummaryFixture({
+            id: 'session_archived_parent',
+            projectId: 'project_alpha',
+            type: 'opencode',
+            title: 'archived parent',
+            summary: 'archived session',
+            recoveryMode: 'resume-external',
+            externalSessionId: 'ext-archived',
+            createdAt: 'b',
+            updatedAt: 'b',
+            lastActivatedAt: null,
+            archived: true
+          })
+        ]
+      })
+
+      // Both archived sessions should be in archivedSessions
+      const projectNode = store.projectHierarchy[0]
+      expect(projectNode!.archivedSessions.map(s => s.id)).toContain('session_archived_parent')
+      expect(projectNode!.sessions.map(s => s.id)).not.toContain('session_archived_parent')
+    })
+
+    test('non-renderer-origin create does not steal active session', () => {
+      const store = useWorkspaceStore()
+      store.hydrate({
+        activeProjectId: 'project_alpha',
+        activeSessionId: 'session_active',
+        terminalWebhookPort: 43127,
+        projects: [
+          { id: 'project_alpha', name: 'alpha', path: 'D:/alpha', createdAt: 'a', updatedAt: 'a' }
+        ],
+        sessions: [
+          sessionSummaryFixture({
+            id: 'session_active',
+            projectId: 'project_alpha',
+            type: 'opencode',
+            title: 'active',
+            summary: 'active session',
+            recoveryMode: 'resume-external',
+            externalSessionId: 'ext-active',
+            createdAt: 'a',
+            updatedAt: 'a',
+            lastActivatedAt: 'a',
+            archived: false
+          })
+        ]
+      })
+
+      const backgroundChildEvent: SessionGraphEvent = {
+        kind: 'created',
+        graphVersion: 1,
+        origin: 'session', // non-renderer origin
+        initiatorSessionId: 'session_active',
+        node: {
+          session: sessionSummaryFixture({
+            id: 'session_background',
+            projectId: 'project_alpha',
+            parentSessionId: 'session_active',
+            createdBySessionId: 'session_active',
+            type: 'opencode',
+            title: 'background',
+            summary: 'background session',
+            recoveryMode: 'resume-external',
+            externalSessionId: 'ext-bg',
+            createdAt: 'b',
+            updatedAt: 'b',
+            lastActivatedAt: null,
+            archived: false
+          }),
+          tree: {
+            rootSessionId: 'session_active',
+            depth: 1,
+            childCount: 0,
+            descendantCount: 0
+          }
+        }
+      }
+
+      store.applySessionGraphEvent(backgroundChildEvent)
+
+      // Active session should NOT be stolen
+      expect(store.activeSessionId).toBe('session_active')
+      // But the background session should still be added to store
+      expect(store.sessions.find(s => s.id === 'session_background')).toBeDefined()
+    })
+
+    test('update event applies session changes from graph event', () => {
+      const store = useWorkspaceStore()
+      store.hydrate({
+        activeProjectId: 'project_alpha',
+        activeSessionId: 'session_root',
+        terminalWebhookPort: 43127,
+        projects: [
+          { id: 'project_alpha', name: 'alpha', path: 'D:/alpha', createdAt: 'a', updatedAt: 'a' }
+        ],
+        sessions: [
+          sessionSummaryFixture({
+            id: 'session_root',
+            projectId: 'project_alpha',
+            type: 'opencode',
+            title: 'root',
+            summary: 'original summary',
+            recoveryMode: 'resume-external',
+            externalSessionId: 'ext-root',
+            createdAt: 'a',
+            updatedAt: 'a',
+            lastActivatedAt: 'a',
+            archived: false
+          })
+        ]
+      })
+
+      const updatedEvent: SessionGraphEvent = {
+        kind: 'updated',
+        graphVersion: 2,
+        origin: 'session',
+        initiatorSessionId: 'session_root',
+        node: {
+          session: sessionSummaryFixture({
+            id: 'session_root',
+            projectId: 'project_alpha',
+            type: 'opencode',
+            title: 'Updated Title',
+            summary: 'updated summary',
+            recoveryMode: 'resume-external',
+            externalSessionId: 'ext-root',
+            createdAt: 'a',
+            updatedAt: 'b',
+            lastActivatedAt: 'a',
+            archived: false
+          }),
+          tree: {
+            rootSessionId: 'session_root',
+            depth: 0,
+            childCount: 0,
+            descendantCount: 0
+          }
+        }
+      }
+
+      store.applySessionGraphEvent(updatedEvent)
+
+      expect(store.sessions.find(s => s.id === 'session_root')?.title).toBe('Updated Title')
+      expect(store.sessions.find(s => s.id === 'session_root')?.summary).toBe('updated summary')
+    })
+
+    test('archived event archives the session from graph event', () => {
+      const store = useWorkspaceStore()
+      store.hydrate({
+        activeProjectId: 'project_alpha',
+        activeSessionId: 'session_root',
+        terminalWebhookPort: 43127,
+        projects: [
+          { id: 'project_alpha', name: 'alpha', path: 'D:/alpha', createdAt: 'a', updatedAt: 'a' }
+        ],
+        sessions: [
+          sessionSummaryFixture({
+            id: 'session_root',
+            projectId: 'project_alpha',
+            type: 'opencode',
+            title: 'root',
+            summary: 'root session',
+            recoveryMode: 'resume-external',
+            externalSessionId: 'ext-root',
+            createdAt: 'a',
+            updatedAt: 'a',
+            lastActivatedAt: 'a',
+            archived: false
+          })
+        ]
+      })
+
+      const archivedEvent: SessionGraphEvent = {
+        kind: 'archived',
+        graphVersion: 1,
+        origin: 'renderer',
+        initiatorSessionId: null,
+        node: {
+          session: sessionSummaryFixture({
+            id: 'session_root',
+            projectId: 'project_alpha',
+            type: 'opencode',
+            title: 'root',
+            summary: 'root session',
+            recoveryMode: 'resume-external',
+            externalSessionId: 'ext-root',
+            createdAt: 'a',
+            updatedAt: 'b',
+            lastActivatedAt: 'a',
+            archived: true
+          }),
+          tree: {
+            rootSessionId: 'session_root',
+            depth: 0,
+            childCount: 0,
+            descendantCount: 0
+          }
+        }
+      }
+
+      store.applySessionGraphEvent(archivedEvent)
+
+      expect(store.sessions.find(s => s.id === 'session_root')?.archived).toBe(true)
+      expect(store.activeSessionId).toBeNull()
     })
   })
 })

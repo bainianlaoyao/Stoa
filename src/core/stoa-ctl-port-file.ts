@@ -6,7 +6,6 @@ import { homedir } from 'node:os'
 export interface PortFileData {
   port: number
   pid: number
-  activeMetaSessionId: string | null
   secret: string
   startedAt: string
 }
@@ -53,7 +52,6 @@ export async function readPortFile(filePath?: string): Promise<PortFileData | nu
   return {
     port: data.port,
     pid: data.pid,
-    activeMetaSessionId: typeof data.activeMetaSessionId === 'string' ? data.activeMetaSessionId : null,
     secret: data.secret,
     startedAt: data.startedAt
   }

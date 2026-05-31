@@ -4,11 +4,14 @@ import { mount, type VueWrapper } from '@vue/test-utils'
 import { createPinia, setActivePinia, type Pinia } from 'pinia'
 import { useWorkspaceStore } from '@renderer/stores/workspaces'
 import { useUpdateStore } from '@renderer/stores/update'
+import { createRendererApiMock } from '@shared/test-fixtures'
 import App from './App.vue'
 import type {
   BootstrapState,
   MemoryNotificationEvent,
   ProjectSummary,
+  RendererApi,
+  SessionGraphEvent,
   SessionSummary,
   SessionTitleGenerationNotification
 } from '@shared/project-session'
@@ -44,6 +47,8 @@ function createSessionSummary(overrides: Partial<SessionSummary> = {}): SessionS
   return {
     id: 's1',
     projectId: 'p1',
+    parentSessionId: null,
+    createdBySessionId: null,
     type: 'shell',
     runtimeState: 'alive',
     turnState: 'idle',
@@ -155,36 +160,16 @@ async function flush(): Promise<void> {
   await new Promise((r) => setTimeout(r, 0))
 }
 
-function setupStoa(overrides?: Partial<typeof window.stoa>) {
-  window.stoa = {
-    windowsBuildNumber: undefined,
+function setupStoa(overrides: Partial<RendererApi> = {}) {
+  window.stoa = createRendererApiMock({
     getBootstrapState: vi.fn().mockResolvedValue({ ...mockBootstrapState, projects: [], sessions: [] }),
     createProject: vi.fn().mockResolvedValue({ ...mockCreatedProject }),
-    deleteProject: vi.fn().mockResolvedValue(undefined),
     createSession: vi.fn().mockResolvedValue({ ...mockCreatedSession }),
-    openWorkspace: vi.fn().mockResolvedValue(undefined),
-    setActiveProject: vi.fn().mockResolvedValue(undefined),
-    setActiveSession: vi.fn().mockResolvedValue(undefined),
-    archiveSession: vi.fn().mockResolvedValue(undefined),
     regenerateSessionTitle: vi.fn().mockResolvedValue(createSessionSummary({
       id: 's1',
       projectId: 'p1',
       title: 'Regenerated Title'
     })),
-    restoreSession: vi.fn().mockResolvedValue(undefined),
-    restartSession: vi.fn().mockResolvedValue(undefined),
-    listArchivedSessions: vi.fn().mockResolvedValue([]),
-
-    getTerminalReplay: vi.fn().mockResolvedValue(''),
-    sendSessionInput: vi.fn(),
-    sendSessionBinaryInput: vi.fn(),
-    sendSessionResize: vi.fn().mockResolvedValue(undefined),
-    onTerminalData: vi.fn().mockReturnValue(() => {}),
-    onMemoryNotification: vi.fn().mockReturnValue(() => {}),
-    onTitleGenerationNotification: vi.fn().mockReturnValue(() => {}),
-    onSessionEvent: vi.fn().mockReturnValue(() => {}),
-    getSessionPresence: vi.fn().mockResolvedValue(null),
-    getProjectObservability: vi.fn().mockResolvedValue(null),
     getAppObservability: vi.fn().mockResolvedValue({
       blockedProjectCount: 0,
       failedProjectCount: 0,
@@ -195,10 +180,6 @@ function setupStoa(overrides?: Partial<typeof window.stoa>) {
       sourceSequence: 0,
       updatedAt: 'x'
     }),
-    listSessionObservationEvents: vi.fn().mockResolvedValue({ events: [], nextCursor: null }),
-    onSessionPresenceChanged: vi.fn().mockReturnValue(() => {}),
-    onProjectObservabilityChanged: vi.fn().mockReturnValue(() => {}),
-    onAppObservabilityChanged: vi.fn().mockReturnValue(() => {}),
     getSettings: vi.fn().mockResolvedValue({
       shellPath: '',
       terminal: {},
@@ -215,30 +196,13 @@ function setupStoa(overrides?: Partial<typeof window.stoa>) {
       claudeDangerouslySkipPermissions: false,
       locale: 'en'
     }),
-    titleGenerationFetchModels: vi.fn().mockResolvedValue([]),
-    setSetting: vi.fn().mockResolvedValue(undefined),
-    pickFolder: vi.fn().mockResolvedValue(null),
-    pickFile: vi.fn().mockResolvedValue(null),
-    detectShell: vi.fn().mockResolvedValue(null),
-    detectProvider: vi.fn().mockResolvedValue(null),
-    detectVscode: vi.fn().mockResolvedValue(null),
-    minimizeWindow: vi.fn().mockResolvedValue(undefined),
-    maximizeWindow: vi.fn().mockResolvedValue(undefined),
-    closeWindow: vi.fn().mockResolvedValue(undefined),
-    isWindowMaximized: vi.fn().mockResolvedValue(false),
-    onWindowMaximizeChange: vi.fn().mockReturnValue(() => {}),
     getUpdateState: vi.fn().mockResolvedValue(createUpdateState()),
     checkForUpdates: vi.fn().mockResolvedValue(createUpdateState({ phase: 'up-to-date', message: 'You are up to date.' })),
     downloadUpdate: vi.fn().mockResolvedValue(createUpdateState({ phase: 'downloaded', downloadedVersion: '0.2.0' })),
-    quitAndInstallUpdate: vi.fn().mockResolvedValue(undefined),
-    dismissUpdate: vi.fn().mockResolvedValue(undefined),
-    onUpdateState: vi.fn().mockReturnValue(() => {}),
-    uninstallSidecars: vi.fn().mockResolvedValue(undefined),
-    listSessionEvidence: vi.fn().mockResolvedValue([]),
     contextExportFullText: vi.fn().mockResolvedValue({ text: '', truncated: false, totalTurns: 0 }),
     contextExportSlimText: vi.fn().mockResolvedValue({ text: '', truncated: false, totalTurns: 0 }),
     ...overrides
-  }
+  })
 }
 
 function mountApp(pinia: Pinia) {
@@ -545,6 +509,81 @@ describe('App (root)', () => {
       await flush()
 
       expect(useWorkspaceStore(pinia).sessions[0]?.title).toBe('Updated From Main')
+    })
+
+    it('fallback onSessionEvent upserts unknown child sessions when graph bridge is unavailable', async () => {
+      let listener: ((event: { session: SessionSummary }) => void) | undefined
+      const hydratedState: BootstrapState = {
+        activeProjectId: 'p1',
+        activeSessionId: 's1',
+        terminalWebhookPort: 0,
+        projects: [{ id: 'p1', name: 'Proj', path: '/p', createdAt: 't', updatedAt: 't' }],
+        sessions: [createSessionSummary({ id: 's1', projectId: 'p1', title: 'Root Session' })]
+      }
+
+      setupStoa({
+        getBootstrapState: vi.fn().mockResolvedValue(hydratedState),
+        onSessionGraphEvent: undefined,
+        onSessionEvent: vi.fn().mockImplementation((callback: (event: { session: SessionSummary }) => void) => {
+          listener = callback
+          return () => {}
+        })
+      })
+
+      wrapper = await mountApp(pinia)
+      await flush()
+
+      listener?.({
+        session: createSessionSummary({
+          id: 's2',
+          projectId: 'p1',
+          parentSessionId: 's1',
+          createdBySessionId: 's1',
+          title: 'Child Session'
+        })
+      })
+      await flush()
+
+      expect(useWorkspaceStore(pinia).sessions.map((session) => session.id)).toContain('s2')
+    })
+
+    it('subscribes to onSessionGraphEvent and applies graph events when available', async () => {
+      let graphListener: ((event: SessionGraphEvent) => void) | undefined
+      const hydratedState: BootstrapState = {
+        activeProjectId: 'p1',
+        activeSessionId: 's1',
+        terminalWebhookPort: 0,
+        projects: [{ id: 'p1', name: 'Proj', path: '/p', createdAt: 't', updatedAt: 't' }],
+        sessions: [createSessionSummary({ id: 's1', projectId: 'p1', title: 'Original Title' })]
+      }
+
+      setupStoa({
+        getBootstrapState: vi.fn().mockResolvedValue(hydratedState),
+        onSessionGraphEvent: vi.fn().mockImplementation((callback: (event: SessionGraphEvent) => void) => {
+          graphListener = callback
+          return () => {}
+        })
+      })
+
+      wrapper = await mountApp(pinia)
+      await flush()
+
+      expect(window.stoa.onSessionGraphEvent).toHaveBeenCalledOnce()
+
+      const graphEvent: SessionGraphEvent = {
+        kind: 'updated',
+        graphVersion: 1,
+        origin: 'session',
+        initiatorSessionId: 's1',
+        node: {
+          session: createSessionSummary({ id: 's1', projectId: 'p1', title: 'Updated Via Graph Event' }),
+          tree: { rootSessionId: 's1', depth: 0, childCount: 0, descendantCount: 0 }
+        }
+      }
+      graphListener?.(graphEvent)
+      await flush()
+
+      expect(useWorkspaceStore(pinia).sessions[0]?.title).toBe('Updated Via Graph Event')
     })
 
     it('hydrates observability and applies pushed session presence snapshots on mount', async () => {

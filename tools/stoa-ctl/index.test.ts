@@ -16,9 +16,10 @@ function createResponse(init: MockResponseInit = {}): Response {
   } as Response
 }
 
-const metaSessionEnv = {
+const sessionEnv = {
   STOA_CTL_BASE_URL: 'http://127.0.0.1:43129',
-  STOA_META_SESSION_ID: 'meta_session_1'
+  STOA_SESSION_ID: 'session_root_1',
+  STOA_CTL_SESSION_TOKEN: 'tok_root_1'
 }
 
 describe('stoa-ctl command surface', () => {
@@ -26,215 +27,117 @@ describe('stoa-ctl command surface', () => {
     vi.restoreAllMocks()
   })
 
-  test('declares meta session discovery, session, proposal, and dispatch commands in the usage text', async () => {
+  test('declares unified session commands in the usage text', async () => {
     const module = await import('./index')
 
-    expect(module.USAGE_TEXT).toContain('bootstrap-prompt')
+    expect(module.USAGE_TEXT).toContain('health')
     expect(module.USAGE_TEXT).toContain('whoami')
     expect(module.USAGE_TEXT).toContain('capabilities')
-    expect(module.USAGE_TEXT).toContain('work-sessions list')
-    expect(module.USAGE_TEXT).toContain('work-sessions get <id>')
-    expect(module.USAGE_TEXT).toContain('work-sessions events <id>')
-    expect(module.USAGE_TEXT).toContain('work-sessions send-keys <id> [--literal] [key ...]')
-    expect(module.USAGE_TEXT).toContain('state attention-queue')
-    expect(module.USAGE_TEXT).toContain('state conflicts')
-    expect(module.USAGE_TEXT).toContain('meta-sessions list')
-    expect(module.USAGE_TEXT).toContain('meta-sessions create --title "..." --backend <claude-code|codex|opencode>')
-    expect(module.USAGE_TEXT).toContain('meta-sessions archive <id>')
-    expect(module.USAGE_TEXT).toContain('meta-sessions restore <id>')
-    expect(module.USAGE_TEXT).toContain('proposals create prompt --target <sessionId> --text "..."')
-    expect(module.USAGE_TEXT).toContain('proposals list')
-    expect(module.USAGE_TEXT).toContain('proposals get <proposalId>')
-    expect(module.USAGE_TEXT).toContain('dispatch preset <name> --target <sessionId>')
-    expect(module.USAGE_TEXT).toContain('dispatch proposal <proposalId>')
-    expect(module.USAGE_TEXT).toContain('work-sessions context <id> [--level <slim|status|bundle|full>] (default: slim) [--max-chars <n>] [--cursor <token>]')
+    expect(module.USAGE_TEXT).toContain('session list [--include-archived]')
+    expect(module.USAGE_TEXT).toContain('session create --type <shell|opencode|codex|claude-code>')
+    expect(module.USAGE_TEXT).toContain('session inspect <sessionId>')
+    expect(module.USAGE_TEXT).toContain('session prompt <sessionId> --text "..."')
+    expect(module.USAGE_TEXT).toContain('session destroy <sessionId>')
+    expect(module.USAGE_TEXT).not.toContain('meta-sessions')
+    expect(module.USAGE_TEXT).not.toContain('proposals')
+    expect(module.USAGE_TEXT).not.toContain('dispatch preset')
   })
 
-  test('reads whoami through the control plane', async () => {
+  test('reads whoami through the control plane as a session caller', async () => {
     const module = await import('./index')
     const writes: string[] = []
-    const fetchImpl = vi.fn(async (input: string | URL | Request) => {
+    const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       expect(String(input)).toBe('http://127.0.0.1:43129/ctl/whoami')
+      expect(init?.headers).toMatchObject({
+        'x-stoa-session-id': 'session_root_1',
+        'x-stoa-session-token': 'tok_root_1'
+      })
       return createResponse({
-        body: '{"ok":true,"data":{"sessionId":"meta_session_1","title":"Global Triage"},"error":null}'
+        body: '{"ok":true,"data":{"caller":"session","sessionId":"session_root_1"},"error":null}'
       })
     })
 
     const exitCode = await module.run(['whoami'], {
       fetch: fetchImpl,
-      env: metaSessionEnv,
-      stdout: {
-        write(chunk: string) {
-          writes.push(chunk)
-        }
-      },
-      stderr: {
-        write() {}
-      },
+      env: sessionEnv,
+      stdout: { write(chunk: string) { writes.push(chunk) } },
+      stderr: { write() {} },
       sleep: async () => {}
     })
 
     expect(exitCode).toBe(0)
-    expect(writes.join('')).toContain('"Global Triage"')
+    expect(writes.join('')).toContain('"session_root_1"')
   })
 
-  test('fetches bootstrap-prompt as plain text through the control plane', async () => {
+  test('reads whoami through the control plane as a local-user caller', async () => {
+    const module = await import('./index')
+    const writes: string[] = []
+    const fetchImpl = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+      expect(String(_input)).toBe('http://127.0.0.1:54321/ctl/whoami')
+      expect(init?.headers).toMatchObject({
+        'x-stoa-secret': 'abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890'
+      })
+      expect(init?.headers).not.toMatchObject({
+        'x-stoa-session-id': expect.anything(),
+        'x-stoa-session-token': expect.anything()
+      })
+      return createResponse({
+        body: '{"ok":true,"data":{"caller":"local-user"},"error":null}'
+      })
+    })
+
+    const exitCode = await module.run(['whoami'], {
+      fetch: fetchImpl,
+      env: {},
+      stdout: { write(chunk: string) { writes.push(chunk) } },
+      stderr: { write() {} },
+      sleep: async () => {},
+      readPortFile: async () => ({
+        port: 54321,
+        pid: process.pid,
+        secret: 'abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
+        startedAt: new Date().toISOString()
+      })
+    })
+
+    expect(exitCode).toBe(0)
+    expect(writes.join('')).toContain('"local-user"')
+  })
+
+  test('lists sessions through the unified session endpoint', async () => {
     const module = await import('./index')
     const writes: string[] = []
     const fetchImpl = vi.fn(async (input: string | URL | Request) => {
-      expect(String(input)).toBe('http://127.0.0.1:43129/ctl/bootstrap-prompt')
+      expect(String(input)).toBe('http://127.0.0.1:43129/ctl/session/list')
       return createResponse({
-        body: 'You are running inside a Stoa meta session.\n## HARD RULE: METADATA IS NOT CONTENT'
+        body: '{"ok":true,"data":{"nodes":[{"session":{"id":"session_root_1"},"tree":{"rootSessionId":"session_root_1","depth":0,"childCount":1,"descendantCount":1}}]},"error":null}'
       })
     })
 
-    const exitCode = await module.run(['bootstrap-prompt'], {
+    const exitCode = await module.run(['session', 'list'], {
       fetch: fetchImpl,
-      env: metaSessionEnv,
-      stdout: {
-        write(chunk: string) {
-          writes.push(chunk)
-        }
-      },
-      stderr: {
-        write() {}
-      },
+      env: sessionEnv,
+      stdout: { write(chunk: string) { writes.push(chunk) } },
+      stderr: { write() {} },
       sleep: async () => {}
     })
 
     expect(exitCode).toBe(0)
-    expect(writes.join('')).toContain('METADATA IS NOT CONTENT')
+    expect(writes.join('')).toContain('"nodes"')
   })
 
-  test('lists work-session events with query flags through the control plane', async () => {
+  test('includes archived sessions when requested', async () => {
     const module = await import('./index')
-    const writes: string[] = []
     const fetchImpl = vi.fn(async (input: string | URL | Request) => {
-      expect(String(input)).toBe('http://127.0.0.1:43129/ctl/work-sessions/session_1/events?limit=10&cursor=12&includeEphemeral=1')
+      expect(String(input)).toBe('http://127.0.0.1:43129/ctl/session/list?includeArchived=1')
       return createResponse({
-        body: '{"ok":true,"data":{"events":[{"eventId":"evt_1"}],"nextCursor":null},"error":null}'
+        body: '{"ok":true,"data":{"nodes":[]},"error":null}'
       })
     })
 
-    const exitCode = await module.run([
-      'work-sessions',
-      'events',
-      'session_1',
-      '--limit',
-      '10',
-      '--cursor',
-      '12',
-      '--include-ephemeral'
-    ], {
+    const exitCode = await module.run(['session', 'list', '--include-archived'], {
       fetch: fetchImpl,
-      env: metaSessionEnv,
-      stdout: {
-        write(chunk: string) {
-          writes.push(chunk)
-        }
-      },
-      stderr: {
-        write() {}
-      },
-      sleep: async () => {}
-    })
-
-    expect(exitCode).toBe(0)
-    expect(writes.join('')).toContain('"evt_1"')
-  })
-
-  test('defaults work-session context reads to slim text', async () => {
-    const module = await import('./index')
-    const writes: string[] = []
-    const fetchImpl = vi.fn(async (input: string | URL | Request) => {
-      expect(String(input)).toBe('http://127.0.0.1:43129/ctl/work-sessions/session_1/context?level=slim')
-      return createResponse({
-        body: '[User]\nSummarize the failure.\n[Assistant]\nThe resume pointer is stale.'
-      })
-    })
-
-    const exitCode = await module.run([
-      'work-sessions',
-      'context',
-      'session_1'
-    ], {
-      fetch: fetchImpl,
-      env: metaSessionEnv,
-      stdout: {
-        write(chunk: string) {
-          writes.push(chunk)
-        }
-      },
-      stderr: {
-        write() {}
-      },
-      sleep: async () => {}
-    })
-
-    expect(exitCode).toBe(0)
-    expect(writes.join('')).toContain('resume pointer is stale')
-  })
-
-  test('creates work sessions through the control plane', async () => {
-    const module = await import('./index')
-    const writes: string[] = []
-    const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
-      expect(String(input)).toBe('http://127.0.0.1:43129/ctl/work-sessions')
-      expect(init?.method).toBe('POST')
-      expect(init?.body).toBe('{"projectId":"project_1","type":"codex","title":"codex-myproj"}')
-      return createResponse({
-        body: '{"ok":true,"data":{"id":"session_2","projectId":"project_1","type":"codex"},"error":null}'
-      })
-    })
-
-    const exitCode = await module.run([
-      'work-sessions',
-      'create',
-      '--project',
-      'project_1',
-      '--type',
-      'codex',
-      '--title',
-      'codex-myproj'
-    ], {
-      fetch: fetchImpl,
-      env: metaSessionEnv,
-      stdout: {
-        write(chunk: string) {
-          writes.push(chunk)
-        }
-      },
-      stderr: {
-        write() {}
-      },
-      sleep: async () => {}
-    })
-
-    expect(exitCode).toBe(0)
-    expect(writes.join('')).toContain('"session_2"')
-  })
-
-  test('creates work sessions without forcing a client-side title', async () => {
-    const module = await import('./index')
-    const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
-      expect(String(input)).toBe('http://127.0.0.1:43129/ctl/work-sessions')
-      expect(init?.method).toBe('POST')
-      expect(init?.body).toBe('{"projectId":"project_1","type":"shell"}')
-      return createResponse({
-        body: '{"ok":true,"data":{"id":"session_3","projectId":"project_1","type":"shell","title":"shell-1"},"error":null}'
-      })
-    })
-
-    const exitCode = await module.run([
-      'work-sessions',
-      'create',
-      '--project',
-      'project_1',
-      '--type',
-      'shell'
-    ], {
-      fetch: fetchImpl,
-      env: metaSessionEnv,
+      env: sessionEnv,
       stdout: { write() {} },
       stderr: { write() {} },
       sleep: async () => {}
@@ -243,240 +146,155 @@ describe('stoa-ctl command surface', () => {
     expect(exitCode).toBe(0)
   })
 
-  test('archives a work session through the control plane', async () => {
+  test('creates a root session for local-user with explicit project', async () => {
     const module = await import('./index')
     const writes: string[] = []
     const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
-      expect(String(input)).toBe('http://127.0.0.1:43129/ctl/work-sessions/session_2/archive')
+      expect(String(input)).toBe('http://127.0.0.1:54321/ctl/session/create')
       expect(init?.method).toBe('POST')
+      expect(JSON.parse(String(init?.body))).toEqual({
+        projectId: 'project_1',
+        type: 'codex',
+        title: 'root title'
+      })
       return createResponse({
-        body: '{"ok":true,"data":{"session":{"id":"session_2","archived":true}},"error":null}'
+        body: '{"ok":true,"data":{"session":{"id":"session_new_1"}},"error":null}'
       })
     })
 
-    const exitCode = await module.run([
-      'work-sessions',
-      'archive',
-      'session_2'
-    ], {
+    const exitCode = await module.run(['session', 'create', '--project', 'project_1', '--type', 'codex', '--title', 'root title'], {
       fetch: fetchImpl,
-      env: metaSessionEnv,
-      stdout: {
-        write(chunk: string) {
-          writes.push(chunk)
-        }
-      },
-      stderr: {
-        write() {}
-      },
-      sleep: async () => {}
+      env: {},
+      stdout: { write(chunk: string) { writes.push(chunk) } },
+      stderr: { write() {} },
+      sleep: async () => {},
+      readPortFile: async () => ({
+        port: 54321,
+        pid: process.pid,
+        secret: 'abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
+        startedAt: new Date().toISOString()
+      })
     })
 
     expect(exitCode).toBe(0)
-    expect(writes.join('')).toContain('"archived":true')
+    expect(writes.join('')).toContain('"session_new_1"')
   })
 
-  test('creates meta sessions through the control plane', async () => {
+  test('creates a direct child session for session caller without project or parent flags', async () => {
     const module = await import('./index')
-    const writes: string[] = []
-    const fetchImpl = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
-      expect(String(_input)).toBe('http://127.0.0.1:43129/ctl/meta-sessions')
+    const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      expect(String(input)).toBe('http://127.0.0.1:43129/ctl/session/create')
       expect(init?.method).toBe('POST')
-      expect(init?.body).toBe('{"title":"global-triage","backendSessionType":"claude-code","capabilityLevel":3}')
+      expect(init?.body).toBe('{"type":"claude-code","title":"child title"}')
       return createResponse({
-        body: '{"ok":true,"data":{"id":"meta_session_2","title":"global-triage"},"error":null}'
+        body: '{"ok":true,"data":{"session":{"id":"session_child_1"}},"error":null}'
       })
     })
 
-    const exitCode = await module.run([
-      'meta-sessions',
-      'create',
-      '--title',
-      'global-triage',
-      '--backend',
-      'claude-code',
-      '--capability-level',
-      '3'
-    ], {
+    const exitCode = await module.run(['session', 'create', '--type', 'claude-code', '--title', 'child title'], {
       fetch: fetchImpl,
-      env: metaSessionEnv,
-      stdout: {
-        write(chunk: string) {
-          writes.push(chunk)
-        }
-      },
-      stderr: {
-        write() {}
-      },
+      env: sessionEnv,
+      stdout: { write() {} },
+      stderr: { write() {} },
       sleep: async () => {}
     })
 
     expect(exitCode).toBe(0)
-    expect(writes.join('')).toContain('"meta_session_2"')
   })
 
-  test('archives a meta session through the control plane', async () => {
+  test('rejects session caller create when --project is provided', async () => {
     const module = await import('./index')
-    const writes: string[] = []
-    const fetchImpl = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
-      expect(String(_input)).toBe('http://127.0.0.1:43129/ctl/meta-sessions/meta_session_2/archive')
-      expect(init?.method).toBe('POST')
-      return createResponse({
-        body: '{"ok":true,"data":{"session":{"id":"meta_session_2","archived":true}},"error":null}'
-      })
-    })
+    const stderr: string[] = []
 
-    const exitCode = await module.run([
-      'meta-sessions',
-      'archive',
-      'meta_session_2'
-    ], {
-      fetch: fetchImpl,
-      env: metaSessionEnv,
-      stdout: {
-        write(chunk: string) {
-          writes.push(chunk)
-        }
-      },
-      stderr: {
-        write() {}
-      },
+    const exitCode = await module.run(['session', 'create', '--project', 'project_1', '--type', 'codex'], {
+      fetch: async () => { throw new Error('should not be called') },
+      env: sessionEnv,
+      stdout: { write() {} },
+      stderr: { write(chunk: string) { stderr.push(chunk) } },
       sleep: async () => {}
     })
 
-    expect(exitCode).toBe(0)
-    expect(writes.join('')).toContain('"archived":true')
+    expect(exitCode).toBe(2)
+    expect(stderr.join('')).toContain('Usage')
   })
 
-  test('restores a meta session through the control plane', async () => {
+  test('rejects session caller create when --parent is provided', async () => {
     const module = await import('./index')
-    const writes: string[] = []
-    const fetchImpl = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
-      expect(String(_input)).toBe('http://127.0.0.1:43129/ctl/meta-sessions/meta_session_2/restore')
-      expect(init?.method).toBe('POST')
-      return createResponse({
-        body: '{"ok":true,"data":{"session":{"id":"meta_session_2","archived":false}},"error":null}'
-      })
-    })
+    const stderr: string[] = []
 
-    const exitCode = await module.run([
-      'meta-sessions',
-      'restore',
-      'meta_session_2'
-    ], {
-      fetch: fetchImpl,
-      env: metaSessionEnv,
-      stdout: {
-        write(chunk: string) {
-          writes.push(chunk)
-        }
-      },
-      stderr: {
-        write() {}
-      },
+    const exitCode = await module.run(['session', 'create', '--parent', 'session_x', '--type', 'codex'], {
+      fetch: async () => { throw new Error('should not be called') },
+      env: sessionEnv,
+      stdout: { write() {} },
+      stderr: { write(chunk: string) { stderr.push(chunk) } },
       sleep: async () => {}
     })
 
-    expect(exitCode).toBe(0)
-    expect(writes.join('')).toContain('"archived":false')
+    expect(exitCode).toBe(2)
+    expect(stderr.join('')).toContain('Usage')
   })
 
-  test('reads the attention queue through the control plane', async () => {
+  test('rejects local-user create when --project is missing', async () => {
+    const module = await import('./index')
+    const stderr: string[] = []
+
+    const exitCode = await module.run(['session', 'create', '--type', 'codex'], {
+      fetch: async () => { throw new Error('should not be called') },
+      env: {},
+      stdout: { write() {} },
+      stderr: { write(chunk: string) { stderr.push(chunk) } },
+      sleep: async () => {},
+      readPortFile: async () => ({
+        port: 54321,
+        pid: process.pid,
+        secret: 'abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
+        startedAt: new Date().toISOString()
+      })
+    })
+
+    expect(exitCode).toBe(2)
+    expect(stderr.join('')).toContain('Usage')
+  })
+
+  test('inspects a session through the unified session endpoint', async () => {
     const module = await import('./index')
     const writes: string[] = []
     const fetchImpl = vi.fn(async (input: string | URL | Request) => {
-      expect(String(input)).toBe('http://127.0.0.1:43129/ctl/state/attention-queue')
+      expect(String(input)).toBe('http://127.0.0.1:43129/ctl/session/session_child_1/inspect')
       return createResponse({
-        body: '{"ok":true,"data":{"sessions":[{"sessionId":"session_1","attentionReason":"provider_error"}]},"error":null}'
+        body: '{"ok":true,"data":{"node":{"session":{"id":"session_child_1"},"tree":{"rootSessionId":"session_root_1","depth":1,"childCount":0,"descendantCount":0}}},"error":null}'
       })
     })
 
-    const exitCode = await module.run(['state', 'attention-queue'], {
+    const exitCode = await module.run(['session', 'inspect', 'session_child_1'], {
       fetch: fetchImpl,
-      env: metaSessionEnv,
-      stdout: {
-        write(chunk: string) {
-          writes.push(chunk)
-        }
-      },
-      stderr: {
-        write() {}
-      },
+      env: sessionEnv,
+      stdout: { write(chunk: string) { writes.push(chunk) } },
+      stderr: { write() {} },
       sleep: async () => {}
     })
 
     expect(exitCode).toBe(0)
-    expect(writes.join('')).toContain('"provider_error"')
+    expect(writes.join('')).toContain('"session_child_1"')
   })
 
-  test('creates prompt proposals through the control plane', async () => {
+  test('prompts a session through the unified session endpoint', async () => {
     const module = await import('./index')
     const writes: string[] = []
     const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
-      expect(String(input)).toBe('http://127.0.0.1:43129/ctl/proposals')
+      expect(String(input)).toBe('http://127.0.0.1:43129/ctl/session/session_child_1/prompt')
       expect(init?.method).toBe('POST')
-      expect(init?.body).toBe('{"kind":"prompt","targetSessionId":"session_1","text":"Review the diff only."}')
-      return createResponse({
-        body: '{"ok":true,"data":{"id":"proposal_2","status":"pending_approval"},"error":null}'
-      })
-    })
-
-    const exitCode = await module.run([
-      'proposals',
-      'create',
-      'prompt',
-      '--target',
-      'session_1',
-      '--text',
-      'Review the diff only.'
-    ], {
-      fetch: fetchImpl,
-      env: metaSessionEnv,
-      stdout: {
-        write(chunk: string) {
-          writes.push(chunk)
-        }
-      },
-      stderr: {
-        write() {}
-      },
-      sleep: async () => {}
-    })
-
-    expect(exitCode).toBe(0)
-    expect(writes.join('')).toContain('"proposal_2"')
-  })
-
-  test('sends tmux-style keys to a work session through the control plane', async () => {
-    const module = await import('./index')
-    const writes: string[] = []
-    const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
-      expect(String(input)).toBe('http://127.0.0.1:43129/ctl/work-sessions/session_1/send-keys')
-      expect(init?.method).toBe('POST')
-      expect(init?.body).toBe('{"data":"1\\r\\u0003"}')
+      expect(init?.body).toBe('{"text":"hello"}')
       return createResponse({
         body: '{"ok":true,"data":{"kind":"dispatched"},"error":null}'
       })
     })
 
-    const exitCode = await module.run([
-      'work-sessions',
-      'send-keys',
-      'session_1',
-      '1',
-      'Enter',
-      'C-c'
-    ], {
+    const exitCode = await module.run(['session', 'prompt', 'session_child_1', '--text', 'hello'], {
       fetch: fetchImpl,
-      env: metaSessionEnv,
-      stdout: {
-        write(chunk: string) {
-          writes.push(chunk)
-        }
-      },
-      stderr: {
-        write() {}
-      },
+      env: sessionEnv,
+      stdout: { write(chunk: string) { writes.push(chunk) } },
+      stderr: { write() {} },
       sleep: async () => {}
     })
 
@@ -484,180 +302,48 @@ describe('stoa-ctl command surface', () => {
     expect(writes.join('')).toContain('"dispatched"')
   })
 
-  test('supports literal mode when sending keys to a work session', async () => {
+  test('destroys a session through the unified session endpoint', async () => {
     const module = await import('./index')
-    const fetchImpl = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
-      expect(String(_input)).toBe('http://127.0.0.1:43129/ctl/work-sessions/session_1/send-keys')
-      expect(init?.body).toBe('{"data":"EnterC-c"}')
+    const writes: string[] = []
+    const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      expect(String(input)).toBe('http://127.0.0.1:43129/ctl/session/session_child_1/destroy')
+      expect(init?.method).toBe('POST')
       return createResponse({
-        body: '{"ok":true,"data":{"kind":"dispatched"},"error":null}'
+        body: '{"ok":true,"data":{"kind":"destroyed"},"error":null}'
       })
     })
 
-    const exitCode = await module.run([
-      'work-sessions',
-      'send-keys',
-      'session_1',
-      '--literal',
-      'Enter',
-      'C-c'
-    ], {
+    const exitCode = await module.run(['session', 'destroy', 'session_child_1'], {
       fetch: fetchImpl,
-      env: metaSessionEnv,
-      stdout: { write() {} },
+      env: sessionEnv,
+      stdout: { write(chunk: string) { writes.push(chunk) } },
       stderr: { write() {} },
       sleep: async () => {}
     })
 
     expect(exitCode).toBe(0)
+    expect(writes.join('')).toContain('"destroyed"')
   })
 
-  test('dispatches a safe preset through the control plane', async () => {
-    const module = await import('./index')
-    const writes: string[] = []
-    const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
-      expect(String(input)).toBe('http://127.0.0.1:43129/ctl/dispatch/preset/run-tests-only')
-      expect(init?.method).toBe('POST')
-      expect(init?.body).toBe('{"targetSessionId":"session_1"}')
-      return createResponse({
-        body: '{"ok":true,"data":{"kind":"dispatched","presetName":"run-tests-only"},"error":null}'
-      })
-    })
-
-    const exitCode = await module.run([
-      'dispatch',
-      'preset',
-      'run-tests-only',
-      '--target',
-      'session_1'
-    ], {
-      fetch: fetchImpl,
-      env: metaSessionEnv,
-      stdout: {
-        write(chunk: string) {
-          writes.push(chunk)
-        }
-      },
-      stderr: {
-        write() {}
-      },
-      sleep: async () => {}
-    })
-
-    expect(exitCode).toBe(0)
-    expect(writes.join('')).toContain('"run-tests-only"')
-  })
-
-  test('lists proposals through the control plane', async () => {
-    const module = await import('./index')
-    const writes: string[] = []
-    const fetchImpl = vi.fn(async (input: string | URL | Request) => {
-      expect(String(input)).toBe('http://127.0.0.1:43129/ctl/proposals')
-      return createResponse({
-        body: '{"ok":true,"data":[{"id":"proposal_1"}],"error":null}'
-      })
-    })
-
-    const exitCode = await module.run(['proposals', 'list'], {
-      fetch: fetchImpl,
-      env: metaSessionEnv,
-      stdout: {
-        write(chunk: string) {
-          writes.push(chunk)
-        }
-      },
-      stderr: {
-        write() {}
-      },
-      sleep: async () => {}
-    })
-
-    expect(exitCode).toBe(0)
-    expect(writes.join('')).toContain('"proposal_1"')
-  })
-
-  test('waits until a proposal leaves pending approval', async () => {
-    const module = await import('./index')
-    const writes: string[] = []
-    const fetchImpl = vi.fn()
-      .mockResolvedValueOnce(createResponse({
-        body: '{"ok":true,"data":{"id":"proposal_1","status":"pending_approval"},"error":null}'
-      }))
-      .mockResolvedValueOnce(createResponse({
-        body: '{"ok":true,"data":{"id":"proposal_1","status":"approved"},"error":null}'
-      }))
-
-    const sleep = vi.fn(async () => {})
-    const exitCode = await module.run(['proposals', 'wait', 'proposal_1', '--interval-ms', '1', '--timeout-ms', '10'], {
-      fetch: fetchImpl,
-      env: metaSessionEnv,
-      stdout: {
-        write(chunk: string) {
-          writes.push(chunk)
-        }
-      },
-      stderr: {
-        write() {}
-      },
-      sleep
-    })
-
-    expect(exitCode).toBe(0)
-    expect(fetchImpl).toHaveBeenCalledTimes(2)
-    expect(sleep).toHaveBeenCalledTimes(1)
-    expect(writes.join('')).toContain('"approved"')
-  })
-
-  test('maps stale dispatch failures to exit code 5', async () => {
+  test('maps unknown_session failures to exit code 6', async () => {
     const module = await import('./index')
     const stderr: string[] = []
     const fetchImpl = vi.fn(async () => createResponse({
       ok: false,
-      status: 409,
-      body: '{"ok":false,"data":null,"error":{"code":"stale_proposal","message":"Proposal is stale.","details":{}}}'
+      status: 404,
+      body: '{"ok":false,"data":null,"error":{"code":"unknown_session","message":"unknown_session"}}'
     }))
 
-    const exitCode = await module.run(['dispatch', 'proposal', 'proposal_1'], {
+    const exitCode = await module.run(['session', 'inspect', 'missing'], {
       fetch: fetchImpl,
-      env: metaSessionEnv,
-      stdout: {
-        write() {}
-      },
-      stderr: {
-        write(chunk: string) {
-          stderr.push(chunk)
-        }
-      },
-      sleep: async () => {}
-    })
-
-    expect(exitCode).toBe(5)
-    expect(stderr.join('')).toContain('Proposal is stale.')
-  })
-
-  test('accepts session-scoped control env without STOA_CTL_TOKEN', async () => {
-    const module = await import('./index')
-    const fetchImpl = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
-      expect(init?.headers).toMatchObject({
-        'x-stoa-session-id': 'meta_session_1'
-      })
-      expect(init?.headers).not.toMatchObject({
-        'x-stoa-secret': expect.anything()
-      })
-      return createResponse({
-        body: '{"ok":true,"data":{"sessionId":"meta_session_1"},"error":null}'
-      })
-    })
-
-    const exitCode = await module.run(['whoami'], {
-      fetch: fetchImpl,
-      env: metaSessionEnv,
+      env: sessionEnv,
       stdout: { write() {} },
-      stderr: { write() {} },
+      stderr: { write(chunk: string) { stderr.push(chunk) } },
       sleep: async () => {}
     })
 
-    expect(exitCode).toBe(0)
+    expect(exitCode).toBe(6)
+    expect(stderr.join('')).toContain('unknown_session')
   })
 
   test('discovers base URL from port file when STOA_CTL_BASE_URL is unset', async () => {
@@ -676,7 +362,6 @@ describe('stoa-ctl command surface', () => {
       readPortFile: async () => ({
         port: 54321,
         pid: process.pid,
-        activeMetaSessionId: 'meta_from_port_file',
         secret: 'abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
         startedAt: new Date().toISOString()
       })
@@ -685,20 +370,27 @@ describe('stoa-ctl command surface', () => {
     expect(exitCode).toBe(0)
   })
 
-  test('uses activeMetaSessionId from port file when no session env vars set', async () => {
+  test('ignores legacy activeMetaSessionId in the port file and still authenticates as local-user', async () => {
     const module = await import('./index')
+    const writes: string[] = []
     const fetchImpl = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+      expect(String(_input)).toBe('http://127.0.0.1:54321/ctl/whoami')
       expect(init?.headers).toMatchObject({
-        'x-stoa-session-id': 'meta_from_port_file',
         'x-stoa-secret': 'abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890'
       })
-      return createResponse({ body: '{"ok":true,"data":{"ok":true},"error":null}' })
+      expect(init?.headers).not.toMatchObject({
+        'x-stoa-session-id': expect.anything(),
+        'x-stoa-session-token': expect.anything()
+      })
+      return createResponse({
+        body: '{"ok":true,"data":{"caller":"local-user"},"error":null}'
+      })
     })
 
-    const exitCode = await module.run(['health'], {
+    const exitCode = await module.run(['whoami'], {
       fetch: fetchImpl,
       env: {},
-      stdout: { write() {} },
+      stdout: { write(chunk: string) { writes.push(chunk) } },
       stderr: { write() {} },
       sleep: async () => {},
       readPortFile: async () => ({
@@ -707,23 +399,24 @@ describe('stoa-ctl command surface', () => {
         activeMetaSessionId: 'meta_from_port_file',
         secret: 'abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
         startedAt: new Date().toISOString()
-      })
+      } as any)
     })
 
     expect(exitCode).toBe(0)
+    expect(writes.join('')).toContain('"local-user"')
   })
 
-  test('ignores port file when STOA_CTL_BASE_URL is set', async () => {
+  test('ignores the port file when STOA_CTL_BASE_URL is set', async () => {
     const module = await import('./index')
     const fetchImpl = vi.fn(async (input: string | URL | Request) => {
       expect(String(input)).toBe('http://127.0.0.1:43129/ctl/health')
       return createResponse({ body: '{"ok":true,"data":{"ok":true},"error":null}' })
     })
-    const readPortFile = vi.fn(async () => ({ port: 99999, pid: 1, activeMetaSessionId: 'wrong', secret: 'x'.repeat(64), startedAt: '2026-01-01' }))
+    const readPortFile = vi.fn(async () => ({ port: 99999, pid: 1, secret: 'x'.repeat(64), startedAt: '2026-01-01' }))
 
     const exitCode = await module.run(['health'], {
       fetch: fetchImpl,
-      env: metaSessionEnv,
+      env: sessionEnv,
       stdout: { write() {} },
       stderr: { write() {} },
       sleep: async () => {},
@@ -734,11 +427,11 @@ describe('stoa-ctl command surface', () => {
     expect(readPortFile).not.toHaveBeenCalled()
   })
 
-  test('exits with code 3 when neither env vars nor port file available', async () => {
+  test('exits with code 3 when no control credentials are available', async () => {
     const module = await import('./index')
     const stderr: string[] = []
 
-    const exitCode = await module.run(['health'], {
+    const exitCode = await module.run(['whoami'], {
       fetch: async () => { throw new Error('should not be called') },
       env: {},
       stdout: { write() {} },
@@ -749,114 +442,6 @@ describe('stoa-ctl command surface', () => {
 
     expect(exitCode).toBe(3)
     expect(stderr.join('')).toContain('Stoa is not running')
-  })
-
-  test('exits with code 3 when port file PID is stale', async () => {
-    const module = await import('./index')
-    const stderr: string[] = []
-
-    const exitCode = await module.run(['health'], {
-      fetch: async () => { throw new Error('should not be called') },
-      env: {},
-      stdout: { write() {} },
-      stderr: { write(chunk: string) { stderr.push(chunk) } },
-      sleep: async () => {},
-      readPortFile: async () => ({
-        port: 54321,
-        pid: -1,
-        activeMetaSessionId: 'meta_old',
-        secret: 'x'.repeat(64),
-        startedAt: '2026-01-01'
-      })
-    })
-
-    expect(exitCode).toBe(3)
-  })
-
-  test('uses --session flag to override session identity', async () => {
-    const module = await import('./index')
-    const fetchImpl = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
-      expect(init?.headers).toMatchObject({
-        'x-stoa-session-id': 'meta_explicit'
-      })
-      return createResponse({ body: '{"ok":true,"data":{"sessionId":"meta_explicit"},"error":null}' })
-    })
-
-    const exitCode = await module.run(['--session', 'meta_explicit', 'whoami'], {
-      fetch: fetchImpl,
-      env: { STOA_CTL_BASE_URL: 'http://127.0.0.1:43129' },
-      stdout: { write() {} },
-      stderr: { write() {} },
-      sleep: async () => {}
-    })
-
-    expect(exitCode).toBe(0)
-  })
-
-  test('prefers --session flag over port file activeMetaSessionId', async () => {
-    const module = await import('./index')
-    const fetchImpl = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
-      expect(init?.headers).toMatchObject({
-        'x-stoa-session-id': 'meta_from_flag'
-      })
-      return createResponse({ body: '{"ok":true,"data":{"ok":true},"error":null}' })
-    })
-
-    const exitCode = await module.run(['--session', 'meta_from_flag', 'health'], {
-      fetch: fetchImpl,
-      env: {},
-      stdout: { write() {} },
-      stderr: { write() {} },
-      sleep: async () => {},
-      readPortFile: async () => ({
-        port: 54321,
-        pid: process.pid,
-        activeMetaSessionId: 'meta_from_port_file',
-        secret: 'x'.repeat(64),
-        startedAt: new Date().toISOString()
-      })
-    })
-
-    expect(exitCode).toBe(0)
-  })
-
-  test('exits with code 3 when no session identity source available', async () => {
-    const module = await import('./index')
-    const stderr: string[] = []
-
-    const exitCode = await module.run(['whoami'], {
-      fetch: async () => { throw new Error('should not be called') },
-      env: {},
-      stdout: { write() {} },
-      stderr: { write(chunk: string) { stderr.push(chunk) } },
-      sleep: async () => {},
-      readPortFile: async () => ({
-        port: 54321,
-        pid: process.pid,
-        activeMetaSessionId: null,
-        secret: 'x'.repeat(64),
-        startedAt: new Date().toISOString()
-      })
-    })
-
-    expect(exitCode).toBe(3)
-    expect(stderr.join('')).toContain('No session identity')
-  })
-
-  test('exits with usage error when --session has no value', async () => {
-    const module = await import('./index')
-    const stderr: string[] = []
-
-    const exitCode = await module.run(['--session'], {
-      fetch: async () => { throw new Error('should not be called') },
-      env: metaSessionEnv,
-      stdout: { write() {} },
-      stderr: { write(chunk: string) { stderr.push(chunk) } },
-      sleep: async () => {}
-    })
-
-    expect(exitCode).toBe(2)
-    expect(stderr.join('')).toContain('Usage')
   })
 
   test('detects direct entry when tsx passes its cli path as argv[1]', async () => {

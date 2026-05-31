@@ -9,7 +9,7 @@ test.describe('Electron smoke sentinel', () => {
       await expect(app.page.getByTestId('app-viewport')).toBeVisible()
       await expect(app.page.getByTestId('command-panel')).toBeVisible()
       await expect(app.page.locator('[data-activity-item="command"]')).toBeVisible()
-      await expect(app.page.locator('[data-activity-item="archive"]')).toBeVisible()
+      await expect(app.page.locator('[data-activity-item="sidebar-toggle"]')).toBeVisible()
       await expect(app.page.locator('[data-activity-item="settings"]')).toBeVisible()
     } finally {
       const { stateDir } = app
@@ -38,10 +38,9 @@ test.describe('Electron smoke sentinel', () => {
       const expectStableActivityIcons = async () => {
         const icons = app.page.locator('[data-activity-icon]')
 
-        await expect(icons).toHaveCount(4)
+        await expect(icons).toHaveCount(3)
         await expect(app.page.locator('[data-activity-item="command"] [data-activity-icon]')).toBeVisible()
-        await expect(app.page.locator('[data-activity-item="meta-session"] [data-activity-icon]')).toBeVisible()
-        await expect(app.page.locator('[data-activity-item="archive"] [data-activity-icon]')).toBeVisible()
+        await expect(app.page.locator('[data-activity-item="sidebar-toggle"] [data-activity-icon]')).toBeVisible()
         await expect(app.page.locator('[data-activity-item="settings"] [data-activity-icon]')).toBeVisible()
       }
 
@@ -51,8 +50,8 @@ test.describe('Electron smoke sentinel', () => {
       await expect(app.page.locator('[data-surface="settings"]')).toBeVisible()
       await expectStableActivityIcons()
 
-      await app.page.locator('[data-activity-item="archive"]').click()
-      await expect(app.page.locator('[data-surface="archive"]')).toBeVisible()
+      await app.page.locator('[data-activity-item="sidebar-toggle"]').click()
+      await expect(app.page.getByTestId('right-sidebar')).toBeVisible()
       await expectStableActivityIcons()
 
       await app.page.locator('[data-activity-item="command"]').click()

@@ -1,4 +1,4 @@
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, type Ref } from 'vue'
 import type { DirEntry } from '@shared/sidebar-types'
 
 export interface TreeNode {
@@ -99,7 +99,7 @@ function invalidatePath(dirPath: string): void {
   dirCache.value = cache
 }
 
-export function useFileTree(projectPath: ref<string | null>) {
+export function useFileTree(projectPath: Ref<string | null>) {
   const loading = ref(false)
 
   /**

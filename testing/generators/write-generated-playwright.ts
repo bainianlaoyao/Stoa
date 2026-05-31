@@ -1,9 +1,8 @@
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { sessionRestoreBehavior } from '../behavior/session.behavior'
 import {
   generateClaudeLifecyclePlaywrightSkeleton,
-  generateMetaSessionSurfaceSessionFlowPlaywrightSkeleton,
   generatePlaywrightSkeleton,
   generateWorkspaceQuickAccessPlaywrightSkeleton
 } from './generate-playwright'
@@ -29,5 +28,4 @@ await mkdir(dirname(workspaceQuickAccessOutputPath), { recursive: true })
 await writeFile(workspaceQuickAccessOutputPath, generateWorkspaceQuickAccessPlaywrightSkeleton(), 'utf8')
 
 const metaSessionSurfaceOutputPath = resolve('tests/generated/playwright/meta-session-surface-session-flow.generated.spec.ts')
-await mkdir(dirname(metaSessionSurfaceOutputPath), { recursive: true })
-await writeFile(metaSessionSurfaceOutputPath, generateMetaSessionSurfaceSessionFlowPlaywrightSkeleton(), 'utf8')
+await rm(metaSessionSurfaceOutputPath, { force: true })

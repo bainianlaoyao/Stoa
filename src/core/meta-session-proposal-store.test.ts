@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest'
+import { createSessionSummaryFixture } from '@shared/test-fixtures'
 import { MetaSessionProposalStore } from './meta-session-proposal-store'
 
 describe('MetaSessionProposalStore', () => {
@@ -8,7 +9,7 @@ describe('MetaSessionProposalStore', () => {
       metaSessionId: 'meta_session_1',
       targetSessionId: 'session_1',
       text: 'Refactor and edit the code now.',
-      targetSession: {
+      targetSession: createSessionSummaryFixture({
         id: 'session_1',
         projectId: 'project_1',
         type: 'codex',
@@ -36,7 +37,7 @@ describe('MetaSessionProposalStore', () => {
         updatedAt: '2026-05-07T08:05:00.000Z',
         lastActivatedAt: '2026-05-07T08:05:00.000Z',
         archived: false
-      }
+      })
     })
 
     expect(proposal.status).toBe('pending_approval')

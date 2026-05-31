@@ -328,6 +328,44 @@ describe('CommandSurface', () => {
     expect(wrapper.emitted('archiveSession')).toEqual([['session_1']])
   })
 
+  it('forwards restoreSession from WorkspaceHierarchyPanel', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const store = useWorkspaceStore(pinia)
+    store.hydrate({
+      activeProjectId: 'project_alpha',
+      activeSessionId: 'session_1',
+      terminalWebhookPort: 0,
+      projects: [activeProject],
+      sessions: [activeSession]
+    })
+
+    const wrapper = mount(CommandSurface, {
+      global: { plugins: [pinia] },
+      props: {
+        hierarchy: [{
+          ...hierarchy[0],
+          sessions: [],
+          archivedSessions: [{
+            ...activeSession,
+            id: 'session_archived',
+            title: 'old branch',
+            archived: true,
+            active: false
+          }]
+        }],
+        activeProject,
+        activeSession,
+        activeProjectId: 'project_alpha',
+        activeSessionId: 'session_1'
+      }
+    })
+
+    await wrapper.findComponent(WorkspaceHierarchyPanel).vm.$emit('restoreSession', 'session_archived')
+
+    expect(wrapper.emitted('restoreSession')).toEqual([['session_archived']])
+  })
+
   it('forwards restartSession from WorkspaceHierarchyPanel', async () => {
     const pinia = createPinia()
     setActivePinia(pinia)

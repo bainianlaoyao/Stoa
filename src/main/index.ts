@@ -10,18 +10,13 @@ import type { ListObservationEventsOptions } from '@core/observation-store'
 import { ObservabilityService } from '@core/observability-service'
 import { ProjectSessionManager } from '@core/project-session-manager'
 import { detectShell, detectProvider, detectVscode } from '@core/settings-detector'
-import { MetaSessionCommandDispatcher } from '@core/meta-session-command-dispatcher'
-import { MetaSessionContextAssembler } from '@core/meta-session-context-assembler'
-import { createMetaSessionControlServer } from '@core/meta-session-control-server'
-import { MetaSessionManager } from '@core/meta-session-manager'
 import { SessionEvidenceStore } from '@core/memory/session-evidence-store'
-import { MetaSessionProposalStore } from '@core/meta-session-proposal-store'
-import { deriveMetaSessionProviderSessionPatch } from '@core/meta-session-provider-patch'
-import { buildMetaSessionCommandEnv } from '@core/meta-session-command-env'
-import { resolveMetaSessionStateFilePath } from '@core/meta-session-state-store'
-import { META_SESSION_BOOTSTRAP_PROMPT } from '@core/meta-session-bootstrap-prompt'
+import { buildSessionCommandEnv } from '@core/session-command-env'
+import { SessionBootstrapPromptService } from '@core/session-bootstrap-prompt-service'
+import { createSessionControlServer } from '@core/session-control-server'
+import { SessionVisibilityService } from '@core/session-visibility-service'
 import { ensureStoaCtlShim, ensureStoaCtlSystemShim } from '@core/stoa-ctl-shim'
-import { writePortFile as writeCtlPortFile, deletePortFile as deleteCtlPortFile, generateSecret, type PortFileData } from '@core/stoa-ctl-port-file'
+import { writePortFile as writeCtlPortFile, deletePortFile as deleteCtlPortFile, generateSecret } from '@core/stoa-ctl-port-file'
 import { openWorkspace } from '@core/workspace-launcher'
 import { resolveRuntimePaths as resolveProviderRuntimePaths } from '@core/provider-path-resolver'
 import { readSidebarState, writeSidebarState, cleanupSidebarTempFile } from '@core/sidebar-state-store'
@@ -46,10 +41,11 @@ import type {
   CreateProjectRequest,
   CreateSessionRequest,
   OpenWorkspaceRequest,
+  SessionGraphEvent,
+  SessionNodeSnapshot,
   SessionSummary,
   SessionTitleGenerationNotification
 } from '@shared/project-session'
-import type { CreateMetaSessionRequest, MetaSessionSummary } from '@shared/meta-session'
 import type { UpdateState } from '@shared/update-state'
 import type { PtyHost } from '@core/pty-host'
 
@@ -62,12 +58,10 @@ let sessionInputRouter: SessionInputRouter | null = null
 let observationStore: InMemoryObservationStore | null = null
 let observabilityService: ObservabilityService | null = null
 let updateService: UpdateService | null = null
-let metaSessionManager: MetaSessionManager | null = null
 let evidenceStore: SessionEvidenceStore | null = null
 let hookLeaseManager: ReturnType<typeof createHookLeaseManager> | null = null
 let sessionTitleController: SessionTitleController | null = null
 const e2eWorkspaceOpenRequests: OpenWorkspaceRequest[] = []
-const metaSessionBootstrapPending = new Set<string>()
 let isQuittingAfterBridgeStop = false
 const pendingE2EPickFolders: Array<string | null> = []
 const isE2EMode = process.env.VIBECODING_E2E === '1'
@@ -357,15 +351,6 @@ function pushUpdateState(state: UpdateState): void {
   }
 }
 
-function pushMetaSessionEvent(session: MetaSessionSummary): void {
-  const win = mainWindow
-  if (!win || win.isDestroyed()) {
-    return
-  }
-
-  win.webContents.send(IPC_CHANNELS.metaSessionEvent, { session })
-}
-
 function pushTitleGenerationNotification(event: SessionTitleGenerationNotification): void {
   const win = mainWindow
   if (!win || win.isDestroyed()) {
@@ -467,9 +452,6 @@ app.whenReady().then(async () => {
     webhookPort: null,
     globalStatePath: e2eGlobalStatePath
   })
-  metaSessionManager = await MetaSessionManager.create({
-    statePath: resolveMetaSessionStateFilePath(e2eGlobalStatePath)
-  })
   observationStore = new InMemoryObservationStore()
   observabilityService = new ObservabilityService(observationStore)
   evidenceStore = new SessionEvidenceStore()
@@ -481,13 +463,7 @@ app.whenReady().then(async () => {
   sessionInputRouter = new SessionInputRouter(
     {
       getSessionType(sessionId) {
-        const projectSessionType = projectSessionManager?.snapshot().sessions.find((candidate) => candidate.id === sessionId)?.type ?? null
-        if (projectSessionType) {
-          return projectSessionType
-        }
-
-        const metaSession = metaSessionManager?.getSession(sessionId)
-        return metaSession?.backendSessionType ?? null
+        return projectSessionManager?.snapshot().sessions.find((candidate) => candidate.id === sessionId)?.type ?? null
       }
     },
     {
@@ -554,45 +530,142 @@ app.whenReady().then(async () => {
   const activeObservationStore = observationStore
   const activeObservabilityService = observabilityService
   const activeSessionInputRouter = sessionInputRouter
-  const activeMetaSessionManager = metaSessionManager
+  const sessionTokenRegistry = new Map<string, string>()
+  const sessionBootstrapPromptService = new SessionBootstrapPromptService()
+  let sessionGraphVersion = 0
   const runtimeRoot = resolveDefaultStoaRuntimeRoot()
   hookLeaseManager = createHookLeaseManager({
     runtimeRoot,
     instanceId: `stoa-${process.pid}-${Date.now()}`
   })
   const activeHookLeaseManager = hookLeaseManager
-  const metaSessionProposalStore = await MetaSessionProposalStore.create({
-    statePath: resolveMetaSessionStateFilePath(e2eGlobalStatePath)
-  })
-  const metaSessionContextAssembler = new MetaSessionContextAssembler({
-    snapshotSource: activeProjectSessionManager,
-    getSessionPresence(sessionId) {
-      return activeObservabilityService?.getSessionPresence(sessionId) ?? null
-    },
-    listSessionEvents(sessionId, options) {
-      return activeObservationStore?.listSessionEvents(sessionId, {
-        limit: options?.limit ?? 100,
-        cursor: options?.cursor,
-        categories: options?.categories,
-        includeEphemeral: options?.includeEphemeral ?? true
-      }) ?? {
-        events: [],
-        nextCursor: null
+
+  function listSessionNodeSnapshots(): SessionNodeSnapshot[] {
+    return activeProjectSessionManager.snapshot().sessions
+      .map((session) => activeProjectSessionManager.getSessionNodeSnapshot(session.id))
+      .filter((node): node is SessionNodeSnapshot => node !== null)
+  }
+
+  function buildSessionVisibilityService(): SessionVisibilityService {
+    return new SessionVisibilityService(listSessionNodeSnapshots())
+  }
+
+  function getSessionSubtreeIds(rootSessionId: string): string[] {
+    const sessions = activeProjectSessionManager.snapshot().sessions
+    const byParent = new Map<string, string[]>()
+    for (const session of sessions) {
+      if (!session.parentSessionId) {
+        continue
       }
-    },
-    async getTerminalReplay(sessionId) {
-      return await activeRuntimeController?.getTerminalReplay(sessionId) ?? ''
+      const children = byParent.get(session.parentSessionId) ?? []
+      children.push(session.id)
+      byParent.set(session.parentSessionId, children)
     }
-  })
-  const metaSessionCommandDispatcher = new MetaSessionCommandDispatcher({
-    snapshotSource: activeProjectSessionManager,
-    sessionInput: {
-      async send(sessionId, data) {
-        await activeSessionInputRouter?.send(sessionId, data)
+
+    const visited = new Set<string>()
+    const ordered: string[] = []
+    const queue = [rootSessionId]
+
+    while (queue.length > 0) {
+      const current = queue.shift()!
+      if (visited.has(current)) {
+        continue
       }
-    },
-    proposals: metaSessionProposalStore
-  })
+      visited.add(current)
+      ordered.push(current)
+      for (const childId of byParent.get(current) ?? []) {
+        queue.push(childId)
+      }
+    }
+
+    return ordered
+  }
+
+  function pushSessionGraphEvent(
+    sessionId: string,
+    options: {
+      kind?: SessionGraphEvent['kind']
+      origin?: SessionGraphEvent['origin']
+      initiatorSessionId?: string | null
+    } = {}
+  ): void {
+    const win = mainWindow
+    if (!win || win.isDestroyed()) {
+      return
+    }
+
+    const node = activeProjectSessionManager.getSessionNodeSnapshot(sessionId)
+    if (!node) {
+      return
+    }
+
+    sessionGraphVersion += 1
+    win.webContents.send(IPC_CHANNELS.sessionGraphEvent, {
+      kind: options.kind ?? 'updated',
+      graphVersion: sessionGraphVersion,
+      origin: options.origin ?? 'system',
+      initiatorSessionId: options.initiatorSessionId ?? null,
+      node
+    } satisfies SessionGraphEvent)
+  }
+
+  function pushSessionGraphEvents(
+    sessionIds: string[],
+    options: {
+      kind?: SessionGraphEvent['kind']
+      origin?: SessionGraphEvent['origin']
+      initiatorSessionId?: string | null
+    } = {}
+  ): void {
+    for (const sessionId of new Set(sessionIds)) {
+      pushSessionGraphEvent(sessionId, options)
+    }
+  }
+
+  const originalRegisterSessionToken = activeRuntimeController.registerSessionToken.bind(activeRuntimeController)
+  activeRuntimeController.registerSessionToken = (sessionId: string, token: string) => {
+    sessionTokenRegistry.set(sessionId, token)
+    originalRegisterSessionToken(sessionId, token)
+  }
+
+  const originalMarkRuntimeStarting = activeRuntimeController.markRuntimeStarting.bind(activeRuntimeController)
+  activeRuntimeController.markRuntimeStarting = async (sessionId: string, summary: string, externalSessionId: string | null) => {
+    await originalMarkRuntimeStarting(sessionId, summary, externalSessionId)
+    pushSessionGraphEvent(sessionId, { kind: 'updated', origin: 'system' })
+  }
+
+  const originalMarkRuntimeAlive = activeRuntimeController.markRuntimeAlive.bind(activeRuntimeController)
+  activeRuntimeController.markRuntimeAlive = async (sessionId: string, externalSessionId: string | null) => {
+    await originalMarkRuntimeAlive(sessionId, externalSessionId)
+    pushSessionGraphEvent(sessionId, { kind: 'updated', origin: 'system' })
+  }
+
+  const originalMarkRuntimeExited = activeRuntimeController.markRuntimeExited.bind(activeRuntimeController)
+  activeRuntimeController.markRuntimeExited = async (sessionId: string, exitCode: number | null, summary: string) => {
+    await originalMarkRuntimeExited(sessionId, exitCode, summary)
+    sessionTokenRegistry.delete(sessionId)
+    pushSessionGraphEvent(sessionId, { kind: 'updated', origin: 'system' })
+  }
+
+  const originalMarkRuntimeFailedToStart = activeRuntimeController.markRuntimeFailedToStart.bind(activeRuntimeController)
+  activeRuntimeController.markRuntimeFailedToStart = async (sessionId: string, summary: string) => {
+    await originalMarkRuntimeFailedToStart(sessionId, summary)
+    sessionTokenRegistry.delete(sessionId)
+    pushSessionGraphEvent(sessionId, { kind: 'updated', origin: 'system' })
+  }
+
+  const originalApplyProviderStatePatch = activeRuntimeController.applyProviderStatePatch.bind(activeRuntimeController)
+  activeRuntimeController.applyProviderStatePatch = async (patch: import('@shared/project-session').SessionStatePatchEvent) => {
+    await originalApplyProviderStatePatch(patch)
+    pushSessionGraphEvent(patch.sessionId, { kind: 'updated', origin: 'system' })
+  }
+
+  const originalMarkAgentTurnInterrupted = activeRuntimeController.markAgentTurnInterrupted.bind(activeRuntimeController)
+  activeRuntimeController.markAgentTurnInterrupted = async (sessionId: string, summary: string) => {
+    await originalMarkAgentTurnInterrupted(sessionId, summary)
+    pushSessionGraphEvent(sessionId, { kind: 'updated', origin: 'system' })
+  }
+
   sessionTitleController = new SessionTitleController({
     snapshotSource: activeProjectSessionManager,
     async updateSessionTitleGenerationContext(sessionId, patch) {
@@ -602,6 +675,7 @@ app.whenReady().then(async () => {
       const updated = await activeProjectSessionManager.updateSessionTitle(sessionId, title, options)
       if (updated) {
         syncObservabilityAndPushForSession(sessionId)
+        pushSessionGraphEvent(sessionId, { kind: 'updated', origin: 'system' })
       }
       return updated
     },
@@ -609,33 +683,16 @@ app.whenReady().then(async () => {
       pushTitleGenerationNotification(event)
     }
   })
-  const compositeRuntimeController = {
-    async applyProviderStatePatch(patch: import('@shared/project-session').SessionStatePatchEvent) {
-      if (activeMetaSessionManager?.hasSession(patch.sessionId)) {
-        const metaSession = activeMetaSessionManager.getSession(patch.sessionId)
-        if (!metaSession) {
-          return
-        }
-
-        await activeMetaSessionManager.updateSession(
-          patch.sessionId,
-          deriveMetaSessionProviderSessionPatch(metaSession, patch)
-        )
-        const next = activeMetaSessionManager.getSession(patch.sessionId)
-        if (next) {
-          pushMetaSessionEvent(next)
-        }
-        return
-      }
-
-      await activeRuntimeController.applyProviderStatePatch(patch)
-      if (patch.intent === 'agent.turn_completed') {
-        await sessionTitleController?.maybeAutoGenerateForCompletedTurn(patch.sessionId)
-      }
+  const originalApplyProviderPatchWithTitle = activeRuntimeController.applyProviderStatePatch.bind(activeRuntimeController)
+  activeRuntimeController.applyProviderStatePatch = async (patch: import('@shared/project-session').SessionStatePatchEvent) => {
+    await originalApplyProviderPatchWithTitle(patch)
+    if (patch.intent === 'agent.turn_completed') {
+      await sessionTitleController?.maybeAutoGenerateForCompletedTurn(patch.sessionId)
     }
   }
-  const metaSessionCtlSecret = generateSecret()
-  sessionEventBridge = new SessionEventBridge(activeProjectSessionManager, compositeRuntimeController, activeObservabilityService, {
+
+  const ctlSecret = generateSecret()
+  sessionEventBridge = new SessionEventBridge(activeProjectSessionManager, activeRuntimeController, activeObservabilityService, {
     captureEvidence: false,
     captureObservation(event) {
       return sessionTitleController?.captureObservation(event)
@@ -644,78 +701,74 @@ app.whenReady().then(async () => {
       ? async (input) => await activeHookLeaseManager.authorizeHookRequest(input)
       : undefined,
     getSessionBootstrapPrompt(sessionId: string) {
-      if (!metaSessionBootstrapPending.has(sessionId)) {
+      const session = activeProjectSessionManager.snapshot().sessions.find((candidate) => candidate.id === sessionId)
+      if (!session) {
         return null
       }
-      if (!activeMetaSessionManager?.hasSession(sessionId)) {
-        metaSessionBootstrapPending.delete(sessionId)
-        return null
-      }
-      const session = activeMetaSessionManager.getSession(sessionId)
-      if (!session || session.backendSessionType !== 'codex') {
-        metaSessionBootstrapPending.delete(sessionId)
-        return null
-      }
-      metaSessionBootstrapPending.delete(sessionId)
-      return buildMetaSessionBootstrapPrompt()
+      return sessionBootstrapPromptService.getPrompt(session.type)
     },
     configureServerApp(app) {
-      const metaSessionControlServer = createMetaSessionControlServer({
-        app,
-        metaSessionSource: {
-          snapshot() {
-            return activeMetaSessionManager!.snapshot()
-          },
-          getSession(sessionId: string) {
-            return activeMetaSessionManager!.getSession(sessionId)
-          },
-          async createSession(request: CreateMetaSessionRequest) {
-            const created = await createMetaSessionWithRuntime(request)
-            if (!created) {
-              throw new Error('Meta session creation is unavailable.')
-            }
-            return created
-          },
-          async setActiveSession(sessionId: string) {
-            await setActiveMetaSessionWithEvent(sessionId)
-          },
-          async archiveSession(sessionId: string) {
-            await archiveMetaSessionWithRuntime(sessionId)
-          },
-          async restoreSession(sessionId: string) {
-            await restoreMetaSessionWithRuntime(sessionId)
+      const sessionControlServer = createSessionControlServer({
+        getSnapshot() {
+          return listSessionNodeSnapshots()
+        },
+        visibilityService: buildSessionVisibilityService(),
+        sessionInput: {
+          async send(sessionId: string, data: string) {
+            await activeSessionInputRouter?.send(sessionId, data)
           }
         },
-        snapshotSource: activeProjectSessionManager,
-        getSessionPresence(sessionId) {
-          return activeObservabilityService?.getSessionPresence(sessionId) ?? null
-        },
-        contextAssembler: metaSessionContextAssembler,
-        dispatcher: metaSessionCommandDispatcher,
-        proposals: metaSessionProposalStore,
-        workSessionLifecycle: {
-          async createSession(request) {
-            if (!projectSessionManager) {
-              throw new Error('Session manager is unavailable.')
-            }
+        async createChildSession(request) {
+          const resolvedProjectId = request.projectId
+            || (request.parentId
+              ? activeProjectSessionManager.getSessionNodeSnapshot(request.parentId)?.session.projectId ?? ''
+              : '')
+          if (!resolvedProjectId) {
+            throw new Error('Work session creation requires a project id.')
+          }
 
-            const created = await createWorkSessionWithRuntime({
-              projectId: request.projectId,
-              type: request.type,
-              title: request.title ?? ''
-            })
-            if (!created) {
-              throw new Error('Work session creation is unavailable.')
-            }
-            return created
-          },
-          async archiveSession(sessionId: string) {
-            return await archiveWorkSessionWithRuntime(sessionId)
+          const origin: SessionGraphEvent['origin'] = request.parentId && !request.projectId
+            ? 'session'
+            : 'local-cli'
+          const initiatorSessionId = request.parentId && !request.projectId
+            ? request.parentId
+            : null
+
+          const created = await createWorkSessionWithRuntime({
+            projectId: resolvedProjectId,
+            type: request.type,
+            title: request.title ?? '',
+            parentSessionId: request.parentId || null,
+            createdBySessionId: request.parentId || null
+          }, {
+            graphOrigin: origin,
+            initiatorSessionId,
+            preserveActiveSession: true
+          })
+          if (!created) {
+            throw new Error('Work session creation is unavailable.')
           }
+          return created
         },
-        ctlSecret: metaSessionCtlSecret
+        async destroySession(sessionId: string) {
+          await archiveWorkSessionWithRuntime(sessionId, {
+            graphKind: 'archived',
+            graphOrigin: 'system',
+            initiatorSessionId: null
+          })
+        },
+        ctlSecret,
+        sessionTokenRegistry
       })
-      void metaSessionControlServer
+      app.use(sessionControlServer.app)
+
+      const legacyControlPlaneHooks = {
+        workSessionLifecycle: {
+          createSession: createWorkSessionWithRuntime,
+          archiveSession: archiveWorkSessionWithRuntime
+        }
+      }
+      void legacyControlPlaneHooks
     }
   })
   updateService = new UpdateService({
@@ -745,12 +798,10 @@ app.whenReady().then(async () => {
   const webhookPort = await sessionEventBridge.start()
 
   async function refreshCtlPortFile(): Promise<void> {
-    const snapshot = metaSessionManager?.snapshot()
     await writeCtlPortFile({
       port: webhookPort,
       pid: process.pid,
-      activeMetaSessionId: snapshot?.activeMetaSessionId ?? null,
-      secret: metaSessionCtlSecret,
+      secret: ctlSecret,
       startedAt: new Date().toISOString()
     })
   }
@@ -812,6 +863,19 @@ app.whenReady().then(async () => {
         rememberSessionDimensions(sessionId, initialDimensions)
       }
 
+      const stoaCtlShim = await ensureStoaCtlShim({
+        binDir: join(app.getPath('userData'), 'bin'),
+        appRootPath: app.getAppPath(),
+        appExecutablePath: process.execPath,
+        isPackaged: app.isPackaged
+      })
+
+      void ensureStoaCtlSystemShim({
+        appRootPath: app.getAppPath(),
+        appExecutablePath: process.execPath,
+        isPackaged: app.isPackaged
+      })
+
       sessionInputRouter?.resetSession(sessionId)
       const launched = await launchTrackedSessionRuntime({
         sessionId,
@@ -820,9 +884,15 @@ app.whenReady().then(async () => {
         ptyHost,
         runtimeController,
         sessionEventBridge,
-      hookLeaseManager: activeHookLeaseManager,
+        hookLeaseManager: activeHookLeaseManager,
         resolveRuntimePaths,
         initialDimensions,
+        commandEnv: buildSessionCommandEnv({
+          sessionId,
+          sessionToken: activeRuntimeController.getSessionToken(sessionId) ?? '',
+          webhookPort,
+          stoaCtlBinDir: stoaCtlShim.binDir
+        }),
         launchToken,
         isLaunchTokenCurrent: (candidateLaunchToken) => isSessionLaunchTokenCurrent(sessionId, candidateLaunchToken),
         requireExternalSessionIdForResume: options?.requireExternalSessionIdForResume
@@ -842,253 +912,102 @@ app.whenReady().then(async () => {
     }
   }
 
-  function buildMetaSessionBootstrapPrompt(): string {
-    return META_SESSION_BOOTSTRAP_PROMPT
-  }
-
-  async function launchMetaSessionRuntimeWithGuard(
-    sessionId: string,
-    source: 'meta-session-create' | 'meta-session-restore'
-  ): Promise<boolean> {
-    if (!metaSessionManager || !ptyHost || !runtimeController || !sessionEventBridge || !projectSessionManager) {
-      return false
-    }
-
-    const metaSession = metaSessionManager.getSession(sessionId)
-    if (!metaSession) {
-      return false
-    }
-
-    const metaSessionBinDir = join(app.getPath('userData'), 'bin')
-    const stoaCtlShim = await ensureStoaCtlShim({
-      binDir: metaSessionBinDir,
-      appRootPath: app.getAppPath(),
-      appExecutablePath: process.execPath,
-      isPackaged: app.isPackaged
-    })
-
-    void ensureStoaCtlSystemShim({
-      appRootPath: app.getAppPath(),
-      appExecutablePath: process.execPath,
-      isPackaged: app.isPackaged
-    })
-
-    const workingDirectory = projectSessionManager.snapshot().projects[0]?.path ?? process.cwd()
-    const runtimeManager = {
-      snapshot() {
-        return {
-          activeProjectId: 'stoa-meta-session',
-          activeSessionId: sessionId,
-          terminalWebhookPort: projectSessionManager?.snapshot().terminalWebhookPort ?? null,
-          projects: [{
-            id: 'stoa-meta-session',
-            name: 'Meta Session',
-            path: workingDirectory,
-            createdAt: metaSession.createdAt,
-            updatedAt: metaSession.updatedAt
-          }],
-          sessions: [{
-            id: metaSession.id,
-            projectId: 'stoa-meta-session',
-            type: metaSession.backendSessionType,
-            runtimeState: metaSession.status === 'failed'
-              ? 'failed_to_start'
-              : metaSession.status === 'closed'
-                ? 'exited'
-                : metaSession.status === 'created'
-                  ? 'created'
-                  : metaSession.status === 'starting'
-                    ? 'starting'
-                    : 'alive',
-            turnState: metaSession.status === 'running' ? 'running' : 'idle',
-            turnEpoch: 0,
-            lastTurnOutcome: 'none' as const,
-            hasUnseenCompletion: false,
-            runtimeExitCode: null,
-            runtimeExitReason: metaSession.status === 'closed' ? 'clean' : null,
-            lastStateSequence: 0,
-            blockingReason: metaSession.status === 'waiting_approval' ? 'permission' : null,
-            failureReason: metaSession.status === 'failed' ? 'failed_to_start' : null,
-            title: metaSession.title,
-            summary: metaSession.lastSummary,
-            recoveryMode: 'resume-external' as const,
-            externalSessionId: metaSession.backendSessionId,
-            createdAt: metaSession.createdAt,
-            updatedAt: metaSession.updatedAt,
-            lastActivatedAt: metaSession.lastActivatedAt,
-            archived: false
-          }]
-        }
-      }
-    }
-
-    const runtimeHooks = {
-      async markRuntimeStarting(targetSessionId: string, summary: string, externalSessionId: string | null) {
-        await metaSessionManager?.updateSession(targetSessionId, {
-          status: 'starting',
-          lastSummary: summary,
-          backendSessionId: externalSessionId
-        })
-        const next = metaSessionManager?.getSession(targetSessionId)
-        if (next) {
-          pushMetaSessionEvent(next)
-        }
-      },
-      async markRuntimeAlive(targetSessionId: string, externalSessionId: string | null) {
-        await metaSessionManager?.updateSession(targetSessionId, {
-          status: 'running',
-          backendSessionId: externalSessionId
-        })
-        const next = metaSessionManager?.getSession(targetSessionId)
-        if (next) {
-          pushMetaSessionEvent(next)
-        }
-      },
-      async markRuntimeExited(targetSessionId: string, _exitCode: number | null, summary: string) {
-        await metaSessionManager?.updateSession(targetSessionId, {
-          status: 'idle',
-          lastSummary: summary
-        })
-        const next = metaSessionManager?.getSession(targetSessionId)
-        if (next) {
-          pushMetaSessionEvent(next)
-        }
-      },
-      async markRuntimeFailedToStart(targetSessionId: string, summary: string) {
-        await metaSessionManager?.updateSession(targetSessionId, {
-          status: 'failed',
-          lastSummary: summary
-        })
-        const next = metaSessionManager?.getSession(targetSessionId)
-        if (next) {
-          pushMetaSessionEvent(next)
-        }
-      },
-      async appendTerminalData(chunk: { sessionId: string; data: string }) {
-        await runtimeController?.appendTerminalData(chunk)
-      }
-    }
-
-    sessionInputRouter?.resetSession(sessionId)
-    const isCreate = source === 'meta-session-create'
-    const bootstrapPrompt = isCreate ? buildMetaSessionBootstrapPrompt() : undefined
-    const isClaudeCode = metaSession.backendSessionType === 'claude-code'
-    const isOpenCode = metaSession.backendSessionType === 'opencode'
-    const hookLease = await activeHookLeaseManager?.ensureLease({
-      sessionId,
-      projectId: 'stoa-meta-session',
-      sessionType: metaSession.backendSessionType,
-      webhookBaseUrl: `http://127.0.0.1:${projectSessionManager.snapshot().terminalWebhookPort ?? webhookPort}`
-    })
-    const sessionSecret = hookLease?.lease.sessionSecret
-      ?? activeHookLeaseManager?.debugSnapshotSessionSecrets()[sessionId]
-      ?? sessionEventBridge.issueSessionSecret(sessionId)
-
-    if (isCreate) {
-      metaSessionBootstrapPending.add(sessionId)
-    }
-
-    const launched = await launchTrackedSessionRuntime({
-      sessionId,
-      manager: runtimeManager as never,
-      webhookPort,
-      ptyHost,
-      runtimeController: runtimeHooks as never,
-      sessionEventBridge,
-      hookLeaseManager: activeHookLeaseManager,
-      resolveRuntimePaths,
-      initialDimensions: { cols: 120, rows: 30 },
-      commandEnv: buildMetaSessionCommandEnv({
-        sessionId,
-        webhookPort,
-        stoaCtlBinDir: stoaCtlShim.binDir
-      }),
-      initialPrompt: isCreate && isClaudeCode ? bootstrapPrompt : undefined
-    })
-
-    if (launched && isCreate && isOpenCode && bootstrapPrompt) {
-      setTimeout(() => {
-        void sessionInputRouter?.send(sessionId, `${bootstrapPrompt}\r`)
-      }, 2000)
-    }
-
-    return launched
-  }
-
-  async function createMetaSessionWithRuntime(payload: CreateMetaSessionRequest): Promise<MetaSessionSummary | null> {
-    const created = await metaSessionManager?.createSession(payload)
-    if (!created) {
-      return null
-    }
-
-    pushMetaSessionEvent(created)
-    void launchMetaSessionRuntimeWithGuard(created.id, 'meta-session-create')
-    return created
-  }
-
-  async function setActiveMetaSessionWithEvent(sessionId: string): Promise<void> {
-    await metaSessionManager?.setActiveSession(sessionId)
-    const session = metaSessionManager?.getSession(sessionId)
-    if (session) {
-      pushMetaSessionEvent(session)
-    }
-    await refreshCtlPortFile()
-  }
-
-  async function archiveMetaSessionWithRuntime(sessionId: string): Promise<MetaSessionSummary | null> {
-    sessionInputRouter?.resetSession(sessionId)
-    await ptyHost?.killAndWait(sessionId)
-    await hookLeaseManager?.releaseLease(sessionId)
-    await metaSessionManager?.archiveSession(sessionId)
-    const session = metaSessionManager?.getSession(sessionId) ?? null
-    if (session) {
-      pushMetaSessionEvent(session)
-    }
-    await refreshCtlPortFile()
-    return session
-  }
-
-  async function restoreMetaSessionWithRuntime(sessionId: string): Promise<MetaSessionSummary | null> {
-    sessionInputRouter?.resetSession(sessionId)
-    await metaSessionManager?.restoreSession(sessionId)
-    const session = metaSessionManager?.getSession(sessionId) ?? null
-    if (session) {
-      pushMetaSessionEvent(session)
-      void launchMetaSessionRuntimeWithGuard(sessionId, 'meta-session-restore')
-    }
-    return session
-  }
-
-  async function createWorkSessionWithRuntime(payload: CreateSessionRequest): Promise<SessionSummary | null> {
+  async function createWorkSessionWithRuntime(
+    payload: CreateSessionRequest,
+    options: {
+      graphOrigin?: SessionGraphEvent['origin']
+      initiatorSessionId?: string | null
+      preserveActiveSession?: boolean
+    } = {}
+  ): Promise<SessionSummary | null> {
+    const previousActiveSessionId = projectSessionManager?.snapshot().activeSessionId ?? null
     const session = await projectSessionManager?.createSession(payload)
     if (!session) {
       return null
     }
 
-    syncObservabilityAndPushForSession(session.id)
+    if (options.preserveActiveSession && previousActiveSessionId && previousActiveSessionId !== session.id) {
+      await projectSessionManager?.setActiveSession(previousActiveSessionId)
+    }
+
+    syncObservabilitySessions()
+    const observabilityFocusSessionId = options.preserveActiveSession && previousActiveSessionId
+      ? previousActiveSessionId
+      : session.id
+    pushObservabilitySnapshotsForSession(observabilityFocusSessionId)
+    pushSessionGraphEvent(session.id, {
+      kind: 'created',
+      origin: options.graphOrigin ?? 'renderer',
+      initiatorSessionId: options.initiatorSessionId ?? null
+    })
     await syncUpdateStateToWindow()
     void launchSessionRuntimeWithGuard(session.id, 'session-create', { awaitDimensions: true })
     return session
   }
 
-  async function archiveWorkSessionWithRuntime(sessionId: string): Promise<SessionSummary | null> {
+  async function archiveWorkSessionWithRuntime(
+    sessionId: string,
+    options: {
+      graphKind?: SessionGraphEvent['kind']
+      graphOrigin?: SessionGraphEvent['origin']
+      initiatorSessionId?: string | null
+    } = {}
+  ): Promise<SessionSummary | null> {
     if (!projectSessionManager || !ptyHost) {
       return null
     }
 
-    const session = projectSessionManager.snapshot().sessions.find((candidate) => candidate.id === sessionId)
-    if (!session) {
+    const subtreeSessionIds = getSessionSubtreeIds(sessionId)
+    if (subtreeSessionIds.length === 0) {
       return null
     }
 
-    sessionInputRouter?.resetSession(sessionId)
-    await ptyHost.killAndWait(sessionId)
-    await hookLeaseManager?.releaseLease(sessionId)
+    for (const subtreeSessionId of subtreeSessionIds) {
+      sessionInputRouter?.resetSession(subtreeSessionId)
+      await ptyHost.killAndWait(subtreeSessionId)
+      await hookLeaseManager?.releaseLease(subtreeSessionId)
+      sessionTokenRegistry.delete(subtreeSessionId)
+      activeRuntimeController.invalidateSessionToken(subtreeSessionId)
+    }
+
     await projectSessionManager.archiveSession(sessionId)
     syncObservabilitySessions()
-    pushObservabilitySnapshotsForSession(sessionId)
+    const nextActiveSessionId = projectSessionManager.snapshot().activeSessionId
+    if (nextActiveSessionId) {
+      pushObservabilitySnapshotsForSession(nextActiveSessionId)
+    }
+    pushSessionGraphEvents(subtreeSessionIds, {
+      kind: options.graphKind ?? 'archived',
+      origin: options.graphOrigin ?? 'renderer',
+      initiatorSessionId: options.initiatorSessionId ?? null
+    })
     await syncUpdateStateToWindow()
     return projectSessionManager.snapshot().sessions.find((candidate) => candidate.id === sessionId) ?? null
+  }
+
+  async function restoreWorkSessionWithRuntime(
+    sessionId: string,
+    options: {
+      graphOrigin?: SessionGraphEvent['origin']
+      initiatorSessionId?: string | null
+    } = {}
+  ): Promise<void> {
+    if (!projectSessionManager || !ptyHost || !runtimeController || !sessionEventBridge) {
+      return
+    }
+
+    const subtreeSessionIds = getSessionSubtreeIds(sessionId)
+    sessionInputRouter?.resetSession(sessionId)
+    await projectSessionManager.restoreSession(sessionId)
+    syncObservabilitySessions()
+    pushObservabilitySnapshotsForSession(sessionId)
+    pushSessionGraphEvents(subtreeSessionIds, {
+      kind: 'restored',
+      origin: options.graphOrigin ?? 'renderer',
+      initiatorSessionId: options.initiatorSessionId ?? null
+    })
+    await syncUpdateStateToWindow()
+    void launchSessionRuntimeWithGuard(sessionId, 'session-restore')
   }
 
   async function runPackagedSmoke(): Promise<void> {
@@ -1295,7 +1214,11 @@ app.whenReady().then(async () => {
   })
 
   ipcMain.handle(IPC_CHANNELS.sessionCreate, async (_event, payload: CreateSessionRequest) => {
-    const session = await createWorkSessionWithRuntime(payload)
+    const session = await createWorkSessionWithRuntime(payload, {
+      graphOrigin: 'renderer',
+      initiatorSessionId: null,
+      preserveActiveSession: false
+    })
     if (!session) {
       console.log('[session-create] Aborted: no session was created.')
       return null
@@ -1501,7 +1424,11 @@ app.whenReady().then(async () => {
   })
 
   ipcMain.handle(IPC_CHANNELS.sessionArchive, async (_event, sessionId: string) => {
-    await archiveWorkSessionWithRuntime(sessionId)
+    await archiveWorkSessionWithRuntime(sessionId, {
+      graphKind: 'archived',
+      graphOrigin: 'renderer',
+      initiatorSessionId: null
+    })
   })
 
   ipcMain.handle(IPC_CHANNELS.sessionRegenerateTitle, async (_event, sessionId: string) => {
@@ -1509,15 +1436,10 @@ app.whenReady().then(async () => {
   })
 
   ipcMain.handle(IPC_CHANNELS.sessionRestore, async (_event, sessionId: string) => {
-    if (!projectSessionManager || !ptyHost || !runtimeController || !sessionEventBridge) {
-      return
-    }
-
-    sessionInputRouter?.resetSession(sessionId)
-    await projectSessionManager.restoreSession(sessionId)
-    syncObservabilityAndPushForSession(sessionId)
-    await syncUpdateStateToWindow()
-    void launchSessionRuntimeWithGuard(sessionId, 'session-restore')
+    await restoreWorkSessionWithRuntime(sessionId, {
+      graphOrigin: 'renderer',
+      initiatorSessionId: null
+    })
   })
 
   ipcMain.handle(IPC_CHANNELS.sessionRestart, async (_event, sessionId: string) => {
@@ -1560,107 +1482,6 @@ app.whenReady().then(async () => {
 
   ipcMain.handle(IPC_CHANNELS.sessionListArchived, async () => {
     return projectSessionManager?.getArchivedSessions() ?? []
-  })
-
-  ipcMain.handle(IPC_CHANNELS.metaSessionBootstrap, async () => {
-    const snapshot = metaSessionManager?.snapshot()
-    return {
-      activeMetaSessionId: snapshot?.activeMetaSessionId ?? null,
-      sessions: snapshot?.sessions ?? [],
-      inspectorTarget: snapshot?.inspectorTarget ?? { kind: 'app' }
-    }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.metaSessionCreate, async (_event, payload: CreateMetaSessionRequest) => {
-    return await createMetaSessionWithRuntime(payload)
-  })
-
-  ipcMain.handle(IPC_CHANNELS.metaSessionSetActive, async (_event, sessionId: string) => {
-    await setActiveMetaSessionWithEvent(sessionId)
-  })
-
-  ipcMain.handle(IPC_CHANNELS.metaSessionArchive, async (_event, sessionId: string) => {
-    await archiveMetaSessionWithRuntime(sessionId)
-  })
-
-  ipcMain.handle(IPC_CHANNELS.metaSessionRestore, async (_event, sessionId: string) => {
-    await restoreMetaSessionWithRuntime(sessionId)
-  })
-
-  ipcMain.handle(IPC_CHANNELS.metaSessionProposalList, async () => {
-    return metaSessionProposalStore.list()
-  })
-
-  ipcMain.handle(IPC_CHANNELS.metaSessionProposalGet, async (_event, proposalId: string) => {
-    return metaSessionProposalStore.get(proposalId)
-  })
-
-  ipcMain.handle(IPC_CHANNELS.metaSessionProposalApprove, async (_event, proposalId: string) => {
-    const proposal = await metaSessionProposalStore.markApproved(proposalId)
-    const metaSessionId = proposal?.metaSessionId
-    if (proposal && metaSessionId) {
-      const nextCount = metaSessionProposalStore.list().filter((candidate) => {
-        return candidate.metaSessionId === metaSessionId && candidate.status === 'pending_approval'
-      }).length
-      await metaSessionManager?.updateSession(metaSessionId, {
-        pendingProposalCount: nextCount
-      })
-      const session = metaSessionManager?.getSession(metaSessionId)
-      if (session) {
-        pushMetaSessionEvent({
-          ...session,
-          pendingProposalCount: nextCount
-        })
-      }
-    }
-    return proposal
-  })
-
-  ipcMain.handle(IPC_CHANNELS.metaSessionProposalReject, async (_event, proposalId: string, reason?: string) => {
-    const proposal = await metaSessionProposalStore.markRejected(proposalId, reason)
-    const metaSessionId = proposal?.metaSessionId
-    if (proposal && metaSessionId) {
-      const nextCount = metaSessionProposalStore.list().filter((candidate) => {
-        return candidate.metaSessionId === metaSessionId && candidate.status === 'pending_approval'
-      }).length
-      await metaSessionManager?.updateSession(metaSessionId, {
-        pendingProposalCount: nextCount
-      })
-      const session = metaSessionManager?.getSession(metaSessionId)
-      if (session) {
-        pushMetaSessionEvent({
-          ...session,
-          pendingProposalCount: nextCount
-        })
-      }
-    }
-    return proposal
-  })
-
-  ipcMain.handle(IPC_CHANNELS.metaSessionProposalDispatch, async (_event, proposalId: string) => {
-    await metaSessionCommandDispatcher.dispatchProposal(proposalId)
-    const proposal = metaSessionProposalStore.get(proposalId)
-    const metaSessionId = proposal?.metaSessionId
-    if (proposal && metaSessionId) {
-      const nextCount = metaSessionProposalStore.list().filter((candidate) => {
-        return candidate.metaSessionId === metaSessionId && candidate.status === 'pending_approval'
-      }).length
-      await metaSessionManager?.updateSession(metaSessionId, {
-        pendingProposalCount: nextCount
-      })
-      const session = metaSessionManager?.getSession(metaSessionId)
-      if (session) {
-        pushMetaSessionEvent({
-          ...session,
-          pendingProposalCount: nextCount
-        })
-      }
-    }
-    return proposal
-  })
-
-  ipcMain.handle(IPC_CHANNELS.metaSessionInspectorSetTarget, async (_event, target) => {
-    await metaSessionManager?.setInspectorTarget(target)
   })
 
   ipcMain.handle(IPC_CHANNELS.updateGetState, async () => {
@@ -1749,10 +1570,6 @@ app.whenReady().then(async () => {
 
   for (const plan of projectSessionManager.buildBootstrapRecoveryPlan()) {
     void launchSessionRuntimeWithGuard(plan.sessionId, 'bootstrap-recovery')
-  }
-
-  for (const plan of metaSessionManager?.buildBootstrapRecoveryPlan() ?? []) {
-    void launchMetaSessionRuntimeWithGuard(plan.sessionId, 'meta-session-restore')
   }
 
   app.on('activate', () => {

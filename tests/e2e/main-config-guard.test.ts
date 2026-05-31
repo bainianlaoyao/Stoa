@@ -190,53 +190,26 @@ describe('E2E: Main Process Config Guard', () => {
       expect(mainSource).not.toContain('${STOA_SESSION_SECRET}')
     })
 
-    it('meta-session archive and restore helpers reset the session input router before changing runtime state', () => {
-      const archiveBody = extractNamedFunctionBody(mainSource, 'archiveMetaSessionWithRuntime')
-      const restoreBody = extractNamedFunctionBody(mainSource, 'restoreMetaSessionWithRuntime')
-
-      expect(archiveBody, 'Could not find archiveMetaSessionWithRuntime').not.toBeNull()
-      expect(restoreBody, 'Could not find restoreMetaSessionWithRuntime').not.toBeNull()
-      expect(archiveBody!).toMatch(/sessionInputRouter\?\.resetSession\(sessionId\)/)
-      expect(restoreBody!).toMatch(/sessionInputRouter\?\.resetSession\(sessionId\)/)
+    it('main/index.ts cuts over to the unified session command env and bootstrap prompt service', () => {
+      expect(mainSource).toContain("from '@core/session-command-env'")
+      expect(mainSource).toContain("from '@core/session-bootstrap-prompt-service'")
+      expect(mainSource).toContain('buildSessionCommandEnv(')
+      expect(mainSource).toContain('SessionBootstrapPromptService')
+      expect(mainSource).not.toContain("from '@core/meta-session-command-env'")
+      expect(mainSource).not.toContain("from '@core/meta-session-bootstrap-prompt'")
+      expect(mainSource).not.toContain('buildMetaSessionCommandEnv(')
+      expect(mainSource).not.toContain('buildMetaSessionBootstrapPrompt(')
+      expect(mainSource).not.toContain('launchMetaSessionRuntimeWithGuard(')
     })
 
-    it('meta-session bootstrap prompt is imported from shared module', () => {
-      expect(mainSource).toMatch(/META_SESSION_BOOTSTRAP_PROMPT/)
-      expect(mainSource).toContain("from '@core/meta-session-bootstrap-prompt'")
-
-      const bootstrapBody = extractNamedFunctionBody(mainSource, 'buildMetaSessionBootstrapPrompt')
-      expect(bootstrapBody, 'Could not find buildMetaSessionBootstrapPrompt').not.toBeNull()
-      expect(bootstrapBody!).toContain('return META_SESSION_BOOTSTRAP_PROMPT')
-    })
-
-    it('shared bootstrap prompt module enforces content-over-metadata rule', async () => {
-      const promptModule = await import('@core/meta-session-bootstrap-prompt')
-      const prompt = promptModule.META_SESSION_BOOTSTRAP_PROMPT as string
-
-      expect(prompt).toContain('METADATA IS NOT CONTENT')
-      expect(prompt).toContain('stoa-ctl work-sessions context <id> --level slim')
-      expect(prompt).toContain('stoa-ctl work-sessions context <id> --level full')
-      expect(prompt).toContain('stoa-ctl work-sessions send-keys <id> ...')
-      expect(prompt).toContain('fetch context for EVERY relevant session before answering')
-      expect(prompt).toContain('Always trust content over status')
-    })
-
-    it('wires work-session lifecycle control routes to host-owned create and archive flows', () => {
-      expect(mainSource).toMatch(/workSessionLifecycle\s*:\s*\{/)
-      expect(mainSource).toMatch(/createWorkSessionWithRuntime/)
-      expect(mainSource).toMatch(/archiveWorkSessionWithRuntime/)
-      expect(mainSource).toMatch(/await ptyHost\.killAndWait\(sessionId\)/)
-      expect(mainSource).toMatch(/await projectSessionManager\.archiveSession\(sessionId\)/)
-    })
-
-    it('initializes ctlSecret before the shared webhook server starts', () => {
-      const ctlSecretIndex = mainSource.indexOf('const metaSessionCtlSecret = generateSecret()')
+    it('initializes a unified ctlSecret before the shared webhook server starts', () => {
+      const ctlSecretIndex = mainSource.indexOf('const ctlSecret = generateSecret()')
       const bridgeStartIndex = mainSource.indexOf('const webhookPort = await sessionEventBridge.start()')
 
       expect(ctlSecretIndex, 'Could not find ctlSecret initialization in main/index.ts').toBeGreaterThan(-1)
       expect(bridgeStartIndex, 'Could not find shared webhook server startup in main/index.ts').toBeGreaterThan(-1)
       expect(ctlSecretIndex).toBeLessThan(bridgeStartIndex)
-      expect(mainSource).toContain('ctlSecret: metaSessionCtlSecret')
+      expect(mainSource).toContain('ctlSecret')
     })
   })
 
@@ -263,17 +236,6 @@ describe('E2E: Main Process Config Guard', () => {
         ['restoreSession', 'sessionRestore'],
         ['restartSession', 'sessionRestart'],
         ['listArchivedSessions', 'sessionListArchived'],
-        ['getMetaSessionBootstrapState', 'metaSessionBootstrap'],
-        ['createMetaSession', 'metaSessionCreate'],
-        ['setActiveMetaSession', 'metaSessionSetActive'],
-        ['archiveMetaSession', 'metaSessionArchive'],
-        ['restoreMetaSession', 'metaSessionRestore'],
-        ['listMetaSessionProposals', 'metaSessionProposalList'],
-        ['getMetaSessionProposal', 'metaSessionProposalGet'],
-        ['approveMetaSessionProposal', 'metaSessionProposalApprove'],
-        ['rejectMetaSessionProposal', 'metaSessionProposalReject'],
-        ['dispatchMetaSessionProposal', 'metaSessionProposalDispatch'],
-        ['setMetaSessionInspectorTarget', 'metaSessionInspectorSetTarget'],
         ['getSettings', 'settingsGet'],
         ['setSetting', 'settingsSet'],
         ['titleGenerationFetchModels', 'titleGenerationFetchModels'],
@@ -432,17 +394,6 @@ describe('E2E: Main Process Config Guard', () => {
         'restoreSession',
         'restartSession',
         'listArchivedSessions',
-        'getMetaSessionBootstrapState',
-        'createMetaSession',
-        'setActiveMetaSession',
-        'archiveMetaSession',
-        'restoreMetaSession',
-        'listMetaSessionProposals',
-        'getMetaSessionProposal',
-        'approveMetaSessionProposal',
-        'rejectMetaSessionProposal',
-        'dispatchMetaSessionProposal',
-        'setMetaSessionInspectorTarget',
         'getUpdateState',
         'checkForUpdates',
         'downloadUpdate',
@@ -547,17 +498,6 @@ describe('E2E: Main Process Config Guard', () => {
       expect(invMap.get('restoreSession')).toBe('session:restore')
       expect(invMap.get('restartSession')).toBe('session:restart')
       expect(invMap.get('listArchivedSessions')).toBe('session:list-archived')
-      expect(invMap.get('getMetaSessionBootstrapState')).toBe('meta-session:bootstrap')
-      expect(invMap.get('createMetaSession')).toBe('meta-session:create')
-      expect(invMap.get('setActiveMetaSession')).toBe('meta-session:set-active')
-      expect(invMap.get('archiveMetaSession')).toBe('meta-session:archive')
-      expect(invMap.get('restoreMetaSession')).toBe('meta-session:restore')
-      expect(invMap.get('listMetaSessionProposals')).toBe('meta-session:proposal-list')
-      expect(invMap.get('getMetaSessionProposal')).toBe('meta-session:proposal-get')
-      expect(invMap.get('approveMetaSessionProposal')).toBe('meta-session:proposal-approve')
-      expect(invMap.get('rejectMetaSessionProposal')).toBe('meta-session:proposal-reject')
-      expect(invMap.get('dispatchMetaSessionProposal')).toBe('meta-session:proposal-dispatch')
-      expect(invMap.get('setMetaSessionInspectorTarget')).toBe('meta-session:inspector-set-target')
       expect(invMap.get('getUpdateState')).toBe('update:get-state')
       expect(invMap.get('checkForUpdates')).toBe('update:check')
       expect(invMap.get('downloadUpdate')).toBe('update:download')
@@ -593,6 +533,9 @@ describe('E2E: Main Process Config Guard', () => {
       expect(constants.get('memoryNotification')).toBe('memory:notification')
       expect(constants.get('sessionBinaryInput')).toBe('session:binary-input')
       expect(constants.get('titleGenerationNotification')).toBe('title-generation:notification')
+      expect(constants.get('sessionGraphEvent')).toBe('session:graph-event')
+      expect(constants.has('metaSessionBootstrap')).toBe(false)
+      expect(constants.has('metaSessionEvent')).toBe(false)
     })
 
     it('IPC_CHANNELS defines sidebar and filesystem channel constants with expected names', () => {
@@ -648,8 +591,9 @@ describe('E2E: Main Process Config Guard', () => {
       expect(preloadSource).toMatch(/ipcRenderer\.on\(\s*IPC_CHANNELS\.updateState/)
     })
 
-    it('preload registers listener for meta-session:event channel', () => {
-      expect(preloadSource).toMatch(/ipcRenderer\.on\(\s*IPC_CHANNELS\.metaSessionEvent/)
+    it('preload registers listener for session:graph-event channel', () => {
+      expect(preloadSource).toMatch(/ipcRenderer\.on\(\s*IPC_CHANNELS\.sessionGraphEvent/)
+      expect(preloadSource).not.toMatch(/ipcRenderer\.on\(\s*IPC_CHANNELS\.metaSessionEvent/)
     })
 
     it('preload registers listener for memory:notification channel', () => {

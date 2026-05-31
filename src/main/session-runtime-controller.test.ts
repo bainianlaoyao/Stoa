@@ -71,7 +71,7 @@ describe('SessionRuntimeController', () => {
     manager = await ProjectSessionManager.create({ webhookPort: null, globalStatePath })
   })
 
-  test('applyProviderStatePatch pushes session event and presence snapshots', async () => {
+  test('applyProviderStatePatch pushes presence snapshots without legacy session:event', async () => {
     const { window: win, sent } = createMockWindow()
     const project = await manager.createProject({ path: await createTestWorkspace('ctrl-presence-'), name: 'test' })
     const session = await manager.createSession({ projectId: project.id, type: 'claude-code', title: 'Claude' })
@@ -87,17 +87,10 @@ describe('SessionRuntimeController', () => {
     }))
 
     expect(sent.some(event => event.channel === IPC_CHANNELS.observabilitySessionPresenceChanged)).toBe(true)
-    expect(sent.find(event => event.channel === IPC_CHANNELS.sessionEvent)?.data).toEqual({
-      session: expect.objectContaining({
-        id: session.id,
-        turnState: 'running',
-        turnEpoch: 1,
-        summary: 'UserPromptSubmit'
-      })
-    })
+    expect(sent.some(event => event.channel === 'session:event')).toBe(false)
   })
 
-  test('markRuntimeStarting updates manager and pushes observability snapshots', async () => {
+  test('markRuntimeStarting updates manager without emitting legacy session:event', async () => {
     const { window: win, sent } = createMockWindow()
     const project = await manager.createProject({ path: await createTestWorkspace('ctrl-'), name: 'test' })
     const session = await manager.createSession({ projectId: project.id, type: 'shell', title: 'S1' })
@@ -108,18 +101,7 @@ describe('SessionRuntimeController', () => {
     const updated = manager.snapshot().sessions[0]!
     expect(updated.runtimeState).toBe('starting')
     expect(updated.summary).toBe('starting shell')
-    expect(sent).toEqual([
-      {
-        channel: IPC_CHANNELS.sessionEvent,
-        data: {
-          session: expect.objectContaining({
-            id: session.id,
-            runtimeState: 'starting',
-            summary: 'starting shell'
-          })
-        }
-      }
-    ])
+    expect(sent).toEqual([])
   })
 
   test('markRuntimeAlive pushes presence without setting agent working', async () => {
@@ -139,19 +121,11 @@ describe('SessionRuntimeController', () => {
     expect(updated.lastTurnOutcome).toBe('none')
     expect(updated.externalSessionId).toBe('opencode-real-123')
     expect(sent.map((item) => item.channel)).toEqual([
-      IPC_CHANNELS.sessionEvent,
       IPC_CHANNELS.observabilitySessionPresenceChanged,
       IPC_CHANNELS.observabilityProjectChanged,
       IPC_CHANNELS.observabilityAppChanged
     ])
-    expect(sent[0]!.data).toEqual({
-      session: expect.objectContaining({
-        id: session.id,
-        runtimeState: 'alive',
-        externalSessionId: 'opencode-real-123'
-      })
-    })
-    expect(sent[1]!.data).toMatchObject({
+    expect(sent[0]!.data).toMatchObject({
       sessionId: session.id,
       phase: 'ready',
       runtimeState: 'alive',
@@ -215,21 +189,11 @@ describe('SessionRuntimeController', () => {
     expect(updated.blockingReason).toBe('permission')
     expect(updated.externalSessionId).toBe('opencode-real-456')
     expect(sent.map((item) => item.channel)).toEqual([
-      IPC_CHANNELS.sessionEvent,
       IPC_CHANNELS.observabilitySessionPresenceChanged,
       IPC_CHANNELS.observabilityProjectChanged,
       IPC_CHANNELS.observabilityAppChanged
     ])
-    expect(sent[0]!.data).toEqual({
-      session: expect.objectContaining({
-        id: session.id,
-        turnState: 'running',
-        turnEpoch: 1,
-        blockingReason: 'permission',
-        externalSessionId: 'opencode-real-456'
-      })
-    })
-    expect(sent[1]!.data).toMatchObject({
+    expect(sent[0]!.data).toMatchObject({
       sessionId: session.id,
       phase: 'blocked',
       turnState: 'running',
@@ -258,14 +222,7 @@ describe('SessionRuntimeController', () => {
     expect(updated.turnState).toBe('idle')
     expect(updated.lastTurnOutcome).toBe('completed')
     expect(updated.hasUnseenCompletion).toBe(false)
-    expect(sent.find((item) => item.channel === IPC_CHANNELS.sessionEvent)?.data).toEqual({
-      session: expect.objectContaining({
-        id: complete.id,
-        turnState: 'idle',
-        lastTurnOutcome: 'completed',
-        hasUnseenCompletion: false
-      })
-    })
+    expect(sent.some((item) => item.channel === 'session:event')).toBe(false)
     expect(sent.find((item) => item.channel === IPC_CHANNELS.observabilitySessionPresenceChanged)?.data).toMatchObject({
       sessionId: complete.id,
       phase: 'ready',
@@ -275,7 +232,7 @@ describe('SessionRuntimeController', () => {
     })
   })
 
-  test('setActiveSession pushes refreshed session titles after a title update', async () => {
+  test('setActiveSession pushes no legacy session:event after a title update', async () => {
     const { window: win, sent } = createMockWindow()
     const project = await manager.createProject({ path: await createTestWorkspace('ctrl-title-'), name: 'test' })
     const session = await manager.createSession({ projectId: project.id, type: 'codex', title: 'codex-test' })
@@ -289,12 +246,7 @@ describe('SessionRuntimeController', () => {
     const controller = new SessionRuntimeController(manager, () => win)
     await controller.setActiveSession(session.id)
 
-    expect(sent.find((item) => item.channel === IPC_CHANNELS.sessionEvent)?.data).toEqual({
-      session: expect.objectContaining({
-        id: session.id,
-        title: 'Fix Restart Race'
-      })
-    })
+    expect(sent.some((item) => item.channel === 'session:event')).toBe(false)
   })
 
   test('markAgentTurnInterrupted clears running presence and pushes ready snapshot', async () => {

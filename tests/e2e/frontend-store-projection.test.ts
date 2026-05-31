@@ -1,13 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { ProjectSessionManager } from '@core/project-session-manager'
-import { useMetaSessionStore } from '@renderer/stores/meta-session'
 import { useWorkspaceStore } from '@renderer/stores/workspaces'
 import { DEFAULT_SETTINGS } from '@shared/project-session'
 import { buildSessionPresenceSnapshot } from '@shared/observability-projection'
 import type { BootstrapState, ProjectSummary, RendererApi, SessionSummary } from '@shared/project-session'
 import type { SessionPresenceSnapshot } from '@shared/observability'
-import type { MetaSessionBootstrapState, MetaSessionProposal, MetaSessionSummary } from '@shared/meta-session'
 import type { UpdateState } from '@shared/update-state'
 import { createTestWorkspace, createTestGlobalStatePath, tempDirs } from './helpers'
 
@@ -81,101 +79,6 @@ describe('E2E: Frontend Store Projection', () => {
     Reflect.deleteProperty(window, 'stoa')
   })
 
-  describe('Meta session surface store projection', () => {
-    test('meta session store hydrates independently from work-session hierarchy', async () => {
-      const store = useMetaSessionStore()
-
-      const bootstrap: MetaSessionBootstrapState = {
-        activeMetaSessionId: 'meta_session_1',
-        sessions: [{
-          id: 'meta_session_1',
-          title: 'global-triage',
-          status: 'running',
-          backendSessionType: 'claude-code',
-          capabilityLevel: 3,
-          pendingProposalCount: 2,
-          activeTargetCount: 4,
-          lastSummary: 'Collecting blocked sessions.',
-          lastRisk: 'Two sessions are editing the same module.',
-          backendSessionId: 'resume-meta-session-1',
-          createdAt: '2026-05-07T08:00:00.000Z',
-          updatedAt: '2026-05-07T08:05:00.000Z',
-          lastActivatedAt: '2026-05-07T08:05:00.000Z'
-        }],
-        inspectorTarget: {
-          kind: 'app'
-        }
-      }
-
-      store.hydrate(bootstrap)
-
-      expect(store.activeMetaSession?.id).toBe('meta_session_1')
-      expect(store.sessions).toHaveLength(1)
-      expect(store.inspectorTarget).toEqual({ kind: 'app' })
-    })
-
-    test('meta session proposal hydration updates pending counts and selected proposal projection independently from work-session hierarchy', async () => {
-      const store = useMetaSessionStore()
-
-      const bootstrap: MetaSessionBootstrapState = {
-        activeMetaSessionId: 'meta_session_1',
-        sessions: [{
-          id: 'meta_session_1',
-          title: 'global-triage',
-          status: 'running',
-          backendSessionType: 'claude-code',
-          capabilityLevel: 3,
-          pendingProposalCount: 0,
-          activeTargetCount: 4,
-          lastSummary: 'Collecting blocked sessions.',
-          lastRisk: 'Two sessions are editing the same module.',
-          backendSessionId: 'resume-meta-session-1',
-          createdAt: '2026-05-07T08:00:00.000Z',
-          updatedAt: '2026-05-07T08:05:00.000Z',
-          lastActivatedAt: '2026-05-07T08:05:00.000Z'
-        }],
-        inspectorTarget: {
-          kind: 'proposal',
-          proposalId: 'proposal_1'
-        }
-      }
-
-      store.hydrate(bootstrap)
-
-      const proposals: MetaSessionProposal[] = [{
-        id: 'proposal_1',
-        metaSessionId: 'meta_session_1',
-        kind: 'prompt',
-        targetSessionIds: ['session_1'],
-        riskLevel: 3,
-        status: 'pending_approval',
-        summary: 'Prompt injection for session_1',
-        reason: 'Freeform prompt injection requires explicit approval.',
-        promptText: 'Refactor and edit the code now.',
-        presetName: null,
-        snapshot: {
-          sessions: [{
-            sessionId: 'session_1',
-            lastStateSequence: 17,
-            turnEpoch: 4,
-            updatedAt: '2026-05-07T08:05:00.000Z'
-          }]
-        },
-        createdAt: '2026-05-07T08:05:00.000Z',
-        updatedAt: '2026-05-07T08:05:00.000Z',
-        approvedAt: null,
-        rejectedAt: null,
-        executedAt: null,
-        executionResult: null
-      }]
-      store.hydrateProposals(proposals)
-
-      expect(store.selectedProposal?.id).toBe('proposal_1')
-      expect(store.activeMetaSession?.pendingProposalCount).toBe(1)
-      expect(store.pendingProposals).toHaveLength(1)
-    })
-  })
-
   // ── Phase 1: Hydration from real backend state ─────────────────────
 
   describe('Phase 1: Hydration from real backend state', () => {
@@ -205,9 +108,16 @@ describe('E2E: Frontend Store Projection', () => {
       const snapshot = manager.snapshot()
       const store = useWorkspaceStore()
       store.hydrate(snapshot)
+      const expectedSessions = snapshot.sessions.map((session) => ({
+        ...session,
+        treeDepth: 0,
+        treeRootSessionId: session.id,
+        treeChildCount: 0,
+        treeDescendantCount: 0
+      }))
 
       expect(store.sessions).toHaveLength(snapshot.sessions.length)
-      expect(store.sessions).toEqual(snapshot.sessions)
+      expect(store.sessions).toEqual(expectedSessions)
     })
 
     test('store.activeProjectId matches snapshot.activeProjectId', async () => {

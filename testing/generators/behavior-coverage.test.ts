@@ -10,14 +10,10 @@ import {
   sessionTelemetryCompleteBehavior,
   workspaceQuickAccessBehavior
 } from '../behavior/session.behavior'
-import {
-  metaSessionReadFullContextAndGatePromptBehavior,
-  metaSessionSurfaceSessionFlowBehavior
-} from '../behavior/meta-session.behavior'
+import { metaSessionReadFullContextAndGatePromptBehavior } from '../behavior/meta-session.behavior'
 import { defineGeneratedTestMeta } from '../contracts/testing-contracts'
 import {
-  metaSessionReadFullContextAndGatePromptJourney,
-  metaSessionSurfaceSessionFlowJourney
+  metaSessionReadFullContextAndGatePromptJourney
 } from '../journeys/meta-session.journey'
 import { sessionRestoreJourney } from '../journeys/session-restore.journey'
 import { workspaceQuickAccessJourney } from '../journeys/workspace-quick-access.journey'
@@ -33,30 +29,6 @@ import {
 import { buildBehaviorCoverageReport } from './behavior-coverage'
 
 describe('behavior coverage report', () => {
-  it('marks meta session surface session flow as verified by generated UI metadata', () => {
-    const report = buildBehaviorCoverageReport({
-      behaviors: [metaSessionSurfaceSessionFlowBehavior],
-      journeys: [metaSessionSurfaceSessionFlowJourney],
-      generatedTests: [
-        defineGeneratedTestMeta({
-          id: 'journey.meta-session.surface.session-flow',
-          behaviorIds: ['meta-session.surface.session-flow'],
-          entities: ['meta-session', 'meta-session-surface', 'meta-session-terminal', 'meta-session-inspector'],
-          statesCovered: ['meta-session.session.created', 'meta-session.session.active'],
-          interruptionsCovered: [],
-          observationLayers: ['ui', 'renderer-store'],
-          riskBudget: 'high',
-          regressionSources: ['meta-session-surface', 'meta-session-store']
-        })
-      ]
-    })
-
-    expect(report.behaviors['meta-session.surface.session-flow']?.maturity).toBe('Verified')
-    expect(report.behaviors['meta-session.surface.session-flow']?.generatedTestIds).toEqual([
-      'journey.meta-session.surface.session-flow'
-    ])
-  })
-
   it('marks meta session full-context reads and prompt gating as hardened when context and approval evidence are covered', () => {
     const report = buildBehaviorCoverageReport({
       behaviors: [metaSessionReadFullContextAndGatePromptBehavior],

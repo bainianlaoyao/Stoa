@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import type { ObservationEvent, SessionPresenceSnapshot } from '@shared/observability'
 import type { SessionSummary } from '@shared/project-session'
+import { createSessionSummaryFixture } from '@shared/test-fixtures'
 import { MetaSessionContextAssembler } from './meta-session-context-assembler'
 
 function createTitleGenerationContext() {
@@ -13,7 +14,7 @@ function createTitleGenerationContext() {
 }
 
 function createSession(overrides: Partial<SessionSummary> = {}): SessionSummary {
-  return {
+  return createSessionSummaryFixture({
     id: 'session_1',
     projectId: 'project_1',
     type: 'codex',
@@ -37,7 +38,7 @@ function createSession(overrides: Partial<SessionSummary> = {}): SessionSummary 
     archived: false,
     ...overrides,
     titleGenerationContext: overrides.titleGenerationContext ?? createTitleGenerationContext()
-  }
+  })
 }
 
 function createPresence(overrides: Partial<SessionPresenceSnapshot> = {}): SessionPresenceSnapshot {

@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { describe, expect, test, vi } from 'vitest'
 import type { AppSettings, ProjectSummary, SessionSummary } from '@shared/project-session'
 import { DEFAULT_SETTINGS } from '@shared/project-session'
+import { createSessionSummaryFixture } from '@shared/test-fixtures'
 
 const mockDetectVscode = vi.hoisted(() => vi.fn<() => Promise<string | null>>().mockResolvedValue(null))
 vi.mock('@core/settings-detector', async () => {
@@ -34,7 +35,7 @@ function createTitleGenerationContext() {
 }
 
 function sessionFixture(patch: Partial<SessionSummary> = {}): SessionSummary {
-  return {
+  return createSessionSummaryFixture({
     id: 'session_1',
     projectId: 'project_1',
     type: 'shell',
@@ -58,7 +59,7 @@ function sessionFixture(patch: Partial<SessionSummary> = {}): SessionSummary {
     archived: false,
     ...patch,
     titleGenerationContext: patch.titleGenerationContext ?? createTitleGenerationContext()
-  }
+  })
 }
 
 function settingsFixture(patch: Partial<AppSettings> = {}): AppSettings {

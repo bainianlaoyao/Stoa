@@ -9,7 +9,6 @@ function makePortFile(overrides: Partial<PortFileData> = {}): PortFileData {
   return {
     port: 54321,
     pid: process.pid,
-    activeMetaSessionId: 'meta_test_1',
     secret: generateSecret(),
     startedAt: new Date().toISOString(),
     ...overrides
@@ -30,7 +29,7 @@ describe('stoa-ctl-port-file', () => {
     const parsed = JSON.parse(content)
     expect(parsed.port).toBe(54321)
     expect(parsed.pid).toBe(process.pid)
-    expect(parsed.activeMetaSessionId).toBe('meta_test_1')
+    expect(parsed.activeMetaSessionId).toBeUndefined()
     expect(typeof parsed.secret).toBe('string')
     expect(parsed.secret.length).toBe(64)
   })
@@ -117,13 +116,15 @@ describe('stoa-ctl-port-file', () => {
     expect(await readPortFile(path)).toBeNull()
   })
 
-  test('readPortFile returns null for activeMetaSessionId as non-string', async () => {
-    const data = makePortFile({ activeMetaSessionId: 123 as unknown as string })
+  test('readPortFile ignores legacy activeMetaSessionId field', async () => {
     const path = join(TMP_DIR, 'ctl.json')
-    await writeFile(path, JSON.stringify(data))
+    await writeFile(path, JSON.stringify({
+      ...makePortFile(),
+      activeMetaSessionId: 'meta_test_legacy'
+    }))
     const result = await readPortFile(path)
     expect(result).not.toBeNull()
-    expect(result!.activeMetaSessionId).toBeNull()
+    expect(result).not.toHaveProperty('activeMetaSessionId')
   })
 
   test('isPidAlive returns true for current process', () => {

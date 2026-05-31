@@ -5,7 +5,7 @@ export const sessionRestoreJourney = defineJourney({
   behavior: 'session.restore',
   usageMode: 'recovery_workflow',
   setup: ['project.withArchivedSession'],
-  act: ['open.archive.surface', 'click.archive.restore'],
+  act: ['find.command.archived-session', 'click.archive.restore'],
   assert: ['archive.sessionRemoved', 'command.sessionVisible', 'persisted.sessionRestored'],
   variants: ['base']
 })

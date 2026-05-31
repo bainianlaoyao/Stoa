@@ -5,10 +5,11 @@ import type {
   SessionSummary,
   SessionTitleGenerationNotification
 } from '@shared/project-session'
+import { createSessionSummaryFixture } from '@shared/test-fixtures'
 import { SessionTitleController } from './session-title-controller'
 
 function createSession(overrides: Partial<SessionSummary> = {}): SessionSummary {
-  return {
+  return createSessionSummaryFixture({
     id: 'session_1',
     projectId: 'project_1',
     type: 'codex',
@@ -37,7 +38,7 @@ function createSession(overrides: Partial<SessionSummary> = {}): SessionSummary 
     lastActivatedAt: '2026-05-18T09:00:00.000Z',
     archived: false,
     ...overrides
-  }
+  })
 }
 
 function createObservationEvent(overrides: Partial<ObservationEvent> = {}): ObservationEvent {

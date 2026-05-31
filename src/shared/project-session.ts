@@ -372,6 +372,7 @@ export interface RendererApi {
   onMemoryNotification: (callback: (event: MemoryNotificationEvent) => void) => () => void
   onTitleGenerationNotification: (callback: (event: SessionTitleGenerationNotification) => void) => () => void
   onSessionEvent: (callback: (event: SessionSummaryEvent) => void) => () => void
+  onSessionGraphEvent?: (callback: (event: SessionGraphEvent) => void) => () => void
   getSessionPresence: (sessionId: string) => Promise<SessionPresenceSnapshot | null>
   getProjectObservability: (projectId: string) => Promise<ProjectObservabilitySnapshot | null>
   getAppObservability: () => Promise<AppObservabilitySnapshot | null>

@@ -29,7 +29,7 @@
     "verify:release-smoke": "node scripts/smoke-packaged-release.mjs",
     "typecheck": "vue-tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.node.json",
     "test": "vitest run",
-    "test:generate": "tsx --tsconfig tsconfig.node.json -e \"await import('./testing/generators/write-generated-playwright.ts')\"",
+    "test:generate": "tsx --tsconfig tsconfig.node.json testing/generators/write-generated-playwright.ts",
     "test:e2e": "npm run build && playwright test",
     "test:behavior-coverage": "vitest run testing/generators/behavior-coverage.test.ts",
     "test:all": "npm run test:generate && npm run test && npm run test:e2e && npm run test:behavior-coverage",

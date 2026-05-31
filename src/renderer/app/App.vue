@@ -4,6 +4,7 @@ import { storeToRefs } from 'pinia'
 import { useI18n } from 'vue-i18n'
 import type {
   OpenWorkspaceRequest,
+  SessionGraphEvent,
   SessionTitleGenerationNotification,
   SessionTitleGenerationNotificationStatus,
   SessionType
@@ -11,8 +12,8 @@ import type {
 import AppShell from '@renderer/components/AppShell.vue'
 import MemoryToastHost from '@renderer/components/memory/MemoryToastHost.vue'
 import UpdatePrompt from '@renderer/components/update/UpdatePrompt.vue'
-import { useMetaSessionStore } from '@renderer/stores/meta-session'
 import { useMemoryNotificationsStore } from '@renderer/stores/memory-notifications'
+import type { TitleGenerationToastNotification } from '@renderer/stores/memory-notifications'
 import { useWorkspaceStore } from '@renderer/stores/workspaces'
 import { useSettingsStore } from '@renderer/stores/settings'
 import { useUpdateStore } from '@renderer/stores/update'
@@ -21,7 +22,6 @@ import { useSidebarShortcuts } from '@renderer/composables/useSidebarShortcuts'
 
 const { t } = useI18n()
 const workspaceStore = useWorkspaceStore()
-const metaSessionStore = useMetaSessionStore()
 const settingsStore = useSettingsStore()
 const updateStore = useUpdateStore()
 const memoryNotificationsStore = useMemoryNotificationsStore()
@@ -158,8 +158,8 @@ async function handleOpenWorkspace(request: OpenWorkspaceRequest): Promise<void>
 let unsubscribeUpdateState: (() => void) | null = null
 let unsubscribeMemoryNotification: (() => void) | null = null
 let unsubscribeTitleGenerationNotification: (() => void) | null = null
-let unsubscribeMetaSessionEvents: (() => void) | null = null
 let unsubscribeSessionEvents: (() => void) | null = null
+let unsubscribeSessionGraphEvents: (() => void) | null = null
 let isUnmounted = false
 
 function isActiveSessionNotification(sessionId: string): boolean {
@@ -226,9 +226,22 @@ onMounted(async () => {
   unsubscribeTitleGenerationNotification = window.stoa.onTitleGenerationNotification((event) => {
     applyTitleGenerationNotification(event)
   })
-  unsubscribeSessionEvents = window.stoa.onSessionEvent((event) => {
-    workspaceStore.updateSession(event.session.id, event.session)
-  })
+
+  if (window.stoa.onSessionGraphEvent) {
+    unsubscribeSessionGraphEvents = window.stoa.onSessionGraphEvent((event: SessionGraphEvent) => {
+      workspaceStore.applySessionGraphEvent(event)
+    })
+  } else {
+    unsubscribeSessionEvents = window.stoa.onSessionEvent((event) => {
+      const existingSession = workspaceStore.sessions.find((session) => session.id === event.session.id)
+      if (existingSession) {
+        workspaceStore.updateSession(event.session.id, event.session)
+        return
+      }
+
+      workspaceStore.addSession(event.session)
+    })
+  }
 
   const bootstrapState = await window.stoa.getBootstrapState()
   if (isUnmounted) {
@@ -238,14 +251,6 @@ onMounted(async () => {
   workspaceStore.hydrate(bootstrapState)
   await workspaceStore.hydrateObservability()
   if (isUnmounted) {
-    workspaceStore.unsubscribeObservability()
-    return
-  }
-
-  unsubscribeMetaSessionEvents = await metaSessionStore.bootstrapFromBridge()
-  if (isUnmounted) {
-    unsubscribeMetaSessionEvents?.()
-    unsubscribeMetaSessionEvents = null
     workspaceStore.unsubscribeObservability()
     return
   }
@@ -270,10 +275,9 @@ onBeforeUnmount(() => {
   unsubscribeUpdateState?.()
   unsubscribeMemoryNotification?.()
   unsubscribeTitleGenerationNotification?.()
-  unsubscribeMetaSessionEvents?.()
+  unsubscribeSessionGraphEvents?.()
   unsubscribeSessionEvents?.()
   memoryNotificationsStore.reset()
-  metaSessionStore.unsubscribe()
   workspaceStore.unsubscribeObservability()
 })
 </script>

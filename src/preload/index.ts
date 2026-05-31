@@ -9,7 +9,7 @@ import type {
   ObservationEventListOptions,
   OpenWorkspaceRequest,
   RendererApi,
-  SessionSummaryEvent,
+  SessionGraphEvent,
   SessionTitleGenerationNotification,
   TerminalDataChunk
 } from '@shared/project-session'
@@ -20,7 +20,6 @@ import type {
   ProjectObservabilitySnapshot,
   SessionPresenceSnapshot
 } from '@shared/observability'
-import type { MetaSessionInspectorTarget, MetaSessionProposal, MetaSessionEvent } from '@shared/meta-session'
 import type { UpdateState } from '@shared/update-state'
 import type {
   DirEntry,
@@ -55,7 +54,7 @@ const windowsBuildNumber = process.platform === 'win32'
   ? (parseInt(release().split('.').pop() ?? '0', 10) || undefined)
   : undefined
 
-const api: RendererApi = {
+const api = {
   windowsBuildNumber,
   async getBootstrapState() {
     return ipcRenderer.invoke(IPC_CHANNELS.projectBootstrap)
@@ -105,39 +104,6 @@ const api: RendererApi = {
   async listArchivedSessions() {
     return ipcRenderer.invoke(IPC_CHANNELS.sessionListArchived)
   },
-  async getMetaSessionBootstrapState() {
-    return ipcRenderer.invoke(IPC_CHANNELS.metaSessionBootstrap)
-  },
-  async createMetaSession(request) {
-    return ipcRenderer.invoke(IPC_CHANNELS.metaSessionCreate, request)
-  },
-  async setActiveMetaSession(sessionId) {
-    return ipcRenderer.invoke(IPC_CHANNELS.metaSessionSetActive, sessionId)
-  },
-  async archiveMetaSession(sessionId: string) {
-    return ipcRenderer.invoke(IPC_CHANNELS.metaSessionArchive, sessionId)
-  },
-  async restoreMetaSession(sessionId: string) {
-    return ipcRenderer.invoke(IPC_CHANNELS.metaSessionRestore, sessionId)
-  },
-  async listMetaSessionProposals() {
-    return ipcRenderer.invoke(IPC_CHANNELS.metaSessionProposalList) as Promise<MetaSessionProposal[]>
-  },
-  async getMetaSessionProposal(proposalId: string) {
-    return ipcRenderer.invoke(IPC_CHANNELS.metaSessionProposalGet, proposalId) as Promise<MetaSessionProposal | null>
-  },
-  async approveMetaSessionProposal(proposalId: string) {
-    return ipcRenderer.invoke(IPC_CHANNELS.metaSessionProposalApprove, proposalId) as Promise<MetaSessionProposal | null>
-  },
-  async rejectMetaSessionProposal(proposalId: string, reason?: string) {
-    return ipcRenderer.invoke(IPC_CHANNELS.metaSessionProposalReject, proposalId, reason) as Promise<MetaSessionProposal | null>
-  },
-  async dispatchMetaSessionProposal(proposalId: string) {
-    return ipcRenderer.invoke(IPC_CHANNELS.metaSessionProposalDispatch, proposalId) as Promise<MetaSessionProposal | null>
-  },
-  async setMetaSessionInspectorTarget(target: MetaSessionInspectorTarget | null) {
-    return ipcRenderer.invoke(IPC_CHANNELS.metaSessionInspectorSetTarget, target)
-  },
   async getUpdateState() {
     return ipcRenderer.invoke(IPC_CHANNELS.updateGetState) as Promise<UpdateState>
   },
@@ -180,15 +146,13 @@ const api: RendererApi = {
     ipcRenderer.on(IPC_CHANNELS.titleGenerationNotification, handler)
     return () => ipcRenderer.removeListener(IPC_CHANNELS.titleGenerationNotification, handler)
   },
-  onSessionEvent(callback: (event: SessionSummaryEvent) => void) {
-    const handler = (_event: Electron.IpcRendererEvent, event: SessionSummaryEvent) => callback(event)
-    ipcRenderer.on(IPC_CHANNELS.sessionEvent, handler)
-    return () => ipcRenderer.removeListener(IPC_CHANNELS.sessionEvent, handler)
+  onSessionEvent() {
+    return () => {}
   },
-  onMetaSessionEvent(callback) {
-    const handler = (_event: Electron.IpcRendererEvent, event: MetaSessionEvent) => callback(event)
-    ipcRenderer.on(IPC_CHANNELS.metaSessionEvent, handler)
-    return () => ipcRenderer.removeListener(IPC_CHANNELS.metaSessionEvent, handler)
+  onSessionGraphEvent(callback: (event: SessionGraphEvent) => void) {
+    const handler = (_event: Electron.IpcRendererEvent, event: SessionGraphEvent) => callback(event)
+    ipcRenderer.on(IPC_CHANNELS.sessionGraphEvent, handler)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.sessionGraphEvent, handler)
   },
   async getSessionPresence(sessionId: string) {
     return ipcRenderer.invoke(IPC_CHANNELS.observabilityGetSessionPresence, sessionId) as Promise<SessionPresenceSnapshot | null>
@@ -353,7 +317,7 @@ const api: RendererApi = {
   async gitCreateBranch(projectPath: string, branch: string) {
     return ipcRenderer.invoke(IPC_CHANNELS.gitCreateBranch, projectPath, branch)
   },
-}
+} satisfies RendererApi
 
 contextBridge.exposeInMainWorld('stoa', api)
 

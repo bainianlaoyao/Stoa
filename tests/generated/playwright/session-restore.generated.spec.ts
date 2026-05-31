@@ -30,14 +30,14 @@ test('journey.session.restore.base', async () => {
     })
 
     await app.page.getByRole('button', { name: `Archive ${session.title}` }).click()
-    await app.page.locator('[data-activity-item="archive"]').click()
 
-    const root = app.page.getByTestId('surface.archive')
+    const root = app.page.getByTestId('command-panel')
     const restoreButton = app.page.getByTestId('archive.session.restore')
     const sessionRow = app.page.getByTestId('archive.session.row')
 
     await expect(root).toBeVisible()
     await expect(sessionRow).toHaveCount(1)
+    await sessionRow.first().hover()
     await expect(restoreButton).toBeVisible()
     await restoreButton.click()
     await expect(sessionRow).toHaveCount(0)

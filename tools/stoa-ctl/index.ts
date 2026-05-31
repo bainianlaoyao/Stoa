@@ -1,7 +1,5 @@
 #!/usr/bin/env node
 
-import { readFile } from 'node:fs/promises'
-import { parseSendKeysTokens } from './send-keys'
 import { readPortFile as defaultReadPortFile, isPidAlive, type PortFileData } from '@core/stoa-ctl-port-file'
 
 type JsonEnvelope = {
@@ -17,12 +15,6 @@ interface WritableLike {
   write: (chunk: string) => unknown
 }
 
-interface ReadableLike {
-  setEncoding?: (encoding: BufferEncoding) => void
-  on: (event: string, listener: (...args: any[]) => void) => unknown
-  resume?: () => void
-}
-
 type FetchLike = (input: string | URL | Request, init?: RequestInit) => Promise<Response>
 
 interface RunDependencies {
@@ -30,51 +22,42 @@ interface RunDependencies {
   env?: NodeJS.ProcessEnv
   stdout?: WritableLike
   stderr?: WritableLike
-  stdin?: ReadableLike
   sleep?: (ms: number) => Promise<void>
   readPortFile?: () => Promise<PortFileData | null>
 }
 
-const DEFAULT_WAIT_TIMEOUT_MS = 30_000
-const DEFAULT_WAIT_INTERVAL_MS = 1_000
+type CallerMode =
+  | {
+      kind: 'session'
+      sessionId: string
+      sessionToken: string
+    }
+  | {
+      kind: 'local-user'
+      secret: string
+    }
+
+interface RunContext {
+  portFileData: PortFileData | null
+  baseUrl: string
+  caller: CallerMode
+}
 
 export const USAGE_TEXT = [
-  'Usage: stoa-ctl [--session <id>] <command>',
-  '',
-  'Global flags:',
-  '  --session <id>    Use a specific meta-session (default: active meta-session or STOA_SESSION_ID)',
+  'Usage: stoa-ctl <command>',
   '',
   'Commands:',
   '  health',
-  '  bootstrap-prompt',
   '  whoami',
   '  capabilities',
-  '  state brief',
-  '  state attention-queue',
-  '  state conflicts',
-  '  work-sessions list',
-  '  work-sessions create --project <projectId> --type <shell|opencode|codex|claude-code> [--title "..."]',
-  '  work-sessions get <id>',
-  '  work-sessions events <id> [--limit <n>] [--cursor <token>] [--include-ephemeral]',
-  '  work-sessions context <id> [--level <slim|status|bundle|full>] (default: slim) [--max-chars <n>] [--cursor <token>]',
-  '  work-sessions archive <id>',
-  '  work-sessions prompt <id> --text "..."',
-  '  work-sessions prompt <id> --file <path>',
-  '  work-sessions prompt <id> --stdin',
-  '  work-sessions send-keys <id> [--literal] [key ...]',
-  '  meta-sessions list',
-  '  meta-sessions create --title "..." --backend <claude-code|codex|opencode> [--capability-level <0|1|2|3>]',
-  '  meta-sessions get <id>',
-  '  meta-sessions archive <id>',
-  '  meta-sessions restore <id>',
-  '  meta-sessions activate <id>',
-  '  proposals create prompt --target <sessionId> --text "..."',
-  '  proposals list',
-  '  proposals get <proposalId>',
-  '  proposals wait <proposalId> [--timeout-ms <n>] [--interval-ms <n>]',
-  '  dispatch preset <name> --target <sessionId>',
-  '  dispatch proposal <proposalId>'
+  '  session list [--include-archived]',
+  '  session create --type <shell|opencode|codex|claude-code> [--title "..."] [--project <projectId>] [--parent <sessionId>]',
+  '  session inspect <sessionId>',
+  '  session prompt <sessionId> --text "..."',
+  '  session destroy <sessionId>'
 ].join('\n')
+
+const SESSION_TYPES = new Set(['shell', 'opencode', 'codex', 'claude-code'])
 
 class CliUsageError extends Error {}
 class CliConfigError extends Error {}
@@ -90,58 +73,29 @@ function resolveBaseUrl(env: NodeJS.ProcessEnv, portFileData: PortFileData | nul
   throw new CliConfigError('Stoa is not running. Start Stoa or set STOA_CTL_BASE_URL.')
 }
 
-function resolveHeaders(env: NodeJS.ProcessEnv, sessionOverride: string | undefined, portFileData: PortFileData | null): Record<string, string> {
-  const sessionId = env.STOA_META_SESSION_ID?.trim()
-    ?? env.STOA_SESSION_ID?.trim()
-    ?? sessionOverride
-    ?? portFileData?.activeMetaSessionId
-    ?? undefined
+function resolveCaller(env: NodeJS.ProcessEnv, portFileData: PortFileData | null): CallerMode {
+  const sessionId = env.STOA_SESSION_ID?.trim()
+  const sessionToken = env.STOA_CTL_SESSION_TOKEN?.trim()
 
-  if (!sessionId) {
-    throw new CliConfigError('No session identity available. Use --session <id> or ensure Stoa has an active meta-session.')
-  }
-
-  const headers: Record<string, string> = {
-    'x-stoa-session-id': sessionId
+  if (sessionId || sessionToken) {
+    if (!sessionId || !sessionToken) {
+      throw new CliConfigError('Incomplete session control identity. Set both STOA_SESSION_ID and STOA_CTL_SESSION_TOKEN.')
+    }
+    return {
+      kind: 'session',
+      sessionId,
+      sessionToken
+    }
   }
 
   if (portFileData?.secret) {
-    headers['x-stoa-secret'] = portFileData.secret
-  }
-
-  return headers
-}
-
-function consumeGlobalFlags(argv: string[]): { session?: string; cleanArgv: string[] } {
-  const sessionIndex = argv.indexOf('--session')
-  if (sessionIndex >= 0) {
-    const value = argv[sessionIndex + 1]
-    if (!value) {
-      throw new CliUsageError('--session requires a value')
+    return {
+      kind: 'local-user',
+      secret: portFileData.secret
     }
-    const cleanArgv = argv.filter((_, i) => i !== sessionIndex && i !== sessionIndex + 1)
-    return { session: value, cleanArgv }
-  }
-  return { cleanArgv: argv }
-}
-
-export function isDirectCliEntry(importMetaUrl: string, argvEntry: string | undefined): boolean {
-  const entryPath = argvEntry?.replace(/\\/g, '/')
-  const metaPath = importMetaUrl.replace(/^file:\/\//, '')
-  return !!entryPath && (entryPath.endsWith(metaPath) || metaPath.endsWith(entryPath))
-}
-
-function parseIntegerFlag(args: string[], name: string, fallback: number): number {
-  const index = args.indexOf(name)
-  if (index < 0) {
-    return fallback
   }
 
-  const raw = args[index + 1]
-  if (!raw || !/^\d+$/.test(raw)) {
-    throw new CliUsageError(`Invalid value for ${name}`)
-  }
-  return Number(raw)
+  throw new CliConfigError('No session identity available. Run inside a Stoa session or use a live Stoa local control port file.')
 }
 
 function parseFlagValue(args: string[], name: string): string | null {
@@ -153,45 +107,14 @@ function hasFlag(args: string[], name: string): boolean {
   return args.includes(name)
 }
 
-function parseCapabilityLevel(args: string[], name: string, fallback: number): number {
-  const value = parseIntegerFlag(args, name, fallback)
-  if (value < 0 || value > 3) {
-    throw new CliUsageError(`Invalid value for ${name}`)
-  }
-  return value
-}
-
-async function readStdin(stdin: RunDependencies['stdin']): Promise<string> {
-  if (!stdin) {
-    throw new CliUsageError('Missing stdin stream for --stdin')
-  }
-
-  return await new Promise<string>((resolve, reject) => {
-    let buffer = ''
-    stdin.setEncoding?.('utf8')
-    stdin.on('data', (chunk) => {
-      buffer += String(chunk)
-    })
-    stdin.on('end', () => resolve(buffer))
-    stdin.on('error', reject)
-    stdin.resume?.()
-  })
-}
-
 function mapFailureExitCode(response: Response, bodyText: string): number {
   try {
     const parsed = JSON.parse(bodyText) as JsonEnvelope
-    if (parsed.error?.code === 'approval_required') {
-      return 4
-    }
-    if (parsed.error?.code === 'stale_proposal') {
-      return 5
-    }
-    if (parsed.error?.code === 'unknown_proposal' || parsed.error?.code === 'unknown_session') {
+    if (parsed.error?.code === 'unknown_session') {
       return 6
     }
   } catch {
-    // fall through
+    // ignore
   }
 
   if (response.status === 401) {
@@ -200,27 +123,61 @@ function mapFailureExitCode(response: Response, bodyText: string): number {
   return 7
 }
 
+function writeUsage(stderr: WritableLike): void {
+  stderr.write(`${USAGE_TEXT}\n`)
+}
+
+function buildHeaders(caller: CallerMode, initHeaders: HeadersInit | undefined, hasBody: boolean): HeadersInit {
+  const headers: Record<string, string> = {}
+  if (caller.kind === 'session') {
+    headers['x-stoa-session-id'] = caller.sessionId
+    headers['x-stoa-session-token'] = caller.sessionToken
+  } else {
+    headers['x-stoa-secret'] = caller.secret
+  }
+  if (hasBody) {
+    headers['content-type'] = 'application/json'
+  }
+  return {
+    ...headers,
+    ...(initHeaders ?? {})
+  }
+}
+
 async function request(
   deps: Required<RunDependencies>,
+  ctx: RunContext,
   path: string,
-  init: RequestInit = {},
-  context?: { session?: string; portFileData: PortFileData | null }
+  init: RequestInit = {}
 ): Promise<{ response: Response; text: string }> {
-  const response = await deps.fetch(`${resolveBaseUrl(deps.env, context?.portFileData ?? null)}${path}`, {
+  const response = await deps.fetch(`${ctx.baseUrl}${path}`, {
     ...init,
-    headers: {
-      ...resolveHeaders(deps.env, context?.session, context?.portFileData ?? null),
-      ...(init.body === undefined ? {} : { 'content-type': 'application/json' }),
-      ...(init.headers ?? {})
-    }
+    headers: buildHeaders(ctx.caller, init.headers, init.body !== undefined)
   })
   const text = await response.text()
   return { response, text }
 }
 
-function writeUsage(stderr: WritableLike): void {
-  stderr.write(`${USAGE_TEXT}\n`)
+function ensureSessionType(type: string | null): string {
+  if (!type || !SESSION_TYPES.has(type)) {
+    throw new CliUsageError('Missing or invalid --type')
+  }
+  return type
 }
+
+function ensureSessionCaller(caller: CallerMode): asserts caller is Extract<CallerMode, { kind: 'session' }> {
+  if (caller.kind !== 'session') {
+    return
+  }
+}
+
+function isDirectCliEntry(importMetaUrl: string, argvEntry: string | undefined): boolean {
+  const entryPath = argvEntry?.replace(/\\/g, '/')
+  const metaPath = importMetaUrl.replace(/^file:\/\//, '')
+  return !!entryPath && (entryPath.endsWith(metaPath) || metaPath.endsWith(entryPath))
+}
+
+export { isDirectCliEntry }
 
 export async function run(argv: string[], deps: RunDependencies = {}): Promise<number> {
   const resolvedDeps: Required<RunDependencies> = {
@@ -228,14 +185,11 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
     env: deps.env ?? process.env,
     stdout: deps.stdout ?? process.stdout,
     stderr: deps.stderr ?? process.stderr,
-    stdin: deps.stdin ?? process.stdin,
-    sleep: deps.sleep ?? (async (ms: number) => await new Promise((resolve) => setTimeout(resolve, ms))),
+    sleep: deps.sleep ?? (async (_ms: number) => {}),
     readPortFile: deps.readPortFile ?? defaultReadPortFile
   }
 
   try {
-    const { session, cleanArgv } = consumeGlobalFlags(argv)
-
     let portFileData: PortFileData | null = null
     if (!resolvedDeps.env.STOA_CTL_BASE_URL) {
       portFileData = await resolvedDeps.readPortFile()
@@ -244,13 +198,17 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
       }
     }
 
-    const ctx = { session, portFileData } as { session?: string; portFileData: PortFileData | null }
-
-    async function ctlRequest(path: string, init: RequestInit = {}): Promise<{ response: Response; text: string }> {
-      return request(resolvedDeps, path, init, ctx)
+    const ctx: RunContext = {
+      portFileData,
+      baseUrl: resolveBaseUrl(resolvedDeps.env, portFileData),
+      caller: resolveCaller(resolvedDeps.env, portFileData)
     }
 
-    const [group, action, ...rest] = cleanArgv
+    async function ctlRequest(path: string, init: RequestInit = {}): Promise<{ response: Response; text: string }> {
+      return request(resolvedDeps, ctx, path, init)
+    }
+
+    const [group, action, ...rest] = argv
     if (!group) {
       throw new CliUsageError('Missing command')
     }
@@ -275,16 +233,6 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
       return 0
     }
 
-    if (group === 'bootstrap-prompt' && action === undefined) {
-      const { response, text } = await ctlRequest('/ctl/bootstrap-prompt')
-      if (!response.ok) {
-        resolvedDeps.stderr.write(`${text}\n`)
-        return mapFailureExitCode(response, text)
-      }
-      resolvedDeps.stdout.write(text)
-      return 0
-    }
-
     if (group === 'capabilities' && action === undefined) {
       const { response, text } = await ctlRequest('/ctl/capabilities')
       if (!response.ok) {
@@ -295,12 +243,13 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
       return 0
     }
 
-    if (!action) {
-      throw new CliUsageError('Missing action')
+    if (group !== 'session' || !action) {
+      throw new CliUsageError('Unknown command')
     }
 
-    if (group === 'state' && action === 'brief') {
-      const { response, text } = await ctlRequest('/ctl/state/brief')
+    if (action === 'list') {
+      const query = hasFlag(rest, '--include-archived') ? '?includeArchived=1' : ''
+      const { response, text } = await ctlRequest(`/ctl/session/list${query}`)
       if (!response.ok) {
         resolvedDeps.stderr.write(`${text}\n`)
         return mapFailureExitCode(response, text)
@@ -309,167 +258,64 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
       return 0
     }
 
-    if (group === 'state' && action === 'attention-queue') {
-      const { response, text } = await ctlRequest('/ctl/state/attention-queue')
-      if (!response.ok) {
-        resolvedDeps.stderr.write(`${text}\n`)
-        return mapFailureExitCode(response, text)
-      }
-      resolvedDeps.stdout.write(text)
-      return 0
-    }
-
-    if (group === 'state' && action === 'conflicts') {
-      const { response, text } = await ctlRequest('/ctl/state/conflicts')
-      if (!response.ok) {
-        resolvedDeps.stderr.write(`${text}\n`)
-        return mapFailureExitCode(response, text)
-      }
-      resolvedDeps.stdout.write(text)
-      return 0
-    }
-
-    if (group === 'work-sessions' && action === 'list') {
-      const { response, text } = await ctlRequest('/ctl/work-sessions')
-      if (!response.ok) {
-        resolvedDeps.stderr.write(`${text}\n`)
-        return mapFailureExitCode(response, text)
-      }
-      resolvedDeps.stdout.write(text)
-      return 0
-    }
-
-    if (group === 'work-sessions' && action === 'create') {
-      const projectId = parseFlagValue(rest, '--project')
-      const type = parseFlagValue(rest, '--type')
+    if (action === 'create') {
+      const type = ensureSessionType(parseFlagValue(rest, '--type'))
       const title = parseFlagValue(rest, '--title')
-      if (!projectId) {
-        throw new CliUsageError('Missing --project')
-      }
-      if (!type) {
-        throw new CliUsageError('Missing --type')
+      const projectId = parseFlagValue(rest, '--project')
+      const parentId = parseFlagValue(rest, '--parent')
+
+      const body: Record<string, string> = { type }
+      if (title) {
+        body.title = title
       }
 
-      const body = title
-        ? JSON.stringify({ projectId, type, title })
-        : JSON.stringify({ projectId, type })
-
-      const { response, text } = await ctlRequest('/ctl/work-sessions', {
-        method: 'POST',
-        body
-      })
-      if (!response.ok) {
-        resolvedDeps.stderr.write(`${text}\n`)
-        return mapFailureExitCode(response, text)
-      }
-      resolvedDeps.stdout.write(text)
-      return 0
-    }
-
-    if (group === 'work-sessions' && action === 'get') {
-      const sessionId = rest[0]
-      if (!sessionId) {
-        throw new CliUsageError('Missing session id')
-      }
-
-      const { response, text } = await ctlRequest(`/ctl/work-sessions/${sessionId}`)
-      if (!response.ok) {
-        resolvedDeps.stderr.write(`${text}\n`)
-        return mapFailureExitCode(response, text)
-      }
-      resolvedDeps.stdout.write(text)
-      return 0
-    }
-
-    if (group === 'work-sessions' && action === 'events') {
-      const sessionId = rest[0]
-      if (!sessionId) {
-        throw new CliUsageError('Missing session id')
-      }
-
-      const params = new URLSearchParams()
-      params.set('limit', String(parseIntegerFlag(rest, '--limit', 50)))
-      const cursor = parseFlagValue(rest, '--cursor')
-      if (cursor) {
-        params.set('cursor', cursor)
-      }
-      if (hasFlag(rest, '--include-ephemeral')) {
-        params.set('includeEphemeral', '1')
-      }
-
-      const { response, text } = await ctlRequest(`/ctl/work-sessions/${sessionId}/events?${params.toString()}`)
-      if (!response.ok) {
-        resolvedDeps.stderr.write(`${text}\n`)
-        return mapFailureExitCode(response, text)
-      }
-      resolvedDeps.stdout.write(text)
-      return 0
-    }
-
-    if (group === 'work-sessions' && action === 'context') {
-      const sessionId = rest[0]
-      if (!sessionId) {
-        throw new CliUsageError('Missing session id')
-      }
-
-      const level = parseFlagValue(rest, '--level') ?? 'slim'
-      const maxChars = parseFlagValue(rest, '--max-chars')
-      const cursor = parseFlagValue(rest, '--cursor')
-      const params = new URLSearchParams({ level })
-      if (maxChars) {
-        params.set('maxChars', maxChars)
-      }
-      if (cursor) {
-        params.set('cursor', cursor)
-      }
-
-      const { response, text } = await ctlRequest(`/ctl/work-sessions/${sessionId}/context?${params.toString()}`)
-      if (!response.ok) {
-        resolvedDeps.stderr.write(`${text}\n`)
-        return mapFailureExitCode(response, text)
-      }
-      resolvedDeps.stdout.write(text)
-      return 0
-    }
-
-    if (group === 'work-sessions' && action === 'archive') {
-      const sessionId = rest[0]
-      if (!sessionId) {
-        throw new CliUsageError('Missing session id')
-      }
-
-      const { response, text } = await ctlRequest(`/ctl/work-sessions/${sessionId}/archive`, {
-        method: 'POST'
-      })
-      if (!response.ok) {
-        resolvedDeps.stderr.write(`${text}\n`)
-        return mapFailureExitCode(response, text)
-      }
-      resolvedDeps.stdout.write(text)
-      return 0
-    }
-
-    if (group === 'work-sessions' && action === 'prompt') {
-      const sessionId = rest[0]
-      if (!sessionId) {
-        throw new CliUsageError('Missing session id')
-      }
-
-      let text = parseFlagValue(rest, '--text')
-      if (!text) {
-        const filePath = parseFlagValue(rest, '--file')
-        if (filePath) {
-          text = await readFile(filePath, 'utf8')
-        } else if (rest.includes('--stdin')) {
-          text = await readStdin(resolvedDeps.stdin)
+      if (ctx.caller.kind === 'session') {
+        if (projectId || parentId) {
+          throw new CliUsageError('Session callers cannot pass --project or --parent')
+        }
+      } else {
+        if (!projectId) {
+          throw new CliUsageError('Local-user create requires --project')
+        }
+        body.projectId = projectId
+        if (parentId) {
+          body.parentId = parentId
         }
       }
 
-      if (!text || text.trim().length === 0) {
-        throw new CliUsageError('Missing prompt text')
+      const { response, text } = await ctlRequest('/ctl/session/create', {
+        method: 'POST',
+        body: JSON.stringify(body)
+      })
+      if (!response.ok) {
+        resolvedDeps.stderr.write(`${text}\n`)
+        return mapFailureExitCode(response, text)
       }
+      resolvedDeps.stdout.write(text)
+      return 0
+    }
 
-      const { response, text: responseText } = await ctlRequest(`/ctl/work-sessions/${sessionId}/prompt`, {
+    if (action === 'inspect') {
+      const sessionId = rest[0]
+      if (!sessionId) {
+        throw new CliUsageError('Missing session id')
+      }
+      const { response, text } = await ctlRequest(`/ctl/session/${sessionId}/inspect`)
+      if (!response.ok) {
+        resolvedDeps.stderr.write(`${text}\n`)
+        return mapFailureExitCode(response, text)
+      }
+      resolvedDeps.stdout.write(text)
+      return 0
+    }
+
+    if (action === 'prompt') {
+      const sessionId = rest[0]
+      const text = parseFlagValue(rest, '--text')
+      if (!sessionId || !text || text.trim().length === 0) {
+        throw new CliUsageError('Missing session id or prompt text')
+      }
+      const { response, text: responseText } = await ctlRequest(`/ctl/session/${sessionId}/prompt`, {
         method: 'POST',
         body: JSON.stringify({ text })
       })
@@ -481,253 +327,13 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
       return 0
     }
 
-    if (group === 'work-sessions' && action === 'send-keys') {
+    if (action === 'destroy') {
       const sessionId = rest[0]
       if (!sessionId) {
         throw new CliUsageError('Missing session id')
       }
-
-      const keyTokens = rest.slice(1)
-      const literal = hasFlag(keyTokens, '--literal')
-      const filteredTokens = keyTokens.filter((token) => token !== '--literal')
-      if (filteredTokens.length === 0) {
-        throw new CliUsageError('Missing keys')
-      }
-
-      const data = parseSendKeysTokens(filteredTokens, { literal })
-      const { response, text } = await ctlRequest(`/ctl/work-sessions/${sessionId}/send-keys`, {
-        method: 'POST',
-        body: JSON.stringify({ data })
-      })
-      if (!response.ok) {
-        resolvedDeps.stderr.write(`${text}\n`)
-        return mapFailureExitCode(response, text)
-      }
-      resolvedDeps.stdout.write(text)
-      return 0
-    }
-
-    if (group === 'meta-sessions' && action === 'list') {
-      const { response, text } = await ctlRequest('/ctl/meta-sessions')
-      if (!response.ok) {
-        resolvedDeps.stderr.write(`${text}\n`)
-        return mapFailureExitCode(response, text)
-      }
-      resolvedDeps.stdout.write(text)
-      return 0
-    }
-
-    if (group === 'meta-sessions' && action === 'create') {
-      const title = parseFlagValue(rest, '--title')
-      const backendSessionType = parseFlagValue(rest, '--backend')
-      if (!title || title.trim().length === 0) {
-          throw new CliUsageError('Missing meta session title')
-      }
-      if (!backendSessionType || !['claude-code', 'codex', 'opencode'].includes(backendSessionType)) {
-        throw new CliUsageError('Missing meta session backend session type')
-      }
-
-      const capabilityLevel = parseCapabilityLevel(rest, '--capability-level', 3)
-      const { response, text } = await ctlRequest('/ctl/meta-sessions', {
-        method: 'POST',
-        body: JSON.stringify({
-          title,
-          backendSessionType,
-          capabilityLevel
-        })
-      })
-      if (!response.ok) {
-        resolvedDeps.stderr.write(`${text}\n`)
-        return mapFailureExitCode(response, text)
-      }
-      resolvedDeps.stdout.write(text)
-      return 0
-    }
-
-    if (group === 'meta-sessions' && action === 'get') {
-        const metaSessionId = rest[0]
-        if (!metaSessionId) {
-          throw new CliUsageError('Missing meta session id')
-        }
-
-      const { response, text } = await ctlRequest(`/ctl/meta-sessions/${metaSessionId}`)
-      if (!response.ok) {
-        resolvedDeps.stderr.write(`${text}\n`)
-        return mapFailureExitCode(response, text)
-      }
-      resolvedDeps.stdout.write(text)
-      return 0
-    }
-
-    if (group === 'meta-sessions' && action === 'archive') {
-        const metaSessionId = rest[0]
-        if (!metaSessionId) {
-          throw new CliUsageError('Missing meta session id')
-        }
-
-      const { response, text } = await ctlRequest(`/ctl/meta-sessions/${metaSessionId}/archive`, {
+      const { response, text } = await ctlRequest(`/ctl/session/${sessionId}/destroy`, {
         method: 'POST'
-      })
-      if (!response.ok) {
-        resolvedDeps.stderr.write(`${text}\n`)
-        return mapFailureExitCode(response, text)
-      }
-      resolvedDeps.stdout.write(text)
-      return 0
-    }
-
-    if (group === 'meta-sessions' && action === 'restore') {
-        const metaSessionId = rest[0]
-        if (!metaSessionId) {
-          throw new CliUsageError('Missing meta session id')
-        }
-
-      const { response, text } = await ctlRequest(`/ctl/meta-sessions/${metaSessionId}/restore`, {
-        method: 'POST'
-      })
-      if (!response.ok) {
-        resolvedDeps.stderr.write(`${text}\n`)
-        return mapFailureExitCode(response, text)
-      }
-      resolvedDeps.stdout.write(text)
-      return 0
-    }
-
-    if (group === 'meta-sessions' && action === 'activate') {
-        const metaSessionId = rest[0]
-        if (!metaSessionId) {
-          throw new CliUsageError('Missing meta session id')
-        }
-
-      const { response, text } = await ctlRequest(`/ctl/meta-sessions/${metaSessionId}/activate`, {
-        method: 'POST'
-      })
-      if (!response.ok) {
-        resolvedDeps.stderr.write(`${text}\n`)
-        return mapFailureExitCode(response, text)
-      }
-      resolvedDeps.stdout.write(text)
-      return 0
-    }
-
-    if (group === 'proposals' && action === 'list') {
-      const { response, text } = await ctlRequest('/ctl/proposals')
-      if (!response.ok) {
-        resolvedDeps.stderr.write(`${text}\n`)
-        return mapFailureExitCode(response, text)
-      }
-      resolvedDeps.stdout.write(text)
-      return 0
-    }
-
-    if (group === 'proposals' && action === 'create') {
-      const kind = rest[0]
-      if (kind !== 'prompt') {
-        throw new CliUsageError('Unsupported proposal kind')
-      }
-
-      const targetSessionId = parseFlagValue(rest, '--target')
-      const text = parseFlagValue(rest, '--text')
-      if (!targetSessionId || !text || text.trim().length === 0) {
-        throw new CliUsageError('Missing proposal target or text')
-      }
-
-      const { response, text: responseText } = await ctlRequest('/ctl/proposals', {
-        method: 'POST',
-        body: JSON.stringify({
-          kind: 'prompt',
-          targetSessionId,
-          text
-        })
-      })
-      if (!response.ok) {
-        resolvedDeps.stderr.write(`${responseText}\n`)
-        return mapFailureExitCode(response, responseText)
-      }
-      resolvedDeps.stdout.write(responseText)
-      return 0
-    }
-
-    if (group === 'proposals' && action === 'get') {
-      const proposalId = rest[0]
-      if (!proposalId) {
-        throw new CliUsageError('Missing proposal id')
-      }
-      const { response, text } = await ctlRequest(`/ctl/proposals/${proposalId}`)
-      if (!response.ok) {
-        resolvedDeps.stderr.write(`${text}\n`)
-        return mapFailureExitCode(response, text)
-      }
-      resolvedDeps.stdout.write(text)
-      return 0
-    }
-
-    if (group === 'proposals' && action === 'wait') {
-      const proposalId = rest[0]
-      if (!proposalId) {
-        throw new CliUsageError('Missing proposal id')
-      }
-
-      const timeoutMs = parseIntegerFlag(rest, '--timeout-ms', DEFAULT_WAIT_TIMEOUT_MS)
-      const intervalMs = parseIntegerFlag(rest, '--interval-ms', DEFAULT_WAIT_INTERVAL_MS)
-      const deadline = Date.now() + timeoutMs
-
-      while (true) {
-        const { response, text } = await ctlRequest(`/ctl/proposals/${proposalId}`)
-        if (!response.ok) {
-          resolvedDeps.stderr.write(`${text}\n`)
-          return mapFailureExitCode(response, text)
-        }
-
-        const parsed = JSON.parse(text) as JsonEnvelope
-        const proposal = parsed.data as { status?: string } | null
-        if (!proposal || !proposal.status) {
-          resolvedDeps.stderr.write(`${text}\n`)
-          return 7
-        }
-
-        if (proposal.status !== 'pending_approval' && proposal.status !== 'executing') {
-          resolvedDeps.stdout.write(text)
-          return 0
-        }
-
-        if (Date.now() >= deadline) {
-          resolvedDeps.stderr.write(`Timed out waiting for proposal ${proposalId}\n`)
-          return 7
-        }
-
-        await resolvedDeps.sleep(intervalMs)
-      }
-    }
-
-    if (group === 'dispatch' && action === 'proposal') {
-      const proposalId = rest[0]
-      if (!proposalId) {
-        throw new CliUsageError('Missing proposal id')
-      }
-      const { response, text } = await ctlRequest(`/ctl/dispatch/proposal/${proposalId}`, {
-        method: 'POST'
-      })
-      if (!response.ok) {
-        resolvedDeps.stderr.write(`${text}\n`)
-        return mapFailureExitCode(response, text)
-      }
-      resolvedDeps.stdout.write(text)
-      return 0
-    }
-
-    if (group === 'dispatch' && action === 'preset') {
-      const presetName = rest[0]
-      const targetSessionId = parseFlagValue(rest, '--target')
-      if (!presetName || !targetSessionId) {
-        throw new CliUsageError('Missing preset name or target session id')
-      }
-
-      const { response, text } = await ctlRequest(`/ctl/dispatch/preset/${presetName}`, {
-        method: 'POST',
-        body: JSON.stringify({
-          targetSessionId
-        })
       })
       if (!response.ok) {
         resolvedDeps.stderr.write(`${text}\n`)

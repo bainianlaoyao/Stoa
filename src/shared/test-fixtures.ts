@@ -162,6 +162,7 @@ export function createRendererApiMock(overrides: Partial<RendererApi> = {}): Ren
       activeTab: 'explorer',
       width: 320,
       sessionListWidth: 240,
+      selectedProjectId: null
     }),
     setSidebarState: vi.fn().mockResolvedValue(undefined),
     fsReadDir: vi.fn().mockResolvedValue([]),
@@ -178,6 +179,7 @@ export function createRendererApiMock(overrides: Partial<RendererApi> = {}): Ren
     fsOpenFile: vi.fn().mockResolvedValue(undefined),
     onFsChanged: vi.fn().mockReturnValue(() => {}),
     shellShowItemInFolder: vi.fn().mockResolvedValue(undefined),
+    onFsChanged: vi.fn().mockReturnValue(() => {}),
     gitStatus: vi.fn().mockResolvedValue({
       branch: 'main',
       ahead: 0,

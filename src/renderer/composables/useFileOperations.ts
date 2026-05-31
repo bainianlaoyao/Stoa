@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { ref, type Ref } from 'vue'
 
 export interface InlineInput {
   parentPath: string
@@ -8,7 +8,7 @@ export interface InlineInput {
   existingPath?: string
 }
 
-export function useFileOperations(projectPath: ref<string | null>, invalidatePath: (dirPath: string) => void) {
+export function useFileOperations(projectPath: Ref<string | null>, invalidatePath: (dirPath: string) => void) {
   const inlineInput = ref<InlineInput | null>(null)
 
   function startCreateFile(parentPath: string, depth: number): void {
@@ -85,4 +85,3 @@ export function useFileOperations(projectPath: ref<string | null>, invalidatePat
     deleteEntry,
   }
 }
-

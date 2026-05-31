@@ -22,6 +22,6 @@ describe('build-stoa-ctl', () => {
     const builtModule = await import(moduleUrl)
 
     expect(typeof builtModule.run).toBe('function')
-    expect(builtModule.USAGE_TEXT).toContain('work-sessions send-keys')
+    expect(builtModule.USAGE_TEXT).toContain('session prompt <sessionId> --text "..."')
   })
 })

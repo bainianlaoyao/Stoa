@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { SessionRowViewModel } from '@shared/observability'
 import type { SessionType } from '@shared/project-session'
@@ -30,6 +30,18 @@ interface DetailState {
   y: number
 }
 
+type HierarchySession = ProjectHierarchyNode['sessions'][number]
+
+interface SessionTreeRow {
+  session: HierarchySession
+  depth: number
+}
+
+interface ProjectTreeView extends ProjectHierarchyNode {
+  liveRows: SessionTreeRow[]
+  archivedRows: SessionTreeRow[]
+}
+
 const props = defineProps<{
   hierarchy: ProjectHierarchyNode[]
   activeProjectId: string | null
@@ -44,6 +56,7 @@ const emit = defineEmits<{
   createSession: [payload: { projectId: string; type: SessionType; title: string }]
   deleteProject: [projectId: string]
   archiveSession: [sessionId: string]
+  restoreSession: [sessionId: string]
   regenerateSessionTitle: [sessionId: string]
   restartSession: [sessionId: string]
 }>()
@@ -52,6 +65,7 @@ const showNewProject = ref(false)
 const LONG_PRESS_MS = 220
 
 const collapsedProjectIds = ref<Set<string>>(new Set())
+const collapsedArchivedProjectIds = ref<Set<string>>(new Set())
 
 const detailState = ref<DetailState | null>(null)
 
@@ -72,6 +86,73 @@ let longPressTimer: ReturnType<typeof setTimeout> | null = null
 let longPressActivated = false
 let addButtonPressStartedAt = 0
 let addButtonPressedProjectId: string | null = null
+
+function buildSessionRows(sessionList: HierarchySession[]): SessionTreeRow[] {
+  if (sessionList.length === 0) {
+    return []
+  }
+
+  const sessionById = new Map(sessionList.map((session) => [session.id, session]))
+  const indexById = new Map(sessionList.map((session, index) => [session.id, index]))
+  const childrenByParentId = new Map<string, HierarchySession[]>()
+
+  for (const session of sessionList) {
+    if (!session.parentSessionId || !sessionById.has(session.parentSessionId)) {
+      continue
+    }
+
+    const siblings = childrenByParentId.get(session.parentSessionId) ?? []
+    siblings.push(session)
+    childrenByParentId.set(session.parentSessionId, siblings)
+  }
+
+  function orderedChildren(parentId: string): HierarchySession[] {
+    return [...(childrenByParentId.get(parentId) ?? [])].sort((left, right) => {
+      return (indexById.get(left.id) ?? 0) - (indexById.get(right.id) ?? 0)
+    })
+  }
+
+  const rows: SessionTreeRow[] = []
+  const visited = new Set<string>()
+
+  function visit(session: HierarchySession, depth: number): void {
+    if (visited.has(session.id)) {
+      return
+    }
+
+    visited.add(session.id)
+    rows.push({
+      session,
+      depth
+    })
+
+    for (const child of orderedChildren(session.id)) {
+      visit(child, depth + 1)
+    }
+  }
+
+  const rootSessions = sessionList
+    .filter((session) => !session.parentSessionId || !sessionById.has(session.parentSessionId))
+    .sort((left, right) => (indexById.get(left.id) ?? 0) - (indexById.get(right.id) ?? 0))
+
+  for (const rootSession of rootSessions) {
+    visit(rootSession, 0)
+  }
+
+  for (const session of [...sessionList].sort((left, right) => (indexById.get(left.id) ?? 0) - (indexById.get(right.id) ?? 0))) {
+    visit(session, 0)
+  }
+
+  return rows
+}
+
+const projectTreeViews = computed<ProjectTreeView[]>(() => {
+  return props.hierarchy.map((project) => ({
+    ...project,
+    liveRows: buildSessionRows(project.sessions),
+    archivedRows: buildSessionRows(project.archivedSessions)
+  }))
+})
 
 function providerIcon(type: SessionType): string {
   const map: Record<SessionType, string> = {
@@ -101,7 +182,7 @@ function closeRadialMenu() {
   radialMenuVisible.value = false
 }
 
-function openSessionContextMenu(event: MouseEvent, session: ProjectHierarchyNode['sessions'][number]): void {
+function openSessionContextMenu(event: MouseEvent, session: HierarchySession): void {
   event.preventDefault()
   sessionContextMenuSessionId.value = session.id
   sessionContextMenuSessionTitle.value = session.title
@@ -146,28 +227,30 @@ function sessionRowViewModel(sessionId: string): SessionRowViewModel | null {
   return props.sessionRowViewModels?.[sessionId] ?? null
 }
 
-function sessionTone(session: ProjectHierarchyNode['sessions'][number]): string {
+function sessionTone(session: HierarchySession): string {
   return sessionRowViewModel(session.id)?.tone ?? 'neutral'
 }
 
-function sessionPrimaryLabel(session: ProjectHierarchyNode['sessions'][number]): string {
+function sessionPrimaryLabel(session: HierarchySession): string {
   return session.title
 }
 
-function sessionStatusLabel(session: ProjectHierarchyNode['sessions'][number]): string | null {
+function sessionStatusLabel(session: HierarchySession): string | null {
   const viewModel = sessionRowViewModel(session.id)
-  if (!viewModel) return null
+  if (!viewModel) {
+    return session.summary || null
+  }
   const parts: string[] = []
   if (viewModel.primaryLabel) parts.push(viewModel.primaryLabel)
   if (viewModel.updatedAgoLabel) parts.push(viewModel.updatedAgoLabel)
   return parts.length ? parts.join(' ') : null
 }
 
-function sessionPhase(session: ProjectHierarchyNode['sessions'][number]): string {
-  return sessionRowViewModel(session.id)?.phase ?? 'unknown'
+function sessionPhase(session: HierarchySession): string {
+  return sessionRowViewModel(session.id)?.phase ?? (session.runtimeState === 'exited' ? 'complete' : 'unknown')
 }
 
-function sessionAttentionReason(session: ProjectHierarchyNode['sessions'][number]): string | null {
+function sessionAttentionReason(session: HierarchySession): string | null {
   return sessionRowViewModel(session.id)?.attentionReason ?? null
 }
 
@@ -185,11 +268,31 @@ function toggleProjectCollapse(projectId: string): void {
   collapsedProjectIds.value = next
 }
 
+function isArchivedProjectCollapsed(projectId: string): boolean {
+  return collapsedArchivedProjectIds.value.has(projectId)
+}
+
+function toggleArchivedProjectCollapse(projectId: string): void {
+  const next = new Set(collapsedArchivedProjectIds.value)
+  if (next.has(projectId)) {
+    next.delete(projectId)
+  } else {
+    next.add(projectId)
+  }
+  collapsedArchivedProjectIds.value = next
+}
+
 function toggleAllCollapsed(): void {
   if (collapsedProjectIds.value.size === props.hierarchy.length) {
     collapsedProjectIds.value = new Set()
   } else {
     collapsedProjectIds.value = new Set(props.hierarchy.map(p => p.id))
+  }
+}
+
+function sessionTreeIndentStyle(depth: number): Record<string, string> {
+  return {
+    '--tree-depth': String(depth)
   }
 }
 
@@ -340,7 +443,7 @@ onBeforeUnmount(() => {
           {{ t('workspace.eyebrow') }}
         </button>
 
-        <div v-for="project in hierarchy" :key="project.id" class="route-project grid gap-1">
+        <div v-for="project in projectTreeViews" :key="project.id" class="route-project grid gap-1">
           <div
             class="grid grid-cols-[minmax(0,1fr)_auto] gap-2 items-center"
             @contextmenu="onProjectRowContextmenu($event, project.id)"
@@ -401,65 +504,160 @@ onBeforeUnmount(() => {
           </div>
 
           <template v-if="!isProjectCollapsed(project.id)">
-          <div
-            v-for="session in project.sessions"
-            :key="session.id"
-            class="route-session-row"
-          >
-            <button
-              class="route-item child"
-              :class="{ 'route-item--active': session.id === activeSessionId }"
-              :aria-current="session.id === activeSessionId ? 'true' : undefined"
-              data-testid="session-row"
-              :data-session-title="session.title"
-              :data-session-type="session.type"
-              type="button"
-              @click="emit('selectSession', session.id)"
-              @contextmenu="openSessionContextMenu($event, session)"
+            <div
+              v-for="row in project.liveRows"
+              :key="row.session.id"
+              class="route-session-row"
+              :style="sessionTreeIndentStyle(row.depth)"
+              :data-tree-depth="row.depth"
             >
-              <div
-                class="route-dot"
-                data-testid="session-status-dot"
-                :data-tone="sessionTone(session)"
-                :data-phase="sessionPhase(session)"
-                :data-session-status-testid="`session-status-${sessionPhase(session)}`"
-                :data-attention-reason="sessionAttentionReason(session) ?? undefined"
-              />
-              <img class="route-provider-icon" :src="providerIcon(session.type)" :alt="session.type" />
-              <div class="route-copy route-copy--session">
-                <span class="route-session-name">{{ sessionPrimaryLabel(session) }}</span>
-                <span v-if="sessionStatusLabel(session)" class="route-session-label">{{ sessionStatusLabel(session) }}</span>
-              </div>
-            </button>
-            <span class="route-row-actions">
               <button
-                class="route-row-action route-icon-button"
+                class="route-item child"
+                :class="{ 'route-item--active': row.session.id === activeSessionId }"
+                :aria-current="row.session.id === activeSessionId ? 'true' : undefined"
+                data-testid="session-row"
+                :data-session-id="row.session.id"
+                :data-tree-depth="String(row.depth)"
+                :data-session-title="row.session.title"
+                :data-session-type="row.session.type"
                 type="button"
-                data-testid="workspace.archive-session"
-                :data-session-id="session.id"
-                :aria-label="t('workspace.archiveSession', { title: session.title })"
-                :title="t('workspace.archiveSessionTitle')"
-                :data-row-archive="session.id"
-                @click.stop="emit('archiveSession', session.id)"
+                @click="emit('selectSession', row.session.id)"
+                @contextmenu="openSessionContextMenu($event, row.session)"
               >
-                <svg
-                  class="route-icon-button__icon"
-                  viewBox="0 0 16 16"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                  aria-hidden="true"
-                >
-                  <path
-                    d="M2.5 3.5H13.5V6H2.5V3.5ZM4 7.5H12V12.5H4V7.5ZM6 9.5H10"
-                    stroke="currentColor"
-                    stroke-width="1.25"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  />
-                </svg>
+                <div
+                  class="route-dot"
+                  data-testid="session-status-dot"
+                  :data-tone="sessionTone(row.session)"
+                  :data-phase="sessionPhase(row.session)"
+                  :data-session-status-testid="`session-status-${sessionPhase(row.session)}`"
+                  :data-attention-reason="sessionAttentionReason(row.session) ?? undefined"
+                />
+                <img class="route-provider-icon" :src="providerIcon(row.session.type)" :alt="row.session.type" />
+                <div class="route-copy route-copy--session">
+                  <span class="route-session-name">{{ sessionPrimaryLabel(row.session) }}</span>
+                  <span v-if="sessionStatusLabel(row.session)" class="route-session-label">{{ sessionStatusLabel(row.session) }}</span>
+                </div>
               </button>
-            </span>
-           </div>
+              <span class="route-row-actions">
+                <button
+                  class="route-row-action route-icon-button"
+                  type="button"
+                  data-testid="workspace.archive-session"
+                  :data-session-id="row.session.id"
+                  :aria-label="t('workspace.archiveSession', { title: row.session.title })"
+                  :title="t('workspace.archiveSessionTitle')"
+                  :data-row-archive="row.session.id"
+                  @click.stop="emit('archiveSession', row.session.id)"
+                >
+                  <svg
+                    class="route-icon-button__icon"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M2.5 3.5H13.5V6H2.5V3.5ZM4 7.5H12V12.5H4V7.5ZM6 9.5H10"
+                      stroke="currentColor"
+                      stroke-width="1.25"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                </button>
+              </span>
+            </div>
+
+            <div
+              v-if="project.archivedRows.length > 0"
+              class="route-archived-group grid gap-1"
+              :data-archived-group="project.id"
+            >
+              <button
+                class="group-label group-label--archived"
+                type="button"
+                @click="toggleArchivedProjectCollapse(project.id)"
+              >
+                <span
+                  class="group-label__chevron"
+                  :class="{ 'group-label__chevron--collapsed': isArchivedProjectCollapsed(project.id) }"
+                >▾</span>
+                {{ t('archive.title') }}
+              </button>
+
+              <template v-if="!isArchivedProjectCollapsed(project.id)">
+                <div
+                  v-for="row in project.archivedRows"
+                  :key="row.session.id"
+                  class="route-session-row route-session-row--archived"
+                  data-testid="archive.session.row"
+                  :style="sessionTreeIndentStyle(row.depth)"
+                  :data-tree-depth="row.depth"
+                  :data-archived-session="row.session.id"
+                >
+                  <button
+                    class="route-item child route-item--archived"
+                    data-testid="session-row-archived"
+                    :data-session-id="row.session.id"
+                    :data-tree-depth="String(row.depth)"
+                    :data-session-title="row.session.title"
+                    :data-session-type="row.session.type"
+                    type="button"
+                    @contextmenu="openSessionContextMenu($event, row.session)"
+                  >
+                    <div
+                      class="route-dot"
+                      data-testid="session-status-dot"
+                      :data-tone="sessionTone(row.session)"
+                      :data-phase="sessionPhase(row.session)"
+                      :data-session-status-testid="`session-status-${sessionPhase(row.session)}`"
+                      :data-attention-reason="sessionAttentionReason(row.session) ?? undefined"
+                    />
+                    <img class="route-provider-icon" :src="providerIcon(row.session.type)" :alt="row.session.type" />
+                    <div class="route-copy route-copy--session">
+                      <span class="route-session-name">{{ sessionPrimaryLabel(row.session) }}</span>
+                      <span v-if="sessionStatusLabel(row.session)" class="route-session-label">{{ sessionStatusLabel(row.session) }}</span>
+                    </div>
+                    <span class="route-archived-badge">{{ t('activityBar.archive') }}</span>
+                  </button>
+                  <span class="route-row-actions">
+                    <button
+                      class="route-row-action route-icon-button"
+                      type="button"
+                      data-testid="archive.session.restore"
+                      :data-session-id="row.session.id"
+                      :aria-label="t('archive.restore')"
+                      :title="t('archive.restore')"
+                      :data-row-restore="row.session.id"
+                      @click.stop="emit('restoreSession', row.session.id)"
+                    >
+                      <svg
+                        class="route-icon-button__icon"
+                        viewBox="0 0 16 16"
+                        fill="none"
+                        xmlns="http://www.w3.org/2000/svg"
+                        aria-hidden="true"
+                      >
+                        <path
+                          d="M3 8a5 5 0 1 0 2-4"
+                          stroke="currentColor"
+                          stroke-width="1.25"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                        />
+                        <path
+                          d="M3 3.5v3h3"
+                          stroke="currentColor"
+                          stroke-width="1.25"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                        />
+                      </svg>
+                    </button>
+                  </span>
+                </div>
+              </template>
+            </div>
           </template>
          </div>
       </div>
@@ -522,6 +720,22 @@ onBeforeUnmount(() => {
   min-width: 0;
 }
 
+.route-session-row[data-tree-depth='0'] .route-item.child {
+  padding-left: 20px;
+}
+
+.route-session-row[data-tree-depth='1'] .route-item.child {
+  padding-left: 34px;
+}
+
+.route-session-row[data-tree-depth='2'] .route-item.child {
+  padding-left: 48px;
+}
+
+.route-session-row[data-tree-depth='3'] .route-item.child {
+  padding-left: 62px;
+}
+
 .route-project-actions {
   margin-left: auto;
   display: flex;
@@ -578,6 +792,11 @@ onBeforeUnmount(() => {
   padding: 2px 8px 2px 20px;
 }
 
+.route-item--archived {
+  grid-template-columns: 6px 18px minmax(0, 1fr) auto;
+  color: var(--color-subtle);
+}
+
 .route-item:hover:not(.route-item--active),
 .route-item:focus-visible {
   background: var(--color-black-soft);
@@ -599,6 +818,10 @@ onBeforeUnmount(() => {
   width: 2px;
   border-radius: 0;
   background: var(--color-active-indicator);
+}
+
+.route-session-row--archived:has(.route-item--active)::before {
+  opacity: 0.5;
 }
 
 .route-item--active .route-name {
@@ -708,6 +931,17 @@ onBeforeUnmount(() => {
   text-overflow: ellipsis;
   font-size: var(--text-body-sm);
   font-weight: 600;
+}
+
+.route-archived-badge {
+  justify-self: end;
+  padding: 1px 6px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  color: var(--color-subtle);
+  font: var(--text-caption) var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .route-dot {
