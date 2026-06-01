@@ -2,8 +2,7 @@ import type { ProviderCommandContext } from '@shared/project-session'
 import type { ProviderDefinition, ProviderRuntimeTarget } from './index'
 import {
   cleanupCodexProjectConfig,
-  ensureCodexProjectConfig,
-  ensureCodexProjectTrusted
+  ensureCodexProjectConfig
 } from './codex-project-config'
 import { installManagedSidecar, uninstallManagedSidecar } from './managed-sidecar-installer'
 import { buildSharedHookArtifacts } from './shared-hook-dispatch'
@@ -61,7 +60,6 @@ function createCommand(target: ProviderRuntimeTarget, context: ProviderCommandCo
 async function writeCodexHookSidecar(target: ProviderRuntimeTarget): Promise<void> {
   const sharedArtifacts = buildSharedHookArtifacts()
   await ensureCodexProjectConfig(target.path)
-  await ensureCodexProjectTrusted(target.path)
 
   await installManagedSidecar({
     rootDir: target.path,

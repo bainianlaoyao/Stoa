@@ -119,7 +119,6 @@ describe('managed-sidecar-maintenance', () => {
 
       const dispatcher = await readFile(join(projectDir, '.stoa', 'hook-dispatch.mjs'), 'utf8')
       const configToml = await readFile(join(projectDir, '.codex', 'config.toml'), 'utf8')
-      const userConfigToml = await readFile(join(codexHomeDir, 'config.toml'), 'utf8')
       expect(dispatcher).toContain('/hooks/codex')
       expect(dispatcher).not.toContain('../src/extensions/providers/shared-hook-dispatch.ts')
       await expect(readFile(join(projectDir, '.codex', 'hook-stoa.mjs'), 'utf8')).rejects.toThrow()
@@ -128,9 +127,9 @@ describe('managed-sidecar-maintenance', () => {
       expect(configToml).toContain('[[hooks.SessionStart]]')
       expect(configToml).toContain(`command = ${JSON.stringify(expectedCodexHookCommand('Stop'))}`)
       expect(configToml).not.toContain('trusted_hash = "sha256:')
-      expect(userConfigToml).toContain('trust_level = "trusted"')
-      expect(userConfigToml).toContain('[hooks.state.')
-      expect(userConfigToml).toContain('trusted_hash = "sha256:')
+      // Global ~/.codex/config.toml is no longer written by Stoa.
+      // Hook trust must be granted by the user through Codex's own approval flow.
+      await expect(readFile(join(codexHomeDir, 'config.toml'), 'utf8')).rejects.toThrow()
     } finally {
       if (previousCodexHome === undefined) {
         delete process.env.CODEX_HOME

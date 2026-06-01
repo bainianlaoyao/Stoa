@@ -57,14 +57,11 @@ describe('codex provider', () => {
     expect(command.args).toEqual(['resume', 'codex-external-1'])
   })
 
-  test('installSidecar writes shared dispatcher artifacts and official Codex hook config files', async () => {
+  test('installSidecar writes shared dispatcher artifacts and project-level hook config', async () => {
     const provider = createCodexProvider()
     const workspaceDir = await mkdtemp(join(tmpdir(), 'stoa-codex-sidecar-'))
-    const codexHomeDir = await mkdtemp(join(tmpdir(), 'stoa-codex-home-'))
-    const previousCodexHome = process.env.CODEX_HOME
 
     try {
-      process.env.CODEX_HOME = codexHomeDir
       await provider.installSidecar({
         session_id: 'session_demo_003',
         project_id: 'project_demo',
@@ -86,7 +83,6 @@ describe('codex provider', () => {
       await expect(stat(join(workspaceDir, '.codex', 'hooks.json'))).rejects.toThrow()
 
       const configContent = await readFile(join(workspaceDir, '.codex', 'config.toml'), 'utf8')
-      const userConfigContent = await readFile(join(codexHomeDir, 'config.toml'), 'utf8')
       const dispatcherContent = await readFile(join(workspaceDir, '.stoa', 'hook-dispatch.mjs'), 'utf8')
 
       expect(configContent).toContain('[features]')
@@ -97,32 +93,19 @@ describe('codex provider', () => {
       expect(configContent).not.toContain('[hooks.state.')
       expect(configContent).not.toContain('trusted_hash = "sha256:')
       expect(configContent).not.toContain('codex_hooks')
-      expect(userConfigContent).toContain('trust_level = "trusted"')
-      expect(userConfigContent).toContain('[hooks.state.')
-      expect(userConfigContent).toContain('trusted_hash = "sha256:')
-      expect(userConfigContent.toLowerCase().replaceAll('\\\\', '\\')).toContain(workspaceDir.toLowerCase())
       expect(dispatcherContent).toContain('/hooks/codex')
       expect(dispatcherContent).toContain('STOA_HOOK_LEASE_PATH')
       expect(dispatcherContent).not.toContain('../src/extensions/providers/shared-hook-dispatch.ts')
     } finally {
-      if (previousCodexHome === undefined) {
-        delete process.env.CODEX_HOME
-      } else {
-        process.env.CODEX_HOME = previousCodexHome
-      }
       await rm(workspaceDir, { recursive: true, force: true })
-      await rm(codexHomeDir, { recursive: true, force: true })
     }
   })
 
   test('installSidecar preserves existing project codex config while adding Stoa hooks', async () => {
     const provider = createCodexProvider()
     const workspaceDir = await mkdtemp(join(tmpdir(), 'stoa-codex-sidecar-existing-config-'))
-    const codexHomeDir = await mkdtemp(join(tmpdir(), 'stoa-codex-home-existing-config-'))
-    const previousCodexHome = process.env.CODEX_HOME
 
     try {
-      process.env.CODEX_HOME = codexHomeDir
       await mkdir(join(workspaceDir, '.codex'), { recursive: true })
       await writeFile(
         join(workspaceDir, '.codex', 'config.toml'),
@@ -157,24 +140,15 @@ describe('codex provider', () => {
       expect(configContent).toContain('[[hooks.SessionStart]]')
       expect(configContent).toContain(`command = ${JSON.stringify(expectedCodexHookCommand('Stop'))}`)
     } finally {
-      if (previousCodexHome === undefined) {
-        delete process.env.CODEX_HOME
-      } else {
-        process.env.CODEX_HOME = previousCodexHome
-      }
       await rm(workspaceDir, { recursive: true, force: true })
-      await rm(codexHomeDir, { recursive: true, force: true })
     }
   })
 
   test('uninstallSidecar removes only Stoa-managed codex hooks and keeps user project config', async () => {
     const provider = createCodexProvider()
     const workspaceDir = await mkdtemp(join(tmpdir(), 'stoa-codex-sidecar-uninstall-config-'))
-    const codexHomeDir = await mkdtemp(join(tmpdir(), 'stoa-codex-home-uninstall-config-'))
-    const previousCodexHome = process.env.CODEX_HOME
 
     try {
-      process.env.CODEX_HOME = codexHomeDir
       await mkdir(join(workspaceDir, '.codex'), { recursive: true })
       await writeFile(
         join(workspaceDir, '.codex', 'config.toml'),
@@ -209,13 +183,7 @@ describe('codex provider', () => {
       expect(configContent).not.toContain('[[hooks.SessionStart]]')
       expect(configContent).not.toContain(`command = ${JSON.stringify(expectedCodexHookCommand('SessionStart'))}`)
     } finally {
-      if (previousCodexHome === undefined) {
-        delete process.env.CODEX_HOME
-      } else {
-        process.env.CODEX_HOME = previousCodexHome
-      }
       await rm(workspaceDir, { recursive: true, force: true })
-      await rm(codexHomeDir, { recursive: true, force: true })
     }
   })
 })

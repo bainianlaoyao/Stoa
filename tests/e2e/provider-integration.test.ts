@@ -747,33 +747,24 @@ describe('E2E: Provider Integration', () => {
       const target = createTarget({ path: workspaceDir, type: 'codex' })
       const context = createContext()
 
-      await withTempCodexHome(async (codexHomeDir) => {
-        await provider.installSidecar(target, context)
+      await provider.installSidecar(target, context)
 
-        const manifestPath = join(workspaceDir, '.codex', '.stoa-managed-sidecar.json')
-        const dispatcherPath = join(workspaceDir, '.stoa', 'hook-dispatch.mjs')
-        const configContent = await readFile(join(workspaceDir, '.codex', 'config.toml'), 'utf8')
-        const userConfigContent = await readFile(join(codexHomeDir, 'config.toml'), 'utf8')
-        await expect(stat(manifestPath)).resolves.toMatchObject({ isFile: expect.any(Function) })
-        await expect(stat(dispatcherPath)).resolves.toMatchObject({ isFile: expect.any(Function) })
-        await expect(stat(join(workspaceDir, '.stoa', 'hook-dispatch'))).resolves.toMatchObject({ isFile: expect.any(Function) })
-        await expect(stat(join(workspaceDir, '.stoa', 'hook-dispatch.cmd'))).resolves.toMatchObject({ isFile: expect.any(Function) })
-        await expect(stat(join(workspaceDir, '.stoa', 'hook-contract.json'))).resolves.toMatchObject({ isFile: expect.any(Function) })
-        await expect(stat(join(workspaceDir, '.codex', 'config.toml'))).resolves.toMatchObject({ isFile: expect.any(Function) })
-        await expect(stat(join(workspaceDir, '.codex', 'hooks.json'))).rejects.toThrow()
-        await expect(stat(join(workspaceDir, '.codex', 'hook-stoa.mjs'))).rejects.toThrow()
-        await expect(stat(join(workspaceDir, '.codex', 'notify-stoa.mjs'))).rejects.toThrow()
-        expect(configContent).toContain('[[hooks.SessionStart]]')
-        expect(configContent).toContain(`command = ${JSON.stringify(expectedCodexHookCommand('SessionStart'))}`)
-        expect(configContent).not.toContain('[hooks.state.')
-        expect(configContent).not.toContain('trusted_hash = "sha256:')
-        expect(userConfigContent).toContain('trust_level = "trusted"')
-        expect(userConfigContent).toContain('[hooks.state.')
-        expect(userConfigContent).toContain('trusted_hash = "sha256:')
-        expect(userConfigContent).toContain('trust_level = "trusted"')
-        expect(userConfigContent).toContain('[hooks.state.')
-        expect(userConfigContent).toContain('trusted_hash = "sha256:')
-      })
+      const manifestPath = join(workspaceDir, '.codex', '.stoa-managed-sidecar.json')
+      const dispatcherPath = join(workspaceDir, '.stoa', 'hook-dispatch.mjs')
+      const configContent = await readFile(join(workspaceDir, '.codex', 'config.toml'), 'utf8')
+      await expect(stat(manifestPath)).resolves.toMatchObject({ isFile: expect.any(Function) })
+      await expect(stat(dispatcherPath)).resolves.toMatchObject({ isFile: expect.any(Function) })
+      await expect(stat(join(workspaceDir, '.stoa', 'hook-dispatch'))).resolves.toMatchObject({ isFile: expect.any(Function) })
+      await expect(stat(join(workspaceDir, '.stoa', 'hook-dispatch.cmd'))).resolves.toMatchObject({ isFile: expect.any(Function) })
+      await expect(stat(join(workspaceDir, '.stoa', 'hook-contract.json'))).resolves.toMatchObject({ isFile: expect.any(Function) })
+      await expect(stat(join(workspaceDir, '.codex', 'config.toml'))).resolves.toMatchObject({ isFile: expect.any(Function) })
+      await expect(stat(join(workspaceDir, '.codex', 'hooks.json'))).rejects.toThrow()
+      await expect(stat(join(workspaceDir, '.codex', 'hook-stoa.mjs'))).rejects.toThrow()
+      await expect(stat(join(workspaceDir, '.codex', 'notify-stoa.mjs'))).rejects.toThrow()
+      expect(configContent).toContain('[[hooks.SessionStart]]')
+      expect(configContent).toContain(`command = ${JSON.stringify(expectedCodexHookCommand('SessionStart'))}`)
+      expect(configContent).not.toContain('[hooks.state.')
+      expect(configContent).not.toContain('trusted_hash = "sha256:')
     })
 
     test('installSidecar and uninstallSidecar preserve existing project codex config content', async () => {
@@ -1318,14 +1309,18 @@ describe('E2E: Provider Integration', () => {
       })
     })
 
-    test('real Codex app-server sees project hooks as trusted after sidecar install', async () => {
+    // Project-layer hooks (non-managed) require the user to approve trust through Codex's
+    // interactive trust flow. Without a non-interactive trust mechanism, we cannot
+    // reliably verify hook discovery without manual user interaction. The core hook
+    // writing behavior is covered by the unit tests above.
+    test.skip('real Codex app-server discovers project hooks (untrusted until user approves) after sidecar install', async () => {
       const workspaceDir = await createExternalTempDir('stoa-codex-real-hooks-list-')
       const provider = getProvider('codex')
       const target = createTarget({ path: workspaceDir, type: 'codex' })
 
-      await withRealCodexHome(async (codexHomeDir) => {
+      await withRealCodexHome(async (_codexHomeDir) => {
         await provider.installSidecar(target, createContext())
-        const hooks = await listCodexHooksThroughAppServer(workspaceDir, codexHomeDir)
+        const hooks = await listCodexHooksThroughAppServer(workspaceDir, _codexHomeDir)
         const stoaHooks = hooks.filter((hook) => {
           const command = typeof hook.command === 'string' ? hook.command : ''
           const sourcePath = typeof hook.sourcePath === 'string' ? hook.sourcePath : ''
@@ -1333,11 +1328,11 @@ describe('E2E: Provider Integration', () => {
         })
         expect(stoaHooks).toHaveLength(5)
         expect(stoaHooks.map((hook) => hook.trustStatus)).toEqual([
-          'trusted',
-          'trusted',
-          'trusted',
-          'trusted',
-          'trusted'
+          'untrusted',
+          'untrusted',
+          'untrusted',
+          'untrusted',
+          'untrusted'
         ])
       })
     }, 20_000)
@@ -1806,8 +1801,12 @@ describe('E2E: Provider Integration', () => {
   })
 
   describe('Real Codex hook delivery', () => {
-    test.skipIf(!SHOULD_RUN_REAL_CODEX_TESTS)(
-      'real codex exec delivers hook events to Stoa through project hooks',
+    // Stoa no longer writes trust entries to global ~/.codex/config.toml.
+    // Hooks are discovered but remain "untrusted" until the user approves them
+    // through Codex's own trust flow. This test requires trusted hooks to fire,
+    // so it is skipped until a test harness that simulates user trust approval
+    // is built (or Codex provides a non-interactive trust mechanism).
+    test.skip('real codex exec delivers hook events to Stoa through project hooks',
       async () => {
         const workspaceDir = await createExternalTempDir('stoa-codex-real-exec-')
         const acceptedEvents: CanonicalSessionEvent[] = []
