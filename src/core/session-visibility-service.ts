@@ -14,16 +14,15 @@ export interface SessionVisibilityReader {
 }
 
 export class SessionVisibilityService implements SessionVisibilityReader {
-  private readonly nodes: SessionNodeSnapshot[]
-  private readonly byId: Map<string, SessionNodeSnapshot>
+  private readonly nodeSource: SessionNodeSnapshot[] | (() => SessionNodeSnapshot[])
 
-  constructor(nodes: SessionNodeSnapshot[]) {
-    this.nodes = nodes
-    this.byId = new Map(nodes.map((n) => [n.session.id, n]))
+  constructor(nodeSource: SessionNodeSnapshot[] | (() => SessionNodeSnapshot[])) {
+    this.nodeSource = nodeSource
   }
 
   visibleSessionIds(sessionId: string): string[] {
-    const node = this.byId.get(sessionId)
+    const { nodes, byId } = this.readState()
+    const node = byId.get(sessionId)
     if (!node) {
       return []
     }
@@ -32,12 +31,12 @@ export class SessionVisibilityService implements SessionVisibilityReader {
     const rootSessionId = node.tree.rootSessionId
     const visible: string[] = []
 
-    for (const candidate of this.nodes) {
+    for (const candidate of nodes) {
       if (candidate.tree.rootSessionId !== rootSessionId) {
         continue
       }
       if (candidate.tree.depth === targetDepth || candidate.tree.depth > targetDepth) {
-        if (candidate.tree.depth === targetDepth || this.isDescendantOf(candidate, sessionId)) {
+        if (candidate.tree.depth === targetDepth || this.isDescendantOf(candidate, sessionId, byId)) {
           visible.push(candidate.session.id)
         }
       }
@@ -52,12 +51,13 @@ export class SessionVisibilityService implements SessionVisibilityReader {
   }
 
   checkAuthority(viewerId: string, targetId: string, action: AuthorityAction): AuthorityResult {
-    const targetNode = this.byId.get(targetId)
+    const { byId } = this.readState()
+    const targetNode = byId.get(targetId)
     if (!targetNode) {
       return { allowed: false, reason: 'unknown_session' }
     }
 
-    const viewerNode = this.byId.get(viewerId)
+    const viewerNode = byId.get(viewerId)
     if (!viewerNode) {
       return { allowed: false, reason: 'unknown_session' }
     }
@@ -83,20 +83,35 @@ export class SessionVisibilityService implements SessionVisibilityReader {
       return { allowed: true }
     }
 
-    if (this.isDescendantOf(targetNode, viewerId)) {
+    if (this.isDescendantOf(targetNode, viewerId, byId)) {
       return { allowed: true }
     }
 
     return { allowed: false, reason: 'forbidden_authority_scope' }
   }
 
-  private isDescendantOf(candidate: SessionNodeSnapshot, ancestorId: string): boolean {
+  private readState(): { nodes: SessionNodeSnapshot[]; byId: Map<string, SessionNodeSnapshot> } {
+    const nodes = typeof this.nodeSource === 'function'
+      ? this.nodeSource()
+      : this.nodeSource
+
+    return {
+      nodes,
+      byId: new Map(nodes.map((node) => [node.session.id, node]))
+    }
+  }
+
+  private isDescendantOf(
+    candidate: SessionNodeSnapshot,
+    ancestorId: string,
+    byId: Map<string, SessionNodeSnapshot>
+  ): boolean {
     let cursorId: string | null = candidate.session.parentSessionId
     while (cursorId) {
       if (cursorId === ancestorId) {
         return true
       }
-      const parent = this.byId.get(cursorId)
+      const parent = byId.get(cursorId)
       if (!parent) {
         break
       }

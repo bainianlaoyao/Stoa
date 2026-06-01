@@ -232,7 +232,7 @@ describe('SessionSupervisor', () => {
       expect(session.id).toBe('new-child')
     })
 
-    test('rejects when session caller has no create authority on target', async () => {
+    test('rejects when session caller in tree has no create authority on target', async () => {
       const deps = makeDeps({
         visibilityService: {
           visibleSessionIds: () => ['root', 'peer'],
@@ -244,6 +244,22 @@ describe('SessionSupervisor', () => {
       const supervisor = new SessionSupervisor(deps)
       await expect(supervisor.createChildSession(sessionCaller('root'), { parentId: 'peer', projectId: 'proj-1', type: 'codex', title: 'child' }))
         .rejects.toThrow('forbidden_authority_scope')
+    })
+
+    test('rejects session caller not in tree with unknown_session', async () => {
+      let called = false
+      const deps = makeDeps({
+        getSnapshot: () => [],
+        createChildSession: async () => {
+          called = true
+          return makeSession({ id: 'new-child', parentSessionId: 'outsider', createdBySessionId: 'outsider' })
+        }
+      })
+      const supervisor = new SessionSupervisor(deps)
+      await expect(
+        supervisor.createChildSession(sessionCaller('outsider'), { parentId: '', projectId: '', type: 'shell', title: 'child' })
+      ).rejects.toThrow('unknown_session')
+      expect(called).toBe(false)
     })
   })
 

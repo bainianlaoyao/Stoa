@@ -1,6 +1,8 @@
 import { describe, test, expect, beforeEach } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
 import { IPC_CHANNELS } from '@core/ipc-channels'
 import { ProjectSessionManager } from '@core/project-session-manager'
+import { useWorkspaceStore } from '@renderer/stores/workspaces'
 import { createTestWorkspace, createTestGlobalStatePath, tempDirs } from './helpers'
 import type {
   BootstrapState,
@@ -29,6 +31,13 @@ class FakeIpcBus {
 
   on(channel: string, listener: (...args: any[]) => void): void {
     this.listeners.set(channel, listener)
+  }
+
+  removeListener(channel: string, listener: (...args: any[]) => void): void {
+    const current = this.listeners.get(channel)
+    if (current === listener) {
+      this.listeners.delete(channel)
+    }
   }
 
   async invoke(channel: string, ...args: any[]): Promise<any> {
@@ -173,6 +182,11 @@ function createPreloadApi(bus: FakeIpcBus): RendererApi {
     onTerminalData: () => () => {},
     onMemoryNotification: () => () => {},
     onTitleGenerationNotification: () => () => {},
+    onSessionGraphEvent: (callback) => {
+      const handler = (_event: unknown, event: Parameters<typeof callback>[0]) => callback(event)
+      bus.on(IPC_CHANNELS.sessionGraphEvent, handler)
+      return () => bus.removeListener(IPC_CHANNELS.sessionGraphEvent, handler)
+    },
     onSessionPresenceChanged: () => () => {},
     onProjectObservabilityChanged: () => () => {},
     onAppObservabilityChanged: () => () => {}
@@ -183,6 +197,7 @@ async function registerMainHandlers(
   bus: FakeIpcBus,
   globalStatePath: string
 ): Promise<ProjectSessionManager> {
+  let graphVersion = 0
   const manager = await ProjectSessionManager.create({
     webhookPort: null,
     globalStatePath
@@ -197,7 +212,21 @@ async function registerMainHandlers(
   })
 
   bus.handle(IPC_CHANNELS.sessionCreate, async (_event, payload: CreateSessionRequest) => {
-    return manager.createSession(payload)
+    const session = await manager.createSession(payload)
+    const node = manager.getSessionNodeSnapshot(session.id)
+
+    if (node) {
+      graphVersion += 1
+      bus.send(IPC_CHANNELS.sessionGraphEvent, {
+        kind: 'created',
+        graphVersion,
+        origin: 'renderer',
+        initiatorSessionId: null,
+        node
+      })
+    }
+
+    return session
   })
 
   bus.handle(IPC_CHANNELS.workspaceOpen, async () => {
@@ -425,6 +454,64 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
       expect(state1.sessions).toHaveLength(1)
       expect(state1.projects[0]!.id).toBe(project.id)
       expect(state1.sessions[0]!.id).toBe(session.id)
+    })
+
+    test('child session create round-trip projects graph event into frontend hierarchy', async () => {
+      setActivePinia(createPinia())
+
+      const workspaceDir = await createTestWorkspace('ipc-child-graph-')
+      const project = await api.createProject({
+        name: 'child_graph_project',
+        path: workspaceDir
+      })
+
+      const rootSession = await api.createSession({
+        projectId: project.id,
+        type: 'opencode',
+        title: 'Root Session'
+      })
+
+      const store = useWorkspaceStore()
+      store.hydrate(await api.getBootstrapState())
+      api.onSessionGraphEvent?.((event) => {
+        store.applySessionGraphEvent(event)
+      })
+
+      const childSession = await api.createSession({
+        projectId: project.id,
+        type: 'opencode',
+        title: 'Child Session',
+        parentSessionId: rootSession.id,
+        createdBySessionId: rootSession.id
+      })
+
+      expect(childSession.parentSessionId).toBe(rootSession.id)
+      expect(childSession.createdBySessionId).toBe(rootSession.id)
+      expect(store.activeSessionId).toBe(childSession.id)
+
+      const hierarchyNode = store.projectHierarchy.find((node) => node.id === project.id)
+      expect(hierarchyNode?.sessions.map((session) => ({
+        id: session.id,
+        depth: session.treeDepth,
+        rootSessionId: session.treeRootSessionId,
+        childCount: session.treeChildCount,
+        descendantCount: session.treeDescendantCount
+      }))).toEqual([
+        {
+          id: rootSession.id,
+          depth: 0,
+          rootSessionId: rootSession.id,
+          childCount: 1,
+          descendantCount: 1
+        },
+        {
+          id: childSession.id,
+          depth: 1,
+          rootSessionId: rootSession.id,
+          childCount: 0,
+          descendantCount: 0
+        }
+      ])
     })
 
     test('getTerminalReplay round-trip returns the current session backlog payload', async () => {

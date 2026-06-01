@@ -547,7 +547,7 @@ app.whenReady().then(async () => {
   }
 
   function buildSessionVisibilityService(): SessionVisibilityService {
-    return new SessionVisibilityService(listSessionNodeSnapshots())
+    return new SessionVisibilityService(listSessionNodeSnapshots)
   }
 
   function getSessionSubtreeIds(rootSessionId: string): string[] {

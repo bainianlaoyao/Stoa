@@ -3,6 +3,7 @@ import { request } from 'node:http'
 import { createSessionControlServer, type SessionControlServerDeps } from './session-control-server'
 import type { SessionNodeSnapshot, SessionSummary } from '@shared/project-session'
 import type { AuthorityResult } from './session-visibility-service'
+import { SessionVisibilityService } from './session-visibility-service'
 
 const servers: Array<ReturnType<typeof createSessionControlServer>> = []
 
@@ -356,6 +357,59 @@ describe('SessionControlServer', () => {
       })
       const body = JSON.parse(res.body)
       expect(body.data.session.id).toBe('new-child')
+    })
+
+    test('continues to authorize a session caller that was added after server startup', async () => {
+      const nodes = [
+        makeNode({ id: 'root' }, { rootSessionId: 'root', depth: 0 })
+      ]
+      let requestBody: unknown = null
+      const { port } = await startServer({
+        getSnapshot: () => nodes,
+        visibilityService: new SessionVisibilityService(nodes),
+        sessionInput: { send: async () => {} },
+        createChildSession: async (request) => {
+          requestBody = request
+          return makeSession({
+            id: 'grandchild',
+            parentSessionId: 'child',
+            createdBySessionId: 'child'
+          })
+        },
+        destroySession: async () => {},
+        ctlSecret: 'test-secret-1234',
+        sessionTokenRegistry: new Map([
+          ['root', 'tok_root_1234'],
+          ['child', 'tok_child_5678']
+        ])
+      })
+
+      nodes.push(
+        makeNode(
+          { id: 'child', parentSessionId: 'root', createdBySessionId: 'root' },
+          { rootSessionId: 'root', depth: 1 }
+        )
+      )
+
+      const res = await post(
+        port,
+        '/ctl/session/create',
+        { 'x-stoa-session-id': 'child', 'x-stoa-session-token': 'tok_child_5678' },
+        JSON.stringify({
+          type: 'codex',
+          title: 'grandchild'
+        })
+      )
+
+      expect(res.statusCode).toBe(200)
+      expect(requestBody).toEqual({
+        parentId: 'child',
+        projectId: '',
+        type: 'codex',
+        title: 'grandchild'
+      })
+      const body = JSON.parse(res.body)
+      expect(body.data.session.id).toBe('grandchild')
     })
 
     test('creates a child session when parentId and projectId are provided', async () => {
