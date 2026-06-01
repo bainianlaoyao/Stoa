@@ -617,6 +617,8 @@ export class ProjectSessionManager {
       this.settings.claudeDangerouslySkipPermissions = value
     } else if (key === 'locale' && typeof value === 'string') {
       this.settings.locale = value
+    } else if (key === 'theme' && (value === 'light' || value === 'dark' || value === 'system')) {
+      this.settings.theme = value
     }
     await this.persist()
   }

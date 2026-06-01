@@ -25,6 +25,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const evolverExecutionMode = ref<EvolverExecutionMode>('workspace-shell')
   const claudeDangerouslySkipPermissions = ref(false)
   const locale = ref<string>(i18n.global.locale.value as string)
+  const theme = ref<'light' | 'dark' | 'system'>('system')
   const loaded = ref(false)
 
   async function loadSettings(): Promise<void> {
@@ -47,9 +48,15 @@ export const useSettingsStore = defineStore('settings', () => {
       } else {
         locale.value = i18n.global.locale.value as SupportedLocale
       }
+      if (settings.theme === 'light' || settings.theme === 'dark' || settings.theme === 'system') {
+        theme.value = settings.theme
+      } else {
+        theme.value = 'system'
+      }
     }
     loaded.value = true
     void applyLocale(locale.value)
+    applyTheme(theme.value)
   }
 
   async function updateSetting(key: string, value: unknown): Promise<void> {
@@ -75,6 +82,9 @@ export const useSettingsStore = defineStore('settings', () => {
       claudeDangerouslySkipPermissions.value = value
     } else if (key === 'locale' && typeof value === 'string') {
       locale.value = value
+    } else if (key === 'theme' && (value === 'light' || value === 'dark' || value === 'system')) {
+      theme.value = value
+      applyTheme(value)
     }
   }
 
@@ -141,6 +151,30 @@ export const useSettingsStore = defineStore('settings', () => {
       && typeof value.model === 'string'
   }
 
+  let mediaQuery: MediaQueryList | null = null
+  function applyTheme(newTheme: 'light' | 'dark' | 'system'): void {
+    if (typeof window === 'undefined') return
+    const isDark = newTheme === 'dark' || (newTheme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+    if (isDark) {
+      document.documentElement.classList.add('theme-dark')
+      document.documentElement.classList.remove('theme-light')
+    } else {
+      document.documentElement.classList.add('theme-light')
+      document.documentElement.classList.remove('theme-dark')
+    }
+  }
+
+  function handleSystemThemeChange(): void {
+    if (theme.value === 'system') {
+      applyTheme('system')
+    }
+  }
+
+  if (typeof window !== 'undefined') {
+    mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
+    mediaQuery.addEventListener('change', handleSystemThemeChange)
+  }
+
   return {
     shellPath,
     terminal,
@@ -151,9 +185,10 @@ export const useSettingsStore = defineStore('settings', () => {
     evolverExecutionMode,
     claudeDangerouslySkipPermissions,
     locale,
+    theme,
     loaded,
     resolvedTerminalSettings,
     loadSettings, updateSetting, detectAndSetShell, detectAndSetProvider, detectAndSetVscode,
-    pickFolder, pickFile, applyLocale
+    pickFolder, pickFile, applyLocale, applyTheme
   }
 })

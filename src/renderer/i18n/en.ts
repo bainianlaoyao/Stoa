@@ -53,6 +53,17 @@ export default {
       fontFamilyCJK: 'CJK font family',
       fontSize: 'Font size'
     },
+    themeSection: {
+      title: 'App theme',
+      description: 'Select how Stoa should render its theme. Mica and Acrylic styles are supported.',
+      badge: 'Theme',
+      themeLabel: 'App theme',
+      options: {
+        light: 'Light',
+        dark: 'Dark',
+        system: 'System Default'
+      }
+    },
     languageSection: {
       title: 'Display language',
       description: 'Choose the interface language. Changes take effect immediately.',

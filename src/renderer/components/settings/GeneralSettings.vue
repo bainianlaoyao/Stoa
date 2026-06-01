@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '@renderer/stores/settings'
 import GlassFormField from '../primitives/GlassFormField.vue'
@@ -113,6 +113,16 @@ function applyFontToDocument(): void {
 async function handleLanguageChange(value: string): Promise<void> {
   await store.applyLocale(value)
   await store.updateSetting('locale', value)
+}
+
+const themeOptions = computed(() => [
+  { value: 'light', label: t('general.themeSection.options.light') },
+  { value: 'dark', label: t('general.themeSection.options.dark') },
+  { value: 'system', label: t('general.themeSection.options.system') }
+])
+
+function handleThemeChange(value: string): void {
+  void store.updateSetting('theme', value)
 }
 </script>
 
@@ -231,6 +241,25 @@ async function handleLanguageChange(value: string): Promise<void> {
           :options="fontSizeOptions"
           data-settings-field="terminalFontSize"
           @update:model-value="handleFontSizeChange"
+        />
+      </section>
+
+      <section class="settings-card" aria-label="App theme">
+        <div class="settings-card__header">
+          <div>
+            <h4 class="settings-card__title">{{ t('general.themeSection.title') }}</h4>
+            <p class="settings-card__description">{{ t('general.themeSection.description') }}</p>
+          </div>
+          <span class="settings-card__badge">{{ t('general.themeSection.badge') }}</span>
+        </div>
+
+        <GlassFormField
+          :label="t('general.themeSection.themeLabel')"
+          type="select"
+          :model-value="store.theme"
+          :options="themeOptions"
+          data-settings-field="themeMode"
+          @update:model-value="handleThemeChange"
         />
       </section>
 

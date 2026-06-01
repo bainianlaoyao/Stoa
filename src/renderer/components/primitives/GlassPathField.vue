@@ -46,8 +46,9 @@ const emit = defineEmits<{
 }
 
 .glass-path-field__input {
-  background: linear-gradient(to bottom, #ffffff 0%, #fafbfc 100%);
+  background: var(--color-surface-solid);
   border: 1px solid var(--color-line-strong);
+  border-bottom: 2px solid color-mix(in srgb, var(--color-text) 15%, transparent);
   border-radius: var(--radius-sm);
   padding: 8px 12px;
   font: inherit;
@@ -55,18 +56,24 @@ const emit = defineEmits<{
   color: var(--color-text-strong);
   outline: none;
   width: 100%;
-  transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
-  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.015);
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), 
+              border-color 0.2s ease, 
+              background-color 0.2s ease,
+              box-shadow 0.2s ease;
+  box-shadow: var(--shadow-soft);
 }
 
 .glass-path-field__input:hover {
-  border-color: rgba(0, 85, 255, 0.35);
+  transform: scale(1.01);
+  border-color: color-mix(in srgb, var(--color-accent) 50%, transparent);
 }
 
 .glass-path-field__input:focus {
+  transform: scale(1.01);
   border-color: var(--color-accent);
+  border-bottom-color: var(--color-accent);
   box-shadow: var(--shadow-focus-ring);
-  background: #ffffff;
+  background: var(--color-surface-solid);
 }
 
 .glass-path-field__input::placeholder {

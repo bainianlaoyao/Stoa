@@ -53,6 +53,17 @@ export default {
       fontFamilyCJK: '\u4E2D\u6587\u5B57\u4F53',
       fontSize: '\u5B57\u4F53\u5927\u5C0F'
     },
+    themeSection: {
+      title: '应用主题',
+      description: '选择 Stoa 的视觉主题模式。支持现代 Windows 11 云母 (Mica) 与亚克力 (Acrylic) 材质。',
+      badge: '主题',
+      themeLabel: '应用主题',
+      options: {
+        light: '浅色',
+        dark: '深色',
+        system: '跟随系统'
+      }
+    },
     languageSection: {
       title: '\u663E\u793A\u8BED\u8A00',
       description: '\u9009\u62E9\u754C\u9762\u8BED\u8A00\u3002\u66F4\u6539\u540E\u7ACB\u5373\u751F\u6548\u3002',

@@ -75,10 +75,10 @@ function onTabClick(tabId: SettingsTab) {
         type="button"
         @click="onTabClick(tab.id)"
       >
-        <!-- Windows 10 style active indicator line on the left -->
+        <!-- Windows 11 style active indicator rounded pill -->
         <span
           v-if="tab.id === activeTab"
-          class="absolute left-0 w-[3px] bg-accent top-[6px] bottom-[6px]"
+          class="absolute left-[3px] w-[3px] bg-accent top-[12px] bottom-[12px] rounded-full"
           aria-hidden="true"
         />
         <span class="settings-tab-bar__icon" aria-hidden="true">
@@ -118,23 +118,32 @@ function onTabClick(tabId: SettingsTab) {
   width: 100%;
   padding: 10px 12px 10px 16px;
   border: 1px solid transparent;
-  border-radius: 2px;
+  border-radius: var(--radius-md);
   background: transparent;
   color: var(--color-muted);
   text-align: left;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), 
+              background-color 0.2s ease, 
+              border-color 0.2s ease,
+              box-shadow 0.2s ease,
+              color 0.2s ease;
 }
 
 .settings-tab-bar__item:hover,
 .settings-tab-bar__item:focus-visible {
-  background: rgba(0, 0, 0, 0.03);
+  transform: scale(1.04);
+  background: var(--color-black-soft);
   color: var(--color-text-strong);
   outline: none;
 }
 
+.settings-tab-bar__item:active {
+  transform: scale(0.97);
+}
+
 .settings-tab-bar__item--active {
-  background: rgba(0, 0, 0, 0.045);
+  background: var(--color-black-soft);
   border-color: transparent;
   color: var(--color-text-strong);
   box-shadow: none;
@@ -145,13 +154,13 @@ function onTabClick(tabId: SettingsTab) {
   place-items: center;
   width: 34px;
   height: 34px;
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   background: var(--color-black-faint);
   transition: all 0.2s ease;
 }
 
 .settings-tab-bar__item--active .settings-tab-bar__icon {
-  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+  background: var(--color-active-fill);
   color: var(--color-accent);
 }
 

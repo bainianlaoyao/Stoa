@@ -199,6 +199,7 @@ export interface AppSettings {
   workspaceIde: WorkspaceIdeSettings
   claudeDangerouslySkipPermissions: boolean
   locale: string
+  theme: 'light' | 'dark' | 'system'
 }
 
 export interface TitleGenerationSettings {
@@ -240,7 +241,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
     executablePath: ''
   },
   claudeDangerouslySkipPermissions: false,
-  locale: 'en'
+  locale: 'en',
+  theme: 'system'
 }
 
 export interface PersistedAppStateV2 {

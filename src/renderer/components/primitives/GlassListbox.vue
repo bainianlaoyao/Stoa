@@ -40,9 +40,9 @@ const selectedLabel = computed(
       </ListboxButton>
 
       <transition
-        enter-active-class="transition duration-200 ease-out"
-        enter-from-class="opacity-0 scale-95"
-        enter-to-class="opacity-100 scale-100"
+        enter-active-class="transition duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]"
+        enter-from-class="opacity-0 -translate-y-2 scale-95"
+        enter-to-class="opacity-100 translate-y-0 scale-100"
         leave-active-class="transition duration-200 ease-in"
         leave-from-class="opacity-100 scale-100"
         leave-to-class="opacity-0 scale-95"
@@ -90,27 +90,34 @@ const selectedLabel = computed(
   justify-content: space-between;
   gap: 8px;
   width: 100%;
-  background: linear-gradient(to bottom, #ffffff 0%, #fafbfc 100%);
+  background: var(--color-surface);
   border: 1px solid var(--color-line-strong);
+  border-bottom: 2px solid color-mix(in srgb, var(--color-text) 15%, transparent);
   border-radius: var(--radius-sm);
   padding: 8px 12px;
   font: inherit;
   font-size: var(--text-body-sm);
   color: var(--color-text-strong);
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), 
+              border-color 0.2s ease, 
+              background-color 0.2s ease,
+              box-shadow 0.2s ease;
   text-align: left;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.015);
+  box-shadow: var(--shadow-soft);
 }
 
 .glass-listbox__button:hover {
-  background: #ffffff;
-  border-color: rgba(0, 85, 255, 0.35);
+  transform: scale(1.01);
+  background: var(--color-surface-solid);
+  border-color: color-mix(in srgb, var(--color-accent) 50%, transparent);
 }
 
 .glass-listbox__button:focus {
   outline: none;
+  transform: scale(1.01);
   border-color: var(--color-accent);
+  border-bottom-color: var(--color-accent);
   box-shadow: var(--shadow-focus-ring);
 }
 
@@ -137,12 +144,12 @@ const selectedLabel = computed(
   width: 100%;
   margin-top: 4px;
   padding: 4px;
-  background: rgba(255, 255, 255, 0.88);
-  backdrop-filter: blur(25px) saturate(120%);
-  -webkit-backdrop-filter: blur(25px) saturate(120%);
+  background: var(--color-surface);
+  backdrop-filter: blur(30px) saturate(1.25);
+  -webkit-backdrop-filter: blur(30px) saturate(1.25);
   border: 1px solid var(--color-line-strong);
-  border-radius: var(--radius-sm);
-  box-shadow: 0 12px 30px -8px rgba(0, 0, 0, 0.08), var(--shadow-premium), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-premium), inset 0 1px 0 rgba(255, 255, 255, 0.1);
   max-height: 240px;
   overflow-y: auto;
   list-style: none;
@@ -162,7 +169,7 @@ const selectedLabel = computed(
 }
 
 .glass-listbox__option--active {
-  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+  background: var(--color-active-fill);
   color: var(--color-accent);
 }
 
