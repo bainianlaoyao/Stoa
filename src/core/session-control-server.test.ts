@@ -105,6 +105,7 @@ function makeDeps(overrides: Partial<SessionControlServerDeps> = {}): SessionCon
     createChildSession: async () => makeSession({ id: 'new-child' }),
     destroySession: async () => {},
     ctlSecret: 'test-secret-1234',
+    getTerminalReplay: async () => '',
     sessionTokenRegistry: new Map([
       ['root', 'tok_root_1234'],
       ['child', 'tok_child_5678']
@@ -197,6 +198,10 @@ describe('SessionControlServer', () => {
       expect(res.statusCode).toBe(200)
       const body = JSON.parse(res.body)
       expect(body.data.supports).toBeDefined()
+      expect(body.data.supports.sessionStatus).toBe(true)
+      expect(body.data.supports.sessionWait).toBe(true)
+      expect(body.data.supports.sessionOutput).toBe(true)
+      expect(body.data.supports.sessionCompletionReport).toBe(true)
       expect(body.data.controlTransport).toBe('loopback-http')
     })
   })
@@ -238,6 +243,170 @@ describe('SessionControlServer', () => {
       })
       const { port } = await startServer(deps)
       const res = await get(port, '/ctl/session/child/inspect', { 'x-stoa-session-id': 'root', 'x-stoa-session-token': 'tok_root_1234' })
+      expect(res.statusCode).toBe(404)
+      const body = JSON.parse(res.body)
+      expect(body.error.code).toBe('unknown_session')
+    })
+  })
+
+  describe('/ctl/session/:id/status', () => {
+    test('returns status projection for existing session', async () => {
+      const { port } = await startServer(makeDeps())
+      const res = await get(port, '/ctl/session/root/status', { 'x-stoa-secret': 'test-secret-1234' })
+      expect(res.statusCode).toBe(200)
+      const body = JSON.parse(res.body)
+      expect(body.data.status.sessionId).toBe('root')
+      expect(body.data.status.runtimeState).toBe('alive')
+      expect(body.data.status.turnState).toBe('idle')
+      expect(body.data.status.phase).toBe('ready')
+    })
+
+    test('returns unknown_session for missing status target', async () => {
+      const { port } = await startServer(makeDeps())
+      const res = await get(port, '/ctl/session/missing/status', { 'x-stoa-secret': 'test-secret-1234' })
+      expect(res.statusCode).toBe(404)
+      const body = JSON.parse(res.body)
+      expect(body.error.code).toBe('unknown_session')
+    })
+
+    test('returns forbidden_authority_scope for status without authority', async () => {
+      const { port } = await startServer(makeDeps({
+        visibilityService: {
+          visibleSessionIds: () => ['root'],
+          isVisible: () => false,
+          checkAuthority: () => ({ allowed: false, reason: 'forbidden_authority_scope' })
+        } as any
+      }))
+      const res = await get(port, '/ctl/session/child/status', { 'x-stoa-session-id': 'root', 'x-stoa-session-token': 'tok_root_1234' })
+      expect(res.statusCode).toBe(403)
+      const body = JSON.parse(res.body)
+      expect(body.error.code).toBe('forbidden_authority_scope')
+    })
+  })
+
+  describe('/ctl/session/:id/output', () => {
+    test('returns terminal replay for existing visible session', async () => {
+      const { port } = await startServer(makeDeps({
+        getTerminalReplay: async (sessionId: string) => `replay:${sessionId}`
+      }))
+      const res = await get(port, '/ctl/session/child/output', { 'x-stoa-session-id': 'root', 'x-stoa-session-token': 'tok_root_1234' })
+      expect(res.statusCode).toBe(200)
+      const body = JSON.parse(res.body)
+      expect(body.data.output).toEqual({ sessionId: 'child', text: 'replay:child' })
+    })
+
+    test('returns forbidden_authority_scope when output is not visible', async () => {
+      const { port } = await startServer(makeDeps({
+        visibilityService: {
+          visibleSessionIds: () => ['root'],
+          isVisible: () => false,
+          checkAuthority: () => ({ allowed: false, reason: 'forbidden_authority_scope' })
+        } as any
+      }))
+      const res = await get(port, '/ctl/session/child/output', { 'x-stoa-session-id': 'root', 'x-stoa-session-token': 'tok_root_1234' })
+      expect(res.statusCode).toBe(403)
+      const body = JSON.parse(res.body)
+      expect(body.error.code).toBe('forbidden_authority_scope')
+    })
+  })
+
+  describe('/ctl/session/:id/completion-report', () => {
+    test('returns report for completed session', async () => {
+      const { port } = await startServer(makeDeps({
+        getSnapshot: () => [
+          makeNode({ id: 'root' }, { rootSessionId: 'root', depth: 0 }),
+          makeNode({
+            id: 'child',
+            parentSessionId: 'root',
+            createdBySessionId: 'root',
+            turnEpoch: 4,
+            lastTurnOutcome: 'completed',
+            hasUnseenCompletion: true,
+            summary: 'finished'
+          }, { rootSessionId: 'root', depth: 1 })
+        ]
+      }))
+      const res = await get(port, '/ctl/session/child/completion-report', { 'x-stoa-session-id': 'root', 'x-stoa-session-token': 'tok_root_1234' })
+      expect(res.statusCode).toBe(200)
+      const body = JSON.parse(res.body)
+      expect(body.data.report).toMatchObject({
+        sessionId: 'child',
+        parentSessionId: 'root',
+        outcome: 'completed',
+        summary: 'finished'
+      })
+    })
+
+    test('returns no_completion_yet for non-terminal session', async () => {
+      const { port } = await startServer(makeDeps())
+      const res = await get(port, '/ctl/session/root/completion-report', { 'x-stoa-secret': 'test-secret-1234' })
+      expect(res.statusCode).toBe(409)
+      const body = JSON.parse(res.body)
+      expect(body.error.code).toBe('no_completion_yet')
+    })
+
+    test('returns forbidden_authority_scope for report without authority', async () => {
+      const { port } = await startServer(makeDeps({
+        visibilityService: {
+          visibleSessionIds: () => ['root'],
+          isVisible: () => false,
+          checkAuthority: () => ({ allowed: false, reason: 'forbidden_authority_scope' })
+        } as any
+      }))
+      const res = await get(port, '/ctl/session/child/completion-report', { 'x-stoa-session-id': 'root', 'x-stoa-session-token': 'tok_root_1234' })
+      expect(res.statusCode).toBe(403)
+      const body = JSON.parse(res.body)
+      expect(body.error.code).toBe('forbidden_authority_scope')
+    })
+  })
+
+  describe('/ctl/session/:id/wait', () => {
+    test('returns completed session output and report', async () => {
+      const { port } = await startServer(makeDeps({
+        getSnapshot: () => [
+          makeNode({ id: 'root' }, { rootSessionId: 'root', depth: 0 }),
+          makeNode({
+            id: 'child',
+            parentSessionId: 'root',
+            createdBySessionId: 'root',
+            turnEpoch: 4,
+            lastTurnOutcome: 'completed',
+            hasUnseenCompletion: true,
+            summary: 'finished'
+          }, { rootSessionId: 'root', depth: 1 })
+        ],
+        getTerminalReplay: async (sessionId: string) => `replay:${sessionId}`
+      }))
+      const res = await get(port, '/ctl/session/child/wait?timeoutMs=100', { 'x-stoa-session-id': 'root', 'x-stoa-session-token': 'tok_root_1234' })
+      expect(res.statusCode).toBe(200)
+      const body = JSON.parse(res.body)
+      expect(body.data.result.output.text).toBe('replay:child')
+      expect(body.data.result.report.outcome).toBe('completed')
+    })
+
+    test('returns wait_timeout as 408', async () => {
+      const { port } = await startServer(makeDeps({
+        waitForSessionStateChange: async () => 'timeout'
+      }))
+      const res = await get(port, '/ctl/session/root/wait?timeoutMs=1', { 'x-stoa-secret': 'test-secret-1234' })
+      expect(res.statusCode).toBe(408)
+      const body = JSON.parse(res.body)
+      expect(body.error.code).toBe('wait_timeout')
+    })
+
+    test('returns invalid_request for invalid timeoutMs', async () => {
+      const { port } = await startServer(makeDeps({
+        waitForSessionStateChange: async () => 'timeout'
+      }))
+      const res = await get(port, '/ctl/session/root/wait?timeoutMs=1.5', { 'x-stoa-secret': 'test-secret-1234' })
+      expect(res.statusCode).toBe(400)
+      const body = JSON.parse(res.body)
+      expect(body.error.code).toBe('invalid_request')
+    })
+
+    test('returns unknown_session for missing wait target', async () => {
+      const { port } = await startServer(makeDeps())
+      const res = await get(port, '/ctl/session/missing/wait?timeoutMs=1', { 'x-stoa-secret': 'test-secret-1234' })
       expect(res.statusCode).toBe(404)
       const body = JSON.parse(res.body)
       expect(body.error.code).toBe('unknown_session')
@@ -377,6 +546,7 @@ describe('SessionControlServer', () => {
           })
         },
         destroySession: async () => {},
+        getTerminalReplay: async () => '',
         ctlSecret: 'test-secret-1234',
         sessionTokenRegistry: new Map([
           ['root', 'tok_root_1234'],
@@ -453,6 +623,28 @@ describe('SessionControlServer', () => {
         title: 'child'
       }))
       expect(res.statusCode).toBe(400)
+    })
+
+    test('returns 400 for invalid initial dimensions', async () => {
+      let called = false
+      const { port } = await startServer(makeDeps({
+        createChildSession: async () => {
+          called = true
+          return makeSession({ id: 'new-child' })
+        }
+      }))
+      const res = await post(port, '/ctl/session/create', { 'x-stoa-secret': 'test-secret-1234' }, JSON.stringify({
+        parentId: 'root',
+        projectId: 'proj-1',
+        type: 'codex',
+        title: 'child',
+        initialCols: 0,
+        initialRows: 24
+      }))
+      expect(res.statusCode).toBe(400)
+      expect(called).toBe(false)
+      const body = JSON.parse(res.body)
+      expect(body.error.code).toBe('invalid_request')
     })
 
     test('returns 400 for whitespace-only type', async () => {

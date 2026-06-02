@@ -81,6 +81,7 @@ describe('SessionSupervisor', () => {
       },
       createChildSession: overrides.createChildSession ?? (async () => makeSession({ id: 'new-child' })),
       destroySession: overrides.destroySession ?? (async () => {}),
+      getTerminalReplay: overrides.getTerminalReplay ?? (async () => ''),
       ...overrides
     }
   }
@@ -312,6 +313,216 @@ describe('SessionSupervisor', () => {
       const supervisor = new SessionSupervisor(deps)
       await supervisor.destroySession(sessionCaller('root'), 'grandchild')
       expect(called).toBe(true)
+    })
+  })
+
+  describe('subsession observation controls', () => {
+    test('getSessionStatus rejects unknown and forbidden targets', () => {
+      const unknownSupervisor = new SessionSupervisor(makeDeps())
+      try {
+        unknownSupervisor.getSessionStatus(localUser(), 'missing')
+        throw new Error('expected unknown_session')
+      } catch (error: any) {
+        expect(error.code).toBe('unknown_session')
+      }
+
+      const forbiddenSupervisor = new SessionSupervisor(makeDeps({
+        visibilityService: {
+          visibleSessionIds: () => ['root'],
+          isVisible: () => false,
+          checkAuthority: () => ({ allowed: false, reason: 'forbidden_authority_scope' })
+        } as any
+      }))
+      try {
+        forbiddenSupervisor.getSessionStatus(sessionCaller('root'), 'child')
+        throw new Error('expected forbidden_authority_scope')
+      } catch (error: any) {
+        expect(error.code).toBe('forbidden_authority_scope')
+      }
+    })
+
+    test('waitForSession returns completed session output and report when target is already terminal', async () => {
+      const deps = makeDeps({
+        getSnapshot: () => [
+          makeNode({ id: 'root' }, { rootSessionId: 'root', depth: 0 }),
+          makeNode({
+            id: 'child',
+            parentSessionId: 'root',
+            createdBySessionId: 'root',
+            turnEpoch: 2,
+            lastTurnOutcome: 'completed',
+            hasUnseenCompletion: true,
+            summary: 'child completed'
+          }, { rootSessionId: 'root', depth: 1 })
+        ],
+        getTerminalReplay: async () => 'child output'
+      })
+      const supervisor = new SessionSupervisor(deps)
+
+      const result = await supervisor.waitForSession(sessionCaller('root'), 'child', { timeoutMs: 1000 })
+
+      expect(result.session.session.id).toBe('child')
+      expect(result.output.text).toBe('child output')
+      expect(result.report?.outcome).toBe('completed')
+      expect(result.report?.summary).toBe('child completed')
+    })
+
+    test('waitForSession waits until a non-terminal session reaches completion', async () => {
+      let child = makeNode({
+        id: 'child',
+        parentSessionId: 'root',
+        createdBySessionId: 'root',
+        turnEpoch: 1,
+        lastTurnOutcome: 'none',
+        hasUnseenCompletion: false
+      }, { rootSessionId: 'root', depth: 1 })
+      const deps = makeDeps({
+        getSnapshot: () => [
+          makeNode({ id: 'root' }, { rootSessionId: 'root', depth: 0 }),
+          child
+        ],
+        getTerminalReplay: async () => 'done output',
+        waitForSessionStateChange: async () => {
+          child = makeNode({
+            id: 'child',
+            parentSessionId: 'root',
+            createdBySessionId: 'root',
+            turnEpoch: 2,
+            lastTurnOutcome: 'completed',
+            hasUnseenCompletion: false,
+            summary: 'done'
+          }, { rootSessionId: 'root', depth: 1 })
+          return 'updated'
+        }
+      })
+      const supervisor = new SessionSupervisor(deps)
+
+      const result = await supervisor.waitForSession(sessionCaller('root'), 'child', { timeoutMs: 1000 })
+
+      expect(result.output.text).toBe('done output')
+      expect(result.report).toMatchObject({
+        sessionId: 'child',
+        outcome: 'completed',
+        hasUnseenCompletion: false,
+        summary: 'done'
+      })
+      expect(result.status.hasCompletionReport).toBe(true)
+    })
+
+    test('waitForSession uses bounded waiter intervals so missed notifications do not wait for the full timeout', async () => {
+      let observedTimeoutMs = 0
+      let child = makeNode({
+        id: 'child',
+        parentSessionId: 'root',
+        createdBySessionId: 'root',
+        turnEpoch: 1,
+        lastTurnOutcome: 'none'
+      }, { rootSessionId: 'root', depth: 1 })
+      const deps = makeDeps({
+        getSnapshot: () => [
+          makeNode({ id: 'root' }, { rootSessionId: 'root', depth: 0 }),
+          child
+        ],
+        waitForSessionStateChange: async (_sessionId, timeoutMs) => {
+          observedTimeoutMs = timeoutMs
+          child = makeNode({
+            id: 'child',
+            parentSessionId: 'root',
+            createdBySessionId: 'root',
+            turnEpoch: 2,
+            lastTurnOutcome: 'completed',
+            hasUnseenCompletion: false
+          }, { rootSessionId: 'root', depth: 1 })
+          return 'timeout'
+        }
+      })
+      const supervisor = new SessionSupervisor(deps)
+
+      const result = await supervisor.waitForSession(sessionCaller('root'), 'child', { timeoutMs: 10_000 })
+
+      expect(observedTimeoutMs).toBeLessThanOrEqual(250)
+      expect(result.report?.outcome).toBe('completed')
+    })
+
+    test('waitForSession rejects with wait_timeout when target does not reach a terminal state', async () => {
+      const deps = makeDeps({
+        getTerminalReplay: async () => '',
+        waitForSessionStateChange: async () => 'timeout'
+      })
+      const supervisor = new SessionSupervisor(deps)
+
+      await expect(supervisor.waitForSession(localUser(), 'root', { timeoutMs: 1 }))
+        .rejects.toMatchObject({ code: 'wait_timeout' })
+    })
+
+    test('getSessionOutput returns terminal replay for visible sessions', async () => {
+      const deps = makeDeps({
+        getTerminalReplay: async (sessionId: string) => `replay:${sessionId}`
+      })
+      const supervisor = new SessionSupervisor(deps)
+
+      await expect(supervisor.getSessionOutput(sessionCaller('root'), 'child'))
+        .resolves.toEqual({ sessionId: 'child', text: 'replay:child' })
+    })
+
+    test('getCompletionReport rejects with no_completion_yet for non-terminal sessions', async () => {
+      const supervisor = new SessionSupervisor(makeDeps())
+
+      await expect(supervisor.getCompletionReport(localUser(), 'root'))
+        .rejects.toMatchObject({ code: 'no_completion_yet' })
+    })
+
+    test('getCompletionReport returns completed reports even after completion has been seen', async () => {
+      const deps = makeDeps({
+        getSnapshot: () => [
+          makeNode({
+            id: 'seen-complete',
+            parentSessionId: 'root',
+            createdBySessionId: 'root',
+            turnEpoch: 7,
+            lastTurnOutcome: 'completed',
+            hasUnseenCompletion: false,
+            summary: 'already read'
+          }, { rootSessionId: 'root', depth: 1 })
+        ]
+      })
+      const supervisor = new SessionSupervisor(deps)
+
+      const report = await supervisor.getCompletionReport(localUser(), 'seen-complete')
+
+      expect(report).toMatchObject({
+        sessionId: 'seen-complete',
+        outcome: 'completed',
+        hasUnseenCompletion: false,
+        summary: 'already read'
+      })
+      expect(supervisor.getSessionStatus(localUser(), 'seen-complete').hasCompletionReport).toBe(true)
+    })
+
+    test('getCompletionReport returns report for failed sessions', async () => {
+      const deps = makeDeps({
+        getSnapshot: () => [
+          makeNode({
+            id: 'failed-child',
+            parentSessionId: 'root',
+            createdBySessionId: 'root',
+            turnEpoch: 3,
+            lastTurnOutcome: 'failed',
+            failureReason: 'tool_error',
+            summary: 'tool failed'
+          }, { rootSessionId: 'root', depth: 1 })
+        ]
+      })
+      const supervisor = new SessionSupervisor(deps)
+
+      const report = await supervisor.getCompletionReport(localUser(), 'failed-child')
+
+      expect(report).toMatchObject({
+        sessionId: 'failed-child',
+        outcome: 'failed',
+        failureReason: 'tool_error',
+        summary: 'tool failed'
+      })
     })
   })
 })

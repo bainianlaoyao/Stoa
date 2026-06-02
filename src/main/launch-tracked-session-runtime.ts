@@ -26,7 +26,7 @@ interface LaunchTrackedSessionRuntimeOptions {
   ) => Promise<RuntimePaths>
   getProvider?: typeof getProvider
   startRuntime?: typeof startSessionRuntime
-  initialDimensions?: { cols: number; rows: number }
+  initialDimensions?: { cols?: number; rows?: number }
   commandEnv?: Record<string, string>
   initialPrompt?: string
   launchToken?: number

@@ -51,8 +51,12 @@ export const USAGE_TEXT = [
   '  whoami',
   '  capabilities',
   '  session list [--include-archived]',
-  '  session create --type <shell|opencode|codex|claude-code> [--title "..."] [--project <projectId>] [--parent <sessionId>]',
+  '  session create --type <shell|opencode|codex|claude-code> [--title "..."] [--project <projectId>] [--parent <sessionId>] [--external-session-id <id>] [--cols <n>] [--rows <n>]',
   '  session inspect <sessionId>',
+  '  session status <sessionId>',
+  '  session output <sessionId>',
+  '  session wait <sessionId> [--timeout-ms <ms>]',
+  '  session report <sessionId>',
   '  session prompt <sessionId> --text "..."',
   '  session destroy <sessionId>'
 ].join('\n')
@@ -165,10 +169,15 @@ function ensureSessionType(type: string | null): string {
   return type
 }
 
-function ensureSessionCaller(caller: CallerMode): asserts caller is Extract<CallerMode, { kind: 'session' }> {
-  if (caller.kind !== 'session') {
-    return
+function parsePositiveIntegerFlag(value: string | null, name: string): number | null {
+  if (value === null) {
+    return null
   }
+  const parsed = Number.parseInt(value, 10)
+  if (!Number.isInteger(parsed) || parsed <= 0 || String(parsed) !== value.trim()) {
+    throw new CliUsageError(`Invalid ${name}`)
+  }
+  return parsed
 }
 
 function isDirectCliEntry(importMetaUrl: string, argvEntry: string | undefined): boolean {
@@ -263,10 +272,16 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
       const title = parseFlagValue(rest, '--title')
       const projectId = parseFlagValue(rest, '--project')
       const parentId = parseFlagValue(rest, '--parent')
+      const externalSessionId = parseFlagValue(rest, '--external-session-id')
+      const initialCols = parsePositiveIntegerFlag(parseFlagValue(rest, '--cols'), '--cols')
+      const initialRows = parsePositiveIntegerFlag(parseFlagValue(rest, '--rows'), '--rows')
 
-      const body: Record<string, string> = { type }
+      const body: Record<string, string | number> = { type }
       if (title) {
         body.title = title
+      }
+      if (externalSessionId) {
+        body.externalSessionId = externalSessionId
       }
 
       if (ctx.caller.kind === 'session') {
@@ -281,6 +296,13 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
         if (parentId) {
           body.parentId = parentId
         }
+      }
+
+      if (initialCols !== null) {
+        body.initialCols = initialCols
+      }
+      if (initialRows !== null) {
+        body.initialRows = initialRows
       }
 
       const { response, text } = await ctlRequest('/ctl/session/create', {
@@ -301,6 +323,64 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
         throw new CliUsageError('Missing session id')
       }
       const { response, text } = await ctlRequest(`/ctl/session/${sessionId}/inspect`)
+      if (!response.ok) {
+        resolvedDeps.stderr.write(`${text}\n`)
+        return mapFailureExitCode(response, text)
+      }
+      resolvedDeps.stdout.write(text)
+      return 0
+    }
+
+    if (action === 'status') {
+      const sessionId = rest[0]
+      if (!sessionId) {
+        throw new CliUsageError('Missing session id')
+      }
+      const { response, text } = await ctlRequest(`/ctl/session/${sessionId}/status`)
+      if (!response.ok) {
+        resolvedDeps.stderr.write(`${text}\n`)
+        return mapFailureExitCode(response, text)
+      }
+      resolvedDeps.stdout.write(text)
+      return 0
+    }
+
+    if (action === 'output') {
+      const sessionId = rest[0]
+      if (!sessionId) {
+        throw new CliUsageError('Missing session id')
+      }
+      const { response, text } = await ctlRequest(`/ctl/session/${sessionId}/output`)
+      if (!response.ok) {
+        resolvedDeps.stderr.write(`${text}\n`)
+        return mapFailureExitCode(response, text)
+      }
+      resolvedDeps.stdout.write(text)
+      return 0
+    }
+
+    if (action === 'wait') {
+      const sessionId = rest[0]
+      if (!sessionId) {
+        throw new CliUsageError('Missing session id')
+      }
+      const timeoutMs = parsePositiveIntegerFlag(parseFlagValue(rest, '--timeout-ms'), '--timeout-ms')
+      const query = timeoutMs !== null ? `?timeoutMs=${encodeURIComponent(String(timeoutMs))}` : ''
+      const { response, text } = await ctlRequest(`/ctl/session/${sessionId}/wait${query}`)
+      if (!response.ok) {
+        resolvedDeps.stderr.write(`${text}\n`)
+        return mapFailureExitCode(response, text)
+      }
+      resolvedDeps.stdout.write(text)
+      return 0
+    }
+
+    if (action === 'report') {
+      const sessionId = rest[0]
+      if (!sessionId) {
+        throw new CliUsageError('Missing session id')
+      }
+      const { response, text } = await ctlRequest(`/ctl/session/${sessionId}/completion-report`)
       if (!response.ok) {
         resolvedDeps.stderr.write(`${text}\n`)
         return mapFailureExitCode(response, text)

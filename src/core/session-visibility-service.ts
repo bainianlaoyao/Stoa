@@ -1,6 +1,6 @@
 import type { SessionNodeSnapshot } from '@shared/project-session'
 
-export type AuthorityAction = 'inspect' | 'prompt' | 'create' | 'destroy'
+export type AuthorityAction = 'inspect' | 'status' | 'report' | 'prompt' | 'create' | 'destroy' | 'wait' | 'read-output'
 
 export interface AuthorityResult {
   allowed: boolean
@@ -67,7 +67,14 @@ export class SessionVisibilityService implements SessionVisibilityReader {
       return { allowed: false, reason: 'unknown_session' }
     }
 
-    if (action === 'inspect' || action === 'prompt') {
+    if (
+      action === 'inspect'
+      || action === 'status'
+      || action === 'report'
+      || action === 'prompt'
+      || action === 'wait'
+      || action === 'read-output'
+    ) {
       return { allowed: true }
     }
 

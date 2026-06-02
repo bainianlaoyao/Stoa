@@ -314,6 +314,52 @@ export interface SessionNodeSnapshot {
   tree: SessionTreeMeta
 }
 
+export interface SessionStatusSnapshot {
+  sessionId: string
+  runtimeState: SessionRuntimeState
+  turnState: TurnState
+  turnEpoch: number
+  lastTurnOutcome: TurnOutcome
+  blockingReason: BlockingReason | null
+  failureReason: FailureReason | null
+  runtimeExitCode: number | null
+  runtimeExitReason: 'clean' | 'failed' | null
+  phase: SessionPhase
+  hasCompletionReport: boolean
+}
+
+export interface SessionOutputResult {
+  sessionId: string
+  text: string
+}
+
+export interface SessionCompletionReport {
+  sessionId: string
+  parentSessionId: string | null
+  createdBySessionId: string | null
+  turnEpoch: number
+  outcome: TurnOutcome
+  summary: string
+  title: string
+  blockingReason: BlockingReason | null
+  failureReason: FailureReason | null
+  runtimeExitCode: number | null
+  runtimeExitReason: 'clean' | 'failed' | null
+  hasUnseenCompletion: boolean
+  updatedAt: string
+}
+
+export interface SessionWaitOptions {
+  timeoutMs?: number
+}
+
+export interface SessionWaitResult {
+  session: SessionNodeSnapshot
+  status: SessionStatusSnapshot
+  output: SessionOutputResult
+  report: SessionCompletionReport | null
+}
+
 export interface SessionGraphEvent {
   kind: 'created' | 'updated' | 'archived' | 'restored' | 'destroyed'
   graphVersion: number

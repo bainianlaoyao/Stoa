@@ -45,7 +45,7 @@ export interface StartSessionRuntimeOptions {
   shellPath?: string | null
   providerPath?: string | null
   claudeDangerouslySkipPermissions?: boolean
-  initialDimensions?: { cols: number; rows: number }
+  initialDimensions?: { cols?: number; rows?: number }
   commandEnv?: Record<string, string>
   initialPrompt?: string
   launchToken?: number
@@ -127,8 +127,12 @@ export async function startSessionRuntime(options: StartSessionRuntimeOptions): 
   const activeExternalSessionId = session.externalSessionId
 
   if (options.initialDimensions) {
-    command.initialCols = options.initialDimensions.cols
-    command.initialRows = options.initialDimensions.rows
+    if (options.initialDimensions.cols !== undefined) {
+      command.initialCols = options.initialDimensions.cols
+    }
+    if (options.initialDimensions.rows !== undefined) {
+      command.initialRows = options.initialDimensions.rows
+    }
   }
 
   console.log(`[session-runtime] markRuntimeStarting for ${session.id} (command: ${command.command} ${command.args.join(' ')})`)

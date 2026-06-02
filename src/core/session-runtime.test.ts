@@ -82,6 +82,48 @@ describe('session runtime', () => {
     )
   })
 
+  test('passes initial terminal dimensions to the PTY command', async () => {
+    const provider = createProvider()
+    const start = vi.fn(() => ({ runtimeId: 'session_op_1' }))
+
+    await startSessionRuntime({
+      session: {
+        id: 'session_op_1',
+        projectId: 'project_alpha',
+        path: 'D:/demo',
+        title: 'Deploy',
+        type: 'opencode',
+        runtimeState: 'created',
+        turnState: 'idle',
+        externalSessionId: null,
+        sessionSecret: 'secret-1',
+        providerPort: 43128
+      },
+      webhookPort: 43127,
+      provider,
+      ptyHost: { start } as never,
+      manager: {
+        markRuntimeStarting: vi.fn(async () => {}),
+        markRuntimeAlive: vi.fn(async () => {}),
+        markRuntimeExited: vi.fn(async () => {}),
+        markRuntimeFailedToStart: vi.fn(async () => {}),
+        appendTerminalData: vi.fn(async () => {})
+      } as never,
+      initialDimensions: { cols: 132, rows: 44 }
+    })
+
+    expect(start).toHaveBeenCalledWith(
+      'session_op_1',
+      expect.objectContaining({
+        initialCols: 132,
+        initialRows: 44
+      }),
+      expect.any(Function),
+      expect.any(Function),
+      undefined
+    )
+  })
+
   test('shell sessions remain direct even when shellPath is configured', async () => {
     const provider = createProvider({
       async buildStartCommand(session) {

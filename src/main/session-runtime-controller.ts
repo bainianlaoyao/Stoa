@@ -29,6 +29,7 @@ export class SessionRuntimeController implements SessionRuntimeManager {
   private readonly pendingTerminalBatches = new Map<string, string>()
   private batchFlushTimer: ReturnType<typeof setTimeout> | null = null
   private readonly sessionTokens = new Map<string, string>()
+  private readonly sessionStateWaiters = new Map<string, Set<() => void>>()
 
   constructor(
     private readonly manager: ProjectSessionManager,
@@ -130,7 +131,36 @@ export class SessionRuntimeController implements SessionRuntimeManager {
     return this.terminalBacklogs.get(sessionId) ?? ''
   }
 
+  async waitForSessionStateChange(sessionId: string, timeoutMs: number): Promise<'updated' | 'timeout'> {
+    if (timeoutMs <= 0) {
+      return 'timeout'
+    }
+
+    return await new Promise<'updated' | 'timeout'>((resolve) => {
+      const waiters = this.sessionStateWaiters.get(sessionId) ?? new Set<() => void>()
+      const finish = (result: 'updated' | 'timeout') => {
+        clearTimeout(timer)
+        waiters.delete(onUpdate)
+        if (waiters.size === 0) {
+          this.sessionStateWaiters.delete(sessionId)
+        }
+        resolve(result)
+      }
+      const onUpdate = () => finish('updated')
+      const timer = setTimeout(() => finish('timeout'), timeoutMs)
+
+      waiters.add(onUpdate)
+      this.sessionStateWaiters.set(sessionId, waiters)
+    })
+  }
+
   private finishSessionStateChange(sessionId: string): void {
+    const waiters = this.sessionStateWaiters.get(sessionId)
+    if (waiters) {
+      for (const notify of [...waiters]) {
+        notify()
+      }
+    }
     this.pushObservabilitySnapshots(sessionId)
     this.onSessionStateChanged?.()
   }

@@ -35,7 +35,14 @@ describe('stoa-ctl command surface', () => {
     expect(module.USAGE_TEXT).toContain('capabilities')
     expect(module.USAGE_TEXT).toContain('session list [--include-archived]')
     expect(module.USAGE_TEXT).toContain('session create --type <shell|opencode|codex|claude-code>')
+    expect(module.USAGE_TEXT).toContain('--external-session-id <id>')
+    expect(module.USAGE_TEXT).toContain('--cols <n>')
+    expect(module.USAGE_TEXT).toContain('--rows <n>')
     expect(module.USAGE_TEXT).toContain('session inspect <sessionId>')
+    expect(module.USAGE_TEXT).toContain('session status <sessionId>')
+    expect(module.USAGE_TEXT).toContain('session output <sessionId>')
+    expect(module.USAGE_TEXT).toContain('session wait <sessionId> [--timeout-ms <ms>]')
+    expect(module.USAGE_TEXT).toContain('session report <sessionId>')
     expect(module.USAGE_TEXT).toContain('session prompt <sessionId> --text "..."')
     expect(module.USAGE_TEXT).toContain('session destroy <sessionId>')
     expect(module.USAGE_TEXT).not.toContain('meta-sessions')
@@ -180,6 +187,75 @@ describe('stoa-ctl command surface', () => {
     expect(writes.join('')).toContain('"session_new_1"')
   })
 
+  test('passes optional create fields through to the control plane', async () => {
+    const module = await import('./index')
+    const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      expect(String(input)).toBe('http://127.0.0.1:54321/ctl/session/create')
+      expect(JSON.parse(String(init?.body))).toEqual({
+        projectId: 'project_1',
+        type: 'codex',
+        title: 'root title',
+        externalSessionId: 'codex-external-1',
+        initialCols: 132,
+        initialRows: 44
+      })
+      return createResponse({
+        body: '{"ok":true,"data":{"session":{"id":"session_new_1"}},"error":null}'
+      })
+    })
+
+    const exitCode = await module.run([
+      'session', 'create',
+      '--project', 'project_1',
+      '--type', 'codex',
+      '--title', 'root title',
+      '--external-session-id', 'codex-external-1',
+      '--cols', '132',
+      '--rows', '44'
+    ], {
+      fetch: fetchImpl,
+      env: {},
+      stdout: { write() {} },
+      stderr: { write() {} },
+      sleep: async () => {},
+      readPortFile: async () => ({
+        port: 54321,
+        pid: process.pid,
+        secret: 'abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
+        startedAt: new Date().toISOString()
+      })
+    })
+
+    expect(exitCode).toBe(0)
+  })
+
+  test('rejects invalid create dimensions before sending the request', async () => {
+    const module = await import('./index')
+    const stderr: string[] = []
+
+    const exitCode = await module.run([
+      'session', 'create',
+      '--project', 'project_1',
+      '--type', 'codex',
+      '--cols', 'wide'
+    ], {
+      fetch: async () => { throw new Error('should not be called') },
+      env: {},
+      stdout: { write() {} },
+      stderr: { write(chunk: string) { stderr.push(chunk) } },
+      sleep: async () => {},
+      readPortFile: async () => ({
+        port: 54321,
+        pid: process.pid,
+        secret: 'abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
+        startedAt: new Date().toISOString()
+      })
+    })
+
+    expect(exitCode).toBe(2)
+    expect(stderr.join('')).toContain('Usage')
+  })
+
   test('creates a direct child session for session caller without project or parent flags', async () => {
     const module = await import('./index')
     const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
@@ -267,6 +343,126 @@ describe('stoa-ctl command surface', () => {
     })
 
     const exitCode = await module.run(['session', 'inspect', 'session_child_1'], {
+      fetch: fetchImpl,
+      env: sessionEnv,
+      stdout: { write(chunk: string) { writes.push(chunk) } },
+      stderr: { write() {} },
+      sleep: async () => {}
+    })
+
+    expect(exitCode).toBe(0)
+    expect(writes.join('')).toContain('"session_child_1"')
+  })
+
+  test('reads session status through the unified session endpoint', async () => {
+    const module = await import('./index')
+    const writes: string[] = []
+    const fetchImpl = vi.fn(async (input: string | URL | Request) => {
+      expect(String(input)).toBe('http://127.0.0.1:43129/ctl/session/session_child_1/status')
+      return createResponse({
+        body: '{"ok":true,"data":{"status":{"sessionId":"session_child_1","phase":"running"}},"error":null}'
+      })
+    })
+
+    const exitCode = await module.run(['session', 'status', 'session_child_1'], {
+      fetch: fetchImpl,
+      env: sessionEnv,
+      stdout: { write(chunk: string) { writes.push(chunk) } },
+      stderr: { write() {} },
+      sleep: async () => {}
+    })
+
+    expect(exitCode).toBe(0)
+    expect(writes.join('')).toContain('"phase":"running"')
+  })
+
+  test('reads session output through the unified session endpoint', async () => {
+    const module = await import('./index')
+    const writes: string[] = []
+    const fetchImpl = vi.fn(async (input: string | URL | Request) => {
+      expect(String(input)).toBe('http://127.0.0.1:43129/ctl/session/session_child_1/output')
+      return createResponse({
+        body: '{"ok":true,"data":{"output":{"sessionId":"session_child_1","text":"terminal replay"}},"error":null}'
+      })
+    })
+
+    const exitCode = await module.run(['session', 'output', 'session_child_1'], {
+      fetch: fetchImpl,
+      env: sessionEnv,
+      stdout: { write(chunk: string) { writes.push(chunk) } },
+      stderr: { write() {} },
+      sleep: async () => {}
+    })
+
+    expect(exitCode).toBe(0)
+    expect(writes.join('')).toContain('terminal replay')
+  })
+
+  test('waits for session completion through the unified session endpoint', async () => {
+    const module = await import('./index')
+    const writes: string[] = []
+    const fetchImpl = vi.fn(async (input: string | URL | Request) => {
+      expect(String(input)).toBe('http://127.0.0.1:43129/ctl/session/session_child_1/wait?timeoutMs=1500')
+      return createResponse({
+        body: '{"ok":true,"data":{"result":{"report":{"outcome":"completed"},"output":{"text":"done"}}},"error":null}'
+      })
+    })
+
+    const exitCode = await module.run(['session', 'wait', 'session_child_1', '--timeout-ms', '1500'], {
+      fetch: fetchImpl,
+      env: sessionEnv,
+      stdout: { write(chunk: string) { writes.push(chunk) } },
+      stderr: { write() {} },
+      sleep: async () => {}
+    })
+
+    expect(exitCode).toBe(0)
+    expect(writes.join('')).toContain('"outcome":"completed"')
+  })
+
+  test('rejects invalid wait timeout before sending the request', async () => {
+    const module = await import('./index')
+    const stderr: string[] = []
+
+    const exitCode = await module.run(['session', 'wait', 'session_child_1', '--timeout-ms', '1.5'], {
+      fetch: async () => { throw new Error('should not be called') },
+      env: sessionEnv,
+      stdout: { write() {} },
+      stderr: { write(chunk: string) { stderr.push(chunk) } },
+      sleep: async () => {}
+    })
+
+    expect(exitCode).toBe(2)
+    expect(stderr.join('')).toContain('Usage')
+  })
+
+  test('rejects empty wait timeout before sending the request', async () => {
+    const module = await import('./index')
+    const stderr: string[] = []
+
+    const exitCode = await module.run(['session', 'wait', 'session_child_1', '--timeout-ms', ''], {
+      fetch: async () => { throw new Error('should not be called') },
+      env: sessionEnv,
+      stdout: { write() {} },
+      stderr: { write(chunk: string) { stderr.push(chunk) } },
+      sleep: async () => {}
+    })
+
+    expect(exitCode).toBe(2)
+    expect(stderr.join('')).toContain('Usage')
+  })
+
+  test('reads session completion report through the unified session endpoint', async () => {
+    const module = await import('./index')
+    const writes: string[] = []
+    const fetchImpl = vi.fn(async (input: string | URL | Request) => {
+      expect(String(input)).toBe('http://127.0.0.1:43129/ctl/session/session_child_1/completion-report')
+      return createResponse({
+        body: '{"ok":true,"data":{"report":{"sessionId":"session_child_1","outcome":"completed"}},"error":null}'
+      })
+    })
+
+    const exitCode = await module.run(['session', 'report', 'session_child_1'], {
       fetch: fetchImpl,
       env: sessionEnv,
       stdout: { write(chunk: string) { writes.push(chunk) } },

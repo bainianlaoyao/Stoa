@@ -392,6 +392,46 @@ describe('SessionRuntimeController', () => {
     await expect(controller.getTerminalReplay('session-op-2')).resolves.toBe('opencode')
   })
 
+  test('waitForSessionStateChange resolves updated when a session state changes', async () => {
+    const { window: win } = createMockWindow()
+    const project = await manager.createProject({ path: await createTestWorkspace('ctrl-wait-updated-'), name: 'test' })
+    const session = await manager.createSession({ projectId: project.id, type: 'shell', title: 'S1' })
+    const controller = new SessionRuntimeController(manager, () => win)
+
+    const wait = controller.waitForSessionStateChange(session.id, 1000)
+    await controller.markRuntimeAlive(session.id, null)
+
+    await expect(wait).resolves.toBe('updated')
+  })
+
+  test('waitForSessionStateChange resolves timeout when no state changes arrive', async () => {
+    vi.useFakeTimers()
+    try {
+      const { window: win } = createMockWindow()
+      const controller = new SessionRuntimeController(manager, () => win)
+
+      const wait = controller.waitForSessionStateChange('session-timeout', 50)
+      vi.advanceTimersByTime(50)
+
+      await expect(wait).resolves.toBe('timeout')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  test('waitForSessionStateChange wakes all waiters for the same session', async () => {
+    const { window: win } = createMockWindow()
+    const project = await manager.createProject({ path: await createTestWorkspace('ctrl-wait-many-'), name: 'test' })
+    const session = await manager.createSession({ projectId: project.id, type: 'shell', title: 'S1' })
+    const controller = new SessionRuntimeController(manager, () => win)
+
+    const first = controller.waitForSessionStateChange(session.id, 1000)
+    const second = controller.waitForSessionStateChange(session.id, 1000)
+    await controller.markRuntimeStarting(session.id, 'starting', null)
+
+    await expect(Promise.all([first, second])).resolves.toEqual(['updated', 'updated'])
+  })
+
   test('getTerminalReplay trims overflow without exposing a partial CSI sequence', async () => {
     const { window: win } = createMockWindow()
     const controller = new SessionRuntimeController(manager, () => win)

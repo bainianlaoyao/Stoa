@@ -33,7 +33,7 @@ import { syncManagedSidecars } from './managed-sidecar-maintenance'
 import { UpdateService } from './update-service'
 import { resolveDefaultStoaRuntimeRoot } from './stoa-runtime-root'
 import { createHookLeaseManager } from './hook-lease-manager'
-import { SessionDimensionsRegistry } from './session-dimensions'
+import { mergeSessionDimensions, SessionDimensionsRegistry, type PartialSessionDimensions } from './session-dimensions'
 import { registerFilesystemHandlers } from './sidebar-fs-handlers'
 import { registerGitHandlers } from './sidebar-git-handlers'
 import { DEFAULT_SETTINGS } from '@shared/project-session'
@@ -322,6 +322,11 @@ async function prepareForQuitAndInstall(): Promise<void> {
   }
 
   isQuittingAfterBridgeStop = true
+  try {
+    await projectSessionManager?.flush()
+  } catch (error) {
+    console.error('[shutdown] State flush failed, proceeding with cleanup', error)
+  }
   await ptyHost?.disposeAndWait()
   ptyHost = null
   sessionInputRouter?.dispose()
@@ -330,6 +335,14 @@ async function prepareForQuitAndInstall(): Promise<void> {
   await hookLeaseManager?.stop()
   hookLeaseManager = null
 }
+
+function handleShutdownSignal(signal: string): void {
+  console.log(`[main] Received ${signal}, initiating graceful shutdown`)
+  app.quit()
+}
+
+process.on('SIGINT', () => handleShutdownSignal('SIGINT'))
+process.on('SIGTERM', () => handleShutdownSignal('SIGTERM'))
 
 function createDisabledUpdateState(): UpdateState {
   return {
@@ -515,6 +528,10 @@ app.whenReady().then(async () => {
       }, timeoutMs)
       pendingLaunchSessions.set(sessionId, { resolve, timer })
     })
+  }
+
+  function hasCompleteSessionDimensions(dims: { cols?: number; rows?: number } | undefined): dims is { cols: number; rows: number } {
+    return dims?.cols !== undefined && dims.rows !== undefined
   }
 
   runtimeController = new SessionRuntimeController(
@@ -718,6 +735,12 @@ app.whenReady().then(async () => {
             await activeSessionInputRouter?.send(sessionId, data)
           }
         },
+        async getTerminalReplay(sessionId: string) {
+          return await activeRuntimeController.getTerminalReplay(sessionId)
+        },
+        async waitForSessionStateChange(sessionId: string, timeoutMs: number) {
+          return await activeRuntimeController.waitForSessionStateChange(sessionId, timeoutMs)
+        },
         async createChildSession(request) {
           const resolvedProjectId = request.projectId
             || (request.parentId
@@ -739,7 +762,10 @@ app.whenReady().then(async () => {
             type: request.type,
             title: request.title ?? '',
             parentSessionId: request.parentId || null,
-            createdBySessionId: request.parentId || null
+            createdBySessionId: request.parentId || null,
+            externalSessionId: request.externalSessionId,
+            initialCols: request.initialCols,
+            initialRows: request.initialRows
           }, {
             graphOrigin: origin,
             initiatorSessionId,
@@ -841,7 +867,7 @@ app.whenReady().then(async () => {
     source: 'session-create' | 'session-restore' | 'session-restart' | 'bootstrap-recovery' | 'packaged-smoke',
     options?: {
       awaitDimensions?: boolean
-      initialDimensions?: { cols: number; rows: number }
+      initialDimensions?: { cols?: number; rows?: number }
       launchToken?: number
       requireExternalSessionIdForResume?: boolean
     }
@@ -853,13 +879,14 @@ app.whenReady().then(async () => {
 
     try {
       const launchToken = options?.launchToken ?? reserveSessionLaunchToken(sessionId)
-      let initialDimensions = options?.initialDimensions ?? getSessionDimensions(sessionId) ?? undefined
-      if (options?.awaitDimensions) {
+      const explicitDimensions = options?.initialDimensions
+      let initialDimensions = mergeSessionDimensions(getSessionDimensions(sessionId), explicitDimensions)
+      if (options?.awaitDimensions && !explicitDimensions) {
         initialDimensions = await waitForSessionDimensions(sessionId, 5000)
         console.log(`[pty-dimensions] Launching ${sessionId} with dimensions ${initialDimensions.cols}x${initialDimensions.rows}`)
       }
 
-      if (initialDimensions) {
+      if (hasCompleteSessionDimensions(initialDimensions)) {
         rememberSessionDimensions(sessionId, initialDimensions)
       }
 
@@ -941,7 +968,18 @@ app.whenReady().then(async () => {
       initiatorSessionId: options.initiatorSessionId ?? null
     })
     await syncUpdateStateToWindow()
-    void launchSessionRuntimeWithGuard(session.id, 'session-create', { awaitDimensions: true })
+    const explicitDimensions: PartialSessionDimensions = {}
+    if (payload.initialCols !== undefined) {
+      explicitDimensions.cols = payload.initialCols
+    }
+    if (payload.initialRows !== undefined) {
+      explicitDimensions.rows = payload.initialRows
+    }
+    const hasExplicitDimensions = Object.keys(explicitDimensions).length > 0
+    void launchSessionRuntimeWithGuard(session.id, 'session-create', {
+      awaitDimensions: !hasExplicitDimensions,
+      initialDimensions: hasExplicitDimensions ? explicitDimensions : undefined
+    })
     return session
   }
 
@@ -1386,8 +1424,8 @@ app.whenReady().then(async () => {
   })
 
   ipcMain.handle(IPC_CHANNELS.sidebarSetState, async (_event, state: Partial<import('@shared/sidebar-types').SidebarState>) => {
-    const current = await readSidebarState() ?? { open: false, activeTab: 'explorer' as const, width: 280, sessionListWidth: 240 }
-    await writeSidebarState({ ...current, ...state })
+    const current = await readSidebarState() ?? { open: false, activeTab: 'explorer' as const, width: 280, sessionListWidth: 240, activeTabByProject: {} as Record<string, string> }
+    await writeSidebarState({ ...current, ...state, activeTabByProject: state.activeTabByProject ?? current.activeTabByProject ?? {} })
   })
 
   ipcMain.handle(IPC_CHANNELS.settingsDetectShell, async () => {

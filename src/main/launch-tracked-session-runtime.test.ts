@@ -71,7 +71,8 @@ describe('launchTrackedSessionRuntime', () => {
       } as never,
       resolveRuntimePaths,
       getProvider: getProvider as never,
-      startRuntime
+      startRuntime,
+      initialDimensions: { cols: 132, rows: 44 }
     })
 
     expect(launched).toBe(true)
@@ -103,7 +104,8 @@ describe('launchTrackedSessionRuntime', () => {
         webhookPort: 43127,
         provider,
         shellPath: 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
-        providerPath: null
+        providerPath: null,
+        initialDimensions: { cols: 132, rows: 44 }
       })
     )
   })

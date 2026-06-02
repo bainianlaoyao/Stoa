@@ -19,6 +19,26 @@ function isSessionType(value: string): value is SessionType {
   return SESSION_TYPES.includes(value as SessionType)
 }
 
+function parseOptionalPositiveInteger(value: unknown): number | undefined | null {
+  if (value === undefined) {
+    return undefined
+  }
+  if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) {
+    return null
+  }
+  return value
+}
+
+function parseOptionalPositiveIntegerString(value: unknown): number | undefined | null {
+  if (value === undefined) {
+    return undefined
+  }
+  if (typeof value !== 'string' || !/^[1-9]\d*$/.test(value)) {
+    return null
+  }
+  return Number.parseInt(value, 10)
+}
+
 function resolveCaller(
   headers: { 'x-stoa-secret'?: string; 'x-stoa-session-id'?: string; 'x-stoa-session-token'?: string },
   deps: SessionControlServerDeps
@@ -89,9 +109,13 @@ export function createSessionControlServer(deps: SessionControlServerDeps): {
         health: true,
         sessionList: true,
         sessionInspect: true,
+        sessionStatus: true,
         sessionPrompt: true,
         sessionCreate: true,
-        sessionDestroy: true
+        sessionDestroy: true,
+        sessionWait: true,
+        sessionOutput: true,
+        sessionCompletionReport: true
       }
     }))
   })
@@ -114,6 +138,153 @@ export function createSessionControlServer(deps: SessionControlServerDeps): {
       return
     }
     res.json(jsonEnvelope({ node }))
+  })
+
+  app.get('/ctl/session/:id/status', (req, res) => {
+    const caller = (req as any)._caller as CallerIdentity
+    try {
+      const status = supervisor.getSessionStatus(caller, req.params.id)
+      res.json(jsonEnvelope({ status }))
+    } catch (error: any) {
+      if (error.code === 'unknown_session') {
+        res.status(404).json(jsonEnvelope(null, {
+          code: 'unknown_session',
+          message: error.message,
+          details: {}
+        }))
+        return
+      }
+      if (error.code === 'forbidden_authority_scope') {
+        res.status(403).json(jsonEnvelope(null, {
+          code: 'forbidden_authority_scope',
+          message: error.message,
+          details: {}
+        }))
+        return
+      }
+      res.status(500).json(jsonEnvelope(null, {
+        code: 'internal_error',
+        message: error.message ?? String(error),
+        details: {}
+      }))
+    }
+  })
+
+  app.get('/ctl/session/:id/output', async (req, res) => {
+    const caller = (req as any)._caller as CallerIdentity
+    try {
+      const output = await supervisor.getSessionOutput(caller, req.params.id)
+      res.json(jsonEnvelope({ output }))
+    } catch (error: any) {
+      if (error.code === 'unknown_session') {
+        res.status(404).json(jsonEnvelope(null, {
+          code: 'unknown_session',
+          message: error.message,
+          details: {}
+        }))
+        return
+      }
+      if (error.code === 'forbidden_authority_scope') {
+        res.status(403).json(jsonEnvelope(null, {
+          code: 'forbidden_authority_scope',
+          message: error.message,
+          details: {}
+        }))
+        return
+      }
+      res.status(500).json(jsonEnvelope(null, {
+        code: 'internal_error',
+        message: error.message ?? String(error),
+        details: {}
+      }))
+    }
+  })
+
+  app.get('/ctl/session/:id/completion-report', async (req, res) => {
+    const caller = (req as any)._caller as CallerIdentity
+    try {
+      const report = await supervisor.getCompletionReport(caller, req.params.id)
+      res.json(jsonEnvelope({ report }))
+    } catch (error: any) {
+      if (error.code === 'unknown_session') {
+        res.status(404).json(jsonEnvelope(null, {
+          code: 'unknown_session',
+          message: error.message,
+          details: {}
+        }))
+        return
+      }
+      if (error.code === 'forbidden_authority_scope') {
+        res.status(403).json(jsonEnvelope(null, {
+          code: 'forbidden_authority_scope',
+          message: error.message,
+          details: {}
+        }))
+        return
+      }
+      if (error.code === 'no_completion_yet') {
+        res.status(409).json(jsonEnvelope(null, {
+          code: 'no_completion_yet',
+          message: error.message,
+          details: {}
+        }))
+        return
+      }
+      res.status(500).json(jsonEnvelope(null, {
+        code: 'internal_error',
+        message: error.message ?? String(error),
+        details: {}
+      }))
+    }
+  })
+
+  app.get('/ctl/session/:id/wait', async (req, res) => {
+    const caller = (req as any)._caller as CallerIdentity
+    const timeoutMs = parseOptionalPositiveIntegerString(req.query.timeoutMs)
+    if (timeoutMs === null) {
+      res.status(400).json(jsonEnvelope(null, {
+        code: 'invalid_request',
+        message: 'timeoutMs must be a positive integer when provided.',
+        details: {}
+      }))
+      return
+    }
+    try {
+      const result = await supervisor.waitForSession(caller, req.params.id, {
+        timeoutMs
+      })
+      res.json(jsonEnvelope({ result }))
+    } catch (error: any) {
+      if (error.code === 'unknown_session') {
+        res.status(404).json(jsonEnvelope(null, {
+          code: 'unknown_session',
+          message: error.message,
+          details: {}
+        }))
+        return
+      }
+      if (error.code === 'forbidden_authority_scope') {
+        res.status(403).json(jsonEnvelope(null, {
+          code: 'forbidden_authority_scope',
+          message: error.message,
+          details: {}
+        }))
+        return
+      }
+      if (error.code === 'wait_timeout') {
+        res.status(408).json(jsonEnvelope(null, {
+          code: 'wait_timeout',
+          message: error.message,
+          details: {}
+        }))
+        return
+      }
+      res.status(500).json(jsonEnvelope(null, {
+        code: 'internal_error',
+        message: error.message ?? String(error),
+        details: {}
+      }))
+    }
   })
 
   app.post('/ctl/session/:id/prompt', async (req, res) => {
@@ -183,11 +354,27 @@ export function createSessionControlServer(deps: SessionControlServerDeps): {
     const projectId = typeof req.body?.projectId === 'string' ? req.body.projectId.trim() : ''
     const type = typeof req.body?.type === 'string' ? req.body.type.trim() : ''
     const title = typeof req.body?.title === 'string' ? req.body.title.trim() : ''
+    const externalSessionId = typeof req.body?.externalSessionId === 'string'
+      ? req.body.externalSessionId.trim()
+      : req.body?.externalSessionId === null
+        ? null
+        : undefined
+    const initialCols = parseOptionalPositiveInteger(req.body?.initialCols)
+    const initialRows = parseOptionalPositiveInteger(req.body?.initialRows)
 
     if (!type || !isSessionType(type)) {
       res.status(400).json(jsonEnvelope(null, {
         code: 'invalid_request',
         message: 'Missing or invalid type.',
+        details: {}
+      }))
+      return
+    }
+
+    if (initialCols === null || initialRows === null) {
+      res.status(400).json(jsonEnvelope(null, {
+        code: 'invalid_request',
+        message: 'initialCols and initialRows must be positive integers when provided.',
         details: {}
       }))
       return
@@ -215,7 +402,15 @@ export function createSessionControlServer(deps: SessionControlServerDeps): {
 
     if (caller.type === 'local-user' && projectId && !parentId) {
       try {
-        const session = await supervisor.createChildSession(caller, { parentId, projectId, type, title })
+        const session = await supervisor.createChildSession(caller, {
+          parentId,
+          projectId,
+          type,
+          title,
+          externalSessionId,
+          initialCols,
+          initialRows
+        })
         res.json(jsonEnvelope({ session }))
         return
       } catch (error: any) {
@@ -254,7 +449,15 @@ export function createSessionControlServer(deps: SessionControlServerDeps): {
     }
 
     try {
-      const session = await supervisor.createChildSession(caller, { parentId, projectId, type, title })
+      const session = await supervisor.createChildSession(caller, {
+        parentId,
+        projectId,
+        type,
+        title,
+        externalSessionId,
+        initialCols,
+        initialRows
+      })
       res.json(jsonEnvelope({ session }))
     } catch (error: any) {
       if (error.code === 'unknown_session') {
