@@ -4,7 +4,7 @@ import { computed, nextTick } from 'vue'
 import type { DirEntry } from '@shared/sidebar-types'
 
 // Mock window.stoa before importing composable
-const mockFsReadDir = vi.fn<Promise<DirEntry[]>, [string, string | undefined]>()
+const mockFsReadDir = vi.fn<(projectPath: string, relativePath?: string) => Promise<DirEntry[]>>()
 
 function mockWindowStoa(): void {
   ;(window as any).stoa = {

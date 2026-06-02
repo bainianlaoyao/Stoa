@@ -10,7 +10,7 @@ const POLL_INTERVAL = 30_000
  * - Resets and re-fetches immediately when the project path changes.
  * - Pauses while the window is hidden and resumes on visibility regain.
  */
-export function useGitStatusPolling(projectPath: Ref<string>): {
+export function useGitStatusPolling(projectPath: Ref<string | null | undefined>): {
   refreshing: Readonly<Ref<boolean>>
   refreshGitStatus: () => Promise<void>
 } {

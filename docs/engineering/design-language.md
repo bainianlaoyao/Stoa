@@ -6,87 +6,81 @@ All future UI work, preview work, and frontend implementation work must follow t
 
 ## Design Direction
 
-The project uses **Modern Minimalist Glassmorphism** combined with **Clean UI**.
+The project uses **standard Fluent 2** as its visual authority.
 
-This design language is influenced by recent macOS, visionOS, and modern premium SaaS consoles. Its core principle is:
+The renderer should feel like a restrained Windows productivity application: neutral, legible, token-driven, and predictable under repeated use. Fluent 2 rules are the source of truth for color, typography, stroke, corner radius, elevation, material, and motion decisions.
 
-> Use light, depth, transparency, and layering to separate regions instead of relying on heavy borders or noisy visual treatment.
-
-This is the default and authoritative visual direction for the repository.
+This pass is token-first. Keep the current Vue component structure and stable `data-testid` topology. Do not introduce Fluent Web Components unless a later task explicitly asks for that proof of concept.
 
 ## Non-Negotiable Rules
 
 ### 1. Use Design Tokens Only
 
-Do not hardcode colors, shadows, or radii in component styles when a shared token should be used.
+Do not hardcode colors, shadows, radii, stroke widths, material fills, or motion timings in component styles when a shared token should be used.
 
 All visual primitives must be drawn from global CSS variables / design tokens.
 
-#### Background system
-- Use `var(--canvas)` for the base page background.
-- Use `var(--surface)` for elevated / floating translucent panels.
-- Use `var(--surface-solid)` for internal cards, controls, and solid inner modules.
+#### Material system
+- Use `var(--mica)` for durable app surfaces and primary working regions.
+- Use `var(--mica-alt)` for alternate durable regions that need subtle separation.
+- Use `var(--surface-solid)` for dense content, terminal-adjacent UI, form fields, cards, and controls where readability matters more than material depth.
+- Use `var(--acrylic)` only for transient overlays, menus, dialogs, popovers, context menus, and flyouts.
+- Use `var(--smoke)` only to dim blocked content underneath modal UI.
 
 #### Text system
 - Use `var(--text-strong)` for headings, key labels, and important values.
 - Use `var(--text)` for normal reading content.
 - Use `var(--muted)` or `var(--subtle)` for secondary metadata, timestamps, hints, and low-priority text.
 
-#### Accent system
-- Use `var(--accent)` only when guiding the user toward action or focus.
-- Typical use cases: active state, selected state, primary action, focused navigation item.
+#### Control system
+- Use `var(--control-fill)` for resting controls.
+- Use `var(--control-fill-hover)` for hover states.
+- Use `var(--control-fill-active)` for pressed states.
+- Use `var(--stroke-control)` for control boundaries and `var(--stroke-divider)` for layout separators.
+- Use `var(--accent)` and `var(--active-fill)` only for selected state, primary action, focus, or navigational orientation.
 
-### 2. Build Hierarchy Through Z-Axis, Not Heavy Framing
+### 2. Use Fluent 2 Materials Deliberately
 
-Avoid traditional thick borders and visually heavy compartmentalization.
+Durable application surfaces should be Mica-like and mostly opaque. They provide calm app structure and should not rely on heavy blur.
+
+Acrylic is reserved for transient, light-dismiss surfaces. Use it for:
+- dialogs
+- context menus
+- flyouts
+- popovers
+- temporary selection surfaces
+
+Smoke is reserved for modal blocking states. It dims the area beneath a dialog or blocking surface and should not be used as a generic page background.
+
+Terminal and dense text surfaces remain solid for readability.
+
+### 3. Build Hierarchy Through Tokens, Not Decoration
 
 Hierarchy should come from:
-- transparency
-- blur
-- subtle shadow
-- restrained contrast shifts
+- material role
+- spacing
+- type weight
+- stroke tokens
+- restrained Fluent elevation
+- selected and focus states
 
-#### Top-level panel treatment
-- Use `backdrop-filter: blur(40px)` for top-level glass surfaces when appropriate.
-- Pair this with semi-transparent white backgrounds such as `rgba(255, 255, 255, 0.75)` or tokenized equivalents.
-- Use the premium shared shadow token such as `var(--shadow-premium)` for the main viewport or other primary elevated surfaces.
+Use `var(--shadow-card)` for low local elevation and `var(--shadow-flyout)` for transient elevated surfaces. Avoid decorative gradients, oversized blur, heavy framing, or local visual recipes that bypass tokens.
 
-#### Inner module treatment
-- Inner cards, list rows, or local controls should usually avoid strong shadows.
-- Prefer light solid or semi-solid surfaces and extremely subtle borders.
-- Default border style should be `border: 1px solid var(--line)`.
+Default border style should be `border: 1px solid var(--stroke-control)` for controls and `border: 1px solid var(--stroke-divider)` for structural dividers.
 
-#### Border rule
-- If a border is necessary, prefer very low-contrast transparent black/white tones.
-- Borders should visually blend into the surrounding surface rather than visibly cutting it apart.
+### 4. Micro-Interactions Must Be Restrained and Smooth
 
-### 3. Micro-Interactions Must Be Restrained and Smooth
+Interactive feedback should feel immediate and quiet.
 
-Interactive feedback should feel subtle, modern, and immediate.
+Use shared motion tokens:
+- `var(--duration-rest)` for ordinary hover and state changes
+- `var(--duration-emphasized)` for overlays and surface transitions
+- `var(--curve-standard)` for ordinary changes
+- `var(--curve-decelerate)` for entering surfaces
 
-#### Hover states
-- Prefer changing transparency, surface brightness, or background opacity.
-- Good examples:
-  - `background: rgba(0, 0, 0, 0.04)`
-  - slightly brighter surface values
+Avoid exaggerated movement, decorative animation, and scale effects that shift layout.
 
-#### Active / selected states
-- Use color changes with restraint.
-- Optional supporting cues:
-  - a very light shadow such as `box-shadow: 0 1px 2px rgba(0,0,0,0.02)`
-  - higher-contrast border treatment
-  - restrained accent tinting
-
-#### Motion
-- All interactive state changes should default to:
-
-```css
-transition: all 0.2s ease;
-```
-
-- Avoid exaggerated motion, spring-heavy behavior, or decorative animation unless explicitly requested.
-
-### 4. Typography Must Preserve Tooling Discipline
+### 5. Typography Must Preserve Tooling Discipline
 
 Professional console quality depends on correct font separation.
 
@@ -98,7 +92,7 @@ Use for:
 - labels
 - ordinary UI structure
 
-Use weight and spacing, not oversized type, to create hierarchy.
+Use weight, line height, and spacing rather than oversized type to create hierarchy.
 
 #### Mono font: `--font-mono`
 Must be used for:
@@ -131,7 +125,7 @@ When creating new modules, panels, list rows, cards, controls, or previews:
 ```css
 .new-module {
   background: var(--surface-solid);
-  border: 1px solid var(--line);
+  border: 1px solid var(--stroke-control);
   border-radius: var(--radius-sm);
   color: var(--text-strong);
 }
@@ -140,11 +134,13 @@ When creating new modules, panels, list rows, cards, controls, or previews:
 ## Implementation Expectations
 
 All future contributors must:
-- reuse shared tokens instead of inventing local visual constants
-- preserve the glass / clean / premium layering system
-- avoid introducing noisy visual styles that conflict with this language
-- keep UI states smooth, restrained, and low-friction
+- reuse shared Fluent 2 tokens instead of inventing local visual constants
+- keep durable app surfaces Mica-like
+- reserve Acrylic for transient overlays and flyouts
+- reserve Smoke for modal blocking overlays
+- keep dense text and terminal surfaces solid
 - maintain strict separation between UI typography and mono typography
+- preserve renderer topology and `data-testid` attributes during visual-only work
 
 ## Scope
 
@@ -153,6 +149,6 @@ This document applies to:
 - preview HTML files
 - new frontend modules
 - refactors of existing UI surfaces
-- interaction styling for panels, controls, lists, and navigation
+- interaction styling for panels, controls, lists, navigation, overlays, and flyouts
 
 If a future task requires a different visual language, that change must be explicitly requested by the user.

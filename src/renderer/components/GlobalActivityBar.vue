@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
-import { useSidebarStore } from '@renderer/stores/sidebar'
 import { storeToRefs } from 'pinia'
+import { useSidebarStore } from '@renderer/stores/sidebar'
 
-export type AppSurface = 'command' | 'settings'
+export type AppSurface = 'command' | 'archive' | 'settings'
 
 const { t } = useI18n()
 const sidebarStore = useSidebarStore()
@@ -41,6 +41,16 @@ const topItems: ActivityItem[] = [
       'm8 10 2.25 2.25L7.75 14.5',
       'M12.75 14.5h3.75'
     ]
+  },
+  {
+    id: 'archive',
+    title: t('activityBar.archive'),
+    iconKind: 'archive-box',
+    iconPaths: [
+      'M5.75 5.75h12.5A1.25 1.25 0 0 1 19.5 7v2.25H4.5V7a1.25 1.25 0 0 1 1.25-1.25Z',
+      'M5.25 9.25h13.5v8A1.75 1.75 0 0 1 17 19H7a1.75 1.75 0 0 1-1.75-1.75v-8Z',
+      'M9.25 12h5.5'
+    ]
   }
 ]
 
@@ -65,12 +75,12 @@ const bottomItems: ActivityItem[] = [
 </script>
 
 <template>
-  <nav class="flex min-h-full flex-col items-center py-5 pb-4 bg-surface/40 border-r border-line backdrop-blur-md" data-testid="activity-bar" aria-label="Global activity">
+  <nav class="flex min-h-full flex-col items-center py-5 pb-4 bg-mica-alt border-r border-line" data-testid="activity-bar" aria-label="Global activity">
     <div data-testid="activity-cluster-top" class="grid gap-3">
       <button
         v-for="item in topItems"
         :key="item.id"
-        class="relative inline-flex h-10 w-10 items-center justify-center border-0 rounded-md bg-transparent text-muted cursor-pointer transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] hover:text-text-strong hover:bg-black-soft hover:scale-[1.08] active:scale-95 focus-visible:text-text-strong focus-visible:bg-black-soft focus-visible:outline-none"
+        class="relative inline-flex h-10 w-10 items-center justify-center border-0 rounded-md bg-transparent text-muted cursor-pointer transition-all duration-200 ease-in-out hover:text-text-strong hover:bg-black-soft active:opacity-85 focus-visible:text-text-strong focus-visible:bg-black-soft focus-visible:outline-none"
         :class="{ 'text-text-strong bg-black-soft': item.id === activeSurface }"
         :data-activity-item="item.id"
         :data-active="String(item.id === activeSurface)"
@@ -80,11 +90,6 @@ const bottomItems: ActivityItem[] = [
         :title="item.title"
         @click="emit('select', item.id)"
       >
-        <!-- Modern Windows 11 active indicator pill on the left -->
-        <span
-          class="absolute left-[2px] w-[3px] bg-accent rounded-full transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]"
-          :class="item.id === activeSurface ? 'top-[11px] bottom-[11px] opacity-100' : 'top-1/2 bottom-1/2 opacity-0'"
-        />
         <svg
           data-activity-icon
           :data-icon-kind="item.iconKind"
@@ -111,7 +116,7 @@ const bottomItems: ActivityItem[] = [
     </div>
     <div data-testid="activity-cluster-bottom" class="mt-auto grid gap-3">
       <button
-        class="relative inline-flex h-10 w-10 items-center justify-center border-0 rounded-md bg-transparent text-muted cursor-pointer transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] hover:text-text-strong hover:bg-black-soft hover:scale-[1.08] active:scale-95 focus-visible:text-text-strong focus-visible:bg-black-soft focus-visible:outline-none"
+        class="relative inline-flex h-10 w-10 items-center justify-center border-0 rounded-md bg-transparent text-muted cursor-pointer transition-all duration-200 ease-in-out hover:text-text-strong hover:bg-black-soft active:opacity-85 focus-visible:text-text-strong focus-visible:bg-black-soft focus-visible:outline-none"
         :class="{ 'text-text-strong bg-black-soft': sidebarOpen }"
         data-activity-item="sidebar-toggle"
         :data-active="String(sidebarOpen)"
@@ -119,12 +124,8 @@ const bottomItems: ActivityItem[] = [
         :aria-label="sidebarOpen ? t('activityBar.closeSidebar') : t('activityBar.openSidebar')"
         type="button"
         :title="sidebarOpen ? t('activityBar.closeSidebar') : t('activityBar.openSidebar')"
-        @click="sidebarStore.toggle()"
+        @click="() => { emit('select', 'command'); activeSurface === 'command' ? sidebarStore.toggle() : sidebarStore.setOpen(true) }"
       >
-        <span
-          class="absolute left-[2px] w-[3px] bg-accent rounded-full transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]"
-          :class="sidebarOpen ? 'top-[11px] bottom-[11px] opacity-100' : 'top-1/2 bottom-1/2 opacity-0'"
-        />
         <svg
           data-activity-icon
           data-icon-kind="sidebar-toggle"
@@ -140,11 +141,12 @@ const bottomItems: ActivityItem[] = [
           <rect x="3.75" y="5.75" width="16.5" height="12.5" rx="1.25" />
           <path d="M9.75 5.75v12.5" />
         </svg>
+        <span class="sr-only">{{ sidebarOpen ? t('activityBar.closeSidebar') : t('activityBar.openSidebar') }}</span>
       </button>
       <button
         v-for="item in bottomItems"
         :key="item.id"
-        class="relative inline-flex h-10 w-10 items-center justify-center border-0 rounded-md bg-transparent text-muted cursor-pointer transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] hover:text-text-strong hover:bg-black-soft hover:scale-[1.08] active:scale-95 focus-visible:text-text-strong focus-visible:bg-black-soft focus-visible:outline-none"
+        class="relative inline-flex h-10 w-10 items-center justify-center border-0 rounded-md bg-transparent text-muted cursor-pointer transition-all duration-200 ease-in-out hover:text-text-strong hover:bg-black-soft active:opacity-85 focus-visible:text-text-strong focus-visible:bg-black-soft focus-visible:outline-none"
         :class="{ 'text-text-strong bg-black-soft': item.id === activeSurface }"
         :data-activity-item="item.id"
         :data-active="String(item.id === activeSurface)"
@@ -154,11 +156,6 @@ const bottomItems: ActivityItem[] = [
         :title="item.title"
         @click="emit('select', item.id)"
       >
-        <!-- Modern Windows 11 active indicator pill on the left -->
-        <span
-          class="absolute left-[2px] w-[3px] bg-accent rounded-full transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]"
-          :class="item.id === activeSurface ? 'top-[11px] bottom-[11px] opacity-100' : 'top-1/2 bottom-1/2 opacity-0'"
-        />
         <svg
           data-activity-icon
           :data-icon-kind="item.iconKind"

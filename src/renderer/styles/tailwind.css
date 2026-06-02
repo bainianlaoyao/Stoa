@@ -1,11 +1,15 @@
 @import 'tailwindcss';
 
 @theme {
-  /* Color tokens — using custom properties for dynamic dual-theme */
+  /* Color tokens - Fluent 2 aliases with dynamic dual-theme values */
   --color-canvas: var(--canvas);
   --color-surface: var(--surface);
   --color-surface-solid: var(--surface-solid);
   --color-surface-soft: var(--surface-soft);
+  --color-mica: var(--mica);
+  --color-mica-alt: var(--mica-alt);
+  --color-acrylic: var(--acrylic);
+  --color-smoke: var(--smoke);
   --color-line: var(--line);
   --color-line-strong: var(--line-strong);
   --color-text-strong: var(--text-strong);
@@ -13,7 +17,6 @@
   --color-muted: var(--muted);
   --color-subtle: var(--subtle);
   --color-accent: var(--accent);
-  --color-active-indicator: var(--accent);
   --color-active-fill: var(--active-fill);
 
   --color-success: var(--success);
@@ -21,7 +24,7 @@
   --color-attention: var(--attention);
   --color-confirm: var(--confirm);
   --color-error: var(--error);
-  --color-overlay-scrim: var(--overlay-scrim);
+  --color-overlay-scrim: var(--smoke);
 
   --color-black-soft: var(--black-soft);
   --color-black-faint: var(--black-faint);
@@ -29,16 +32,15 @@
   --color-white-soft: var(--white-soft);
   --color-white-faint: var(--white-faint);
 
-  /* Radius tokens - Windows 11 Modern Fluent Geometry */
-  --radius-lg: 12px;
+  /* Radius tokens - Fluent 2 geometry */
+  --radius-lg: 8px;
   --radius-md: 6px;
   --radius-sm: 4px;
 
-  /* Shadow tokens mapped to custom theme properties */
-  --shadow-glass: var(--shadow-glass-val);
+  /* Elevation tokens */
   --shadow-soft: var(--shadow-soft-val);
   --shadow-card: var(--shadow-card-val);
-  --shadow-premium: var(--shadow-premium-val);
+  --shadow-flyout: var(--shadow-flyout-val);
   --shadow-focus-ring: var(--shadow-focus-ring-val);
   
   --shadow-success-ring: 0 0 0 2px rgba(16, 185, 129, 0.16);
@@ -91,6 +93,12 @@
 
   /* Spacing tokens */
   --terminal-shell-gap: clamp(10px, 1.4vw, 18px);
+
+  /* Motion tokens */
+  --duration-rest: 150ms;
+  --duration-emphasized: 250ms;
+  --curve-standard: cubic-bezier(0.2, 0, 0, 1);
+  --curve-decelerate: cubic-bezier(0, 0, 0, 1);
 }
 
 /* ── Font faces ── */
@@ -129,21 +137,24 @@
     background: var(--canvas);
     color: var(--text);
 
-    /* Pure design token values - Light */
+    /* Fluent 2 token values - Light */
     --canvas: #f3f3f3;
-    --canvas-gradient: 
-      radial-gradient(at 0% 0%, rgba(255, 255, 255, 0.75) 70%, transparent),
-      radial-gradient(at 90% 10%, #e5e9f8 0%, #f0f4ff 50%, transparent),
-      radial-gradient(at 80% 90%, #fefcf9 0%, #f5f2eb 40%, transparent),
-      radial-gradient(at 20% 80%, #f2f5fd 0%, transparent),
-      #f3f3f3;
+    --mica: #f3f3f3;
+    --mica-alt: #eeeeee;
+    --acrylic: rgba(252, 252, 252, 0.78);
+    --smoke: rgba(0, 0, 0, 0.45);
 
-    --surface: rgba(255, 255, 255, 0.72);
+    --surface: var(--mica);
     --surface-solid: #ffffff;
-    --surface-soft: rgba(255, 255, 255, 0.45);
+    --surface-soft: #f9f9f9;
+    --control-fill: rgba(255, 255, 255, 0.70);
+    --control-fill-hover: rgba(249, 249, 249, 0.50);
+    --control-fill-active: rgba(249, 249, 249, 0.30);
     
     --line: rgba(0, 0, 0, 0.0578);
     --line-strong: rgba(0, 0, 0, 0.08);
+    --stroke-control: rgba(0, 0, 0, 0.0578);
+    --stroke-divider: rgba(0, 0, 0, 0.08);
     --text-strong: #1a1a1a;
     --text: #3b3b3b;
     --muted: #5f5f5f;
@@ -156,18 +167,15 @@
     --attention: #d97706;
     --confirm: #7c3aed;
     --error: #ef4444;
-    --overlay-scrim: rgba(17, 20, 24, 0.42);
-
     --black-soft: rgba(0, 0, 0, 0.04);
     --black-faint: rgba(0, 0, 0, 0.02);
     --white-strong: rgba(255, 255, 255, 0.9);
     --white-soft: rgba(255, 255, 255, 0.56);
     --white-faint: rgba(255, 255, 255, 0.42);
 
-    --shadow-glass-val: 0 12px 32px -4px rgba(0, 0, 0, 0.08), 0 4px 12px rgba(0, 0, 0, 0.03), inset 0 1px 0 rgba(255, 255, 255, 0.85);
-    --shadow-soft-val: 0 2px 8px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
-    --shadow-card-val: 0 2px 6px rgba(0, 0, 0, 0.02), 0 1px 2px rgba(0, 0, 0, 0.02);
-    --shadow-premium-val: 0 24px 48px -12px rgba(0, 0, 0, 0.08), 0 8px 16px -4px rgba(0, 0, 0, 0.03), 0 1px 2px rgba(0, 0, 0, 0.02);
+    --shadow-soft-val: 0 1px 2px rgba(0, 0, 0, 0.14), 0 0 2px rgba(0, 0, 0, 0.12);
+    --shadow-card-val: 0 2px 4px rgba(0, 0, 0, 0.14), 0 0 2px rgba(0, 0, 0, 0.12);
+    --shadow-flyout-val: 0 8px 16px rgba(0, 0, 0, 0.14), 0 0 2px rgba(0, 0, 0, 0.12);
     --shadow-focus-ring-val: 0 0 0 3px rgba(0, 103, 192, 0.25);
   }
 
@@ -176,20 +184,24 @@
     background: var(--canvas);
     color: var(--text);
 
-    /* Pure design token values - Dark */
+    /* Fluent 2 token values - Dark */
     --canvas: #202020;
-    --canvas-gradient: 
-      radial-gradient(at 0% 0%, rgba(32, 32, 32, 0.85) 0%, transparent 80%),
-      radial-gradient(at 100% 0%, rgba(26, 42, 85, 0.35) 0%, transparent 60%),
-      radial-gradient(at 50% 100%, rgba(38, 38, 38, 0.9) 0%, transparent 70%),
-      #202020;
+    --mica: #202020;
+    --mica-alt: #1c1c1c;
+    --acrylic: rgba(44, 44, 44, 0.82);
+    --smoke: rgba(0, 0, 0, 0.45);
 
-    --surface: rgba(45, 45, 45, 0.7);
+    --surface: var(--mica);
     --surface-solid: #2c2c2c;
-    --surface-soft: rgba(45, 45, 45, 0.45);
+    --surface-soft: #252525;
+    --control-fill: rgba(255, 255, 255, 0.0605);
+    --control-fill-hover: rgba(255, 255, 255, 0.0837);
+    --control-fill-active: rgba(255, 255, 255, 0.0326);
 
     --line: rgba(255, 255, 255, 0.06);
     --line-strong: rgba(255, 255, 255, 0.09);
+    --stroke-control: rgba(255, 255, 255, 0.0698);
+    --stroke-divider: rgba(255, 255, 255, 0.0837);
     --text-strong: #ffffff;
     --text: #e1e1e1;
     --muted: #a0a0a0;
@@ -202,18 +214,15 @@
     --attention: #fbbf24;
     --confirm: #a78bfa;
     --error: #f87171;
-    --overlay-scrim: rgba(0, 0, 0, 0.65);
-
     --black-soft: rgba(255, 255, 255, 0.06);
     --black-faint: rgba(255, 255, 255, 0.02);
     --white-strong: rgba(0, 0, 0, 0.9);
     --white-soft: rgba(0, 0, 0, 0.56);
     --white-faint: rgba(0, 0, 0, 0.42);
 
-    --shadow-glass-val: 0 12px 32px -4px rgba(0, 0, 0, 0.32), 0 4px 12px rgba(0, 0, 0, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.12);
-    --shadow-soft-val: 0 2px 8px rgba(0, 0, 0, 0.16), 0 1px 2px rgba(0, 0, 0, 0.08);
-    --shadow-card-val: 0 2px 6px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.08);
-    --shadow-premium-val: 0 24px 48px -12px rgba(0, 0, 0, 0.32), 0 8px 16px -4px rgba(0, 0, 0, 0.16), 0 1px 2px rgba(0, 0, 0, 0.08);
+    --shadow-soft-val: 0 1px 2px rgba(0, 0, 0, 0.28), 0 0 2px rgba(0, 0, 0, 0.24);
+    --shadow-card-val: 0 2px 4px rgba(0, 0, 0, 0.28), 0 0 2px rgba(0, 0, 0, 0.24);
+    --shadow-flyout-val: 0 8px 16px rgba(0, 0, 0, 0.28), 0 0 2px rgba(0, 0, 0, 0.24);
     --shadow-focus-ring-val: 0 0 0 3px rgba(96, 205, 255, 0.35);
   }
 
@@ -224,8 +233,8 @@
     height: 100vh;
     overflow: hidden;
     line-height: 1.5;
-    background: var(--canvas-gradient);
-    transition: background 0.3s ease, color 0.3s ease;
+    background: var(--canvas);
+    transition: background var(--duration-emphasized) var(--curve-standard), color var(--duration-emphasized) var(--curve-standard);
   }
 
   button { font: inherit; }
@@ -246,19 +255,15 @@
   font-weight: 600;
   cursor: pointer;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), 
-              background-color 0.2s ease, 
-              border-color 0.2s ease,
-              box-shadow 0.2s ease;
+  transition: all var(--duration-rest) var(--curve-standard);
 
   &:hover {
-    transform: scale(1.06);
     background-color: color-mix(in srgb, var(--color-accent) 90%, black);
     box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
   }
 
   &:active {
-    transform: scale(0.97);
+    transform: scale(0.985);
     border-bottom-width: 1px;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
   }
@@ -270,9 +275,9 @@
 }
 
 @utility btn-ghost {
-  background: var(--color-surface);
+  background: var(--control-fill);
   color: var(--color-text);
-  border: 1px solid var(--color-line-strong);
+  border: 1px solid var(--stroke-control);
   border-bottom: 2px solid rgba(0, 0, 0, 0.14);
   border-radius: var(--radius-sm);
   padding: 7px 14px;
@@ -280,20 +285,16 @@
   font-weight: 500;
   cursor: pointer;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
-  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), 
-              background-color 0.2s ease, 
-              border-color 0.2s ease,
-              box-shadow 0.2s ease;
+  transition: all var(--duration-rest) var(--curve-standard);
 
   &:hover {
-    transform: scale(1.06);
-    background-color: var(--color-black-soft);
+    background-color: var(--control-fill-hover);
     color: var(--color-text-strong);
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
   }
 
   &:active {
-    transform: scale(0.97);
+    transform: scale(0.985);
     border-bottom-width: 1px;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
   }
@@ -331,26 +332,18 @@
 }
 
 @keyframes fluent-bounce-in {
-  0% { transform: scale(0.9) translateY(8px); opacity: 0; }
-  70% { transform: scale(1.03) translateY(-2px); }
+  0% { transform: scale(0.96) translateY(4px); opacity: 0; }
   100% { transform: scale(1) translateY(0); opacity: 1; }
 }
 
 @utility fluent-bounce {
-  animation: fluent-bounce-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  animation: fluent-bounce-in 0.25s ease-out forwards;
 }
 
 @utility fluent-springy {
-  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), 
-              background-color 0.2s ease, 
-              border-color 0.2s ease,
-              box-shadow 0.2s ease;
-
-  &:hover {
-    transform: scale(1.06);
-  }
+  transition: all var(--duration-rest) var(--curve-standard);
 
   &:active {
-    transform: scale(0.97);
+    transform: scale(0.985);
   }
 }

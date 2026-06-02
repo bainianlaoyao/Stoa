@@ -302,7 +302,7 @@ onBeforeUnmount(() => {
       >{{ operationInProgress ? 'Committing...' : 'Commit' }}</button>
     </div>
 
-    <div class="flex-1 overflow-y-auto min-h-0" style="scrollbar-width: thin;">
+    <div class="flex-1 overflow-y-auto min-h-0 flex flex-col" style="scrollbar-width: thin;">
       <div v-if="!selectedProjectPath" class="flex items-center justify-center py-8" style="color: var(--color-muted); font-size: var(--text-body-sm);">
         No active project
       </div>
@@ -311,8 +311,11 @@ onBeforeUnmount(() => {
         Loading...
       </div>
 
+      <!-- Spacer: pushes collapsed section headers to the bottom of the panel -->
+      <div v-if="status" class="flex-1 min-h-2" style="order: 1;" />
+
       <template v-if="status">
-        <template v-if="staged.length > 0">
+        <div v-if="staged.length > 0" :style="{ order: sectionCollapsed.staged ? 2 : 0 }">
           <div
             class="flex items-center gap-1 px-2 cursor-pointer select-none transition-colors"
             style="height: 28px; font-size: var(--text-caption); color: var(--color-text);"
@@ -353,9 +356,9 @@ onBeforeUnmount(() => {
               </button>
             </div>
           </template>
-        </template>
+        </div>
 
-        <template v-if="unstaged.length > 0">
+        <div v-if="unstaged.length > 0" :style="{ order: sectionCollapsed.unstaged ? 2 : 0 }">
           <div
             class="flex items-center gap-1 px-2 cursor-pointer select-none transition-colors"
             style="height: 28px; font-size: var(--text-caption); color: var(--color-text);"
@@ -407,9 +410,9 @@ onBeforeUnmount(() => {
               </button>
             </div>
           </template>
-        </template>
+        </div>
 
-        <template v-if="untracked.length > 0">
+        <div v-if="untracked.length > 0" :style="{ order: sectionCollapsed.untracked ? 2 : 0 }">
           <div
             class="flex items-center gap-1 px-2 cursor-pointer select-none transition-colors"
             style="height: 28px; font-size: var(--text-caption); color: var(--color-text);"
@@ -447,13 +450,13 @@ onBeforeUnmount(() => {
               </button>
             </div>
           </template>
-        </template>
+        </div>
 
-        <div v-if="!hasChanges" class="flex items-center justify-center py-8" style="color: var(--color-muted); font-size: var(--text-body-sm);">
+        <div v-if="!hasChanges" class="flex items-center justify-center py-8" style="color: var(--color-muted); font-size: var(--text-body-sm); order: 0;">
           No changes detected
         </div>
 
-        <template v-if="log.length > 0">
+        <div v-if="log.length > 0" :style="{ order: sectionCollapsed.log ? 2 : 0 }">
           <div
             class="flex items-center gap-1 px-2 cursor-pointer select-none transition-colors"
             style="height: 28px; font-size: var(--text-caption); color: var(--color-text);"
@@ -480,13 +483,13 @@ onBeforeUnmount(() => {
               </div>
             </div>
           </template>
-        </template>
+        </div>
       </template>
     </div>
 
     <Teleport to="body">
-      <div v-if="showNewBranchDialog" class="fixed inset-0 z-50 flex items-center justify-center" style="background: rgba(0,0,0,0.3);" @click.self="showNewBranchDialog = false" @keydown.escape="showNewBranchDialog = false">
-        <div class="w-72 p-4" style="background: var(--color-surface-solid); border: 1px solid var(--color-line); border-radius: var(--radius-md); box-shadow: var(--shadow-premium);">
+      <div v-if="showNewBranchDialog" class="fixed inset-0 z-50 flex items-center justify-center" style="background: var(--smoke);" @click.self="showNewBranchDialog = false" @keydown.escape="showNewBranchDialog = false">
+        <div class="w-72 p-4" style="background: var(--acrylic); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid var(--color-line); border-radius: var(--radius-md); box-shadow: var(--shadow-flyout);">
           <div style="font-size: var(--text-body-sm); font-weight: 600; color: var(--color-text-strong); margin-bottom: 12px;">Create Branch</div>
           <input
             v-model="newBranchName"
@@ -515,8 +518,8 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <div v-if="showRebaseDialog" class="fixed inset-0 z-50 flex items-center justify-center" style="background: rgba(0,0,0,0.3);" @click.self="showRebaseDialog = false" @keydown.escape="showRebaseDialog = false">
-        <div class="w-72 p-4" style="background: var(--color-surface-solid); border: 1px solid var(--color-line); border-radius: var(--radius-md); box-shadow: var(--shadow-premium);">
+      <div v-if="showRebaseDialog" class="fixed inset-0 z-50 flex items-center justify-center" style="background: var(--smoke);" @click.self="showRebaseDialog = false" @keydown.escape="showRebaseDialog = false">
+        <div class="w-72 p-4" style="background: var(--acrylic); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid var(--color-line); border-radius: var(--radius-md); box-shadow: var(--shadow-flyout);">
           <div style="font-size: var(--text-body-sm); font-weight: 600; color: var(--color-text-strong); margin-bottom: 12px;">Rebase onto</div>
           <select
             v-model="selectedRebaseBranch"
@@ -544,8 +547,8 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <div v-if="showMergeDialog" class="fixed inset-0 z-50 flex items-center justify-center" style="background: rgba(0,0,0,0.3);" @click.self="showMergeDialog = false" @keydown.escape="showMergeDialog = false">
-        <div class="w-72 p-4" style="background: var(--color-surface-solid); border: 1px solid var(--color-line); border-radius: var(--radius-md); box-shadow: var(--shadow-premium);">
+      <div v-if="showMergeDialog" class="fixed inset-0 z-50 flex items-center justify-center" style="background: var(--smoke);" @click.self="showMergeDialog = false" @keydown.escape="showMergeDialog = false">
+        <div class="w-72 p-4" style="background: var(--acrylic); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid var(--color-line); border-radius: var(--radius-md); box-shadow: var(--shadow-flyout);">
           <div style="font-size: var(--text-body-sm); font-weight: 600; color: var(--color-text-strong); margin-bottom: 12px;">Merge branch</div>
           <select
             v-model="selectedMergeBranch"

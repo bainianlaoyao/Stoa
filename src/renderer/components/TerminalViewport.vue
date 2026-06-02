@@ -412,10 +412,9 @@ onBeforeUnmount(disposeTerminal)
 <style scoped>
 .terminal-empty-state {
   min-height: 100%;
-  border: 1px solid var(--color-line-strong);
-  border-radius: var(--radius-md);
+  border: none;
+  border-radius: 0;
   background: var(--color-terminal-bg);
-  box-shadow: inset 0 1px 0 var(--color-terminal-shell-highlight);
 }
 
 .terminal-viewport {
@@ -438,12 +437,9 @@ onBeforeUnmount(disposeTerminal)
   width: 100%;
   min-height: 0;
   padding: var(--terminal-shell-gap);
-  border-radius: var(--radius-md);
-  background:
-    linear-gradient(180deg, var(--color-terminal-shell-sheen-strong), var(--color-terminal-shell-sheen-soft)),
-    var(--color-terminal-bg);
-  border: 1px solid var(--color-terminal-border);
-  box-shadow: inset 0 1px 0 var(--color-terminal-shell-highlight);
+  border-radius: 0;
+  background: var(--color-terminal-bg);
+  border: none;
   overflow: hidden;
 }
 

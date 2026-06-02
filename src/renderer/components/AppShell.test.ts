@@ -7,6 +7,7 @@ import AppShell from './AppShell.vue'
 import type { ProjectSummary, RendererApi, SessionSummary } from '@shared/project-session'
 import { createRendererApiMock, createSessionSummaryFixture } from '@shared/test-fixtures'
 import type { ProjectHierarchyNode } from '@renderer/stores/workspaces'
+import { useSidebarStore } from '@renderer/stores/sidebar'
 
 const baseProject: ProjectSummary = {
   id: 'project-1',
@@ -228,7 +229,7 @@ describe('AppShell', () => {
       gitPush: vi.fn().mockResolvedValue(undefined),
       gitPull: vi.fn().mockResolvedValue(undefined),
       gitFetch: vi.fn().mockResolvedValue(undefined),
-      gitCheckoutBranch: vi.fn().mockResolvedValue(undefined),
+      gitCheckout: vi.fn().mockResolvedValue(undefined),
       gitCreateBranch: vi.fn().mockResolvedValue(undefined),
       gitRebase: vi.fn().mockResolvedValue(undefined),
       gitMerge: vi.fn().mockResolvedValue(undefined)
@@ -251,7 +252,7 @@ describe('AppShell', () => {
     const commandButton = wrapper.get('button[aria-label="Command panel"]')
     const settingsButton = wrapper.get('button[aria-label="Settings"]')
 
-    expect(labels).toEqual(['command', 'sidebar-toggle', 'settings'])
+    expect(labels).toEqual(['command', 'archive', 'sidebar-toggle', 'settings'])
     expect(navigation).toBeTruthy()
     expect(commandButton.attributes('aria-current')).toBe('true')
     expect(settingsButton.attributes('aria-current')).toBeUndefined()
@@ -318,9 +319,10 @@ describe('AppShell', () => {
       const items = wrapper.findAll('[data-activity-item]')
       const icons = wrapper.findAll('[data-activity-icon]')
 
-      expect(items).toHaveLength(3)
-      expect(icons).toHaveLength(3)
+      expect(items).toHaveLength(4)
+      expect(icons).toHaveLength(4)
       expect(wrapper.get('[data-activity-item="command"]').find('[data-activity-icon]').exists()).toBe(true)
+      expect(wrapper.get('[data-activity-item="archive"]').find('[data-activity-icon]').exists()).toBe(true)
       expect(wrapper.get('[data-activity-item="sidebar-toggle"]').find('[data-activity-icon]').exists()).toBe(true)
       expect(wrapper.get('[data-activity-item="settings"]').find('[data-activity-icon]').exists()).toBe(true)
     }
@@ -407,8 +409,8 @@ describe('AppShell', () => {
     ])
   })
 
-  describe('Sidebar toggle integration', () => {
-    it('sidebar is not visible by default', () => {
+  describe('Sidebar integration', () => {
+    it('sidebar is mounted on command surface but closed by default', () => {
       const wrapper = mountAppShell({
         hierarchy: [],
         activeProjectId: null,
@@ -421,7 +423,7 @@ describe('AppShell', () => {
       expect(sidebar.classes()).toContain('right-sidebar-closed')
     })
 
-    it('clicking sidebar toggle makes sidebar visible', async () => {
+    it('sidebar is not rendered on non-command surfaces', async () => {
       const wrapper = mountAppShell({
         hierarchy: [],
         activeProjectId: null,
@@ -430,129 +432,55 @@ describe('AppShell', () => {
         activeSession: null
       })
 
-      const toggleButton = wrapper.get('[data-activity-item="sidebar-toggle"]')
-      await toggleButton.trigger('click')
+      // Sidebar exists on command surface
+      expect(wrapper.find('[data-testid="right-sidebar"]').exists()).toBe(true)
 
-      const sidebar = wrapper.get('[data-testid="right-sidebar"]')
-      expect(sidebar.classes()).not.toContain('right-sidebar-closed')
-    })
-
-    it('clicking sidebar toggle twice hides sidebar again', async () => {
-      const wrapper = mountAppShell({
-        hierarchy: [],
-        activeProjectId: null,
-        activeSessionId: null,
-        activeProject: null,
-        activeSession: null
-      })
-
-      const toggleButton = wrapper.get('[data-activity-item="sidebar-toggle"]')
-      await toggleButton.trigger('click')
-      await toggleButton.trigger('click')
-
-      const sidebar = wrapper.get('[data-testid="right-sidebar"]')
-      expect(sidebar.classes()).toContain('right-sidebar-closed')
-    })
-
-    it('sidebar toggle button reflects sidebar open state', async () => {
-      const wrapper = mountAppShell({
-        hierarchy: [],
-        activeProjectId: null,
-        activeSessionId: null,
-        activeProject: null,
-        activeSession: null
-      })
-
-      const toggleButton = wrapper.get('[data-activity-item="sidebar-toggle"]')
-
-      expect(toggleButton.attributes('aria-pressed')).toBe('false')
-
-      await toggleButton.trigger('click')
-      expect(toggleButton.attributes('aria-pressed')).toBe('true')
-
-      await toggleButton.trigger('click')
-      expect(toggleButton.attributes('aria-pressed')).toBe('false')
-    })
-
-    it('sidebar toggle has correct active styling class', async () => {
-      const wrapper = mountAppShell({
-        hierarchy: [],
-        activeProjectId: null,
-        activeSessionId: null,
-        activeProject: null,
-        activeSession: null
-      })
-
-      const toggleButton = wrapper.get('[data-activity-item="sidebar-toggle"]')
-
-      expect(toggleButton.classes()).not.toContain('text-text-strong')
-
-      await toggleButton.trigger('click')
-      expect(toggleButton.classes()).toContain('text-text-strong')
-
-      await toggleButton.trigger('click')
-      expect(toggleButton.classes()).not.toContain('text-text-strong')
-    })
-
-    it('sidebar toggle does not change the active surface', async () => {
-      const wrapper = mountAppShell({
-        hierarchy: [],
-        activeProjectId: null,
-        activeSessionId: null,
-        activeProject: null,
-        activeSession: null
-      })
-
-      const commandButton = wrapper.get('button[aria-label="Command panel"]')
-      expect(commandButton.attributes('aria-current')).toBe('true')
-
-      const toggleButton = wrapper.get('[data-activity-item="sidebar-toggle"]')
-      await toggleButton.trigger('click')
-
-      expect(wrapper.find('[data-surface="command"]').exists()).toBe(true)
-      expect(commandButton.attributes('aria-current')).toBe('true')
-    })
-
-    it('sidebar auto-hides when navigating to a non-command surface', async () => {
-      const wrapper = mountAppShell({
-        hierarchy: [],
-        activeProjectId: null,
-        activeSessionId: null,
-        activeProject: null,
-        activeSession: null
-      })
-
-      const toggleButton = wrapper.get('[data-activity-item="sidebar-toggle"]')
-      await toggleButton.trigger('click')
-      const sidebar = wrapper.get('[data-testid="right-sidebar"]')
-      expect(sidebar.classes()).not.toContain('right-sidebar-closed')
-
+      // Navigate to settings
       await wrapper.get('button[aria-label="Settings"]').trigger('click')
-      expect(sidebar.classes()).toContain('right-sidebar-closed')
+
+      // Sidebar DOM is gone entirely
+      expect(wrapper.find('[data-testid="right-sidebar"]').exists()).toBe(false)
     })
 
-    it('sidebar auto-restores when returning to command surface', async () => {
-      const wrapper = mountAppShell({
-        hierarchy: [],
-        activeProjectId: null,
-        activeSessionId: null,
-        activeProject: null,
-        activeSession: null
+    it('sidebar re-mounts with open state when returning to command surface', async () => {
+      const pinia = createPinia()
+      const wrapper = mount(AppShell, {
+        global: {
+          plugins: [pinia],
+          stubs: {
+            CommandSurface: CommandSurfaceStub,
+            SettingsSurface: SettingsSurfaceStub,
+            TabBar: TabBarStub,
+            FileExplorer: FileExplorerStub,
+            SearchPanel: SearchPanelStub,
+            SourceControlPanel: SourceControlPanelStub
+          }
+        },
+        props: {
+          hierarchy: [],
+          activeProjectId: null,
+          activeSessionId: null,
+          activeProject: null,
+          activeSession: null
+        }
       })
 
-      const toggleButton = wrapper.get('[data-activity-item="sidebar-toggle"]')
-      await toggleButton.trigger('click')
-      const sidebar = wrapper.get('[data-testid="right-sidebar"]')
-      expect(sidebar.classes()).not.toContain('right-sidebar-closed')
+      // Open sidebar via store
+      const sidebarStore = useSidebarStore(pinia)
+      sidebarStore.setOpen(true)
+      await wrapper.vm.$nextTick()
+      expect(wrapper.get('[data-testid="right-sidebar"]').classes()).not.toContain('right-sidebar-closed')
 
+      // Navigate away — sidebar unmounts
       await wrapper.get('button[aria-label="Settings"]').trigger('click')
-      expect(sidebar.classes()).toContain('right-sidebar-closed')
+      expect(wrapper.find('[data-testid="right-sidebar"]').exists()).toBe(false)
 
+      // Navigate back — sidebar re-mounts with open state from store
       await wrapper.get('button[aria-label="Command panel"]').trigger('click')
-      expect(sidebar.classes()).not.toContain('right-sidebar-closed')
+      expect(wrapper.get('[data-testid="right-sidebar"]').classes()).not.toContain('right-sidebar-closed')
     })
 
-    it('sidebar stays hidden on return to command if it was not open before navigation', async () => {
+    it('sidebar stays closed when returning if it was never opened', async () => {
       const wrapper = mountAppShell({
         hierarchy: [],
         activeProjectId: null,
@@ -562,30 +490,14 @@ describe('AppShell', () => {
       })
 
       // Sidebar is closed by default
-      const sidebar = wrapper.get('[data-testid="right-sidebar"]')
-      expect(sidebar.classes()).toContain('right-sidebar-closed')
+      expect(wrapper.get('[data-testid="right-sidebar"]').classes()).toContain('right-sidebar-closed')
 
+      // Navigate away and back
       await wrapper.get('button[aria-label="Settings"]').trigger('click')
       await wrapper.get('button[aria-label="Command panel"]').trigger('click')
 
-      // Should still be closed -- nothing to restore
-      expect(sidebar.classes()).toContain('right-sidebar-closed')
-    })
-
-    it('sidebar width matches store default', async () => {
-      const wrapper = mountAppShell({
-        hierarchy: [],
-        activeProjectId: null,
-        activeSessionId: null,
-        activeProject: null,
-        activeSession: null
-      })
-
-      const toggleButton = wrapper.get('[data-activity-item="sidebar-toggle"]')
-      await toggleButton.trigger('click')
-
-      const sidebar = wrapper.get('[data-testid="right-sidebar"]')
-      expect(sidebar.attributes('style')).toContain('280px')
+      // Should still be closed
+      expect(wrapper.get('[data-testid="right-sidebar"]').classes()).toContain('right-sidebar-closed')
     })
   })
 })

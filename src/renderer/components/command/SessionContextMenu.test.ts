@@ -35,12 +35,13 @@ describe('SessionContextMenu', () => {
     expect(wrapper.emitted('close')).toBeTruthy()
   })
 
-  it('keeps tokenized glass styling in source', () => {
+  it('uses Fluent 2 Acrylic flyout styling in source', () => {
     const source = readFileSync(sessionContextMenuPath, 'utf8')
 
-    expect(source).toContain('var(--color-surface)')
+    expect(source).toContain('var(--acrylic)')
     expect(source).toContain('var(--color-line)')
-    expect(source).toContain('var(--shadow-glass)')
+    expect(source).toContain('var(--shadow-flyout)')
     expect(source).not.toContain('background: #')
+    expect(source).not.toContain('var(--shadow-glass)')
   })
 })

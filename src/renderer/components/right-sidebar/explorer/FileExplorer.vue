@@ -254,7 +254,7 @@ async function duplicateEntry(): Promise<void> {
   const relativePath = parentDir ? `${parentDir}/${stem} copy${ext}` : `${stem} copy${ext}`
 
   try {
-    await window.stoa.fsCreate({ projectPath: projectPath.value, relativePath })
+    await window.stoa.fsCreate({ projectPath: projectPath.value, relativePath, isDirectory: false })
     invalidatePath(target.parentPath || projectPath.value)
   } catch {
     // Error handled silently

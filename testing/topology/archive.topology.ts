@@ -1,9 +1,9 @@
 import { defineTopology } from '../contracts/testing-contracts'
 
 export const archiveTopology = defineTopology({
-  surface: 'command',
+  surface: 'archive',
   testIds: {
-    root: 'command-panel',
+    root: 'surface.archive',
     sessionRow: 'archive.session.row',
     restoreButton: 'archive.session.restore'
   }

@@ -56,20 +56,17 @@ const emit = defineEmits<{
   color: var(--color-text-strong);
   outline: none;
   width: 100%;
-  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), 
-              border-color 0.2s ease, 
+  transition: border-color 0.2s ease, 
               background-color 0.2s ease,
               box-shadow 0.2s ease;
   box-shadow: var(--shadow-soft);
 }
 
 .glass-path-field__input:hover {
-  transform: scale(1.01);
   border-color: color-mix(in srgb, var(--color-accent) 50%, transparent);
 }
 
 .glass-path-field__input:focus {
-  transform: scale(1.01);
   border-color: var(--color-accent);
   border-bottom-color: var(--color-accent);
   box-shadow: var(--shadow-focus-ring);

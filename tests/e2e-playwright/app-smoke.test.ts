@@ -38,8 +38,9 @@ test.describe('Electron smoke sentinel', () => {
       const expectStableActivityIcons = async () => {
         const icons = app.page.locator('[data-activity-icon]')
 
-        await expect(icons).toHaveCount(3)
+        await expect(icons).toHaveCount(4)
         await expect(app.page.locator('[data-activity-item="command"] [data-activity-icon]')).toBeVisible()
+        await expect(app.page.locator('[data-activity-item="archive"] [data-activity-icon]')).toBeVisible()
         await expect(app.page.locator('[data-activity-item="sidebar-toggle"] [data-activity-icon]')).toBeVisible()
         await expect(app.page.locator('[data-activity-item="settings"] [data-activity-icon]')).toBeVisible()
       }

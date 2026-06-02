@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
-import { ref, nextTick } from 'vue'
+import { ref, nextTick, type Ref } from 'vue'
 import { mount } from '@vue/test-utils'
 import { defineComponent, h } from 'vue'
 import { createRendererApiMock } from '@shared/test-fixtures'
@@ -26,7 +26,7 @@ describe('useGitStatusPolling', () => {
     vi.useRealTimers()
   })
 
-  function mountWithPolling(projectPathRef: ReturnType<typeof ref<string>>) {
+  function mountWithPolling(projectPathRef: Ref<string | null | undefined>) {
     const Wrapper = defineComponent({
       setup() {
         const result = useGitStatusPolling(projectPathRef)

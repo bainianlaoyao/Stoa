@@ -5,6 +5,7 @@ import { useSidebarStore } from '@renderer/stores/sidebar'
 import { usePanelResize } from '@renderer/composables/useSidebarResize'
 import { useSidebarPanels } from '@renderer/composables/useSidebarPanels'
 import TabBar from './TabBar.vue'
+import type { SidebarTab } from '@shared/sidebar-types'
 
 const sidebarStore = useSidebarStore()
 const { open, activeTab, width } = storeToRefs(sidebarStore)
@@ -20,6 +21,14 @@ const { onResizeStart } = usePanelResize({
   onWidthChange: (w) => sidebarStore.setWidth(w),
   onWidthCommit: () => sidebarStore.commitWidth(),
 })
+
+const sidebarTabIds = new Set<string>(['explorer', 'search', 'git'])
+
+function selectSidebarTab(tab: string): void {
+  if (sidebarTabIds.has(tab)) {
+    sidebarStore.setActiveTab(tab as SidebarTab)
+  }
+}
 </script>
 
 <template>
@@ -40,10 +49,10 @@ const { onResizeStart } = usePanelResize({
       data-testid="sidebar-resize-handle"
     />
 
-    <div class="flex flex-col flex-1 min-w-0 h-full bg-[var(--color-surface-solid)] border-l border-[var(--color-line)]">
+    <div class="flex flex-col flex-1 min-w-0 h-full bg-mica border-l border-[var(--color-line)]">
       <!-- Header row: tab bar + close button -->
       <div class="flex items-center">
-        <TabBar class="flex-1 min-w-0" :active-tab="activeTab" @select="sidebarStore.setActiveTab" />
+        <TabBar class="flex-1 min-w-0" :active-tab="activeTab" @select="selectSidebarTab" />
         <button
           type="button"
           class="flex items-center justify-center w-7 h-7 mr-1 transition-all duration-200 cursor-pointer"

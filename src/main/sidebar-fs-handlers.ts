@@ -238,7 +238,7 @@ function queueWatcherEvent(projectPath: string, absolutePath: string, kind: FsCh
 async function runRipgrepSearch(options: SearchOptions): Promise<SearchResult> {
   const pattern = buildSearchPattern(options)
   const maxResults = Math.min(Math.max(options.maxResults, 1), RG_MAX_COUNT)
-  const args = ['--json', '--max-count', String(RG_MAX_COUNT), '--max-filesize', RG_MAXSIZE]
+  const args = ['--json', '--max-count', String(RG_MAX_COUNT), '--max-filesize', RG_MAX_FILESIZE]
 
   if (options.caseSensitive) {
     args.push('--case-sensitive')

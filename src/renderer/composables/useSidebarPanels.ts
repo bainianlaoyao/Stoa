@@ -40,7 +40,7 @@ registry.push({
 registry.push({
   id: 'git',
   icon: 'source-control',
-  label: 'Source Control',
+  label: 'Git',
   shortcut: 'Ctrl+Shift+G',
   gitOnly: true,
   component: markRaw(

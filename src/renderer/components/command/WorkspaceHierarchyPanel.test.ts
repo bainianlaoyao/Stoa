@@ -109,74 +109,6 @@ function createHierarchy(): ProjectHierarchyNode[] {
   ]
 }
 
-function createHierarchyWithArchivedTree(): ProjectHierarchyNode[] {
-  const baseHierarchy = createHierarchy()
-  return [
-    {
-      ...baseHierarchy[0]!,
-      archivedSessions: [
-        {
-          ...createSessionSummaryFixture({
-            id: 'session_archived_parent',
-            projectId: 'project_alpha',
-            type: 'opencode',
-            runtimeState: 'exited',
-            turnState: 'idle',
-            turnEpoch: 0,
-            lastTurnOutcome: 'none',
-            runtimeExitCode: 0,
-            runtimeExitReason: 'clean',
-            lastStateSequence: 1,
-            title: 'archived parent',
-            summary: 'done',
-            titleGenerationContext: defaultTitleGenerationContext,
-            recoveryMode: 'resume-external',
-            externalSessionId: 'sess_archived_parent',
-            createdAt: 'c',
-            updatedAt: 'c',
-            lastActivatedAt: 'c'
-          }),
-          archived: true,
-          active: false,
-          treeDepth: 0,
-          treeRootSessionId: 'session_archived_parent',
-          treeChildCount: 1,
-          treeDescendantCount: 1
-        },
-        {
-          ...createSessionSummaryFixture({
-            id: 'session_archived_child',
-            projectId: 'project_alpha',
-            parentSessionId: 'session_archived_parent',
-            createdBySessionId: 'session_archived_parent',
-            type: 'shell',
-            runtimeState: 'exited',
-            turnState: 'idle',
-            turnEpoch: 0,
-            lastTurnOutcome: 'none',
-            runtimeExitCode: 0,
-            runtimeExitReason: 'clean',
-            lastStateSequence: 1,
-            title: 'archived child',
-            summary: 'done',
-            titleGenerationContext: defaultTitleGenerationContext,
-            recoveryMode: 'fresh-shell',
-            externalSessionId: null,
-            createdAt: 'd',
-            updatedAt: 'd',
-            lastActivatedAt: 'd'
-          }),
-          archived: true,
-          active: false,
-          treeDepth: 1,
-          treeRootSessionId: 'session_archived_parent',
-          treeChildCount: 0,
-          treeDescendantCount: 0
-        }
-      ]
-    }
-  ]
-}
 
 function createTwoProjectHierarchy(): ProjectHierarchyNode[] {
   return [
@@ -519,17 +451,6 @@ describe('WorkspaceHierarchyPanel', () => {
       expect(rows[1]?.attributes('data-tree-depth')).toBe('1')
     })
 
-    it('renders archived subtree roots and descendants inside the project-local hierarchy panel', () => {
-      const wrapper = mountPanel({
-        hierarchy: createHierarchyWithArchivedTree()
-      })
-
-      expect(wrapper.find('[data-archived-group="project_alpha"]').exists()).toBe(true)
-      expect(wrapper.find('[data-archived-session="session_archived_parent"]').exists()).toBe(true)
-      expect(wrapper.find('[data-archived-session="session_archived_child"]').exists()).toBe(true)
-      expect(wrapper.find('[data-archived-session="session_archived_parent"]')?.attributes('data-tree-depth')).toBe('0')
-      expect(wrapper.find('[data-archived-session="session_archived_child"]')?.attributes('data-tree-depth')).toBe('1')
-    })
   })
 
   describe('empty hierarchy', () => {
@@ -570,17 +491,6 @@ describe('WorkspaceHierarchyPanel', () => {
       const wrapper = mountPanel()
       await wrapper.find('[data-row-archive="session_1"]').trigger('click')
       expect(wrapper.emitted('archiveSession')).toEqual([['session_1']])
-      expect(wrapper.emitted('selectSession')).toBeUndefined()
-    })
-
-    it('clicking archived restore action emits restoreSession without selecting the row', async () => {
-      const wrapper = mountPanel({
-        hierarchy: createHierarchyWithArchivedTree()
-      })
-
-      await wrapper.find('[data-row-restore="session_archived_parent"]').trigger('click')
-
-      expect(wrapper.emitted('restoreSession')).toEqual([['session_archived_parent']])
       expect(wrapper.emitted('selectSession')).toBeUndefined()
     })
 

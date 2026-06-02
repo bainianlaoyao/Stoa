@@ -49,9 +49,9 @@ defineProps<{
   padding: 12px 14px;
   border: 1px solid var(--color-line);
   border-radius: var(--radius-md);
-  background: var(--color-surface);
-  backdrop-filter: blur(40px);
-  box-shadow: var(--shadow-glass);
+  background: var(--acrylic);
+  backdrop-filter: blur(24px) saturate(120%);
+  box-shadow: var(--shadow-flyout);
   color: var(--color-text);
 }
 

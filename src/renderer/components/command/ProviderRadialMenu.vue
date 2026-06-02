@@ -146,11 +146,11 @@ function createSession(type: SessionType) {
   display: grid;
   place-items: center;
   border-radius: var(--radius-sm);
-  background: var(--color-surface);
+  background: var(--acrylic);
   backdrop-filter: blur(24px) saturate(120%);
   -webkit-backdrop-filter: blur(24px) saturate(120%);
   border: 1px solid var(--color-line);
-  box-shadow: var(--shadow-glass);
+  box-shadow: var(--shadow-flyout);
   cursor: pointer;
   pointer-events: auto;
   transition: all 0.2s ease;

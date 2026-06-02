@@ -40,12 +40,12 @@ const selectedLabel = computed(
       </ListboxButton>
 
       <transition
-        enter-active-class="transition duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]"
-        enter-from-class="opacity-0 -translate-y-2 scale-95"
-        enter-to-class="opacity-100 translate-y-0 scale-100"
-        leave-active-class="transition duration-200 ease-in"
-        leave-from-class="opacity-100 scale-100"
-        leave-to-class="opacity-0 scale-95"
+        enter-active-class="transition duration-200 ease-out"
+        enter-from-class="opacity-0 -translate-y-1.5"
+        enter-to-class="opacity-100 translate-y-0"
+        leave-active-class="transition duration-[var(--duration-rest)] ease-in"
+        leave-from-class="opacity-100"
+        leave-to-class="opacity-0"
       >
         <ListboxOptions class="glass-listbox__options">
           <ListboxOption
@@ -90,7 +90,7 @@ const selectedLabel = computed(
   justify-content: space-between;
   gap: 8px;
   width: 100%;
-  background: var(--color-surface);
+  background: var(--control-fill);
   border: 1px solid var(--color-line-strong);
   border-bottom: 2px solid color-mix(in srgb, var(--color-text) 15%, transparent);
   border-radius: var(--radius-sm);
@@ -99,8 +99,7 @@ const selectedLabel = computed(
   font-size: var(--text-body-sm);
   color: var(--color-text-strong);
   cursor: pointer;
-  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), 
-              border-color 0.2s ease, 
+  transition: border-color 0.2s ease, 
               background-color 0.2s ease,
               box-shadow 0.2s ease;
   text-align: left;
@@ -108,14 +107,12 @@ const selectedLabel = computed(
 }
 
 .glass-listbox__button:hover {
-  transform: scale(1.01);
-  background: var(--color-surface-solid);
+  background: var(--control-fill-hover);
   border-color: color-mix(in srgb, var(--color-accent) 50%, transparent);
 }
 
 .glass-listbox__button:focus {
   outline: none;
-  transform: scale(1.01);
   border-color: var(--color-accent);
   border-bottom-color: var(--color-accent);
   box-shadow: var(--shadow-focus-ring);
@@ -144,12 +141,12 @@ const selectedLabel = computed(
   width: 100%;
   margin-top: 4px;
   padding: 4px;
-  background: var(--color-surface);
+  background: var(--acrylic);
   backdrop-filter: blur(30px) saturate(1.25);
   -webkit-backdrop-filter: blur(30px) saturate(1.25);
   border: 1px solid var(--color-line-strong);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-premium), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  box-shadow: var(--shadow-flyout);
   max-height: 240px;
   overflow-y: auto;
   list-style: none;

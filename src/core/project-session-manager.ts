@@ -215,7 +215,10 @@ function normalizeAppSettings(settings?: Partial<AppSettings>): AppSettings {
     claudeDangerouslySkipPermissions: typeof settings.claudeDangerouslySkipPermissions === 'boolean'
       ? settings.claudeDangerouslySkipPermissions
       : defaults.claudeDangerouslySkipPermissions,
-    locale: typeof settings.locale === 'string' ? settings.locale : defaults.locale
+    locale: typeof settings.locale === 'string' ? settings.locale : defaults.locale,
+    theme: settings.theme === 'light' || settings.theme === 'dark' || settings.theme === 'system'
+      ? settings.theme
+      : defaults.theme
   }
 }
 

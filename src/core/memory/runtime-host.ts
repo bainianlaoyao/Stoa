@@ -132,7 +132,8 @@ async function resolveInferenceProviderPath(
         id: 'vscode',
         executablePath: ''
       },
-      claudeDangerouslySkipPermissions: false
+      claudeDangerouslySkipPermissions: false,
+      theme: 'system'
     }, {
       detectShell: options.detectShell ?? (async () => null),
       detectProvider: options.detectProvider

@@ -20,7 +20,7 @@ const emit = defineEmits<{
     <input
       v-if="type !== 'select'"
       data-testid="form-input"
-      class="bg-surface-solid border border-line-strong border-b-[2px] border-b-muted/20 rounded-sm px-3 py-2 font-inherit text-text-strong outline-none w-full shadow-soft transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] hover:scale-[1.01] hover:border-accent/50 focus:scale-[1.01] focus:border-accent focus:border-b-accent focus:bg-surface-solid focus:ring-[3px] focus:ring-accent/15 placeholder:text-subtle"
+      class="bg-surface-solid border border-line-strong border-b-[2px] border-b-muted/20 rounded-sm px-3 py-2 font-inherit text-text-strong outline-none w-full shadow-soft transition-all duration-200 ease-in-out hover:border-accent/50 focus:border-accent focus:border-b-accent focus:bg-surface-solid focus:ring-[3px] focus:ring-accent/15 placeholder:text-subtle"
       :value="modelValue"
       :placeholder="placeholder"
       @input="emit('update:modelValue', ($event.target as HTMLInputElement).value)"

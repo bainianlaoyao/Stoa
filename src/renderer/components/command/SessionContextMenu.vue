@@ -122,10 +122,10 @@ onBeforeUnmount(() => {
   padding: 6px;
   border: 1px solid var(--color-line);
   border-radius: var(--radius-md);
-  background: var(--color-surface);
+  background: var(--acrylic);
   backdrop-filter: blur(24px) saturate(120%);
   -webkit-backdrop-filter: blur(24px) saturate(120%);
-  box-shadow: var(--shadow-glass);
+  box-shadow: var(--shadow-flyout);
   display: grid;
   gap: 4px;
 }

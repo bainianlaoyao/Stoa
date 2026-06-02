@@ -4,15 +4,10 @@ import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import GlobalActivityBar from './GlobalActivityBar.vue'
 
-type AppSurface = 'command' | 'settings'
+type AppSurface = 'command' | 'archive' | 'settings'
 
 function mountBar(props: { activeSurface?: AppSurface } = {}) {
-  const pinia = createPinia()
-  setActivePinia(pinia)
   return mount(GlobalActivityBar, {
-    global: {
-      plugins: [pinia]
-    },
     props: {
       activeSurface: props.activeSurface ?? 'command'
     }
@@ -29,19 +24,21 @@ describe('GlobalActivityBar', () => {
     expect(wrapper.find('nav[data-testid="activity-bar"]').exists()).toBe(true)
   })
 
-  it('renders 3 elements with data-activity-item: command, sidebar-toggle, settings', () => {
+  it('renders 4 elements with data-activity-item: command, archive, sidebar toggle, settings', () => {
     const wrapper = mountBar()
     const items = wrapper.findAll('[data-activity-item]')
-    expect(items).toHaveLength(3)
+    expect(items).toHaveLength(4)
     const ids = items.map((el) => el.attributes('data-activity-item'))
-    expect(ids).toEqual(['command', 'sidebar-toggle', 'settings'])
+    expect(ids).toEqual(['command', 'archive', 'sidebar-toggle', 'settings'])
   })
 
   it('renders one stable svg icon for each activity item', () => {
     const wrapper = mountBar()
 
-    expect(wrapper.findAll('[data-activity-icon]')).toHaveLength(3)
+    expect(wrapper.findAll('[data-activity-icon]')).toHaveLength(4)
     expect(wrapper.get('[data-activity-item="command"]').find('[data-activity-icon]').exists()).toBe(true)
+    expect(wrapper.get('[data-activity-item="archive"]').find('[data-activity-icon]').exists()).toBe(true)
+    expect(wrapper.get('[data-activity-item="sidebar-toggle"]').find('[data-activity-icon]').exists()).toBe(true)
     expect(wrapper.get('[data-activity-item="settings"]').find('[data-activity-icon]').exists()).toBe(true)
   })
 
@@ -82,11 +79,12 @@ describe('GlobalActivityBar', () => {
     expect(wrapper.emitted('select')![0]).toEqual(['command'])
   })
 
-  it('renders command in top cluster and sidebar-toggle + settings in bottom cluster', () => {
+  it('renders command + archive in top cluster and settings in bottom cluster', () => {
     const wrapper = mountBar()
     const topCluster = wrapper.find('[data-testid="activity-cluster-top"]')
     const bottomCluster = wrapper.find('[data-testid="activity-cluster-bottom"]')
     expect(topCluster.find('[data-activity-item="command"]').exists()).toBe(true)
+    expect(topCluster.find('[data-activity-item="archive"]').exists()).toBe(true)
     expect(topCluster.find('[data-activity-item="meta-session"]').exists()).toBe(false)
     expect(bottomCluster.find('[data-activity-item="sidebar-toggle"]').exists()).toBe(true)
     expect(bottomCluster.find('[data-activity-item="settings"]').exists()).toBe(true)

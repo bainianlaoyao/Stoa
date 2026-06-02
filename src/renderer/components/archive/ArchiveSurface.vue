@@ -1,25 +1,48 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { SessionSummary } from '@shared/project-session'
-
-interface ArchivedSessionEntry extends SessionSummary {
-  projectName: string
-  projectPath: string
-}
+import type { ProjectHierarchyNode } from '@renderer/stores/workspaces'
 
 const { t } = useI18n()
 
-defineProps<{
-  archivedSessions: ArchivedSessionEntry[]
+const props = defineProps<{
+  hierarchy: ProjectHierarchyNode[]
 }>()
 
 const emit = defineEmits<{
   restoreSession: [sessionId: string]
 }>()
+
+interface ProjectWithArchived {
+  projectId: string
+  projectName: string
+  projectPath: string
+  archivedSessions: ProjectHierarchyNode['archivedSessions']
+}
+
+const projectsWithArchived = computed<ProjectWithArchived[]>(() => {
+  return props.hierarchy
+    .filter((node) => node.archivedSessions.length > 0)
+    .map((node) => ({
+      projectId: node.id,
+      projectName: node.name,
+      projectPath: node.path,
+      archivedSessions: node.archivedSessions
+    }))
+})
+
+const totalArchivedCount = computed(() => {
+  return projectsWithArchived.value.reduce((sum, p) => sum + p.archivedSessions.length, 0)
+})
 </script>
 
 <template>
-  <section class="archive-surface" data-surface="archive" data-testid="surface.archive" aria-label="Archive surface">
+  <section
+    class="archive-surface"
+    data-surface="archive"
+    data-testid="surface.archive"
+    aria-label="Archive surface"
+  >
     <div class="archive-body">
       <header class="archive-header">
         <p class="archive-eyebrow">{{ t('archive.eyebrow') }}</p>
@@ -27,40 +50,60 @@ const emit = defineEmits<{
         <p class="archive-subtitle">{{ t('archive.subtitle') }}</p>
       </header>
 
-      <p v-if="archivedSessions.length === 0" class="archive-empty">{{ t('archive.empty') }}</p>
+      <p
+        v-if="totalArchivedCount === 0"
+        class="archive-empty"
+        data-testid="archive.empty"
+      >
+        {{ t('archive.empty') }}
+      </p>
 
-      <div v-else class="archive-list">
-        <article
-          v-for="session in archivedSessions"
-          :key="session.id"
-          class="archive-card"
-          :data-archive-session="session.id"
-          data-testid="archive.session.row"
+      <div v-else class="archive-groups" data-testid="archive.groups">
+        <section
+          v-for="project in projectsWithArchived"
+          :key="project.projectId"
+          class="archive-group"
+          :data-project-id="project.projectId"
+          data-testid="archive.project.group"
         >
-          <div class="archive-card__content">
-            <div class="archive-card__head">
-              <strong class="archive-card__title">{{ session.title }}</strong>
-              <span class="archive-card__badge">{{ session.type }}</span>
-            </div>
+          <header class="archive-group__header">
+            <h3 class="archive-group__name">{{ project.projectName }}</h3>
+            <code class="archive-group__path">{{ project.projectPath }}</code>
+          </header>
 
-            <div class="archive-card__meta">
-              <span class="archive-card__project">{{ session.projectName }}</span>
-              <code class="archive-card__path">{{ session.projectPath }}</code>
-            </div>
+          <div class="archive-card-list">
+            <article
+              v-for="session in project.archivedSessions"
+              :key="session.id"
+              class="archive-card"
+              :data-archive-session="session.id"
+              data-testid="archive.session.row"
+            >
+              <div class="archive-card__content">
+                <div class="archive-card__head">
+                  <strong class="archive-card__title">{{ session.title }}</strong>
+                  <span class="archive-card__badge">{{ session.type }}</span>
+                </div>
 
-            <p class="archive-card__summary">{{ session.summary || `${session.runtimeState} / ${session.turnState}` }}</p>
+                <div class="archive-card__meta">
+                  <p class="archive-card__summary">
+                    {{ session.summary || `${session.runtimeState} / ${session.turnState}` }}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                class="archive-card__restore"
+                type="button"
+                :data-archive-restore="session.id"
+                data-testid="archive.session.restore"
+                @click="emit('restoreSession', session.id)"
+              >
+                {{ t('archive.restore') }}
+              </button>
+            </article>
           </div>
-
-          <button
-            class="archive-card__restore"
-            type="button"
-            :data-archive-restore="session.id"
-            data-testid="archive.session.restore"
-            @click="emit('restoreSession', session.id)"
-          >
-            {{ t('archive.restore') }}
-          </button>
-        </article>
+        </section>
       </div>
     </div>
   </section>
@@ -78,8 +121,8 @@ const emit = defineEmits<{
   overflow: auto;
   display: grid;
   align-content: start;
-  gap: 16px;
-  padding: 20px;
+  gap: 24px;
+  padding: 28px 32px;
 }
 
 .archive-header {
@@ -103,16 +146,50 @@ const emit = defineEmits<{
   font-weight: 600;
 }
 
-.archive-subtitle,
-.archive-empty,
-.archive-card__summary {
+.archive-subtitle {
   margin: 0;
   color: var(--color-muted);
 }
 
-.archive-list {
+.archive-empty {
+  margin: 0;
+  color: var(--color-muted);
+}
+
+/* Project groups */
+.archive-groups {
+  display: grid;
+  gap: 24px;
+}
+
+.archive-group {
   display: grid;
   gap: 12px;
+}
+
+.archive-group__header {
+  display: grid;
+  gap: 2px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--color-line);
+}
+
+.archive-group__name {
+  margin: 0;
+  color: var(--color-text-strong);
+  font-size: var(--text-body);
+  font-weight: 600;
+}
+
+.archive-group__path {
+  color: var(--color-subtle);
+  font: var(--text-caption) var(--font-mono);
+}
+
+/* Cards */
+.archive-card-list {
+  display: grid;
+  gap: 10px;
 }
 
 .archive-card {
@@ -120,12 +197,10 @@ const emit = defineEmits<{
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 16px;
   align-items: center;
-  padding: 16px 18px;
+  padding: 14px 18px;
   border: 1px solid var(--color-line);
   border-radius: var(--radius-md);
-  background: var(--color-surface);
-  backdrop-filter: blur(40px);
-  -webkit-backdrop-filter: blur(40px);
+  background: var(--color-surface-solid);
   box-shadow: var(--shadow-card);
   transition: all 0.2s ease;
 }
@@ -135,21 +210,29 @@ const emit = defineEmits<{
   background: var(--color-surface-solid);
 }
 
-.archive-card__content,
-.archive-card__head,
-.archive-card__meta {
+.archive-card__content {
   display: grid;
-  gap: 6px;
+  gap: 4px;
+  min-width: 0;
+}
+
+.archive-card__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   min-width: 0;
 }
 
 .archive-card__title {
   color: var(--color-text-strong);
   font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .archive-card__badge {
-  justify-self: start;
+  flex-shrink: 0;
   padding: 2px 8px;
   border: 1px solid var(--color-line);
   border-radius: 999px;
@@ -160,15 +243,18 @@ const emit = defineEmits<{
   text-transform: uppercase;
 }
 
-.archive-card__project {
-  color: var(--color-text);
-  font-size: var(--text-body-sm);
-  font-weight: 500;
+.archive-card__meta {
+  display: grid;
+  gap: 4px;
 }
 
-.archive-card__path {
-  color: var(--color-subtle);
-  font: var(--text-caption) var(--font-mono);
+.archive-card__summary {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--text-body-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .archive-card__restore {
@@ -185,7 +271,7 @@ const emit = defineEmits<{
 
 .archive-card__restore:hover,
 .archive-card__restore:focus-visible {
-  background: var(--color-surface);
+  background: var(--control-fill-hover);
   border-color: var(--color-accent);
   color: var(--color-accent);
   outline: none;

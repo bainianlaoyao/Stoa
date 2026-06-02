@@ -40,7 +40,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="relative flex items-center h-[46px] shrink-0 select-none border-b border-line bg-surface/40 backdrop-blur-md" style="-webkit-app-region: drag;">
+  <div class="relative flex items-center h-[46px] shrink-0 select-none border-b border-line bg-mica-alt" style="-webkit-app-region: drag;">
     <!-- Brand -->
     <div class="flex items-center pl-3.5 animate-fade-in" style="-webkit-app-region: no-drag;">
       <img :src="stoaLogo" alt="" class="h-6" style="width: auto;" aria-hidden="true">

@@ -75,12 +75,6 @@ function onTabClick(tabId: SettingsTab) {
         type="button"
         @click="onTabClick(tab.id)"
       >
-        <!-- Windows 11 style active indicator rounded pill -->
-        <span
-          v-if="tab.id === activeTab"
-          class="absolute left-[3px] w-[3px] bg-accent top-[12px] bottom-[12px] rounded-full"
-          aria-hidden="true"
-        />
         <span class="settings-tab-bar__icon" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none" focusable="false">
             <path
@@ -123,23 +117,21 @@ function onTabClick(tabId: SettingsTab) {
   color: var(--color-muted);
   text-align: left;
   cursor: pointer;
-  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), 
-              background-color 0.2s ease, 
-              border-color 0.2s ease,
+  transition: border-color 0.2s ease, 
+              background-color 0.2s ease,
               box-shadow 0.2s ease,
               color 0.2s ease;
 }
 
 .settings-tab-bar__item:hover,
 .settings-tab-bar__item:focus-visible {
-  transform: scale(1.04);
   background: var(--color-black-soft);
   color: var(--color-text-strong);
   outline: none;
 }
 
 .settings-tab-bar__item:active {
-  transform: scale(0.97);
+  transform: scale(0.985);
 }
 
 .settings-tab-bar__item--active {

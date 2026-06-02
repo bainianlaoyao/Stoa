@@ -31,7 +31,7 @@ describe('playwright skeleton generator', () => {
     expect(generated).toContain("app.page.getByRole('button', { name: `Archive ${session.title}` }).click()")
     expect(generated).not.toContain("app.page.getByRole('button', { name: 'Archive' }).click()")
     expect(generated).not.toContain("app.page.locator('[data-activity-item=\"archive\"]').click()")
-    expect(generated).toContain("app.page.getByTestId('command-panel')")
+    expect(generated).toContain("app.page.getByTestId('surface.archive')")
     expect(generated).toContain("app.page.getByTestId('archive.session.restore')")
     expect(generated).toContain('await expect(root).toBeVisible()')
     expect(generated).toContain('await expect(sessionRow).toHaveCount(1)')

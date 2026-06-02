@@ -45,7 +45,7 @@ describe('useSidebarPanels', () => {
     const git = getPanel('git')
     expect(git).toBeDefined()
     expect(git!.icon).toBe('source-control')
-    expect(git!.label).toBe('Source Control')
+    expect(git!.label).toBe('Git')
     expect(git!.shortcut).toBe('Ctrl+Shift+G')
     expect(git!.gitOnly).toBe(true)
   })

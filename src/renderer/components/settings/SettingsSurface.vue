@@ -98,19 +98,14 @@ function onTabSelect(tab: SettingsTab) {
 .settings-surface__shell {
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr);
+  grid-template-rows: 1fr;
   height: 100%;
   min-height: 0;
   border: 1px solid var(--color-line);
   border-radius: 4px;
-  background: var(--color-surface);
-  backdrop-filter: blur(40px) saturate(120%);
-  -webkit-backdrop-filter: blur(40px) saturate(120%);
-  box-shadow: var(--shadow-premium);
+  background: var(--mica);
+  box-shadow: var(--shadow-card);
   overflow: hidden;
-}
-
-:deep(.settings-surface__shell > *) {
-  display: contents;
 }
 
 .settings-surface__nav-panel {
@@ -120,7 +115,7 @@ function onTabSelect(tab: SettingsTab) {
   padding: 24px;
   height: 100%;
   min-height: 0;
-  background: rgba(0, 0, 0, 0.012);
+  background: var(--mica-alt);
   border-right: 1px solid var(--color-line);
   user-select: none;
 }
@@ -204,6 +199,7 @@ function onTabSelect(tab: SettingsTab) {
 @media (max-width: 900px) {
   .settings-surface__shell {
     grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
   }
 
   .settings-surface__nav-panel {

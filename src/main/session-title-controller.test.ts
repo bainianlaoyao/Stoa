@@ -101,7 +101,8 @@ describe('SessionTitleController', () => {
           titleGeneration: titleSettings,
           workspaceIde: { id: 'vscode', executablePath: '' },
           claudeDangerouslySkipPermissions: false,
-          locale: 'en'
+          locale: 'en',
+          theme: 'system'
         }),
         snapshot: () => ({
           activeProjectId: 'project_1',
@@ -163,7 +164,8 @@ describe('SessionTitleController', () => {
           titleGeneration: titleSettings,
           workspaceIde: { id: 'vscode', executablePath: '' },
           claudeDangerouslySkipPermissions: false,
-          locale: 'en'
+          locale: 'en',
+          theme: 'system'
         }),
         snapshot: () => ({
           activeProjectId: 'project_1',
@@ -201,7 +203,8 @@ describe('SessionTitleController', () => {
           titleGeneration: titleSettings,
           workspaceIde: { id: 'vscode', executablePath: '' },
           claudeDangerouslySkipPermissions: false,
-          locale: 'en'
+          locale: 'en',
+          theme: 'system'
         }),
         snapshot: () => ({
           activeProjectId: 'project_1',
@@ -242,7 +245,8 @@ describe('SessionTitleController', () => {
           titleGeneration: titleSettings,
           workspaceIde: { id: 'vscode', executablePath: '' },
           claudeDangerouslySkipPermissions: false,
-          locale: 'en'
+          locale: 'en',
+          theme: 'system'
         }),
         snapshot: () => ({
           activeProjectId: 'project_1',
@@ -296,7 +300,8 @@ describe('SessionTitleController', () => {
           titleGeneration: titleSettings,
           workspaceIde: { id: 'vscode', executablePath: '' },
           claudeDangerouslySkipPermissions: false,
-          locale: 'en'
+          locale: 'en',
+          theme: 'system'
         }),
         snapshot: () => ({
           activeProjectId: 'project_1',
@@ -345,7 +350,8 @@ describe('SessionTitleController', () => {
           titleGeneration: titleSettings,
           workspaceIde: { id: 'vscode', executablePath: '' },
           claudeDangerouslySkipPermissions: false,
-          locale: 'en'
+          locale: 'en',
+          theme: 'system'
         }),
         snapshot: () => ({
           activeProjectId: 'project_1',
@@ -393,7 +399,8 @@ describe('SessionTitleController', () => {
           titleGeneration: titleSettings,
           workspaceIde: { id: 'vscode', executablePath: '' },
           claudeDangerouslySkipPermissions: false,
-          locale: 'en'
+          locale: 'en',
+          theme: 'system'
         }),
         snapshot: () => ({
           activeProjectId: 'project_1',
@@ -436,7 +443,8 @@ describe('SessionTitleController', () => {
           titleGeneration: titleSettings,
           workspaceIde: { id: 'vscode', executablePath: '' },
           claudeDangerouslySkipPermissions: false,
-          locale: 'en'
+          locale: 'en',
+          theme: 'system'
         }),
         snapshot: () => ({
           activeProjectId: 'project_1',
@@ -477,7 +485,8 @@ describe('SessionTitleController', () => {
           titleGeneration: titleSettings,
           workspaceIde: { id: 'vscode', executablePath: '' },
           claudeDangerouslySkipPermissions: false,
-          locale: 'en'
+          locale: 'en',
+          theme: 'system'
         }),
         snapshot: () => ({
           activeProjectId: 'project_1',
@@ -528,7 +537,8 @@ describe('SessionTitleController', () => {
           titleGeneration: titleSettings,
           workspaceIde: { id: 'vscode', executablePath: '' },
           claudeDangerouslySkipPermissions: false,
-          locale: 'en'
+          locale: 'en',
+          theme: 'system'
         }),
         snapshot: () => ({
           activeProjectId: 'project_1',
@@ -567,7 +577,8 @@ describe('SessionTitleController', () => {
           titleGeneration: titleSettings,
           workspaceIde: { id: 'vscode', executablePath: '' },
           claudeDangerouslySkipPermissions: false,
-          locale: 'en'
+          locale: 'en',
+          theme: 'system'
         }),
         snapshot: () => ({
           activeProjectId: 'project_1',

@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref } from 'vue'
 import GlobalActivityBar from './GlobalActivityBar.vue'
 import TitleBar from './TitleBar.vue'
 import CommandSurface from './command/CommandSurface.vue'
+import ArchiveSurface from './archive/ArchiveSurface.vue'
 import SettingsSurface from './settings/SettingsSurface.vue'
 import RightSidebar from './right-sidebar/RightSidebar.vue'
-import { useSidebarStore } from '@renderer/stores/sidebar'
 import type { OpenWorkspaceRequest, ProjectSummary, SessionSummary } from '@shared/project-session'
 import type { ProjectHierarchyNode } from '@renderer/stores/workspaces'
 import type { AppSurface } from './GlobalActivityBar.vue'
@@ -33,29 +33,19 @@ const emit = defineEmits<{
 
 const activeSurface = ref<AppSurface>('command')
 
-// Auto-hide sidebar when navigating to a full-page surface (settings, archive, meta-session)
-// and restore it when returning to the command surface.
-const sidebarStore = useSidebarStore()
-let sidebarWasOpenBeforeAutoHide = false
-
-watch(activeSurface, (surface, prevSurface) => {
-  if (surface !== 'command' && sidebarStore.open) {
-    sidebarWasOpenBeforeAutoHide = true
-    sidebarStore.setOpen(false)
-  } else if (surface === 'command' && prevSurface !== 'command' && sidebarWasOpenBeforeAutoHide) {
-    sidebarStore.setOpen(true)
-    sidebarWasOpenBeforeAutoHide = false
-  }
-})
+function handleArchiveSession(sessionId: string): void {
+  emit('archiveSession', sessionId)
+  activeSurface.value = 'archive'
+}
 </script>
 
 <template>
   <div class="flex flex-col h-full">
     <TitleBar />
-    <main class="grid grid-cols-[56px_1fr_auto] flex-1 min-h-0 p-0 gap-0">
+    <main class="grid grid-cols-[56px_1fr_auto] grid-rows-1 flex-1 min-h-0 p-0 gap-0">
       <GlobalActivityBar :active-surface="activeSurface" @select="activeSurface = $event" />
 
-      <section class="min-w-0 min-h-0 m-3 ml-0 border border-line rounded-lg bg-surface-solid shadow-premium overflow-hidden" data-testid="app-viewport" aria-label="Application viewport">
+      <section class="min-w-0 min-h-0 m-0 border-0 rounded-none bg-mica overflow-hidden" data-testid="app-viewport" aria-label="Application viewport">
         <CommandSurface
           v-show="activeSurface === 'command'"
           aria-label="Command surface"
@@ -70,16 +60,22 @@ watch(activeSurface, (surface, prevSurface) => {
           @create-project="emit('createProject', $event)"
           @create-session="emit('createSession', $event)"
           @delete-project="emit('deleteProject', $event)"
-          @archive-session="emit('archiveSession', $event)"
+          @archive-session="handleArchiveSession"
           @regenerate-session-title="emit('regenerateSessionTitle', $event)"
           @restart-session="emit('restartSession', $event)"
           @restore-session="emit('restoreSession', $event)"
           @open-workspace="emit('openWorkspace', $event)"
         />
+        <ArchiveSurface
+          v-if="activeSurface === 'archive'"
+          :hierarchy="hierarchy"
+          aria-label="Archive surface"
+          @restore-session="emit('restoreSession', $event)"
+        />
         <SettingsSurface v-if="activeSurface === 'settings'" />
       </section>
 
-      <RightSidebar />
+      <RightSidebar v-if="activeSurface === 'command'" />
     </main>
   </div>
 </template>

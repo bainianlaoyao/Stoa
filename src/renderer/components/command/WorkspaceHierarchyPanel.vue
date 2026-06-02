@@ -39,7 +39,6 @@ interface SessionTreeRow {
 
 interface ProjectTreeView extends ProjectHierarchyNode {
   liveRows: SessionTreeRow[]
-  archivedRows: SessionTreeRow[]
 }
 
 const props = defineProps<{
@@ -65,7 +64,6 @@ const showNewProject = ref(false)
 const LONG_PRESS_MS = 220
 
 const collapsedProjectIds = ref<Set<string>>(new Set())
-const collapsedArchivedProjectIds = ref<Set<string>>(new Set())
 
 const detailState = ref<DetailState | null>(null)
 
@@ -149,8 +147,7 @@ function buildSessionRows(sessionList: HierarchySession[]): SessionTreeRow[] {
 const projectTreeViews = computed<ProjectTreeView[]>(() => {
   return props.hierarchy.map((project) => ({
     ...project,
-    liveRows: buildSessionRows(project.sessions),
-    archivedRows: buildSessionRows(project.archivedSessions)
+    liveRows: buildSessionRows(project.sessions)
   }))
 })
 
@@ -266,20 +263,6 @@ function toggleProjectCollapse(projectId: string): void {
     next.add(projectId)
   }
   collapsedProjectIds.value = next
-}
-
-function isArchivedProjectCollapsed(projectId: string): boolean {
-  return collapsedArchivedProjectIds.value.has(projectId)
-}
-
-function toggleArchivedProjectCollapse(projectId: string): void {
-  const next = new Set(collapsedArchivedProjectIds.value)
-  if (next.has(projectId)) {
-    next.delete(projectId)
-  } else {
-    next.add(projectId)
-  }
-  collapsedArchivedProjectIds.value = next
 }
 
 function toggleAllCollapsed(): void {
@@ -428,15 +411,44 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <aside class="min-h-0 overflow-y-auto rounded-[var(--radius-sm)] bg-surface" data-testid="workspace-hierarchy-panel" aria-label="Workspace hierarchy">
-    <div class="min-h-0 overflow-auto px-2.5 pt-2.5 pb-10 grid gap-3 align-content-start" data-testid="route-body">
-      <div class="grid gap-1" data-testid="route-actions">
-        <button class="route-action flex items-center justify-between gap-2 px-2.5 py-2 rounded-[var(--radius-sm)] bg-surface-solid text-text-strong cursor-pointer transition-all duration-200 hover:bg-black-soft focus-visible:bg-black-soft focus-visible:outline-none" type="button" data-testid="workspace.new-project" @click="showNewProject = true">
-          <span class="text-[length:var(--text-meta)] font-semibold tracking-[0.05em]">{{ t('workspace.newProject') }}</span>
-          <span class="w-[18px] h-[18px] grid place-items-center rounded-[var(--radius-sm)] bg-canvas text-text-strong text-[length:var(--text-meta)]">+</span>
+  <aside class="min-h-0 flex flex-col rounded-none border-r border-line bg-mica" data-testid="workspace-hierarchy-panel" aria-label="Workspace hierarchy">
+    
+    <!-- Sleek Fluent Sidebar Header Toolbar -->
+    <div class="flex items-center justify-between px-3.5 py-3 border-b border-line bg-surface-soft select-none" data-testid="sidebar-header">
+      <span class="text-[10px] tracking-[0.12em] font-bold text-muted uppercase">{{ t('workspace.eyebrow') }}</span>
+      <div class="flex items-center gap-1" data-testid="route-actions">
+        <!-- New Project Action -->
+        <button
+          class="route-action flex items-center justify-center w-6 h-6 rounded-[var(--radius-sm)] hover:bg-black-soft text-muted hover:text-text-strong transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:bg-black-soft"
+          type="button"
+          data-testid="workspace.new-project"
+          :aria-label="t('workspace.newProject')"
+          :title="t('workspace.newProject')"
+          @click="showNewProject = true"
+        >
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+          <span class="sr-only">{{ t('workspace.newProject') }}</span>
+        </button>
+        <!-- Collapse/Expand All Action -->
+        <button
+          class="flex items-center justify-center w-6 h-6 rounded-[var(--radius-sm)] hover:bg-black-soft text-muted hover:text-text-strong transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:bg-black-soft"
+          type="button"
+          :title="collapsedProjectIds.size === hierarchy.length && hierarchy.length > 0 ? 'Expand All' : 'Collapse All'"
+          @click="toggleAllCollapsed"
+        >
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 14h16" />
+            <path d="m4 18 8-8 8 8" />
+          </svg>
         </button>
       </div>
+    </div>
 
+    <!-- Scrollable Content Body -->
+    <div class="flex-1 overflow-y-auto px-2.5 py-3 grid gap-3 align-content-start route-body-scroll" data-testid="route-body">
       <div class="grid gap-1">
         <button class="group-label" type="button" @click="toggleAllCollapsed">
           <span class="group-label__chevron" :class="{ 'group-label__chevron--collapsed': collapsedProjectIds.size === hierarchy.length && hierarchy.length > 0 }">▾</span>
@@ -451,6 +463,7 @@ onBeforeUnmount(() => {
             <button
               class="route-item route-item--parent"
               :class="{ 'route-item--active': project.id === activeProjectId }"
+              :data-has-active-session="project.id === activeProjectId && !!activeSessionId ? 'true' : undefined"
               :aria-current="project.id === activeProjectId ? 'true' : undefined"
               data-testid="project-row"
               :data-project-name="project.name"
@@ -465,6 +478,10 @@ onBeforeUnmount(() => {
                   <circle cx="8" cy="12.5" r="1.25" fill="currentColor" />
                 </svg>
               </span>
+              <!-- Fluent Folder Icon -->
+              <svg class="route-folder-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+              </svg>
               <div class="route-copy">
                 <div class="route-name">{{ project.name }}</div>
               </div>
@@ -568,96 +585,6 @@ onBeforeUnmount(() => {
               </span>
             </div>
 
-            <div
-              v-if="project.archivedRows.length > 0"
-              class="route-archived-group grid gap-1"
-              :data-archived-group="project.id"
-            >
-              <button
-                class="group-label group-label--archived"
-                type="button"
-                @click="toggleArchivedProjectCollapse(project.id)"
-              >
-                <span
-                  class="group-label__chevron"
-                  :class="{ 'group-label__chevron--collapsed': isArchivedProjectCollapsed(project.id) }"
-                >▾</span>
-                {{ t('archive.title') }}
-              </button>
-
-              <template v-if="!isArchivedProjectCollapsed(project.id)">
-                <div
-                  v-for="row in project.archivedRows"
-                  :key="row.session.id"
-                  class="route-session-row route-session-row--archived"
-                  data-testid="archive.session.row"
-                  :style="sessionTreeIndentStyle(row.depth)"
-                  :data-tree-depth="row.depth"
-                  :data-archived-session="row.session.id"
-                >
-                  <button
-                    class="route-item child route-item--archived"
-                    data-testid="session-row-archived"
-                    :data-session-id="row.session.id"
-                    :data-tree-depth="String(row.depth)"
-                    :data-session-title="row.session.title"
-                    :data-session-type="row.session.type"
-                    type="button"
-                    @contextmenu="openSessionContextMenu($event, row.session)"
-                  >
-                    <div
-                      class="route-dot"
-                      data-testid="session-status-dot"
-                      :data-tone="sessionTone(row.session)"
-                      :data-phase="sessionPhase(row.session)"
-                      :data-session-status-testid="`session-status-${sessionPhase(row.session)}`"
-                      :data-attention-reason="sessionAttentionReason(row.session) ?? undefined"
-                    />
-                    <img class="route-provider-icon" :src="providerIcon(row.session.type)" :alt="row.session.type" />
-                    <div class="route-copy route-copy--session">
-                      <span class="route-session-name">{{ sessionPrimaryLabel(row.session) }}</span>
-                      <span v-if="sessionStatusLabel(row.session)" class="route-session-label">{{ sessionStatusLabel(row.session) }}</span>
-                    </div>
-                    <span class="route-archived-badge">{{ t('activityBar.archive') }}</span>
-                  </button>
-                  <span class="route-row-actions">
-                    <button
-                      class="route-row-action route-icon-button"
-                      type="button"
-                      data-testid="archive.session.restore"
-                      :data-session-id="row.session.id"
-                      :aria-label="t('archive.restore')"
-                      :title="t('archive.restore')"
-                      :data-row-restore="row.session.id"
-                      @click.stop="emit('restoreSession', row.session.id)"
-                    >
-                      <svg
-                        class="route-icon-button__icon"
-                        viewBox="0 0 16 16"
-                        fill="none"
-                        xmlns="http://www.w3.org/2000/svg"
-                        aria-hidden="true"
-                      >
-                        <path
-                          d="M3 8a5 5 0 1 0 2-4"
-                          stroke="currentColor"
-                          stroke-width="1.25"
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                        />
-                        <path
-                          d="M3 3.5v3h3"
-                          stroke="currentColor"
-                          stroke-width="1.25"
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                        />
-                      </svg>
-                    </button>
-                  </span>
-                </div>
-              </template>
-            </div>
           </template>
          </div>
       </div>
@@ -714,6 +641,41 @@ onBeforeUnmount(() => {
   align-items: center;
   min-width: 0;
   position: relative;
+}
+
+/* Primary hierarchy line connecting sessions to the project */
+.route-session-row::before {
+  content: '';
+  position: absolute;
+  left: 14px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--color-line);
+  pointer-events: none;
+}
+
+/* Additional hierarchy guide lines for deeper levels */
+.route-session-row[data-tree-depth='1']::after {
+  content: '';
+  position: absolute;
+  left: 28px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--color-line);
+  pointer-events: none;
+}
+
+.route-session-row[data-tree-depth='2']::after {
+  content: '';
+  position: absolute;
+  left: 42px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--color-line);
+  pointer-events: none;
 }
 
 .route-session-row .route-item {
@@ -775,7 +737,8 @@ onBeforeUnmount(() => {
   grid-template-columns: minmax(0, 1fr);
   gap: 8px;
   align-items: center;
-  padding: 5px 8px 5px 8px;
+  /* Unified height: 28px effective row height via consistent padding */
+  padding: 5px 8px;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   background: transparent;
@@ -784,17 +747,15 @@ onBeforeUnmount(() => {
   cursor: pointer;
   transition: all 0.2s ease;
   position: relative;
+  min-height: 30px;
 }
 
 .route-item.child {
   grid-template-columns: 6px 18px minmax(0, 1fr);
   gap: 6px;
-  padding: 2px 8px 2px 20px;
-}
-
-.route-item--archived {
-  grid-template-columns: 6px 18px minmax(0, 1fr) auto;
-  color: var(--color-subtle);
+  /* Same vertical padding as parent for height parity */
+  padding: 5px 8px 5px 20px;
+  min-height: 30px;
 }
 
 .route-item:hover:not(.route-item--active),
@@ -804,24 +765,22 @@ onBeforeUnmount(() => {
 }
 
 .route-item--active {
+  background: var(--color-black-soft);
+  border-color: var(--color-line-strong);
+  box-shadow: var(--shadow-soft);
+}
+
+/* When a child session is active, the parent project row is de-emphasized:
+   no fill, no border — only the folder icon gets a gentle accent tint */
+.route-item--active[data-has-active-session] {
   background: transparent;
   border-color: transparent;
   box-shadow: none;
 }
 
-.route-session-row:has(.route-item--active)::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  border-radius: 0;
-  background: var(--color-active-indicator);
-}
-
-.route-session-row--archived:has(.route-item--active)::before {
-  opacity: 0.5;
+.route-item--active[data-has-active-session] .route-folder-icon {
+  color: var(--color-accent);
+  opacity: 0.6;
 }
 
 .route-item--active .route-name {
@@ -838,8 +797,24 @@ onBeforeUnmount(() => {
 }
 
 .route-item--parent {
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 8px;
+  /* Align with session row: same left offset so active indicator sits at same x */
   padding-right: 10px;
-  padding-left: 24px;
+  padding-left: 20px;
+}
+
+.route-folder-icon {
+  width: 14px;
+  height: 14px;
+  color: var(--color-subtle);
+  flex-shrink: 0;
+  transition: color 0.2s ease;
+}
+
+.route-item--parent:hover .route-folder-icon,
+.route-item--parent.route-item--active .route-folder-icon {
+  color: var(--color-accent);
 }
 
 .route-detail-trigger {
@@ -933,16 +908,6 @@ onBeforeUnmount(() => {
   font-weight: 600;
 }
 
-.route-archived-badge {
-  justify-self: end;
-  padding: 1px 6px;
-  border: 1px solid var(--color-line);
-  border-radius: var(--radius-sm);
-  color: var(--color-subtle);
-  font: var(--text-caption) var(--font-mono);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
 
 .route-dot {
   width: 6px;
@@ -1013,7 +978,7 @@ onBeforeUnmount(() => {
   background: var(--color-surface);
   border: 1px solid var(--color-line);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-glass);
+  box-shadow: var(--shadow-card);
   padding: 8px 10px;
   max-width: 280px;
   min-width: 160px;
@@ -1151,29 +1116,29 @@ onBeforeUnmount(() => {
   color: var(--color-text-strong);
 }
 
-aside[data-testid="workspace-hierarchy-panel"] {
+.route-body-scroll {
   scrollbar-width: thin;
   scrollbar-color: transparent transparent;
 }
 
-aside[data-testid="workspace-hierarchy-panel"]:hover {
+.route-body-scroll:hover {
   scrollbar-color: var(--color-black-soft) transparent;
 }
 
-aside[data-testid="workspace-hierarchy-panel"]::-webkit-scrollbar {
+.route-body-scroll::-webkit-scrollbar {
   width: 4px;
 }
 
-aside[data-testid="workspace-hierarchy-panel"]::-webkit-scrollbar-track {
+.route-body-scroll::-webkit-scrollbar-track {
   background: transparent;
 }
 
-aside[data-testid="workspace-hierarchy-panel"]::-webkit-scrollbar-thumb {
+.route-body-scroll::-webkit-scrollbar-thumb {
   background: transparent;
   border-radius: 2px;
 }
 
-aside[data-testid="workspace-hierarchy-panel"]:hover::-webkit-scrollbar-thumb {
+.route-body-scroll:hover::-webkit-scrollbar-thumb {
   background: var(--color-black-soft);
 }
 </style>

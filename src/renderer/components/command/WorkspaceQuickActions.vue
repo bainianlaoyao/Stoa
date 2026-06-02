@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useSidebarStore } from '@renderer/stores/sidebar'
+import { storeToRefs } from 'pinia'
 import type { OpenWorkspaceRequest, ProjectSummary, SessionSummary } from '@shared/project-session'
 import vscodeIconUrl from '@renderer/assets/icons/vscode.svg'
 
@@ -15,6 +17,8 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const sidebarStore = useSidebarStore()
+const { open: sidebarOpen } = storeToRefs(sidebarStore)
 const canOpenWorkspace = computed(() => props.project !== null && props.session !== null)
 
 function emitOpenWorkspace(target: OpenWorkspaceRequest['target']): void {
@@ -87,6 +91,30 @@ function emitOpenWorkspace(target: OpenWorkspaceRequest['target']): void {
         <path d="M8 12h8" />
       </svg>
     </button>
+    <button
+      type="button"
+      class="workspace-quick-actions__button"
+      :class="{ 'workspace-quick-actions__button--active': sidebarOpen }"
+      data-testid="workspace.sidebar-toggle"
+      :aria-pressed="sidebarOpen"
+      :aria-label="sidebarOpen ? t('activityBar.closeSidebar') : t('activityBar.openSidebar')"
+      :title="sidebarOpen ? t('activityBar.closeSidebar') : t('activityBar.openSidebar')"
+      @click="sidebarStore.toggle()"
+    >
+      <svg
+        class="workspace-quick-actions__icon"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.8"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <rect x="3.75" y="5.75" width="16.5" height="12.5" rx="1.25" />
+        <path d="M9.75 5.75v12.5" />
+      </svg>
+    </button>
   </div>
 </template>
 
@@ -97,6 +125,7 @@ function emitOpenWorkspace(target: OpenWorkspaceRequest['target']): void {
   justify-content: flex-end;
   gap: 8px;
   min-height: 36px;
+  padding: 6px 12px 2px 12px;
 }
 
 .workspace-quick-actions__button {
@@ -126,6 +155,11 @@ function emitOpenWorkspace(target: OpenWorkspaceRequest['target']): void {
 .workspace-quick-actions__button:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
+}
+
+.workspace-quick-actions__button--active {
+  border-color: var(--color-line-strong);
+  background: var(--color-black-soft);
 }
 
 .workspace-quick-actions__icon {
