@@ -8,17 +8,18 @@ async function openCommandSurfaceNewProject(app: Awaited<ReturnType<typeof launc
 }
 
 test.describe('Settings tabs', () => {
-  test('renders 4 tab buttons', async () => {
+  test('renders 5 tab buttons', async () => {
     const app = await launchElectronApp()
     try {
       await app.page.locator('[data-activity-item="settings"]').click()
       await expect(app.page.locator('[data-surface="settings"]')).toBeVisible()
 
       const tabs = app.page.locator('[data-settings-tab]')
-      await expect(tabs).toHaveCount(4)
+      await expect(tabs).toHaveCount(5)
       await expect(app.page.locator('[data-settings-tab="general"]')).toBeVisible()
       await expect(app.page.locator('[data-settings-tab="terminal"]')).toBeVisible()
       await expect(app.page.locator('[data-settings-tab="providers"]')).toBeVisible()
+      await expect(app.page.locator('[data-settings-tab="advanced"]')).toBeVisible()
       await expect(app.page.locator('[data-settings-tab="about"]')).toBeVisible()
     } finally {
       const { stateDir } = app
