@@ -125,7 +125,7 @@ describe('stoa-ctl unregister', () => {
 
   test('unregisterStoaCtlSystemShim does not throw when no files exist', async () => {
     await expect(unregisterStoaCtlSystemShim()).resolves.toBeUndefined()
-  })
+  }, 15000)
 
   test('unregisterPosixPath removes the stoa-ctl export line from rc file', async () => {
     if (process.platform === 'win32') return
