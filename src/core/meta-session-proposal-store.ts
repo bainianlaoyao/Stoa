@@ -192,7 +192,7 @@ export class MetaSessionProposalStore {
     return cloneProposal(next)
   }
 
-  createPromptProposal(input: CreatePromptProposalInput): MetaSessionProposal {
+  async createPromptProposal(input: CreatePromptProposalInput): Promise<MetaSessionProposal> {
     const nowIso = new Date().toISOString()
     const proposal: MetaSessionProposal = {
       id: `proposal_${randomUUID()}`,
@@ -225,7 +225,7 @@ export class MetaSessionProposalStore {
 
     this.proposals.set(proposal.id, proposal)
     this.appendActionLog(proposal, 'proposal.created', 'Created approval-gated prompt proposal.')
-    void this.persist()
+    await this.persist()
     return cloneProposal(proposal)
   }
 

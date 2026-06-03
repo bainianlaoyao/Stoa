@@ -6,5 +6,6 @@ describe('terminal topology', () => {
     expect(terminalTopology.testIds.workspaceQuickActions).toBe('workspace.quick-actions')
     expect(terminalTopology.testIds.openIde).toBe('workspace.open-ide')
     expect(terminalTopology.testIds.openFileManager).toBe('workspace.open-file-manager')
+    expect(terminalTopology.testIds.sidebarToggle).toBe('workspace.sidebar-toggle')
   })
 })

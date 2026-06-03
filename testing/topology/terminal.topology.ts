@@ -10,6 +10,7 @@ export const terminalTopology = defineTopology({
     emptyState: 'terminal-empty-state',
     workspaceQuickActions: 'workspace.quick-actions',
     openIde: 'workspace.open-ide',
-    openFileManager: 'workspace.open-file-manager'
+    openFileManager: 'workspace.open-file-manager',
+    sidebarToggle: 'workspace.sidebar-toggle'
   }
 })

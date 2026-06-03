@@ -35,7 +35,6 @@ const activeSurface = ref<AppSurface>('command')
 
 function handleArchiveSession(sessionId: string): void {
   emit('archiveSession', sessionId)
-  activeSurface.value = 'archive'
 }
 </script>
 

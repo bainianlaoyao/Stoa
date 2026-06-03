@@ -5,7 +5,7 @@ import { MetaSessionProposalStore } from './meta-session-proposal-store'
 describe('MetaSessionProposalStore', () => {
   test('creates prompt proposals and allows them to transition to approved and stale', async () => {
     const store = new MetaSessionProposalStore()
-    const proposal = store.createPromptProposal({
+    const proposal = await store.createPromptProposal({
       metaSessionId: 'meta_session_1',
       targetSessionId: 'session_1',
       text: 'Refactor and edit the code now.',

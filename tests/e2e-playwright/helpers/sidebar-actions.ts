@@ -5,7 +5,9 @@ import { expect, type Locator, type Page } from '@playwright/test'
 // ── Generic sidebar helpers ──
 
 export async function openSidebar(page: Page): Promise<void> {
-  const toggle = page.locator('[data-activity-item="sidebar-toggle"]')
+  await page.locator('[data-activity-item="command"]').click()
+  const toggle = page.getByTestId('workspace.sidebar-toggle')
+  await expect(toggle).toBeVisible({ timeout: 5000 })
   const pressed = await toggle.getAttribute('aria-pressed')
   if (pressed !== 'true') {
     await toggle.click()
@@ -14,7 +16,9 @@ export async function openSidebar(page: Page): Promise<void> {
 }
 
 export async function closeSidebar(page: Page): Promise<void> {
-  const toggle = page.locator('[data-activity-item="sidebar-toggle"]')
+  await page.locator('[data-activity-item="command"]').click()
+  const toggle = page.getByTestId('workspace.sidebar-toggle')
+  await expect(toggle).toBeVisible({ timeout: 5000 })
   const pressed = await toggle.getAttribute('aria-pressed')
   if (pressed === 'true') {
     await toggle.click()

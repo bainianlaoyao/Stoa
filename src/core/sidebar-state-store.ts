@@ -48,6 +48,9 @@ function validateSidebarState(parsed: unknown): SidebarState | null {
   if (typeof state.sessionListWidth !== 'number') {
     state.sessionListWidth = 240
   }
+  if (typeof state.activeTabByProject !== 'object' || state.activeTabByProject === null) {
+    state.activeTabByProject = {}
+  }
   return state
 }
 

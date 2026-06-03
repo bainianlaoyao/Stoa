@@ -41,7 +41,8 @@ describe('stoa-ctl command surface', () => {
     expect(module.USAGE_TEXT).toContain('session inspect <sessionId>')
     expect(module.USAGE_TEXT).toContain('session status <sessionId>')
     expect(module.USAGE_TEXT).toContain('session output <sessionId>')
-    expect(module.USAGE_TEXT).toContain('session wait <sessionId> [--timeout-ms <ms>]')
+    expect(module.USAGE_TEXT).toContain('session wait <sessionId> [--timeout <seconds>]')
+    expect(module.USAGE_TEXT).not.toContain('--timeout-ms')
     expect(module.USAGE_TEXT).toContain('session report <sessionId>')
     expect(module.USAGE_TEXT).toContain('session prompt <sessionId> --text "..."')
     expect(module.USAGE_TEXT).toContain('session destroy <sessionId>')
@@ -398,17 +399,17 @@ describe('stoa-ctl command surface', () => {
     expect(writes.join('')).toContain('terminal replay')
   })
 
-  test('waits for session completion through the unified session endpoint', async () => {
+  test('waits for session completion with a timeout in seconds', async () => {
     const module = await import('./index')
     const writes: string[] = []
     const fetchImpl = vi.fn(async (input: string | URL | Request) => {
-      expect(String(input)).toBe('http://127.0.0.1:43129/ctl/session/session_child_1/wait?timeoutMs=1500')
+      expect(String(input)).toBe('http://127.0.0.1:43129/ctl/session/session_child_1/wait?timeoutMs=120000')
       return createResponse({
-        body: '{"ok":true,"data":{"result":{"report":{"outcome":"completed"},"output":{"text":"done"}}},"error":null}'
+        body: '{"ok":true,"data":{"result":{"session":{"session":{"id":"session_child_1"}},"status":{"phase":"completed"},"report":{"outcome":"completed"},"output":{"text":"done"}}},"error":null}'
       })
     })
 
-    const exitCode = await module.run(['session', 'wait', 'session_child_1', '--timeout-ms', '1500'], {
+    const exitCode = await module.run(['session', 'wait', 'session_child_1', '--timeout', '120'], {
       fetch: fetchImpl,
       env: sessionEnv,
       stdout: { write(chunk: string) { writes.push(chunk) } },
@@ -417,14 +418,15 @@ describe('stoa-ctl command surface', () => {
     })
 
     expect(exitCode).toBe(0)
+    expect(writes.join('')).toContain('"phase":"completed"')
     expect(writes.join('')).toContain('"outcome":"completed"')
   })
 
-  test('rejects invalid wait timeout before sending the request', async () => {
+  test('rejects invalid wait timeout seconds before sending the request', async () => {
     const module = await import('./index')
     const stderr: string[] = []
 
-    const exitCode = await module.run(['session', 'wait', 'session_child_1', '--timeout-ms', '1.5'], {
+    const exitCode = await module.run(['session', 'wait', 'session_child_1', '--timeout', '1.5'], {
       fetch: async () => { throw new Error('should not be called') },
       env: sessionEnv,
       stdout: { write() {} },
@@ -436,11 +438,43 @@ describe('stoa-ctl command surface', () => {
     expect(stderr.join('')).toContain('Usage')
   })
 
-  test('rejects empty wait timeout before sending the request', async () => {
+  test('rejects empty wait timeout seconds before sending the request', async () => {
     const module = await import('./index')
     const stderr: string[] = []
 
-    const exitCode = await module.run(['session', 'wait', 'session_child_1', '--timeout-ms', ''], {
+    const exitCode = await module.run(['session', 'wait', 'session_child_1', '--timeout', ''], {
+      fetch: async () => { throw new Error('should not be called') },
+      env: sessionEnv,
+      stdout: { write() {} },
+      stderr: { write(chunk: string) { stderr.push(chunk) } },
+      sleep: async () => {}
+    })
+
+    expect(exitCode).toBe(2)
+    expect(stderr.join('')).toContain('Usage')
+  })
+
+  test('rejects legacy wait timeout milliseconds flag before sending the request', async () => {
+    const module = await import('./index')
+    const stderr: string[] = []
+
+    const exitCode = await module.run(['session', 'wait', 'session_child_1', '--timeout-ms', '1000'], {
+      fetch: async () => { throw new Error('should not be called') },
+      env: sessionEnv,
+      stdout: { write() {} },
+      stderr: { write(chunk: string) { stderr.push(chunk) } },
+      sleep: async () => {}
+    })
+
+    expect(exitCode).toBe(2)
+    expect(stderr.join('')).toContain('Usage')
+  })
+
+  test('rejects legacy wait timeout milliseconds equals flag before sending the request', async () => {
+    const module = await import('./index')
+    const stderr: string[] = []
+
+    const exitCode = await module.run(['session', 'wait', 'session_child_1', '--timeout-ms=1000'], {
       fetch: async () => { throw new Error('should not be called') },
       env: sessionEnv,
       stdout: { write() {} },

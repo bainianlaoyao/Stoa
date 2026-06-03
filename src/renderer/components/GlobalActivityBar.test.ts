@@ -24,21 +24,20 @@ describe('GlobalActivityBar', () => {
     expect(wrapper.find('nav[data-testid="activity-bar"]').exists()).toBe(true)
   })
 
-  it('renders 4 elements with data-activity-item: command, archive, sidebar toggle, settings', () => {
+  it('renders 3 elements with data-activity-item: command, archive, settings', () => {
     const wrapper = mountBar()
     const items = wrapper.findAll('[data-activity-item]')
-    expect(items).toHaveLength(4)
+    expect(items).toHaveLength(3)
     const ids = items.map((el) => el.attributes('data-activity-item'))
-    expect(ids).toEqual(['command', 'archive', 'sidebar-toggle', 'settings'])
+    expect(ids).toEqual(['command', 'archive', 'settings'])
   })
 
   it('renders one stable svg icon for each activity item', () => {
     const wrapper = mountBar()
 
-    expect(wrapper.findAll('[data-activity-icon]')).toHaveLength(4)
+    expect(wrapper.findAll('[data-activity-icon]')).toHaveLength(3)
     expect(wrapper.get('[data-activity-item="command"]').find('[data-activity-icon]').exists()).toBe(true)
     expect(wrapper.get('[data-activity-item="archive"]').find('[data-activity-icon]').exists()).toBe(true)
-    expect(wrapper.get('[data-activity-item="sidebar-toggle"]').find('[data-activity-icon]').exists()).toBe(true)
     expect(wrapper.get('[data-activity-item="settings"]').find('[data-activity-icon]').exists()).toBe(true)
   })
 
@@ -79,15 +78,16 @@ describe('GlobalActivityBar', () => {
     expect(wrapper.emitted('select')![0]).toEqual(['command'])
   })
 
-  it('renders command + archive in top cluster and settings in bottom cluster', () => {
+  it('renders command in top cluster and archive above settings in bottom cluster', () => {
     const wrapper = mountBar()
     const topCluster = wrapper.find('[data-testid="activity-cluster-top"]')
     const bottomCluster = wrapper.find('[data-testid="activity-cluster-bottom"]')
     expect(topCluster.find('[data-activity-item="command"]').exists()).toBe(true)
-    expect(topCluster.find('[data-activity-item="archive"]').exists()).toBe(true)
+    expect(topCluster.find('[data-activity-item="archive"]').exists()).toBe(false)
     expect(topCluster.find('[data-activity-item="meta-session"]').exists()).toBe(false)
-    expect(bottomCluster.find('[data-activity-item="sidebar-toggle"]').exists()).toBe(true)
+    expect(bottomCluster.find('[data-activity-item="archive"]').exists()).toBe(true)
     expect(bottomCluster.find('[data-activity-item="settings"]').exists()).toBe(true)
-    expect(bottomCluster.findAll('[data-activity-item]').map((node) => node.attributes('data-activity-item'))).toEqual(['sidebar-toggle', 'settings'])
+    expect(bottomCluster.find('[data-activity-item="sidebar-toggle"]').exists()).toBe(false)
+    expect(bottomCluster.findAll('[data-activity-item]').map((node) => node.attributes('data-activity-item'))).toEqual(['archive', 'settings'])
   })
 })

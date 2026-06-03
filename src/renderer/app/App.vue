@@ -66,6 +66,7 @@ async function handleProjectCreate(payload: { name: string; path: string }): Pro
     }
     workspaceStore.addProject(created)
     workspaceStore.setActiveProject(created.id)
+    void window.stoa.setActiveProject(created.id)
   } catch (err) {
     workspaceStore.lastError = err instanceof Error ? err.message : String(err)
   }
@@ -85,6 +86,7 @@ async function handleSessionCreate(payload: { projectId: string; type: string; t
     }
     workspaceStore.addSession(created)
     workspaceStore.setActiveSession(created.id)
+    void window.stoa.setActiveSession(created.id)
   } catch (err) {
     workspaceStore.lastError = err instanceof Error ? err.message : String(err)
   }

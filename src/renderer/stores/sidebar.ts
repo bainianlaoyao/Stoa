@@ -104,6 +104,9 @@ export const useSidebarStore = defineStore('sidebar', () => {
         if (typeof state.sessionListWidth === 'number') {
           sessionListWidth.value = Math.max(SESSION_LIST_MIN_WIDTH, Math.min(SESSION_LIST_MAX_WIDTH, state.sessionListWidth))
         }
+        if (state.activeTabByProject && typeof state.activeTabByProject === 'object') {
+          activeTabByProject.value = { ...state.activeTabByProject }
+        }
       }
     } catch {
       // Sidebar state is optional — defaults are fine
@@ -117,6 +120,7 @@ export const useSidebarStore = defineStore('sidebar', () => {
         activeTab: activeTab.value,
         width: width.value,
         sessionListWidth: sessionListWidth.value,
+        activeTabByProject: activeTabByProject.value,
       })
     } catch {
       // Non-critical — sidebar state is ephemeral

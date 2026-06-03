@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test'
 import { cleanupStateDir, launchElectronApp, queueNextFolderPick } from './fixtures/electron-app'
 import { createSidebarTestProject } from './fixtures/sidebar-test-project'
-import { createProject } from './helpers/ui-actions'
+import { createProject, createSession } from './helpers/ui-actions'
 import {
   openSidebar,
   closeSidebar,
@@ -19,10 +19,11 @@ test.describe('Sidebar Interaction E2E', () => {
     app = await launchElectronApp()
 
     await queueNextFolderPick(app.electronApp, testProject.projectPath)
-    await createProject({ page: app.page, electronApp: app.electronApp }, {
+    const projectRow = await createProject({ page: app.page, electronApp: app.electronApp }, {
       name: 'sidebar-test',
       path: testProject.projectPath,
     })
+    await createSession(app.page, projectRow, { type: 'shell' })
   })
 
   test.afterEach(async () => {

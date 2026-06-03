@@ -7,6 +7,7 @@ export interface SidebarState {
   activeTab: SidebarTab
   width: number
   sessionListWidth: number
+  activeTabByProject: Record<string, string>
 }
 
 // ── Panel Registry ──

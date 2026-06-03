@@ -55,10 +55,15 @@ export const USAGE_TEXT = [
   '  session inspect <sessionId>',
   '  session status <sessionId>',
   '  session output <sessionId>',
-  '  session wait <sessionId> [--timeout-ms <ms>]',
+  '  session wait <sessionId> [--timeout <seconds>]',
   '  session report <sessionId>',
   '  session prompt <sessionId> --text "..."',
-  '  session destroy <sessionId>'
+  '  session destroy <sessionId>',
+  '',
+  'Notes:',
+  '  session prompt only dispatches input; use session wait to collect completed child work.',
+  '  session wait returns JSON with session, status, output, and report.',
+  '  output.text is the captured terminal replay from normal stdout/stderr.'
 ].join('\n')
 
 const SESSION_TYPES = new Set(['shell', 'opencode', 'codex', 'claude-code'])
@@ -109,6 +114,10 @@ function parseFlagValue(args: string[], name: string): string | null {
 
 function hasFlag(args: string[], name: string): boolean {
   return args.includes(name)
+}
+
+function hasFlagOrAssignment(args: string[], name: string): boolean {
+  return args.some((arg) => arg === name || arg.startsWith(`${name}=`))
 }
 
 function mapFailureExitCode(response: Response, bodyText: string): number {
@@ -364,7 +373,11 @@ export async function run(argv: string[], deps: RunDependencies = {}): Promise<n
       if (!sessionId) {
         throw new CliUsageError('Missing session id')
       }
-      const timeoutMs = parsePositiveIntegerFlag(parseFlagValue(rest, '--timeout-ms'), '--timeout-ms')
+      if (hasFlagOrAssignment(rest, '--timeout-ms')) {
+        throw new CliUsageError('Use --timeout <seconds> for session wait')
+      }
+      const timeoutSeconds = parsePositiveIntegerFlag(parseFlagValue(rest, '--timeout'), '--timeout')
+      const timeoutMs = timeoutSeconds !== null ? timeoutSeconds * 1000 : null
       const query = timeoutMs !== null ? `?timeoutMs=${encodeURIComponent(String(timeoutMs))}` : ''
       const { response, text } = await ctlRequest(`/ctl/session/${sessionId}/wait${query}`)
       if (!response.ok) {

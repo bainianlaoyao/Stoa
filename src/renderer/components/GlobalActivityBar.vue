@@ -1,13 +1,9 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
-import { storeToRefs } from 'pinia'
-import { useSidebarStore } from '@renderer/stores/sidebar'
 
 export type AppSurface = 'command' | 'archive' | 'settings'
 
 const { t } = useI18n()
-const sidebarStore = useSidebarStore()
-const { open: sidebarOpen } = storeToRefs(sidebarStore)
 
 interface ActivityIconCircle {
   cx: number
@@ -41,7 +37,10 @@ const topItems: ActivityItem[] = [
       'm8 10 2.25 2.25L7.75 14.5',
       'M12.75 14.5h3.75'
     ]
-  },
+  }
+]
+
+const bottomItems: ActivityItem[] = [
   {
     id: 'archive',
     title: t('activityBar.archive'),
@@ -51,10 +50,7 @@ const topItems: ActivityItem[] = [
       'M5.25 9.25h13.5v8A1.75 1.75 0 0 1 17 19H7a1.75 1.75 0 0 1-1.75-1.75v-8Z',
       'M9.25 12h5.5'
     ]
-  }
-]
-
-const bottomItems: ActivityItem[] = [
+  },
   {
     id: 'settings',
     title: t('activityBar.settings'),
@@ -115,34 +111,6 @@ const bottomItems: ActivityItem[] = [
       </button>
     </div>
     <div data-testid="activity-cluster-bottom" class="mt-auto grid gap-3">
-      <button
-        class="relative inline-flex h-10 w-10 items-center justify-center border-0 rounded-md bg-transparent text-muted cursor-pointer transition-all duration-200 ease-in-out hover:text-text-strong hover:bg-black-soft active:opacity-85 focus-visible:text-text-strong focus-visible:bg-black-soft focus-visible:outline-none"
-        :class="{ 'text-text-strong bg-black-soft': sidebarOpen }"
-        data-activity-item="sidebar-toggle"
-        :data-active="String(sidebarOpen)"
-        :aria-pressed="sidebarOpen"
-        :aria-label="sidebarOpen ? t('activityBar.closeSidebar') : t('activityBar.openSidebar')"
-        type="button"
-        :title="sidebarOpen ? t('activityBar.closeSidebar') : t('activityBar.openSidebar')"
-        @click="() => { emit('select', 'command'); activeSurface === 'command' ? sidebarStore.toggle() : sidebarStore.setOpen(true) }"
-      >
-        <svg
-          data-activity-icon
-          data-icon-kind="sidebar-toggle"
-          class="h-[26px] w-[26px] shrink-0"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.75"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-        >
-          <rect x="3.75" y="5.75" width="16.5" height="12.5" rx="1.25" />
-          <path d="M9.75 5.75v12.5" />
-        </svg>
-        <span class="sr-only">{{ sidebarOpen ? t('activityBar.closeSidebar') : t('activityBar.openSidebar') }}</span>
-      </button>
       <button
         v-for="item in bottomItems"
         :key="item.id"

@@ -112,7 +112,7 @@ export class MetaSessionCommandDispatcher {
     if (isFreeformPrompt(input.text)) {
       return {
         kind: 'approval_required',
-        proposal: this.options.proposals.createPromptProposal({
+        proposal: await this.options.proposals.createPromptProposal({
           ...input,
           targetSession: session
         })
@@ -123,13 +123,13 @@ export class MetaSessionCommandDispatcher {
     return { kind: 'dispatched' }
   }
 
-  createPromptProposal(input: PromptDispatchInput): MetaSessionProposal {
+  async createPromptProposal(input: PromptDispatchInput): Promise<MetaSessionProposal> {
     const session = this.options.snapshotSource.snapshot().sessions.find((candidate) => candidate.id === input.targetSessionId)
     if (!session) {
       throw new MetaSessionDispatchError('unknown_session', `Unknown session: ${input.targetSessionId}`)
     }
 
-    return this.options.proposals.createPromptProposal({
+    return await this.options.proposals.createPromptProposal({
       ...input,
       targetSession: session
     })

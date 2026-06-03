@@ -238,7 +238,7 @@ describe('AppShell', () => {
     window.stoa = stoaMock
   })
 
-  it('shows command/sidebar/settings activity items and defaults to command view', () => {
+  it('shows command/archive/settings activity items and defaults to command view', () => {
     const wrapper = mountAppShell({
       hierarchy: [],
       activeProjectId: null,
@@ -252,7 +252,7 @@ describe('AppShell', () => {
     const commandButton = wrapper.get('button[aria-label="Command panel"]')
     const settingsButton = wrapper.get('button[aria-label="Settings"]')
 
-    expect(labels).toEqual(['command', 'archive', 'sidebar-toggle', 'settings'])
+    expect(labels).toEqual(['command', 'archive', 'settings'])
     expect(navigation).toBeTruthy()
     expect(commandButton.attributes('aria-current')).toBe('true')
     expect(settingsButton.attributes('aria-current')).toBeUndefined()
@@ -319,11 +319,10 @@ describe('AppShell', () => {
       const items = wrapper.findAll('[data-activity-item]')
       const icons = wrapper.findAll('[data-activity-icon]')
 
-      expect(items).toHaveLength(4)
-      expect(icons).toHaveLength(4)
+      expect(items).toHaveLength(3)
+      expect(icons).toHaveLength(3)
       expect(wrapper.get('[data-activity-item="command"]').find('[data-activity-icon]').exists()).toBe(true)
       expect(wrapper.get('[data-activity-item="archive"]').find('[data-activity-icon]').exists()).toBe(true)
-      expect(wrapper.get('[data-activity-item="sidebar-toggle"]').find('[data-activity-icon]').exists()).toBe(true)
       expect(wrapper.get('[data-activity-item="settings"]').find('[data-activity-icon]').exists()).toBe(true)
     }
 
@@ -358,6 +357,33 @@ describe('AppShell', () => {
     await wrapper.findComponent({ name: 'CommandSurface' }).vm.$emit('restoreSession', 'session-archived')
 
     expect(wrapper.emitted('restoreSession')).toEqual([['session-archived']])
+  })
+
+  it('forwards archiveSession without leaving the command surface', async () => {
+    const wrapper = mountAppShell({
+      hierarchy: [{
+        ...baseProject,
+        active: true,
+        archivedSessions: [],
+        sessions: [{
+          ...baseSession,
+          active: true
+        }]
+      }],
+      activeProjectId: baseProject.id,
+      activeSessionId: baseSession.id,
+      activeProject: baseProject,
+      activeSession: baseSession
+    })
+
+    await wrapper.findComponent({ name: 'CommandSurface' }).vm.$emit('archiveSession', baseSession.id)
+
+    expect(wrapper.emitted('archiveSession')).toEqual([[baseSession.id]])
+    const commandSurface = wrapper.find('[data-surface="command"][aria-label="Command surface"]')
+    expect(commandSurface.exists()).toBe(true)
+    expect(commandSurface.attributes('style') ?? '').not.toContain('display: none;')
+    expect(wrapper.find('[data-surface="archive"][aria-label="Archive surface"]').exists()).toBe(false)
+    expect(wrapper.get('button[aria-label="Command panel"]').attributes('aria-current')).toBe('true')
   })
 
   it('forwards restartSession from command surface', async () => {
