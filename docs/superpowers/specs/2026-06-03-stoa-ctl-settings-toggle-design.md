@@ -41,11 +41,13 @@ export interface StoaCtlGate {
 }
 
 export function createStoaCtlGate(initialEnabled: boolean): StoaCtlGate
+export function getStoaCtlGate(): StoaCtlGate  // 模块级 cache,主进程单例
+export function setStoaCtlGate(gate: StoaCtlGate | null): void  // 测试 reset
 ```
 
-- 单例形式:主进程内一份,通过 `app.locals.stoaCtlGate` 或模块级 cache 持有
+- 单例形式:主进程内一份,模块级 cache(`cachedGate`)。`setStoaCtlGate(null)` 暴露给测试 reset
 - 状态变更通过 `enabledChanged` 事件广播给 4 个联动点的订阅者
-- `setEnabled(false)` 内部会触发 `unregisterShim` + `unregisterPath` 清理钩子(由调用方在初始化时注入)
+- `setEnabled(false)` 内部不主动清理 —— 清理由 main 监听 `enabledChanged` 触发,保持模块无副作用
 
 ### 数据流
 
@@ -75,10 +77,10 @@ export function createStoaCtlGate(initialEnabled: boolean): StoaCtlGate
 
 | 联动点 | 关闭时行为 | 文件 |
 |--------|------------|------|
-| per-session shim | 不创建;若 `<userData>/bin/stoa-ctl{,.cmd}` 存在则 `unlink` | `src/main/index.ts:893` |
-| system shim + PATH | 不注册;撤销 `~/.stoa/bin` 的 PowerShell User PATH 与 shell rc 注入 | `src/main/index.ts:900` + `stoa-ctl-shim.ts:registerPath` |
-| 子会话 env | `buildSessionCommandEnv` 不输出 `STOA_CTL_COMMAND` 字段,子进程 `command -v stoa-ctl` 找不到 | `src/core/meta-session-command-env.ts:21` |
-| HTTP 路由 | 路由保留,handler 头一行 `if (!gate.isEnabled()) return 503 disabled envelope` | `src/main/index.ts` 控制平面 handler |
+| per-session shim | 不创建;若 `<userData>/bin/stoa-ctl{,.cmd}` 存在则 `unlink` | `src/main/index.ts:893` 调用点 + `src/core/stoa-ctl-shim.ts:unregisterStoaCtlShim` |
+| system shim + PATH | 不注册;撤销 `~/.stoa/bin` 的 PowerShell User PATH 段、shell rc 中的 `# stoa-ctl` 注入行 | `src/core/stoa-ctl-shim.ts:unregisterStoaCtlSystemShim` |
+| 子会话 env | `buildSessionCommandEnv` / `buildMetaSessionCommandEnv` 不输出 `STOA_CTL_COMMAND` / `STOA_CTL_SESSION_TOKEN`、不 prepend bin dir;`STOA_CTL_BASE_URL` 保留(诊断用) | `src/core/session-command-env.ts` + `src/core/meta-session-command-env.ts` |
+| HTTP 路由 | 路由保留,在 `/ctl` 鉴权**之前**加 disabled gate,返回 503 disabled envelope(无凭据也返回 503) | `src/core/session-control-server.ts` |
 
 ## 数据契约
 
@@ -110,11 +112,13 @@ export const DEFAULT_SETTINGS: AppSettings = {
 {
   "ok": false,
   "data": null,
-  "error": { "code": "disabled", "message": "stoa-ctl is disabled in settings" }
+  "error": { "code": "disabled", "message": "stoa-ctl is disabled in settings", "details": {} }
 }
 ```
 
 HTTP 状态码 `503`,`Content-Type: application/json`。`stoa-ctl` CLI 的 `mapFailureExitCode` 已有未识别 code → 7 的回退,所以现有 client 不会崩。
+
+`details` 字段与 `session-control-server.ts` 现有 envelope 形状一致(其他错误如 `invalid_secret` 也带 `details: {}`)。
 
 ## 错误处理与边界
 
@@ -124,10 +128,11 @@ HTTP 状态码 `503`,`Content-Type: application/json`。`stoa-ctl` CLI 的 `mapF
 | `unlink` shim 时文件不存在 | 静默忽略,不抛错 |
 | 撤销 PowerShell User PATH 失败 | `console.warn` 但不阻断其他清理 |
 | 撤销 shell rc 注入行失败 | 同上,设置 UI 显示"部分清理失败" |
-| 子进程已启动且带 `STOA_CTL_COMMAND`,运行中切换为关闭 | 不向运行中进程补发;新 session 不再注入;运行中 session 用旧 env 继续到自然退出 |
+| 子进程已启动且带 `STOA_CTL_COMMAND`,运行中切换为关闭 | 不向运行中进程补发;新 session 不再注入;运行中 session 用旧 env 继续到自然退出(toggle on/off 都不重启运行中 session) |
 | HTTP 客户端在关闭瞬间请求 | 收到 503,客户端可重试或降级 |
 | Windows UAC 触发 `registerPath` 失败 | 沿用现有 `console.warn` |
-| 设置 toggle 切换时主进程重启中 | state.json 持久化,下次启动读取;运行时通过 event 实时同步 |
+| 设置 toggle 切换时主进程重启中 | state.json 持久化,下次启动读取;运行时通过 `enabledChanged` 事件实时同步 |
+| toggle on 时已存在运行中 session | 运行中 session 不重 spawn;`command -v stoa-ctl` 在该 session 内仍然返回旧 PATH;新建 session 才看得到新 shim |
 
 ## 测试与质量门
 
