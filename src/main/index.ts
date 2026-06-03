@@ -15,7 +15,8 @@ import { buildSessionCommandEnv } from '@core/session-command-env'
 import { SessionBootstrapPromptService } from '@core/session-bootstrap-prompt-service'
 import { createSessionControlServer } from '@core/session-control-server'
 import { SessionVisibilityService } from '@core/session-visibility-service'
-import { ensureStoaCtlShim, ensureStoaCtlSystemShim } from '@core/stoa-ctl-shim'
+import { createStoaCtlGate } from '@core/stoa-ctl-feature'
+import { ensureStoaCtlShim, ensureStoaCtlSystemShim, unregisterStoaCtlShim, unregisterStoaCtlSystemShim } from '@core/stoa-ctl-shim'
 import { writePortFile as writeCtlPortFile, deletePortFile as deleteCtlPortFile, generateSecret } from '@core/stoa-ctl-port-file'
 import { openWorkspace } from '@core/workspace-launcher'
 import { resolveRuntimePaths as resolveProviderRuntimePaths } from '@core/provider-path-resolver'
@@ -63,6 +64,26 @@ let hookLeaseManager: ReturnType<typeof createHookLeaseManager> | null = null
 let sessionTitleController: SessionTitleController | null = null
 const e2eWorkspaceOpenRequests: OpenWorkspaceRequest[] = []
 let isQuittingAfterBridgeStop = false
+const stoaCtlGate = createStoaCtlGate(false)
+const unsubscribeStoaCtlGate = stoaCtlGate.on('enabledChanged', async (enabled) => {
+  const stoaCtlBinDir = join(app.getPath('userData'), 'bin')
+  if (!enabled) {
+    await unregisterStoaCtlShim(stoaCtlBinDir)
+    await unregisterStoaCtlSystemShim()
+  } else {
+    await ensureStoaCtlShim({
+      binDir: stoaCtlBinDir,
+      appRootPath: app.getAppPath(),
+      appExecutablePath: process.execPath,
+      isPackaged: app.isPackaged
+    })
+    void ensureStoaCtlSystemShim({
+      appRootPath: app.getAppPath(),
+      appExecutablePath: process.execPath,
+      isPackaged: app.isPackaged
+    })
+  }
+})
 const pendingE2EPickFolders: Array<string | null> = []
 const isE2EMode = process.env.VIBECODING_E2E === '1'
 
@@ -784,7 +805,8 @@ app.whenReady().then(async () => {
           })
         },
         ctlSecret,
-        sessionTokenRegistry
+        sessionTokenRegistry,
+        isCtlEnabled: () => stoaCtlGate.isEnabled()
       })
       app.use(sessionControlServer.app)
 
@@ -890,18 +912,27 @@ app.whenReady().then(async () => {
         rememberSessionDimensions(sessionId, initialDimensions)
       }
 
-      const stoaCtlShim = await ensureStoaCtlShim({
-        binDir: join(app.getPath('userData'), 'bin'),
-        appRootPath: app.getAppPath(),
-        appExecutablePath: process.execPath,
-        isPackaged: app.isPackaged
-      })
+      const stoaCtlBinDir = join(app.getPath('userData'), 'bin')
+      if (stoaCtlGate.isEnabled()) {
+        await ensureStoaCtlShim({
+          binDir: stoaCtlBinDir,
+          appRootPath: app.getAppPath(),
+          appExecutablePath: process.execPath,
+          isPackaged: app.isPackaged
+        })
+      } else {
+        await unregisterStoaCtlShim(stoaCtlBinDir)
+      }
 
-      void ensureStoaCtlSystemShim({
-        appRootPath: app.getAppPath(),
-        appExecutablePath: process.execPath,
-        isPackaged: app.isPackaged
-      })
+      if (stoaCtlGate.isEnabled()) {
+        void ensureStoaCtlSystemShim({
+          appRootPath: app.getAppPath(),
+          appExecutablePath: process.execPath,
+          isPackaged: app.isPackaged
+        })
+      } else {
+        void unregisterStoaCtlSystemShim()
+      }
 
       sessionInputRouter?.resetSession(sessionId)
       const launched = await launchTrackedSessionRuntime({
@@ -918,8 +949,8 @@ app.whenReady().then(async () => {
           sessionId,
           sessionToken: activeRuntimeController.getSessionToken(sessionId) ?? '',
           webhookPort,
-          stoaCtlBinDir: stoaCtlShim.binDir,
-          stoaCtlEnabled: false
+          stoaCtlBinDir,
+          stoaCtlEnabled: stoaCtlGate.isEnabled()
         }),
         launchToken,
         isLaunchTokenCurrent: (candidateLaunchToken) => isSessionLaunchTokenCurrent(sessionId, candidateLaunchToken),
@@ -1626,6 +1657,7 @@ app.whenReady().then(async () => {
 
 app.on('before-quit', async (event) => {
   if (isQuittingAfterBridgeStop) {
+    unsubscribeStoaCtlGate()
     return
   }
 
@@ -1634,6 +1666,7 @@ app.on('before-quit', async (event) => {
     await deleteCtlPortFile()
     await prepareForQuitAndInstall()
   } finally {
+    unsubscribeStoaCtlGate()
     app.quit()
   }
 })
