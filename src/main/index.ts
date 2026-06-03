@@ -39,6 +39,7 @@ import { registerFilesystemHandlers } from './sidebar-fs-handlers'
 import { registerGitHandlers } from './sidebar-git-handlers'
 import { DEFAULT_SETTINGS } from '@shared/project-session'
 import type {
+  AppSettings,
   CreateProjectRequest,
   CreateSessionRequest,
   OpenWorkspaceRequest,
@@ -486,6 +487,11 @@ app.whenReady().then(async () => {
     webhookPort: null,
     globalStatePath: e2eGlobalStatePath
   })
+  if (projectSessionManager) {
+    // 旧 state 缺 stoaCtlEnabled 字段时,运行时补 DEFAULT_SETTINGS.stoaCtlEnabled = false
+    const settings = projectSessionManager.getSettings()
+    stoaCtlGate.setEnabled(settings.stoaCtlEnabled === true)
+  }
   observationStore = new InMemoryObservationStore()
   observabilityService = new ObservabilityService(observationStore)
   evidenceStore = new SessionEvidenceStore()
@@ -1390,6 +1396,10 @@ app.whenReady().then(async () => {
 
   ipcMain.handle(IPC_CHANNELS.settingsSet, async (_event, key: string, value: unknown) => {
     await projectSessionManager?.setSetting(key, value)
+  })
+
+  projectSessionManager.on('settings:updated', (settings: AppSettings) => {
+    void stoaCtlGate.setEnabled(settings.stoaCtlEnabled === true)
   })
 
   ipcMain.handle(IPC_CHANNELS.titleGenerationFetchModels, async (_event, baseUrl: string, apiKey: string) => {
