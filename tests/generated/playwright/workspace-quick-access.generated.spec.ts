@@ -15,7 +15,7 @@ export const meta = defineGeneratedTestMeta({
   id: 'journey.workspace.quick-access.actions',
   behaviorIds: ['workspace.quickAccess'],
   entities: ['project', 'session', 'workspace-path', 'ide-settings'],
-  statesCovered: ['workspace.open.ide', 'workspace.open.file-manager'],
+  statesCovered: ['workspace.open.ide', 'workspace.open.file-manager', 'sidebar.open'],
   interruptionsCovered: [],
   observationLayers: ['ui', 'renderer-store', 'main-debug-state'],
   riskBudget: 'high',
@@ -44,6 +44,8 @@ test('journey.workspace.quick-access.actions', async () => {
     await expect(app.page.getByTestId('workspace.quick-actions')).toBeVisible()
     await app.page.getByTestId('workspace.open-ide').click()
     await app.page.getByTestId('workspace.open-file-manager').click()
+    await app.page.getByTestId('workspace.sidebar-toggle').click()
+    await expect(app.page.getByTestId('right-sidebar')).toBeVisible()
 
     await expect.poll(async () => {
       return await getWorkspaceOpenRequests(app.electronApp)

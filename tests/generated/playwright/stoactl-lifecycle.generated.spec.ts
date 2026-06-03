@@ -38,6 +38,8 @@ test('journey.stoactl.disableCleanup', async () => {
     expect(webhookPort).toBeTruthy()
 
     const settingsToggle = app.page.getByTestId('settings-stoactl-toggle')
+    await app.page.locator('[data-activity-item="settings"]').click()
+    await expect(app.page.locator('[data-surface="settings"]')).toBeVisible()
     await app.page.locator('[data-settings-tab="advanced"]').click()
     await expect(settingsToggle).toBeVisible()
     await settingsToggle.click()

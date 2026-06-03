@@ -105,6 +105,7 @@ describe('playwright skeleton generator', () => {
     expect(generated).toContain("riskBudget: 'high'")
     expect(generated).toContain("test('journey.stoactl.disableCleanup'")
     expect(generated).toContain("app.page.getByTestId('settings-stoactl-toggle')")
+    expect(generated).toContain("await app.page.locator('[data-activity-item=\"settings\"]').click()")
     expect(generated).toContain("app.page.locator('[data-settings-tab=\"advanced\"]')")
     expect(generated).toContain("expect(healthResponse.status).toBe(503)")
     expect(generated).toContain("expect(body.error.code).toBe('disabled')")
