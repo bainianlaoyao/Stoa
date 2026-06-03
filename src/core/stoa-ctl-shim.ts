@@ -1,4 +1,5 @@
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, writeFile, unlink } from 'node:fs/promises'
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { homedir } from 'node:os'
 import { execFile } from 'node:child_process'
@@ -178,4 +179,81 @@ function registerPosixPath(binDir: string): Promise<void> {
     }
     resolve()
   })
+}
+
+export async function unregisterStoaCtlShim(binDir: string): Promise<void> {
+  const commandPath = process.platform === 'win32'
+    ? join(binDir, 'stoa-ctl.cmd')
+    : join(binDir, 'stoa-ctl')
+  const posixShim = join(binDir, 'stoa-ctl')
+  const targets = process.platform === 'win32'
+    ? [commandPath, posixShim]
+    : [commandPath]
+  for (const target of targets) {
+    try {
+      await unlink(target)
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+      if (code !== 'ENOENT') {
+        console.warn(`Failed to remove stoa-ctl shim at ${target}:`, (error as Error).message)
+      }
+    }
+  }
+}
+
+export async function unregisterStoaCtlSystemShim(): Promise<void> {
+  const binDir = join(homedir(), '.stoa', 'bin')
+  await unregisterStoaCtlShim(binDir)
+  await unregisterPath(binDir)
+}
+
+async function unregisterWindowsPath(binDir: string): Promise<void> {
+  return new Promise((resolve) => {
+    const normalized = binDir.replace(/\//g, '\\').toLowerCase()
+    const script = `
+$binDir = '${binDir.replace(/'/g, "''")}'
+$normalized = '${normalized.replace(/'/g, "''")}'
+$userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+if ($userPath) {
+  $parts = $userPath -split ';' | Where-Object {
+    $part = $_
+    $norm = $part -replace '/', '\\'
+    $norm -ne '' -and $norm.ToLower() -ne $normalized
+  }
+  $newPath = $parts -join ';'
+  [Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
+}
+`.trim()
+    execFile('powershell.exe', ['-NoProfile', '-Command', script], (error) => {
+      if (error) {
+        console.warn('Failed to unregister stoa-ctl from user PATH:', error.message)
+      }
+      resolve()
+    })
+  })
+}
+
+export async function unregisterPosixPath(binDir: string): Promise<void> {
+  const rcFiles = ['.bashrc', '.zshrc', '.profile']
+  for (const rcFile of rcFiles) {
+    const rcPath = join(homedir(), rcFile)
+    if (!existsSync(rcPath)) continue
+    try {
+      const content = readFileSync(rcPath, 'utf8')
+      const lines = content.split('\n')
+      const filtered = lines.filter((line) => !line.includes(binDir) || !line.includes('# stoa-ctl'))
+      if (filtered.length !== lines.length) {
+        writeFileSync(rcPath, filtered.join('\n'), 'utf8')
+      }
+    } catch (error) {
+      console.warn(`Failed to unregister stoa-ctl from ${rcFile}:`, (error as Error).message)
+    }
+  }
+}
+
+async function unregisterPath(binDir: string): Promise<void> {
+  if (process.platform === 'win32') {
+    return unregisterWindowsPath(binDir)
+  }
+  return unregisterPosixPath(binDir)
 }
