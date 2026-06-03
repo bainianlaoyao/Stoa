@@ -9,7 +9,8 @@ describe('session-command-env', () => {
       sessionToken: 'tok_deadbeef',
       webhookPort: 43127,
       stoaCtlBinDir: 'D:/bin',
-      basePath: `C:/System32${delimiter}C:/Tools`
+      basePath: `C:/System32${delimiter}C:/Tools`,
+      stoaCtlEnabled: true
     })
 
     expect(env.STOA_SESSION_ID).toBe('session-abc')
@@ -24,7 +25,8 @@ describe('session-command-env', () => {
       sessionId: 's1',
       sessionToken: 'tok_1',
       webhookPort: 9999,
-      stoaCtlBinDir: '/usr/local/bin'
+      stoaCtlBinDir: '/usr/local/bin',
+      stoaCtlEnabled: true
     })
 
     expect(env).not.toHaveProperty('STOA_META_SESSION')
@@ -36,7 +38,8 @@ describe('session-command-env', () => {
       sessionId: 's2',
       sessionToken: 'tok_2',
       webhookPort: 8080,
-      stoaCtlBinDir: '/bin'
+      stoaCtlBinDir: '/bin',
+      stoaCtlEnabled: true
     })
 
     expect(env.PATH).toContain('/bin')
@@ -49,7 +52,8 @@ describe('session-command-env', () => {
       sessionToken: 'tok_3',
       webhookPort: 8080,
       stoaCtlBinDir: '/stoa-bin',
-      basePath: ''
+      basePath: '',
+      stoaCtlEnabled: true
     })
 
     expect(env.PATH).toBe('/stoa-bin')
@@ -61,9 +65,35 @@ describe('session-command-env', () => {
       sessionToken: 'tok_4',
       webhookPort: 8080,
       stoaCtlBinDir: '/stoa-bin',
-      basePath: null
+      basePath: null,
+      stoaCtlEnabled: true
     })
 
     expect(env.PATH).toContain('/stoa-bin')
+  })
+
+  test('disabled omits STOA_CTL_COMMAND and does not prepend bin dir', () => {
+    const env = buildSessionCommandEnv({
+      sessionId: 's-disabled',
+      sessionToken: 'tok_disabled',
+      webhookPort: 12345,
+      stoaCtlBinDir: '/tmp/bin',
+      stoaCtlEnabled: false
+    })
+    expect(env.STOA_CTL_COMMAND).toBeUndefined()
+    expect(env.STOA_CTL_SESSION_TOKEN).toBeUndefined()
+    expect(env.PATH.startsWith('/tmp/bin')).toBe(false)
+  })
+
+  test('disabled still emits STOA_CTL_BASE_URL and STOA_SESSION_ID for diagnostics', () => {
+    const env = buildSessionCommandEnv({
+      sessionId: 's-diag',
+      sessionToken: 'tok_diag',
+      webhookPort: 12345,
+      stoaCtlBinDir: '/tmp/bin',
+      stoaCtlEnabled: false
+    })
+    expect(env.STOA_CTL_BASE_URL).toBe('http://127.0.0.1:12345')
+    expect(env.STOA_SESSION_ID).toBe('s-diag')
   })
 })
