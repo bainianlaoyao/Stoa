@@ -7,6 +7,7 @@ import { SessionSupervisor, type CallerIdentity, type CreateChildSessionRequest 
 export interface SessionControlServerDeps extends SessionSupervisorDeps {
   ctlSecret?: string
   sessionTokenRegistry: Map<string, string>
+  isCtlEnabled?: () => boolean
 }
 
 function jsonEnvelope(data: unknown, error: unknown = null) {
@@ -66,8 +67,21 @@ export function createSessionControlServer(deps: SessionControlServerDeps): {
   stop: () => Promise<void>
 } {
   const supervisor = new SessionSupervisor(deps)
+  const isCtlEnabled = deps.isCtlEnabled ?? (() => true)
   const app = express()
   app.use(express.json())
+
+  app.use('/ctl', (req, res, next) => {
+    if (!isCtlEnabled()) {
+      res.status(503).json(jsonEnvelope(null, {
+        code: 'disabled',
+        message: 'stoa-ctl is disabled in settings',
+        details: {}
+      }))
+      return
+    }
+    next()
+  })
 
   app.use('/ctl', (req, res, next) => {
     const caller = resolveCaller({
