@@ -133,6 +133,7 @@ async function resolveInferenceProviderPath(
         executablePath: ''
       },
       claudeDangerouslySkipPermissions: false,
+      stoaCtlEnabled: false,
       theme: 'system'
     }, {
       detectShell: options.detectShell ?? (async () => null),

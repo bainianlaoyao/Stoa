@@ -918,7 +918,8 @@ app.whenReady().then(async () => {
           sessionId,
           sessionToken: activeRuntimeController.getSessionToken(sessionId) ?? '',
           webhookPort,
-          stoaCtlBinDir: stoaCtlShim.binDir
+          stoaCtlBinDir: stoaCtlShim.binDir,
+          stoaCtlEnabled: false
         }),
         launchToken,
         isLaunchTokenCurrent: (candidateLaunchToken) => isSessionLaunchTokenCurrent(sessionId, candidateLaunchToken),
