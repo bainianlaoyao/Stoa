@@ -712,6 +712,15 @@ const stoaCtlGate = createStoaCtlGate(false)
 
 - [ ] **Step 3: 修改 ensureStoaCtlShim 调用点 + 提早捕获 binDir**
 
+**硬性前提**(执行前必须完成):
+
+```bash
+# 列出 stoaCtlShim 变量在 main/index.ts 后续的所有访问点
+grep -n "stoaCtlShim" src/main/index.ts
+```
+
+若 grep 返回除 `const stoaCtlShim = await ensureStoaCtlShim(...)` 之外的其他行,记录每一行的访问字段(`.binDir`、`.commandPath` 等),并在 step 6 之前替换为字符串变量或重新求值。
+
 定位到 `src/main/index.ts:893`,改为(提早求 `stoaCtlBinDir` 避免后续 `.binDir` 在 disabled 路径 NPE):
 
 ```ts
@@ -728,7 +737,7 @@ if (stoaCtlGate.isEnabled()) {
 }
 ```
 
-(原 `const stoaCtlShim = await ...` 中 `stoaCtlShim` 后续若被引用,改读 `stoaCtlBinDir` 字符串即可;grep `stoaCtlShim` 确认。)
+(原 `const stoaCtlShim = await ...` 中 `stoaCtlShim` 后续若被引用,改读 `stoaCtlBinDir` 字符串即可。)
 
 - [ ] **Step 4: 修改 ensureStoaCtlSystemShim 调用点**
 
@@ -821,25 +830,29 @@ git commit -m "feat(main): wire stoaCtlGate through shim / HTTP / env injection"
 
 `src/main/index.ts:1356` 已经有 `return projectSessionManager?.getSettings() ?? null`,确认 `projectSessionManager.getSettings()` 返回 `AppSettings`。`src/main/index.ts:849` 也直接用 `projectSessionManager?.getSettings() ?? DEFAULT_SETTINGS`。
 
-- [ ] **Step 2: 在 settings 加载完成后 setEnabled**
+- [ ] **Step 2: 在 settings 加载完成后 setEnabled(同时处理 V2 旧 state 缺字段的情况)**
 
-找一个早于 `createSessionControlServer` 调用(行 728 之前)的初始化点,追加(可紧接 `if (projectSessionManager) {` 之后):
+找一个早于 `createSessionControlServer` 调用(行 728 之前)的初始化点,追加:
 
 ```ts
 if (projectSessionManager) {
-  stoaCtlGate.setEnabled(projectSessionManager.getSettings().stoaCtlEnabled)
+  // 旧 state 缺 stoaCtlEnabled 字段时,运行时补 DEFAULT_SETTINGS.stoaCtlEnabled = false
+  const settings = projectSessionManager.getSettings()
+  stoaCtlGate.setEnabled(settings.stoaCtlEnabled === true)
 }
 ```
+
+(`setStoaCtlEnabled` 行为:缺字段 `undefined` → 严格不等于 `true` → 默认 false。这与 spec "升级用户默认 false,无兼容迁移" 一致。**不需要在 getSettings() 中加运行时 fill-in**——保持 settings 对象的 shape 忠于磁盘,只在 gate 读时做 default。)
 
 后续若 main 已有 settings 变更 bus(grep `settings:updated\|onSettingsChanged`),在 listener 内同步 `stoaCtlGate.setEnabled(newSettings.stoaCtlEnabled)`。否则新增最小 listener:
 
 ```ts
 projectSessionManager.on('settings:updated', (settings: AppSettings) => {
-  void stoaCtlGate.setEnabled(settings.stoaCtlEnabled)
+  void stoaCtlGate.setEnabled(settings.stoaCtlEnabled === true)
 })
 ```
 
-注: `settings:updated` 事件名按 `ProjectSessionManager` 实际 emit 字符串调整;如项目内未实现该事件,则在 `ProjectSessionManager.updateSettings` 末尾追加 emit。
+注: `settings:updated` 事件由 Task 7.5 在 `ProjectSessionManager.setSetting` 末尾 emit。**前提**:Task 7.5 必须在 Task 7 之前完成(调整 task 顺序,或把 7.5 重排为 Task 6.5)。
 
 - [ ] **Step 3: 跑 typecheck + 单测**
 
@@ -870,6 +883,25 @@ git commit -m "feat(main): sync stoaCtlGate with persisted settings at boot"
 Grep `extends EventEmitter` / `import { EventEmitter }` 确认 `ProjectSessionManager` 继承方式。若未继承,在类上加 `extends EventEmitter`,并在构造函数 `super()`。
 
 - [ ] **Step 2: setSetting 末尾 emit**
+
+**硬性前提**(执行前必须完成):
+
+```bash
+# 1. 确认 ProjectSessionManager 继承方式
+grep -n "extends EventEmitter\|implements.*Emitter\|new EventEmitter" src/core/project-session-manager.ts
+
+# 2. 确认 setSetting 调用方都是 IPC handler(避免 emit 在非 IPC 路径重复触发)
+grep -rn "\.setSetting(" src/
+
+# 3. 确认已存在的 'settings:updated' 字符串,避免命名冲突
+grep -rn "'settings:updated'\|settings:updated" src/
+```
+
+若 grep 1 未命中 EventEmitter,在类声明加 `extends EventEmitter` + 构造函数 `super()`。
+
+若 grep 2 命中非 IPC 路径,需评估是否也加 emit(避免重复)或跳过(在那些路径手动 emit)。
+
+若 grep 3 命中已有事件名,改名避免冲突(本计划用 `'settings:updated'`)。
 
 在 `src/core/project-session-manager.ts:607` `setSetting` 方法末尾(`await this.persist()` 之后)追加:
 
@@ -979,34 +1011,41 @@ git commit -m "feat(renderer): expose stoaCtlEnabled in settings store"
 
 `src/renderer/components/settings/AdvancedSettings.test.ts`(新建,参照 `GeneralSettings.test.ts` 风格,**禁止 as any**):
 
+先 grep 真实 bridge 名:`grep -rn "interface.*RendererApi\|interface StoaBridge\|window\.stoa\|window\.vibecoding" src/preload src/renderer/global.d.ts 2>/dev/null`,确认后再写 mock。预期真实名是 `window.stoa`(或项目自定义的同义名),需要 mock 全部 store 实际调用的方法。
+
 ```ts
 import { mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import AdvancedSettings from './AdvancedSettings.vue'
+// 根据实际 grep 结果调整导入路径
+// import type { StoaBridge } from '@preload/api-types'
 
-interface StoaBridge {
-  getSettings: () => Promise<unknown>
-  setSetting: (key: string, value: unknown) => Promise<void>
-}
-
-const setSettingMock = vi.fn<Parameters<StoaBridge['setSetting']>, ReturnType<StoaBridge['setSetting']>>()
+const setSettingMock = vi.fn<(key: string, value: unknown) => Promise<void>>()
 setSettingMock.mockResolvedValue(undefined)
+
+const getSettingsMock = vi.fn<() => Promise<unknown>>()
+getSettingsMock.mockResolvedValue(null)
 
 beforeEach(() => {
   setActivePinia(createPinia())
   setSettingMock.mockClear()
+  getSettingsMock.mockClear()
   vi.stubGlobal('confirm', vi.fn(() => true))
 
-  const bridge: StoaBridge = {
-    getSettings: vi.fn(async () => null),
-    setSetting: setSettingMock
-  }
-  vi.stubGlobal('window', { stoa: bridge })
+  // 用 vi.stubGlobal 注入完整的 window.stoa 形状
+  // (如 grep 显示实际方法不止这些,按真实 preload 接口补全)
+  vi.stubGlobal('window', {
+    stoa: {
+      getSettings: getSettingsMock,
+      setSetting: setSettingMock
+      // 后续按真实 preload 暴露的方法补全
+    }
+  })
 })
 ```
 
-> 注: `window.stoa` 已在全局类型声明中(`src/renderer/global.d.ts` 或类似),测试中只需保证运行时存在。`vi.stubGlobal` 是 Vitest 提供的标准做法,符合 CLAUDE.md 禁止 `as any` 的约束。
+> 注: `vi.stubGlobal` 是 Vitest 提供的标准做法,符合 CLAUDE.md 禁止 `as any` 的约束。**测试前先 grep 真实 bridge 接口,补全 mock 字段,避免绿灯误报。**
 
 - [ ] **Step 2: 跑测试,验证失败**
 
@@ -1165,7 +1204,7 @@ import { defineBehavior } from '../contracts/testing-contracts'
 
 export const stoactlDisabledAtStartup = defineBehavior({
   id: 'stoactl.disabledAtStartup',
-  actor: 'user',
+  actor: 'system',
   goal: 'fresh install leaves stoa-ctl invisible (no shim, no PATH, /ctl/* returns 503)',
   entities: ['settings', 'shim', 'path', 'http-control-plane'],
   usageModes: ['cold_start'],
