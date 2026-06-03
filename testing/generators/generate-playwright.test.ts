@@ -5,6 +5,7 @@ import { archiveTopology } from '../topology/archive.topology'
 import {
   generateClaudeLifecyclePlaywrightSkeleton,
   generatePlaywrightSkeleton,
+  generateStoactlLifecyclePlaywrightSkeleton,
   generateWorkspaceQuickAccessPlaywrightSkeleton
 } from './generate-playwright'
 
@@ -30,7 +31,10 @@ describe('playwright skeleton generator', () => {
     expect(generated).toContain('const session = await createSession(app.page, projectRow')
     expect(generated).toContain("app.page.getByRole('button', { name: `Archive ${session.title}` }).click()")
     expect(generated).not.toContain("app.page.getByRole('button', { name: 'Archive' }).click()")
-    expect(generated).not.toContain("app.page.locator('[data-activity-item=\"archive\"]').click()")
+    expect(generated).toContain("app.page.locator('[data-activity-item=\"archive\"]').click()")
+    expect(generated.indexOf("app.page.getByRole('button', { name: `Archive ${session.title}` }).click()")).toBeLessThan(
+      generated.indexOf("app.page.locator('[data-activity-item=\"archive\"]').click()")
+    )
     expect(generated).toContain("app.page.getByTestId('surface.archive')")
     expect(generated).toContain("app.page.getByTestId('archive.session.restore')")
     expect(generated).toContain('await expect(root).toBeVisible()')
@@ -77,13 +81,36 @@ describe('playwright skeleton generator', () => {
     expect(generated).toContain('AUTO-GENERATED FILE. DO NOT EDIT.')
     expect(generated).toContain("id: 'journey.workspace.quick-access.actions'")
     expect(generated).toContain("behaviorIds: ['workspace.quickAccess']")
-    expect(generated).toContain("statesCovered: ['workspace.open.ide', 'workspace.open.file-manager']")
+    expect(generated).toContain("statesCovered: ['workspace.open.ide', 'workspace.open.file-manager', 'sidebar.open']")
     expect(generated).toContain('clearWorkspaceOpenRequests')
     expect(generated).toContain('getWorkspaceOpenRequests')
     expect(generated).toContain("app.page.getByTestId('workspace.quick-actions')")
     expect(generated).toContain("app.page.getByTestId('workspace.open-ide').click()")
     expect(generated).toContain("app.page.getByTestId('workspace.open-file-manager').click()")
+    expect(generated).toContain("app.page.getByTestId('workspace.sidebar-toggle').click()")
+    expect(generated).toContain("app.page.getByTestId('right-sidebar')")
     expect(generated).toContain("{ sessionId, target: 'ide' }")
     expect(generated).toContain("{ sessionId, target: 'file-manager' }")
+  })
+
+  it('generates a deterministic stoactl lifecycle skeleton', () => {
+    const generated = generateStoactlLifecyclePlaywrightSkeleton()
+
+    expect(generated).toContain('AUTO-GENERATED FILE. DO NOT EDIT.')
+    expect(generated).toContain("id: 'journey.stoactl.disableCleanup'")
+    expect(generated).toContain("'stoactl.disableCleanup'")
+    expect(generated).toContain("'stoactl.envStrippedWhenDisabled'")
+    expect(generated).toContain("statesCovered: ['shim.absent', 'path.binDirUnregistered', 'http.ctlReturns503', 'env.STOA_CTL_COMMAND.absent']")
+    expect(generated).toContain("observationLayers: ['main-debug-state']")
+    expect(generated).toContain("riskBudget: 'high'")
+    expect(generated).toContain("test('journey.stoactl.disableCleanup'")
+    expect(generated).toContain("app.page.getByTestId('settings-stoactl-toggle')")
+    expect(generated).toContain("await app.page.locator('[data-activity-item=\"settings\"]').click()")
+    expect(generated).toContain("app.page.locator('[data-settings-tab=\"advanced\"]')")
+    expect(generated).toContain("expect(healthResponse.status).toBe(503)")
+    expect(generated).toContain("expect(body.error.code).toBe('disabled')")
+    expect(generated).toContain("const projectRow = await createProject(app,")
+    expect(generated).toContain('await app.close()')
+    expect(generated).toContain('await cleanupStateDir(stateDir)')
   })
 })

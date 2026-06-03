@@ -1,3 +1,4 @@
+import { EventEmitter } from 'node:events'
 import { randomUUID } from 'node:crypto'
 import type {
   AppSettings,
@@ -215,6 +216,9 @@ function normalizeAppSettings(settings?: Partial<AppSettings>): AppSettings {
     claudeDangerouslySkipPermissions: typeof settings.claudeDangerouslySkipPermissions === 'boolean'
       ? settings.claudeDangerouslySkipPermissions
       : defaults.claudeDangerouslySkipPermissions,
+    stoaCtlEnabled: typeof settings.stoaCtlEnabled === 'boolean'
+      ? settings.stoaCtlEnabled
+      : defaults.stoaCtlEnabled,
     locale: typeof settings.locale === 'string' ? settings.locale : defaults.locale,
     theme: settings.theme === 'light' || settings.theme === 'dark' || settings.theme === 'system'
       ? settings.theme
@@ -266,15 +270,18 @@ function resolveBootstrapActiveState(
   }
 }
 
-export class ProjectSessionManager {
+export class ProjectSessionManager extends EventEmitter {
   private state: BootstrapState
   private readonly globalStatePath?: string
   private settings: AppSettings
   private readonly persistDisabled: boolean
   private persistChain: Promise<void> = Promise.resolve()
   private hasPersistedProjects = false
+  private persistFailureCount = 0
+  private lastPersistError: string | null = null
 
   private constructor(initialState: BootstrapState, globalStatePath?: string, persistedSettings?: AppSettings, persistDisabled = false) {
+    super()
     this.state = structuredCloneState(initialState)
     this.globalStatePath = globalStatePath
     this.persistDisabled = persistDisabled
@@ -332,6 +339,10 @@ export class ProjectSessionManager {
 
   snapshot(): BootstrapState {
     return structuredCloneState(this.state)
+  }
+
+  async flush(): Promise<void> {
+    await this.persistChain
   }
 
   buildBootstrapRecoveryPlan() {
@@ -624,6 +635,7 @@ export class ProjectSessionManager {
       this.settings.theme = value
     }
     await this.persist()
+    this.emit('settings:updated', this.getSettings())
   }
 
   async updateSessionTitle(
@@ -733,7 +745,11 @@ export class ProjectSessionManager {
     const runPersist = async () => {
       try {
         await this.doPersist()
+        this.persistFailureCount = 0
+        this.lastPersistError = null
       } catch (error) {
+        this.persistFailureCount += 1
+        this.lastPersistError = error instanceof Error ? error.message : String(error)
         console.error('[state-persist] Failed to write state to disk', error)
         throw error
       }
@@ -742,6 +758,10 @@ export class ProjectSessionManager {
     const next = this.persistChain.then(runPersist, runPersist)
     this.persistChain = next.catch(() => undefined)
     await next
+  }
+
+  getPersistHealth(): { failureCount: number; lastError: string | null } {
+    return { failureCount: this.persistFailureCount, lastError: this.lastPersistError }
   }
 
   private async doPersist(): Promise<void> {

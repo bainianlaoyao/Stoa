@@ -5,6 +5,7 @@ import * as stateStore from './state-store'
 import { readProjectSessions } from './state-store'
 import { ProjectSessionManager } from './project-session-manager'
 import { DEFAULT_SETTINGS } from '@shared/project-session'
+import type { AppSettings } from '@shared/project-session'
 import { createTestTempDir } from '../../testing/test-temp'
 
 const tempDirs: string[] = []
@@ -173,6 +174,18 @@ describe('ProjectSessionManager', () => {
       baseUrl: 'https://example.test/v1',
       model: 'gpt-5-mini'
     })
+  })
+
+  test('setSetting emits settings:updated with the new settings', async () => {
+    const manager = ProjectSessionManager.createForTest()
+    const listener = vi.fn()
+    manager.on('settings:updated', listener)
+
+    await manager.setSetting('locale', 'ja-JP')
+
+    expect(listener).toHaveBeenCalledTimes(1)
+    const arg = listener.mock.calls[0]?.[0] as AppSettings
+    expect(arg.locale).toBe('ja-JP')
   })
 
   test('rejects startup when persisted global state is corrupted', async () => {

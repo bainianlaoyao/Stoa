@@ -198,6 +198,7 @@ export interface AppSettings {
   titleGeneration: TitleGenerationSettings
   workspaceIde: WorkspaceIdeSettings
   claudeDangerouslySkipPermissions: boolean
+  stoaCtlEnabled: boolean
   locale: string
   theme: 'light' | 'dark' | 'system'
 }
@@ -241,6 +242,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     executablePath: ''
   },
   claudeDangerouslySkipPermissions: false,
+  stoaCtlEnabled: false,
   locale: 'en',
   theme: 'system'
 }

@@ -658,4 +658,33 @@ describe('SessionControlServer', () => {
       expect(res.statusCode).toBe(400)
     })
   })
+
+  describe('stoa-ctl disabled gate', () => {
+    test('/ctl/health returns 503 disabled envelope when isCtlEnabled is false', async () => {
+      const { port } = await startServer(makeDeps({ isCtlEnabled: () => false }))
+      const res = await get(port, '/ctl/health', { 'x-stoa-secret': 'test-secret-1234' })
+      expect(res.statusCode).toBe(503)
+      const body = JSON.parse(res.body)
+      expect(body.ok).toBe(false)
+      expect(body.error.code).toBe('disabled')
+      expect(body.error.message).toBe('stoa-ctl is disabled in settings')
+    })
+
+    test('/ctl/health returns 503 disabled envelope even without credentials when gate is off', async () => {
+      const { port } = await startServer(makeDeps({ isCtlEnabled: () => false }))
+      const res = await get(port, '/ctl/health')
+      expect(res.statusCode).toBe(503)
+      const body = JSON.parse(res.body)
+      expect(body.ok).toBe(false)
+      expect(body.error.code).toBe('disabled')
+    })
+
+    test('/ctl/session/list returns 503 disabled envelope when isCtlEnabled is false', async () => {
+      const { port } = await startServer(makeDeps({ isCtlEnabled: () => false }))
+      const res = await get(port, '/ctl/session/list', { 'x-stoa-secret': 'test-secret-1234' })
+      expect(res.statusCode).toBe(503)
+      const body = JSON.parse(res.body)
+      expect(body.error.code).toBe('disabled')
+    })
+  })
 })

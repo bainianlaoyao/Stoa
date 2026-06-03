@@ -4,6 +4,7 @@ import { sessionRestoreBehavior } from '../behavior/session.behavior'
 import {
   generateClaudeLifecyclePlaywrightSkeleton,
   generatePlaywrightSkeleton,
+  generateStoactlLifecyclePlaywrightSkeleton,
   generateWorkspaceQuickAccessPlaywrightSkeleton
 } from './generate-playwright'
 import { sessionRestoreJourney } from '../journeys/session-restore.journey'
@@ -26,6 +27,10 @@ await writeFile(claudeLifecycleOutputPath, generateClaudeLifecyclePlaywrightSkel
 const workspaceQuickAccessOutputPath = resolve('tests/generated/playwright/workspace-quick-access.generated.spec.ts')
 await mkdir(dirname(workspaceQuickAccessOutputPath), { recursive: true })
 await writeFile(workspaceQuickAccessOutputPath, generateWorkspaceQuickAccessPlaywrightSkeleton(), 'utf8')
+
+const stoactlLifecycleOutputPath = resolve('tests/generated/playwright/stoactl-lifecycle.generated.spec.ts')
+await mkdir(dirname(stoactlLifecycleOutputPath), { recursive: true })
+await writeFile(stoactlLifecycleOutputPath, generateStoactlLifecyclePlaywrightSkeleton(), 'utf8')
 
 const metaSessionSurfaceOutputPath = resolve('tests/generated/playwright/meta-session-surface-session-flow.generated.spec.ts')
 await rm(metaSessionSurfaceOutputPath, { force: true })

@@ -101,6 +101,7 @@ describe('SessionTitleController', () => {
           titleGeneration: titleSettings,
           workspaceIde: { id: 'vscode', executablePath: '' },
           claudeDangerouslySkipPermissions: false,
+          stoaCtlEnabled: false,
           locale: 'en',
           theme: 'system'
         }),
@@ -164,6 +165,7 @@ describe('SessionTitleController', () => {
           titleGeneration: titleSettings,
           workspaceIde: { id: 'vscode', executablePath: '' },
           claudeDangerouslySkipPermissions: false,
+          stoaCtlEnabled: false,
           locale: 'en',
           theme: 'system'
         }),
@@ -203,6 +205,7 @@ describe('SessionTitleController', () => {
           titleGeneration: titleSettings,
           workspaceIde: { id: 'vscode', executablePath: '' },
           claudeDangerouslySkipPermissions: false,
+          stoaCtlEnabled: false,
           locale: 'en',
           theme: 'system'
         }),
@@ -245,6 +248,7 @@ describe('SessionTitleController', () => {
           titleGeneration: titleSettings,
           workspaceIde: { id: 'vscode', executablePath: '' },
           claudeDangerouslySkipPermissions: false,
+          stoaCtlEnabled: false,
           locale: 'en',
           theme: 'system'
         }),
@@ -300,6 +304,7 @@ describe('SessionTitleController', () => {
           titleGeneration: titleSettings,
           workspaceIde: { id: 'vscode', executablePath: '' },
           claudeDangerouslySkipPermissions: false,
+          stoaCtlEnabled: false,
           locale: 'en',
           theme: 'system'
         }),
@@ -350,6 +355,7 @@ describe('SessionTitleController', () => {
           titleGeneration: titleSettings,
           workspaceIde: { id: 'vscode', executablePath: '' },
           claudeDangerouslySkipPermissions: false,
+          stoaCtlEnabled: false,
           locale: 'en',
           theme: 'system'
         }),
@@ -399,6 +405,7 @@ describe('SessionTitleController', () => {
           titleGeneration: titleSettings,
           workspaceIde: { id: 'vscode', executablePath: '' },
           claudeDangerouslySkipPermissions: false,
+          stoaCtlEnabled: false,
           locale: 'en',
           theme: 'system'
         }),
@@ -443,6 +450,7 @@ describe('SessionTitleController', () => {
           titleGeneration: titleSettings,
           workspaceIde: { id: 'vscode', executablePath: '' },
           claudeDangerouslySkipPermissions: false,
+          stoaCtlEnabled: false,
           locale: 'en',
           theme: 'system'
         }),
@@ -485,6 +493,7 @@ describe('SessionTitleController', () => {
           titleGeneration: titleSettings,
           workspaceIde: { id: 'vscode', executablePath: '' },
           claudeDangerouslySkipPermissions: false,
+          stoaCtlEnabled: false,
           locale: 'en',
           theme: 'system'
         }),
@@ -537,6 +546,7 @@ describe('SessionTitleController', () => {
           titleGeneration: titleSettings,
           workspaceIde: { id: 'vscode', executablePath: '' },
           claudeDangerouslySkipPermissions: false,
+          stoaCtlEnabled: false,
           locale: 'en',
           theme: 'system'
         }),
@@ -577,6 +587,7 @@ describe('SessionTitleController', () => {
           titleGeneration: titleSettings,
           workspaceIde: { id: 'vscode', executablePath: '' },
           claudeDangerouslySkipPermissions: false,
+          stoaCtlEnabled: false,
           locale: 'en',
           theme: 'system'
         }),

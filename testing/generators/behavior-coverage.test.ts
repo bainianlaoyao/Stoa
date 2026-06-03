@@ -11,11 +11,20 @@ import {
   workspaceQuickAccessBehavior
 } from '../behavior/session.behavior'
 import { metaSessionReadFullContextAndGatePromptBehavior } from '../behavior/meta-session.behavior'
+import {
+  stoactlDisableCleanup,
+  stoactlEnvStrippedWhenDisabled,
+  stoactlHttp503WhenDisabled
+} from '../behavior/stoactl-lifecycle'
 import { defineGeneratedTestMeta } from '../contracts/testing-contracts'
 import {
   metaSessionReadFullContextAndGatePromptJourney
 } from '../journeys/meta-session.journey'
 import { sessionRestoreJourney } from '../journeys/session-restore.journey'
+import {
+  stoactlDisableCleanupJourney,
+  stoactlEnvStrippedJourney
+} from '../journeys/stoactl-lifecycle.journey'
 import { workspaceQuickAccessJourney } from '../journeys/workspace-quick-access.journey'
 import {
   sessionPresenceBlockedJourney,
@@ -83,7 +92,7 @@ describe('behavior coverage report', () => {
           id: 'journey.workspace.quick-access.actions',
           behaviorIds: ['workspace.quickAccess'],
           entities: ['project', 'session', 'workspace-path', 'ide-settings'],
-          statesCovered: ['workspace.open.ide', 'workspace.open.file-manager'],
+          statesCovered: ['workspace.open.ide', 'workspace.open.file-manager', 'sidebar.open'],
           interruptionsCovered: [],
           observationLayers: ['ui', 'renderer-store', 'main-debug-state'],
           riskBudget: 'high',
@@ -307,5 +316,59 @@ describe('behavior coverage report', () => {
     })
 
     expect(['Reachable', 'Verified', 'Hardened']).toContain(report.behaviors['session.presence.complete']?.maturity)
+  })
+
+  it('marks stoactl disableCleanup as Reachable when journey exists', () => {
+    const report = buildBehaviorCoverageReport({
+      behaviors: [stoactlDisableCleanup],
+      journeys: [stoactlDisableCleanupJourney],
+      generatedTests: [
+        defineGeneratedTestMeta({
+          id: 'journey.stoactl.disableCleanup',
+          behaviorIds: ['stoactl.disableCleanup', 'stoactl.envStrippedWhenDisabled'],
+          entities: ['settings', 'shim', 'path', 'http-control-plane', 'session-env'],
+          statesCovered: ['shim.absent', 'path.binDirUnregistered', 'http.ctlReturns503'],
+          interruptionsCovered: [],
+          observationLayers: ['main-debug-state'],
+          riskBudget: 'high',
+          regressionSources: ['stoa-ctl-feature-gate', 'session-control-server']
+        })
+      ]
+    })
+
+    expect(report.behaviors['stoactl.disableCleanup']?.maturity).toBe('Verified')
+    expect(report.behaviors['stoactl.disableCleanup']?.journeyIds).toEqual(['stoactl.disableCleanup'])
+  })
+
+  it('marks stoactl envStripped as Reachable when journey exists', () => {
+    const report = buildBehaviorCoverageReport({
+      behaviors: [stoactlEnvStrippedWhenDisabled],
+      journeys: [stoactlEnvStrippedJourney],
+      generatedTests: [
+        defineGeneratedTestMeta({
+          id: 'journey.stoactl.disableCleanup',
+          behaviorIds: ['stoactl.disableCleanup', 'stoactl.envStrippedWhenDisabled'],
+          entities: ['settings', 'shim', 'path', 'http-control-plane', 'session-env'],
+          statesCovered: ['env.STOA_CTL_COMMAND.absent', 'env.STOA_CTL_SESSION_TOKEN.absent', 'env.STOA_CTL_BASE_URL.present'],
+          interruptionsCovered: [],
+          observationLayers: ['main-debug-state'],
+          riskBudget: 'standard',
+          regressionSources: ['stoa-ctl-feature-gate', 'session-command-env']
+        })
+      ]
+    })
+
+    expect(report.behaviors['stoactl.envStrippedWhenDisabled']?.maturity).toBe('Verified')
+    expect(report.behaviors['stoactl.envStrippedWhenDisabled']?.journeyIds).toEqual(['stoactl.envStrippedWhenDisabled'])
+  })
+
+  it('marks stoactl http503 as Declared when no journey or test exists', () => {
+    const report = buildBehaviorCoverageReport({
+      behaviors: [stoactlHttp503WhenDisabled],
+      journeys: [],
+      generatedTests: []
+    })
+
+    expect(report.behaviors['stoactl.http503WhenDisabled']?.maturity).toBe('Declared')
   })
 })

@@ -7,6 +7,7 @@ import type { SettingsTab } from './SettingsTabBar.vue'
 import GeneralSettings from './GeneralSettings.vue'
 import TerminalSettings from './TerminalSettings.vue'
 import ProvidersSettings from './ProvidersSettings.vue'
+import AdvancedSettings from './AdvancedSettings.vue'
 import AboutSettings from './AboutSettings.vue'
 
 const { t } = useI18n()
@@ -15,6 +16,7 @@ const tabMeta = computed<Array<{ id: SettingsTab; label: string; summary: string
   { id: 'general', label: t('settings.tabs.general.label'), summary: t('settings.tabs.general.summary') },
   { id: 'terminal', label: t('settings.tabs.terminal.label'), summary: t('settings.tabs.terminal.summary') },
   { id: 'providers', label: t('settings.tabs.providers.label'), summary: t('settings.tabs.providers.summary') },
+  { id: 'advanced', label: t('settings.tabs.advanced.label'), summary: t('settings.tabs.advanced.summary') },
   { id: 'about', label: t('settings.tabs.about.label'), summary: t('settings.tabs.about.summary') }
 ])
 
@@ -24,6 +26,7 @@ const tabComponents: Record<SettingsTab, Component> = {
   general: GeneralSettings,
   terminal: TerminalSettings,
   providers: ProvidersSettings,
+  advanced: AdvancedSettings,
   about: AboutSettings
 }
 
@@ -76,6 +79,9 @@ function onTabSelect(tab: SettingsTab) {
             </TabPanel>
             <TabPanel class="h-full focus:outline-none">
               <ProvidersSettings />
+            </TabPanel>
+            <TabPanel class="h-full focus:outline-none">
+              <AdvancedSettings />
             </TabPanel>
             <TabPanel class="h-full focus:outline-none">
               <AboutSettings />

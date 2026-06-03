@@ -44,6 +44,7 @@ test('${journey.id}', async () => {
     })
 
     await app.page.getByRole('button', { name: \`Archive \${session.title}\` }).click()
+    await app.page.locator('[data-activity-item="archive"]').click()
 
     const root = app.page.getByTestId('${rootTestId}')
     const restoreButton = app.page.getByTestId('${restoreButtonTestId}')
@@ -252,6 +253,67 @@ test('journey.session.telemetry.claude-lifecycle', async () => {
 `
 }
 
+export function generateStoactlLifecyclePlaywrightSkeleton(): string {
+  return `// AUTO-GENERATED FILE. DO NOT EDIT.
+import { join } from 'node:path'
+import { expect, test } from '@playwright/test'
+import { defineGeneratedTestMeta } from '../../../testing/contracts/testing-contracts'
+import {
+  cleanupStateDir,
+  getMainE2EDebugState,
+  launchElectronApp
+} from '../../e2e-playwright/fixtures/electron-app'
+import { createProject, createSession } from '../../e2e-playwright/helpers/ui-actions'
+
+export const meta = defineGeneratedTestMeta({
+  id: 'journey.stoactl.disableCleanup',
+  behaviorIds: ['stoactl.disableCleanup', 'stoactl.envStrippedWhenDisabled'],
+  entities: ['settings', 'shim', 'path', 'http-control-plane', 'session-env'],
+  statesCovered: ['shim.absent', 'path.binDirUnregistered', 'http.ctlReturns503', 'env.STOA_CTL_COMMAND.absent'],
+  interruptionsCovered: [],
+  observationLayers: ['main-debug-state'],
+  riskBudget: 'high',
+  regressionSources: ['stoa-ctl-feature-gate', 'session-control-server']
+})
+
+test('journey.stoactl.disableCleanup', async () => {
+  const app = await launchElectronApp()
+
+  try {
+    const projectRow = await createProject(app, {
+      name: 'generated-stoactl-lifecycle-project',
+      path: join(app.stateDir, 'generated-stoactl-lifecycle-project')
+    })
+
+    await createSession(app.page, projectRow, {
+      type: 'shell'
+    })
+
+    const debugState = await getMainE2EDebugState(app.electronApp)
+    const webhookPort = debugState?.webhookPort
+    expect(webhookPort).toBeTruthy()
+
+    const settingsToggle = app.page.getByTestId('settings-stoactl-toggle')
+    await app.page.locator('[data-activity-item="settings"]').click()
+    await expect(app.page.locator('[data-surface="settings"]')).toBeVisible()
+    await app.page.locator('[data-settings-tab="advanced"]').click()
+    await expect(settingsToggle).toBeVisible()
+    await settingsToggle.click()
+
+    const healthResponse = await fetch(\`http://127.0.0.1:\${webhookPort}/ctl/health\`)
+    expect(healthResponse.status).toBe(503)
+    const body = await healthResponse.json()
+    expect(body.ok).toBe(false)
+    expect(body.error.code).toBe('disabled')
+  } finally {
+    const { stateDir } = app
+    await app.close()
+    await cleanupStateDir(stateDir)
+  }
+})
+`
+}
+
 export function generateWorkspaceQuickAccessPlaywrightSkeleton(): string {
   return `// AUTO-GENERATED FILE. DO NOT EDIT.
 import { join } from 'node:path'
@@ -270,7 +332,7 @@ export const meta = defineGeneratedTestMeta({
   id: 'journey.workspace.quick-access.actions',
   behaviorIds: ['workspace.quickAccess'],
   entities: ['project', 'session', 'workspace-path', 'ide-settings'],
-  statesCovered: ['workspace.open.ide', 'workspace.open.file-manager'],
+  statesCovered: ['workspace.open.ide', 'workspace.open.file-manager', 'sidebar.open'],
   interruptionsCovered: [],
   observationLayers: ['ui', 'renderer-store', 'main-debug-state'],
   riskBudget: 'high',
@@ -299,6 +361,8 @@ test('journey.workspace.quick-access.actions', async () => {
     await expect(app.page.getByTestId('workspace.quick-actions')).toBeVisible()
     await app.page.getByTestId('workspace.open-ide').click()
     await app.page.getByTestId('workspace.open-file-manager').click()
+    await app.page.getByTestId('workspace.sidebar-toggle').click()
+    await expect(app.page.getByTestId('right-sidebar')).toBeVisible()
 
     await expect.poll(async () => {
       return await getWorkspaceOpenRequests(app.electronApp)

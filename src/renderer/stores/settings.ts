@@ -24,6 +24,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const evolverInferenceProvider = ref<EvolverInferenceProvider>('claude-code')
   const evolverExecutionMode = ref<EvolverExecutionMode>('workspace-shell')
   const claudeDangerouslySkipPermissions = ref(false)
+  const stoaCtlEnabled = ref(false)
   const locale = ref<string>(i18n.global.locale.value as string)
   const theme = ref<'light' | 'dark' | 'system'>('system')
   const loaded = ref(false)
@@ -43,6 +44,7 @@ export const useSettingsStore = defineStore('settings', () => {
         evolverExecutionMode.value = settings.evolverExecutionMode
       }
       claudeDangerouslySkipPermissions.value = settings.claudeDangerouslySkipPermissions === true
+      stoaCtlEnabled.value = settings.stoaCtlEnabled === true
       if (settings.locale && SUPPORTED_LOCALES.includes(settings.locale as SupportedLocale)) {
         locale.value = settings.locale
       } else {
@@ -85,6 +87,8 @@ export const useSettingsStore = defineStore('settings', () => {
     } else if (key === 'theme' && (value === 'light' || value === 'dark' || value === 'system')) {
       theme.value = value
       applyTheme(value)
+    } else if (key === 'stoaCtlEnabled' && typeof value === 'boolean') {
+      stoaCtlEnabled.value = value
     }
   }
 
@@ -184,6 +188,7 @@ export const useSettingsStore = defineStore('settings', () => {
     evolverInferenceProvider,
     evolverExecutionMode,
     claudeDangerouslySkipPermissions,
+    stoaCtlEnabled,
     locale,
     theme,
     loaded,
