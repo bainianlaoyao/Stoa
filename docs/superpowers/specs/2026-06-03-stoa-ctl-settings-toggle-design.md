@@ -79,7 +79,7 @@ export function setStoaCtlGate(gate: StoaCtlGate | null): void  // 测试 reset
 |--------|------------|------|
 | per-session shim | 不创建;若 `<userData>/bin/stoa-ctl{,.cmd}` 存在则 `unlink` | `src/main/index.ts:893` 调用点 + `src/core/stoa-ctl-shim.ts:unregisterStoaCtlShim` |
 | system shim + PATH | 不注册;撤销 `~/.stoa/bin` 的 PowerShell User PATH 段、shell rc 中的 `# stoa-ctl` 注入行 | `src/core/stoa-ctl-shim.ts:unregisterStoaCtlSystemShim` |
-| 子会话 env | `buildSessionCommandEnv` / `buildMetaSessionCommandEnv` 不输出 `STOA_CTL_COMMAND` / `STOA_CTL_SESSION_TOKEN`、不 prepend bin dir;`STOA_CTL_BASE_URL` 保留(诊断用) | `src/core/session-command-env.ts` + `src/core/meta-session-command-env.ts` |
+| 子会话 env | `buildSessionCommandEnv` 不输出 `STOA_CTL_COMMAND` / `STOA_CTL_SESSION_TOKEN`、不 prepend bin dir;`STOA_CTL_BASE_URL` 保留(诊断用) | `src/core/session-command-env.ts` |
 | HTTP 路由 | 路由保留,在 `/ctl` 鉴权**之前**加 disabled gate,返回 503 disabled envelope(无凭据也返回 503) | `src/core/session-control-server.ts` |
 
 ## 数据契约

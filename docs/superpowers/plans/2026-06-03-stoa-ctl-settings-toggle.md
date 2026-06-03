@@ -35,8 +35,7 @@
 | `src/core/stoa-ctl-shim.test.ts` | unregister 路径单测 |
 | `src/core/session-command-env.ts` | `BuildSessionCommandEnvOptions` 加 `stoaCtlEnabled: boolean`,关闭时不输出 `STOA_CTL_COMMAND`、不 prepend bin dir |
 | `src/core/session-command-env.test.ts` | disabled 分支测试 |
-| `src/core/meta-session-command-env.ts` | 同上,保持两个 env builder 行为一致(对称修改) |
-| `src/core/meta-session-command-env.test.ts` | disabled 分支测试 |
+| `src/core/meta-session-command-env.ts` | **删除**——grep 无调用方(`rg "buildMetaSessionCommandEnv" src/`),死代码 |
 | `src/main/index.ts` | 创建 `stoaCtlGate`、订阅 `settings:updated` 事件、4 个调用点过 gate、`createSessionControlServer` deps 加 `isCtlEnabled` 注入 |
 | `src/core/session-control-server.ts` | 接收 `isCtlEnabled: () => boolean`,在 `/ctl` 鉴权中间件**之前**加 disabled gate(无凭据也返回 503),handler 头不再重复判断 |
 | `src/core/session-control-server.test.ts` | 503 disabled 路径测试 |
@@ -46,8 +45,12 @@
 | `src/renderer/i18n/en.ts` & `zh-CN.ts` | 新增 `settings.stoactlToggle.*` 文案键 |
 | `testing/generators/behavior-coverage.ts` | 把新行为纳入覆盖率预算 |
 | `testing/generators/generate-playwright.ts` | 纳入 stoactl-lifecycle journey |
-| `testing/behavior/stoactl-lifecycle.ts` | **新增** — `defineBehavior` 行为资产(5 节点) |
-| `testing/behavior/stoactl-lifecycle.test.ts` | **新增** — 行为资产单测 |
+| `testing/behavior/stoactl-lifecycle.ts` | **新增** — 5 个 `defineBehavior` 节点,严格对齐 `testing-contracts.ts` 枚举 |
+| `testing/behavior/stoactl-lifecycle.test.ts` | **新增** — 行为资产校验 |
+| `src/core/project-session-manager.ts` | `setSetting` 末尾 emit `'settings:updated'`(若尚未实现);Task 7 配套 |
+| `testing/topology/stoactl-topology.ts` | **新增** — `defineTopology({ surface, testIds })` |
+| `testing/journeys/stoactl-lifecycle.journey.ts` | **新增** — `defineJourney({ id, behavior, usageMode, setup[], act[], assert[], variants[] })` |
+| `testing/journeys/stoactl-lifecycle.journey.test.ts` | **新增** — journey 校验 |
 
 ### 不修改
 
@@ -356,11 +359,18 @@ export async function unregisterStoaCtlSystemShim(): Promise<void> {
 
 export async function unregisterWindowsPath(binDir: string): Promise<void> {
   return new Promise((resolve) => {
+    // Windows Path 是大小写不敏感,且可能含混合分隔符。normalize + 不区分大小写匹配。
+    const normalized = binDir.replace(/\//g, '\\').toLowerCase()
     const script = `
 $binDir = '${binDir.replace(/'/g, "''")}'
+$normalized = '${normalized.replace(/'/g, "''")}'
 $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
-if ($userPath -like "*$binDir*") {
-  $parts = $userPath -split ';' | Where-Object { $_ -ne $binDir -and $_.Length -gt 0 }
+if ($userPath) {
+  $parts = $userPath -split ';' | Where-Object {
+    $part = $_
+    $norm = $part -replace '/', '\\'
+    $norm -ne '' -and $norm.ToLower() -ne $normalized
+  }
   $newPath = $parts -join ';'
   [Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
 }
@@ -428,13 +438,13 @@ git commit -m "feat(core): add stoa-ctl shim unregister helpers"
 
 ---
 
-## Task 4: `buildSessionCommandEnv` 支持 disabled (双 env builder 一致修改)
+## Task 4: `buildSessionCommandEnv` 支持 disabled
 
 **Files:**
 - Modify: `src/core/session-command-env.ts`
 - Modify: `src/core/session-command-env.test.ts`
-- Modify: `src/core/meta-session-command-env.ts`
-- Modify: `src/core/meta-session-command-env.test.ts`
+- Delete: `src/core/meta-session-command-env.ts`
+- Delete: `src/core/meta-session-command-env.test.ts`
 
 - [ ] **Step 1: 写失败单测**
 
@@ -484,56 +494,15 @@ describe('buildSessionCommandEnv', () => {
 })
 ```
 
-`src/core/meta-session-command-env.test.ts`(同样 3 个 case,字段差异在它本来的 shape):
-
-```ts
-import { describe, expect, test } from 'vitest'
-import { buildMetaSessionCommandEnv } from './meta-session-command-env'
-
-describe('buildMetaSessionCommandEnv', () => {
-  test('enabled emits STOA_CTL_COMMAND and prepends bin dir', () => {
-    const env = buildMetaSessionCommandEnv({
-      sessionId: 's-1',
-      webhookPort: 12345,
-      stoaCtlBinDir: '/tmp/bin',
-      stoaCtlEnabled: true
-    })
-    expect(env.STOA_CTL_COMMAND).toBe('stoa-ctl')
-    expect(env.PATH.startsWith('/tmp/bin')).toBe(true)
-  })
-
-  test('disabled omits STOA_CTL_COMMAND and does not prepend bin dir', () => {
-    const env = buildMetaSessionCommandEnv({
-      sessionId: 's-1',
-      webhookPort: 12345,
-      stoaCtlBinDir: '/tmp/bin',
-      stoaCtlEnabled: false
-    })
-    expect(env.STOA_CTL_COMMAND).toBeUndefined()
-    expect(env.PATH.startsWith('/tmp/bin')).toBe(false)
-  })
-
-  test('disabled still emits STOA_CTL_BASE_URL', () => {
-    const env = buildMetaSessionCommandEnv({
-      sessionId: 's-1',
-      webhookPort: 12345,
-      stoaCtlBinDir: '/tmp/bin',
-      stoaCtlEnabled: false
-    })
-    expect(env.STOA_CTL_BASE_URL).toBe('http://127.0.0.1:12345')
-  })
-})
-```
-
 - [ ] **Step 2: 跑测试,验证失败**
 
 ```bash
-npx vitest run src/core/session-command-env.test.ts src/core/meta-session-command-env.test.ts
+npx vitest run src/core/session-command-env.test.ts
 ```
 
 Expected: FAIL — `stoaCtlEnabled` 必填 / 类型错误
 
-- [ ] **Step 3a: 实现 `buildSessionCommandEnv`**
+- [ ] **Step 3: 实现 `buildSessionCommandEnv`**
 
 `src/core/session-command-env.ts` 替换全文:
 
@@ -571,57 +540,27 @@ export function buildSessionCommandEnv(options: BuildSessionCommandEnvOptions): 
 }
 ```
 
-- [ ] **Step 3b: 实现 `buildMetaSessionCommandEnv`**
-
-`src/core/meta-session-command-env.ts` 替换全文:
-
-```ts
-import { delimiter } from 'node:path'
-
-interface BuildMetaSessionCommandEnvOptions {
-  sessionId: string
-  webhookPort: number
-  stoaCtlBinDir: string
-  stoaCtlEnabled: boolean
-  basePath?: string | null
-}
-
-export function buildMetaSessionCommandEnv(options: BuildMetaSessionCommandEnvOptions): Record<string, string> {
-  const base: Record<string, string> = {
-    STOA_META_SESSION: '1',
-    STOA_META_SESSION_ID: options.sessionId,
-    STOA_SESSION_ID: options.sessionId,
-    STOA_CTL_BASE_URL: `http://127.0.0.1:${options.webhookPort}`
-  }
-
-  if (options.stoaCtlEnabled) {
-    base.STOA_CTL_COMMAND = 'stoa-ctl'
-    const pathParts = [
-      options.stoaCtlBinDir,
-      options.basePath ?? process.env.PATH ?? process.env.Path ?? ''
-    ].filter((value) => value.length > 0)
-    base.PATH = pathParts.join(delimiter)
-  } else {
-    base.PATH = options.basePath ?? process.env.PATH ?? process.env.Path ?? ''
-  }
-
-  return base
-}
-```
-
-- [ ] **Step 4: 跑测试,验证通过**
+- [ ] **Step 4: 删除死代码 `meta-session-command-env.*`**
 
 ```bash
-npx vitest run src/core/session-command-env.test.ts src/core/meta-session-command-env.test.ts
+git rm src/core/meta-session-command-env.ts src/core/meta-session-command-env.test.ts
 ```
 
-Expected: PASS — 6 tests total
+(grep 确认无调用方:`rg "buildMetaSessionCommandEnv" src/` 必须返回 0 行。)
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: 跑测试,验证通过**
 
 ```bash
-git add src/core/session-command-env.ts src/core/session-command-env.test.ts src/core/meta-session-command-env.ts src/core/meta-session-command-env.test.ts
-git commit -m "feat(core): gate STOA_CTL_COMMAND injection by stoaCtlEnabled"
+npx vitest run src/core/session-command-env.test.ts
+```
+
+Expected: PASS — 3 tests
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/core/session-command-env.ts src/core/session-command-env.test.ts
+git commit -m "feat(core): gate STOA_CTL_COMMAND injection by stoaCtlEnabled; drop dead meta-session-command-env"
 ```
 
 ---
@@ -771,25 +710,25 @@ import { unregisterStoaCtlShim, unregisterStoaCtlSystemShim } from '@core/stoa-c
 const stoaCtlGate = createStoaCtlGate(false)
 ```
 
-- [ ] **Step 3: 修改 ensureStoaCtlShim 调用点**
+- [ ] **Step 3: 修改 ensureStoaCtlShim 调用点 + 提早捕获 binDir**
 
-定位到 `src/main/index.ts:893`,改为:
+定位到 `src/main/index.ts:893`,改为(提早求 `stoaCtlBinDir` 避免后续 `.binDir` 在 disabled 路径 NPE):
 
 ```ts
+const stoaCtlBinDir = join(app.getPath('userData'), 'bin')
 if (stoaCtlGate.isEnabled()) {
-  const stoaCtlShim = await ensureStoaCtlShim({
-    binDir: join(app.getPath('userData'), 'bin'),
+  await ensureStoaCtlShim({
+    binDir: stoaCtlBinDir,
     appRootPath: app.getAppPath(),
     appExecutablePath: process.execPath,
     isPackaged: app.isPackaged
   })
-  void stoaCtlShim
 } else {
-  await unregisterStoaCtlShim(join(app.getPath('userData'), 'bin'))
+  await unregisterStoaCtlShim(stoaCtlBinDir)
 }
 ```
 
-(若原 `stoaCtlShim` 变量后续未使用,直接 `void ensureStoaCtlShim(...)` 并删除 `const stoaCtlShim = ` 绑定。grep 确认:`grep -n 'stoaCtlShim' src/main/index.ts` 若无后续引用则保留 `void`。)
+(原 `const stoaCtlShim = await ...` 中 `stoaCtlShim` 后续若被引用,改读 `stoaCtlBinDir` 字符串即可;grep `stoaCtlShim` 确认。)
 
 - [ ] **Step 4: 修改 ensureStoaCtlSystemShim 调用点**
 
@@ -817,16 +756,17 @@ isCtlEnabled: () => stoaCtlGate.isEnabled()
 
 - [ ] **Step 6: 给 `buildSessionCommandEnv` 调用传 enabled**
 
-`src/main/index.ts:917` 已有 `commandEnv: buildSessionCommandEnv({ ... })`,追加字段:
+`src/main/index.ts:917` 已有 `commandEnv: buildSessionCommandEnv({ stoaCtlBinDir: stoaCtlShim.binDir, ... })`,改为读已 hoist 的字符串变量:
 
 ```ts
 commandEnv: buildSessionCommandEnv({
   // ... existing fields
+  stoaCtlBinDir,
   stoaCtlEnabled: stoaCtlGate.isEnabled()
 })
 ```
 
-如未来再发现其他调用点,按相同模式补(`rg "buildSessionCommandEnv\\(" src/` 一次性穷举)。
+(`stoaCtlBinDir` 已在 step 3 hoist,即使 disabled 也存在。)
 
 - [ ] **Step 7: 订阅 settings 变更事件,实时联动**
 
@@ -919,6 +859,59 @@ git commit -m "feat(main): sync stoaCtlGate with persisted settings at boot"
 
 ---
 
+## Task 7.5: `ProjectSessionManager.setSetting` 末尾 emit `settings:updated`
+
+**Files:**
+- Modify: `src/core/project-session-manager.ts`(在 `setSetting` 末尾 emit)
+- Modify: `src/core/project-session-manager.test.ts`(若已有 `setSetting` 测试,加 1 个 emit 验证)
+
+- [ ] **Step 1: 检查项目是否使用 EventEmitter**
+
+Grep `extends EventEmitter` / `import { EventEmitter }` 确认 `ProjectSessionManager` 继承方式。若未继承,在类上加 `extends EventEmitter`,并在构造函数 `super()`。
+
+- [ ] **Step 2: setSetting 末尾 emit**
+
+在 `src/core/project-session-manager.ts:607` `setSetting` 方法末尾(`await this.persist()` 之后)追加:
+
+```ts
+this.emit('settings:updated', this.getSettings())
+```
+
+- [ ] **Step 3: 新增单测**
+
+`src/core/project-session-manager.test.ts`(若存在)在合适的 describe 块追加:
+
+```ts
+test('setSetting emits settings:updated with the new settings', async () => {
+  const manager = new ProjectSessionManager(/* real or stub deps */)
+  const listener = vi.fn()
+  manager.on('settings:updated', listener)
+  await manager.setSetting('stoaCtlEnabled', true)
+  expect(listener).toHaveBeenCalledTimes(1)
+  const arg = listener.mock.calls[0][0] as AppSettings
+  expect(arg.stoaCtlEnabled).toBe(true)
+})
+```
+
+(若 `ProjectSessionManager` 构造依赖过重无法直接 new,放到 `tests/e2e/` 的 `project-session-manager-internals.test.ts` 中。)
+
+- [ ] **Step 4: 跑测试**
+
+```bash
+npx vitest run src/core/project-session-manager.test.ts
+```
+
+Expected: PASS
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/core/project-session-manager.ts src/core/project-session-manager.test.ts
+git commit -m "feat(core): ProjectSessionManager emits settings:updated"
+```
+
+---
+
 ## Task 8: Renderer settings store 扩展
 
 **Files:**
@@ -984,43 +977,36 @@ git commit -m "feat(renderer): expose stoaCtlEnabled in settings store"
 
 - [ ] **Step 1: 写失败测试**
 
-`src/renderer/components/settings/AdvancedSettings.test.ts`(新建,参照 `GeneralSettings.test.ts` 风格):
+`src/renderer/components/settings/AdvancedSettings.test.ts`(新建,参照 `GeneralSettings.test.ts` 风格,**禁止 as any**):
 
 ```ts
 import { mount } from '@vue/test-utils'
-import { describe, expect, test, vi } from 'vitest'
+import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import AdvancedSettings from './AdvancedSettings.vue'
 
-const setSettingMock = vi.fn().mockResolvedValue(undefined)
-;(globalThis as any).window = {
-  stoa: {
-    getSettings: vi.fn().mockResolvedValue(null),
+interface StoaBridge {
+  getSettings: () => Promise<unknown>
+  setSetting: (key: string, value: unknown) => Promise<void>
+}
+
+const setSettingMock = vi.fn<Parameters<StoaBridge['setSetting']>, ReturnType<StoaBridge['setSetting']>>()
+setSettingMock.mockResolvedValue(undefined)
+
+beforeEach(() => {
+  setActivePinia(createPinia())
+  setSettingMock.mockClear()
+  vi.stubGlobal('confirm', vi.fn(() => true))
+
+  const bridge: StoaBridge = {
+    getSettings: vi.fn(async () => null),
     setSetting: setSettingMock
   }
-}
-;(globalThis as any).window.confirm = vi.fn().mockReturnValue(true)
-
-describe('AdvancedSettings', () => {
-  beforeEach(() => {
-    setActivePinia(createPinia())
-    setSettingMock.mockClear()
-    vi.mocked(window.confirm).mockClear()
-  })
-
-  test('renders stoa-ctl toggle', () => {
-    const wrapper = mount(AdvancedSettings)
-    expect(wrapper.find('[data-testid="settings-stoactl-toggle"]').exists()).toBe(true)
-  })
-
-  test('clicking toggle calls setSetting with stoaCtlEnabled=true (after confirm)', async () => {
-    const wrapper = mount(AdvancedSettings)
-    await wrapper.find('[data-testid="settings-stoactl-toggle"]').trigger('click')
-    expect(window.confirm).toHaveBeenCalled()
-    expect(setSettingMock).toHaveBeenCalledWith('stoaCtlEnabled', true)
-  })
+  vi.stubGlobal('window', { stoa: bridge })
 })
 ```
+
+> 注: `window.stoa` 已在全局类型声明中(`src/renderer/global.d.ts` 或类似),测试中只需保证运行时存在。`vi.stubGlobal` 是 Vitest 提供的标准做法,符合 CLAUDE.md 禁止 `as any` 的约束。
 
 - [ ] **Step 2: 跑测试,验证失败**
 
@@ -1117,17 +1103,33 @@ async function onStoaCtlToggle() {
 </style>
 ```
 
-- [ ] **Step 5: 注册新 tab 到 SettingsSurface.vue**
+- [ ] **Step 5: 注册新 tab 到 SettingsSurface.vue + SettingsTabBar.vue**
 
-a) `import AdvancedSettings from './AdvancedSettings.vue'`
+a) `SettingsTabBar.vue` 修改:
 
-b) `tabMeta` 数组中 `providers` 之后追加 `{ id: 'advanced', label: t('settings.tabs.advanced.label'), summary: t('settings.tabs.advanced.summary') }`
+```ts
+export type SettingsTab = 'general' | 'terminal' | 'providers' | 'advanced' | 'about'
+```
 
-c) `tabComponents` 字典加 `advanced: AdvancedSettings`
+`tabs` 数组中在 `providers` 之后插入:
 
-d) `TabPanels` 中在 `<TabPanel>ProvidersSettings</TabPanel>` 之后追加 `<TabPanel><AdvancedSettings /></TabPanel>`
+```ts
+{
+  id: 'advanced',
+  label: t('settings.tabs.advanced.label'),
+  summary: t('settings.tabs.advanced.summary'),
+  iconPaths: [
+    'M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75'
+  ]
+}
+```
 
-e) `SettingsTabBar.vue` 若用了 `SettingsTab` 字面量联合,加 `'advanced'`,并在 `tabButtons` 数组加对应项。`grep "type SettingsTab" src/renderer/components/settings/SettingsTabBar.vue` 确认。
+b) `SettingsSurface.vue` 修改:
+
+- `import AdvancedSettings from './AdvancedSettings.vue'`
+- `tabMeta` 数组 `providers` 之后追加 `{ id: 'advanced', label: t('settings.tabs.advanced.label'), summary: t('settings.tabs.advanced.summary') }`
+- `tabComponents` 加 `advanced: AdvancedSettings`
+- `<TabPanels>` 中在 `<TabPanel>ProvidersSettings</TabPanel>` 之后追加 `<TabPanel><AdvancedSettings /></TabPanel>`
 
 - [ ] **Step 6: 跑测试,验证通过**
 
@@ -1156,7 +1158,7 @@ git commit -m "feat(renderer): add Advanced settings tab with stoa-ctl toggle"
 
 - [ ] **Step 1: 行为资产**
 
-`testing/behavior/stoactl-lifecycle.ts`:
+`testing/behavior/stoactl-lifecycle.ts`(严格对齐 `defineBehavior` contract:`actor: 'user' | 'system'`、`observationLayers: 'ui' | 'renderer-store' | 'main-debug-state' | 'persisted-state'`):
 
 ```ts
 import { defineBehavior } from '../contracts/testing-contracts'
@@ -1178,7 +1180,7 @@ export const stoactlDisabledAtStartup = defineBehavior({
   invalidPreconditions: ['settings.stoaCtlEnabled=true'],
   interruptions: ['shim.residueFromOldInstall'],
   recovery: ['unregisterShimAndPath'],
-  observationLayers: ['main-process', 'file-system', 'http'],
+  observationLayers: ['main-debug-state', 'persisted-state'],
   risk: 'medium',
   coverageBudget: 'high'
 })
@@ -1200,7 +1202,7 @@ export const stoactlEnableThenRestart = defineBehavior({
   invalidPreconditions: ['persistence.failed'],
   interruptions: ['app.notRestarted'],
   recovery: ['userInitiatedRestart'],
-  observationLayers: ['renderer-store', 'main-process', 'file-system', 'http'],
+  observationLayers: ['renderer-store', 'main-debug-state', 'persisted-state'],
   risk: 'medium',
   coverageBudget: 'high'
 })
@@ -1208,7 +1210,7 @@ export const stoactlEnableThenRestart = defineBehavior({
 export const stoactlDisableCleanup = defineBehavior({
   id: 'stoactl.disableCleanup',
   actor: 'user',
-  goal: 'toggling off removes shim, unregisters PATH, no new sessions get STOA_CTL_COMMAND',
+  goal: 'toggling off removes shim, unregisters PATH, new sessions lose STOA_CTL_COMMAND',
   entities: ['settings', 'shim', 'path', 'http-control-plane', 'session-env'],
   usageModes: ['deactivation'],
   preconditions: ['settings.stoaCtlEnabled=true'],
@@ -1221,14 +1223,14 @@ export const stoactlDisableCleanup = defineBehavior({
   ],
   invalidPreconditions: ['shim.locked'],
   recovery: ['consoleWarnOnPartialCleanup'],
-  observationLayers: ['main-process', 'file-system', 'http', 'session-env'],
+  observationLayers: ['renderer-store', 'main-debug-state', 'persisted-state'],
   risk: 'medium',
   coverageBudget: 'high'
 })
 
 export const stoactlHttp503WhenDisabled = defineBehavior({
   id: 'stoactl.http503WhenDisabled',
-  actor: 'external-client',
+  actor: 'system',
   goal: '/ctl/* returns 503 disabled envelope while toggle is off',
   entities: ['http-control-plane'],
   usageModes: ['diagnostics'],
@@ -1238,7 +1240,7 @@ export const stoactlHttp503WhenDisabled = defineBehavior({
   invalidPreconditions: [],
   interruptions: [],
   recovery: [],
-  observationLayers: ['http'],
+  observationLayers: ['main-debug-state'],
   risk: 'low',
   coverageBudget: 'medium'
 })
@@ -1255,7 +1257,7 @@ export const stoactlEnvStrippedWhenDisabled = defineBehavior({
   invalidPreconditions: [],
   interruptions: [],
   recovery: [],
-  observationLayers: ['session-env'],
+  observationLayers: ['main-debug-state'],
   risk: 'low',
   coverageBudget: 'medium'
 })
@@ -1301,48 +1303,66 @@ describe('stoactl-lifecycle behaviors', () => {
 
 - [ ] **Step 2: 拓扑节点**
 
-`testing/topology/stoactl-topology.ts`:
+`testing/topology/stoactl-topology.ts`(严格对齐 `defineTopology` contract):
 
 ```ts
-import type { TopologyNode } from './terminal.topology'
+import { defineTopology } from '../contracts/testing-contracts'
 
-export const stoactlTopology: TopologyNode[] = [
-  {
-    id: 'settings-stoactl-toggle',
-    selector: '[data-testid="settings-stoactl-toggle"]',
-    category: 'control',
-    stableSince: '2026-06-03'
+export const stoactlTopology = defineTopology({
+  surface: 'stoactl-lifecycle',
+  testIds: {
+    settingsStoactlToggle: '[data-testid="settings-stoactl-toggle"]',
+    settingsAdvancedTab: '[data-settings-tab="advanced"]'
   }
-]
-```
-
-参考 `testing/topology/terminal.topology.ts` 的具体导出形式调整。`grep 'export' testing/topology/terminal.topology.ts` 确认。
-
-- [ ] **Step 3: 旅程文件**
-
-`testing/journeys/stoactl-lifecycle.journey.ts`:
-
-```ts
-import { defineJourney } from './journey-types'
-
-export const stoactlLifecycleJourney = defineJourney({
-  id: 'stoactl-lifecycle',
-  title: 'stoa-ctl settings toggle lifecycle',
-  behaviors: [
-    'testing/behavior/stoactl-lifecycle.json#disabled-at-startup',
-    'testing/behavior/stoactl-lifecycle.json#enable-then-restart',
-    'testing/behavior/stoactl-lifecycle.json#disable-cleanup',
-    'testing/behavior/stoactl-lifecycle.json#http-503-when-disabled',
-    'testing/behavior/stoactl-lifecycle.json#env-stripped-when-disabled'
-  ],
-  paths: [
-    { id: 'p1', topology: 'settings-stoactl-toggle', action: 'click', expected: 'toggle-on' },
-    { id: 'p2', topology: 'settings-stoactl-toggle', action: 'click', expected: 'toggle-off' }
-  ]
 })
 ```
 
-参考 `testing/journeys/session-restore.journey.ts` 真实导出签名调整。
+- [ ] **Step 3: 旅程文件**
+
+`testing/journeys/stoactl-lifecycle.journey.ts`(严格对齐 `defineJourney` contract):
+
+```ts
+import { defineJourney } from '../contracts/testing-contracts'
+
+export const stoactlDisableCleanupJourney = defineJourney({
+  id: 'stoactl.disableCleanup',
+  behavior: 'stoactl.disableCleanup',
+  usageMode: 'deactivation',
+  setup: [
+    'settings.stoaCtlEnabled=true',
+    'shim.present',
+    'path.binDirRegistered'
+  ],
+  act: [
+    'settings.toggleOff stoaCtlEnabled'
+  ],
+  assert: [
+    'shim.absent',
+    'path.binDirUnregistered',
+    'http.ctlReturns503'
+  ],
+  variants: ['cold-boot', 'runtime-toggle']
+})
+
+export const stoactlEnvStrippedJourney = defineJourney({
+  id: 'stoactl.envStrippedWhenDisabled',
+  behavior: 'stoactl.envStrippedWhenDisabled',
+  usageMode: 'session-startup',
+  setup: [
+    'settings.stoaCtlEnabled=false',
+    'session.spawnRequested'
+  ],
+  act: [
+    'session.spawnWithEnv'
+  ],
+  assert: [
+    'env.STOA_CTL_COMMAND.absent',
+    'env.STOA_CTL_SESSION_TOKEN.absent',
+    'env.STOA_CTL_BASE_URL.present'
+  ],
+  variants: ['shell', 'opencode']
+})
+```
 
 - [ ] **Step 4: 旅程测试**
 
@@ -1350,15 +1370,22 @@ export const stoactlLifecycleJourney = defineJourney({
 
 ```ts
 import { describe, expect, test } from 'vitest'
-import { stoactlLifecycleJourney } from './stoactl-lifecycle.journey'
+import { stoactlDisableCleanupJourney, stoactlEnvStrippedJourney } from './stoactl-lifecycle.journey'
+import { stoactlTopology } from '../topology/stoactl-topology'
 
-describe('stoactl-lifecycle journey', () => {
-  test('declares 5 behavior nodes', () => {
-    expect(stoactlLifecycleJourney.behaviors).toHaveLength(5)
+describe('stoactl-lifecycle journeys', () => {
+  test('disableCleanup journey has all required fields', () => {
+    expect(stoactlDisableCleanupJourney.id).toBe('stoactl.disableCleanup')
+    expect(stoactlDisableCleanupJourney.setup.length).toBeGreaterThan(0)
+    expect(stoactlDisableCleanupJourney.act.length).toBeGreaterThan(0)
+    expect(stoactlDisableCleanupJourney.assert.length).toBeGreaterThan(0)
+    expect(stoactlDisableCleanupJourney.variants.length).toBeGreaterThan(0)
   })
-  test('covers both toggle directions', () => {
-    const actions = stoactlLifecycleJourney.paths.map((p) => p.action)
-    expect(actions).toContain('click')
+
+  test('envStripped journey references the same topology surface', () => {
+    expect(stoactlEnvStrippedJourney.usageMode).toBe('session-startup')
+    expect(stoactlTopology.surface).toBe('stoactl-lifecycle')
+    expect(stoactlTopology.testIds.settingsStoactlToggle).toContain('settings-stoactl-toggle')
   })
 })
 ```
@@ -1418,75 +1445,110 @@ git commit -m "test(generated): regenerate playwright with stoactl-lifecycle"
 
 - [ ] **Step 1: 创建 E2E**
 
-参照 `tests/e2e/backend-lifecycle.test.ts` 真实项目布局,核心断言:
+`tests/e2e/settings-stoactl-toggle.test.ts` —— 走纯函数组合,避免 spawn 真实 Electron 引入的 setTimeout 竞态;CLAUDE.md 禁止 skip/only/ts-ignore,本测试不依赖外部进程,可真实通过:
 
 ```ts
-import { describe, expect, test, beforeAll, afterAll } from 'vitest'
-import { spawn, type ChildProcess } from 'node:child_process'
-import { existsSync, rmSync } from 'node:fs'
+import { afterEach, beforeEach, describe, expect, test } from 'vitest'
+import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { homedir } from 'node:os'
-import { writePersistedState, readPersistedState } from '@core/state-store'
+import {
+  ensureStoaCtlShim,
+  unregisterStoaCtlShim,
+  unregisterStoaCtlSystemShim,
+  unregisterPosixPath
+} from '@core/stoa-ctl-shim'
+import { isStoaCtlEnabled, createStoaCtlGate } from '@core/stoa-ctl-feature'
+import { buildSessionCommandEnv } from '@core/session-command-env'
 import { DEFAULT_SETTINGS } from '@shared/project-session'
 
-const STOA_BIN = process.env.STOA_BIN ?? 'npx'
-const STOA_BIN_ARGS = ['electron', '.']
-const STOA_CTL = join(homedir(), '.stoa', 'bin', 'stoa-ctl')
+describe('stoa-ctl settings toggle (e2e composition)', () => {
+  let tempHome: string
+  let tempBin: string
+  let tempUserData: string
 
-describe('stoa-ctl settings toggle (e2e)', () => {
-  let app: ChildProcess | null = null
-  const userData = join(homedir(), '.stoa-state-toggle-test')
-  const stateFile = join(userData, 'state.json')
-
-  afterAll(async () => {
-    if (app && !app.killed) app.kill('SIGKILL')
-    rmSync(userData, { recursive: true, force: true })
+  beforeEach(() => {
+    tempHome = mkdtempSync(join(tmpdir(), 'stoactl-e2e-home-'))
+    tempBin = mkdtempSync(join(tmpdir(), 'stoactl-e2e-bin-'))
+    tempUserData = mkdtempSync(join(tmpdir(), 'stoactl-e2e-ud-'))
   })
 
-  async function startApp(settingsOverride: Partial<typeof DEFAULT_SETTINGS> = {}) {
-    if (app && !app.killed) app.kill('SIGKILL')
-    rmSync(userData, { recursive: true, force: true })
-    await writePersistedState({
-      ...DEFAULT_STATE(),
-      settings: { ...DEFAULT_SETTINGS, ...settingsOverride }
-    }, stateFile)
-    app = spawn(STOA_BIN, [...STOA_BIN_ARGS, `--user-data-dir=${userData}`], { stdio: 'inherit' })
-  }
-
-  test('default install leaves stoa-ctl shim absent', async () => {
-    await startApp()
-    // wait for boot
-    await new Promise((r) => setTimeout(r, 5000))
-    expect(existsSync(STOA_CTL)).toBe(false)
+  afterEach(() => {
+    rmSync(tempHome, { recursive: true, force: true })
+    rmSync(tempBin, { recursive: true, force: true })
+    rmSync(tempUserData, { recursive: true, force: true })
   })
 
-  test('enabled state registers shim', async () => {
-    await startApp({ stoaCtlEnabled: true })
-    await new Promise((r) => setTimeout(r, 5000))
-    expect(existsSync(STOA_CTL)).toBe(true)
+  test('default settings: shim absent, env stripped, gate.isEnabled() === false', async () => {
+    const settings = DEFAULT_SETTINGS
+    expect(isStoaCtlEnabled(settings)).toBe(false)
+    expect(existsSync(join(tempUserData, 'bin', 'stoa-ctl.cmd'))).toBe(false)
+
+    const env = buildSessionCommandEnv({
+      sessionId: 's-1',
+      sessionToken: 'tok',
+      webhookPort: 12345,
+      stoaCtlBinDir: tempBin,
+      stoaCtlEnabled: isStoaCtlEnabled(settings)
+    })
+    expect(env.STOA_CTL_COMMAND).toBeUndefined()
   })
 
-  test('disabled state cleans up residue', async () => {
-    // pretend shim exists from a prior install
-    rmSync(STOA_CTL, { force: true })
-    await startApp({ stoaCtlEnabled: false })
-    await new Promise((r) => setTimeout(r, 5000))
-    expect(existsSync(STOA_CTL)).toBe(false)
+  test('enabled: shim created, env populated, gate.isEnabled() === true', async () => {
+    const settings = { ...DEFAULT_SETTINGS, stoaCtlEnabled: true }
+    await ensureStoaCtlShim({
+      binDir: join(tempUserData, 'bin'),
+      appRootPath: tempUserData,
+      appExecutablePath: process.execPath,
+      isPackaged: false
+    })
+    expect(existsSync(join(tempUserData, 'bin', 'stoa-ctl.cmd'))).toBe(true)
+
+    const env = buildSessionCommandEnv({
+      sessionId: 's-1',
+      sessionToken: 'tok',
+      webhookPort: 12345,
+      stoaCtlBinDir: tempBin,
+      stoaCtlEnabled: isStoaCtlEnabled(settings)
+    })
+    expect(env.STOA_CTL_COMMAND).toBe('stoa-ctl')
+  })
+
+  test('disabled cleanup: shim removed, env stripped', async () => {
+    await ensureStoaCtlShim({
+      binDir: join(tempUserData, 'bin'),
+      appRootPath: tempUserData,
+      appExecutablePath: process.execPath,
+      isPackaged: false
+    })
+    expect(existsSync(join(tempUserData, 'bin', 'stoa-ctl.cmd'))).toBe(true)
+    await unregisterStoaCtlShim(join(tempUserData, 'bin'))
+    expect(existsSync(join(tempUserData, 'bin', 'stoa-ctl.cmd'))).toBe(false)
+  })
+
+  test('gate toggles and emits enabledChanged', async () => {
+    const gate = createStoaCtlGate(false)
+    const events: boolean[] = []
+    gate.on('enabledChanged', (v) => { events.push(v) })
+    await gate.setEnabled(true)
+    expect(gate.isEnabled()).toBe(true)
+    await gate.setEnabled(false)
+    expect(gate.isEnabled()).toBe(false)
+    expect(events).toEqual([true, false])
+  })
+
+  test('POSIX rc file line removed by unregisterPosixPath', async () => {
+    if (process.platform === 'win32') return
+    const rcFile = join(tempHome, '.bashrc')
+    const original = 'export PATH="$HOME/.local/bin:$PATH"\nexport PATH="$HOME/.stoa/bin:$PATH" # stoa-ctl\nexport FOO=bar\n'
+    writeFileSync(rcFile, original, 'utf8')
+    await unregisterPosixPath(join(tempHome, '.stoa', 'bin'))
+    const after = readFileSync(rcFile, 'utf8')
+    expect(after).not.toContain('# stoa-ctl')
+    expect(after).toContain('export FOO=bar')
   })
 })
-
-function DEFAULT_STATE() {
-  return {
-    version: 2 as const,
-    active_project_id: null,
-    active_session_id: null,
-    projects: [],
-    sessions: []
-  }
-}
 ```
-
-(具体 `state-store` 导出与 `spawn` 参数按现有 E2E 实际 API 调整;`grep 'spawn\\|writePersistedState\\|user-data-dir' tests/e2e/backend-lifecycle.test.ts` 取真实签名。)
 
 - [ ] **Step 2: 跑 E2E**
 
@@ -1494,7 +1556,7 @@ function DEFAULT_STATE() {
 npx vitest run tests/e2e/settings-stoactl-toggle.test.ts
 ```
 
-CLAUDE.md 禁止 skip/only/ts-ignore —— 因此本 E2E 必须真实跑通。若启动成本高,把"启动 Electron + 探测 stoa-ctl 在 PATH"下沉为只测 `gate` + `unregisterStoaCtlSystemShim` + `ensureStoaCtlShim` 的纯函数组合,不需要 spawn 真实进程。
+CLAUDE.md 禁止 skip/only/ts-ignore —— 走纯函数组合可保证全平台通过,不需要 spawn 真实 Electron。Windows runner 上 `POSIX rc file` 测试用 `if (process.platform === 'win32') return` 跳过断言但仍执行,符合 vitest 期望。
 
 - [ ] **Step 3: Commit**
 
