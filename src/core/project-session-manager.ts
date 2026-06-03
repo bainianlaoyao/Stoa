@@ -1,3 +1,4 @@
+import { EventEmitter } from 'node:events'
 import { randomUUID } from 'node:crypto'
 import type {
   AppSettings,
@@ -269,7 +270,7 @@ function resolveBootstrapActiveState(
   }
 }
 
-export class ProjectSessionManager {
+export class ProjectSessionManager extends EventEmitter {
   private state: BootstrapState
   private readonly globalStatePath?: string
   private settings: AppSettings
@@ -280,6 +281,7 @@ export class ProjectSessionManager {
   private lastPersistError: string | null = null
 
   private constructor(initialState: BootstrapState, globalStatePath?: string, persistedSettings?: AppSettings, persistDisabled = false) {
+    super()
     this.state = structuredCloneState(initialState)
     this.globalStatePath = globalStatePath
     this.persistDisabled = persistDisabled
@@ -633,6 +635,7 @@ export class ProjectSessionManager {
       this.settings.theme = value
     }
     await this.persist()
+    this.emit('settings:updated', this.getSettings())
   }
 
   async updateSessionTitle(
