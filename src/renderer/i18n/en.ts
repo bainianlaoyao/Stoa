@@ -10,7 +10,15 @@ export default {
       general: { label: 'General', summary: 'Shell path and terminal font size.' },
       terminal: { label: 'Terminal', summary: 'Typography, cursor, scroll, and behavior.' },
       providers: { label: 'Providers', summary: 'Local provider executable paths.' },
+      advanced: { label: 'Advanced', summary: 'CLI and experimental features.' },
       about: { label: 'About', summary: 'Version, stack, and project links.' }
+    },
+    stoactlToggle: {
+      title: 'stoa-ctl command-line control',
+      description: 'Expose stoa-ctl in PATH and allow external scripts to control sessions via HTTP. Disabled by default.',
+      enabledLabel: 'Enabled',
+      disabledLabel: 'Disabled',
+      warningOnEnable: 'Enabling stoa-ctl will register it in your user PATH and start the /ctl HTTP control plane. Restart required to take effect on new sessions.'
     }
   },
 
