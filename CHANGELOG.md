@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.3.2 (2026-06-05)
+
+### Bug Fix
+
+- **stoa-ctl bootstrap prompt no longer injected when disabled**: The bootstrap prompt containing session commands and protocol instructions was unconditionally injected into every `SessionStart` event, even when `stoa-ctl` was disabled in Settings. The 4-point gate correctly controlled shims, PATH, env vars, and HTTP endpoints, but bootstrap prompt injection was never gated. The `SessionEventBridge` now checks `stoaCtlGate.isEnabled()` before injecting the prompt.
+
 ## v0.3.1 (2026-06-03)
 
 ### stoa-ctl Settings Toggle
