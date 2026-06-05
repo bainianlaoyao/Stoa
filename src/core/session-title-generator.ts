@@ -70,7 +70,7 @@ function buildMessages(input: GenerateTitleInput): Array<{ role: 'system' | 'use
   return [
     {
       role: 'system',
-      content: 'Generate a concise work-session title. Return only the title text. Use 2 to 5 words, imperative or task-focused, with no quotes or trailing punctuation.'
+      content: 'Generate a short, specific title that describes the actual work done in this session. Use 3 to 8 words. Focus on WHAT was done — the specific change, feature, or fix — not the project name. Avoid generic verbs like "implement", "enhance", "update" alone; always pair verbs with specifics. No quotes, no trailing punctuation.\n\nGood examples:\n- "Fix PTY host disposal race condition"\n- "Animate sidebar collapse with CSS transition"\n- "Extract design tokens into shared theme"\n- "Resolve bootstrap prompt fallback logic"\n\nBad examples (too vague, avoid):\n- "Implement project-name"\n- "Enhanced session manager"\n- "Update settings"'
     },
     {
       role: 'user',
@@ -85,12 +85,7 @@ function buildUserPrompt(input: GenerateTitleInput): string {
     ? `Assistant summary: ${input.assistantSnippet.trim()}`
     : 'Assistant summary: unavailable'
 
-  return [
-    `Project: ${input.projectName}`,
-    `Session provider: ${input.sessionType}`,
-    promptLine,
-    assistantLine
-  ].join('\n')
+  return [promptLine, assistantLine].join('\n')
 }
 
 function extractResponseText(payload: {
