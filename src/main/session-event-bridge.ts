@@ -58,6 +58,7 @@ interface SessionEventBridgeOptions {
     | { ok: false; reason: 'invalid_secret' | 'invalid_hook_context' }
   >
   getSessionBootstrapPrompt?: (sessionId: string) => string | null
+  isCtlEnabled?: () => boolean
   captureObservation?: (event: ObservationEvent) => Promise<void> | void
 }
 
@@ -80,6 +81,7 @@ export class SessionEventBridge {
   private readonly configureServerApp?: (app: Express) => void
   private readonly authorizeHookRequest?: SessionEventBridgeOptions['authorizeHookRequest']
   private readonly getSessionBootstrapPrompt?: SessionEventBridgeOptions['getSessionBootstrapPrompt']
+  private readonly isCtlEnabled?: () => boolean
   private readonly observationTap?: ObservationTap
   private server: ReturnType<typeof createLocalWebhookServer> | null = null
   private port: number | null = null
@@ -107,6 +109,7 @@ export class SessionEventBridge {
     this.configureServerApp = options.configureServerApp
     this.authorizeHookRequest = options.authorizeHookRequest
     this.getSessionBootstrapPrompt = options.getSessionBootstrapPrompt
+    this.isCtlEnabled = options.isCtlEnabled
     this.observationTap = options as ObservationTap
   }
 
@@ -153,7 +156,7 @@ export class SessionEventBridge {
   private async enqueueSessionEvent(event: CanonicalSessionEvent): Promise<Record<string, unknown> | null> {
     const previous = this.sessionEventQueues.get(event.session_id) ?? Promise.resolve(null)
     const isSessionStart = event.event_type.endsWith('.SessionStart')
-    const bootstrapPrompt = isSessionStart
+    const bootstrapPrompt = isSessionStart && (this.isCtlEnabled?.() ?? true)
       ? this.getSessionBootstrapPrompt?.(event.session_id) ?? null
       : null
     const next = previous

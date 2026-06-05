@@ -751,6 +751,7 @@ app.whenReady().then(async () => {
       }
       return sessionBootstrapPromptService.getPrompt(session.type)
     },
+    isCtlEnabled: () => stoaCtlGate.isEnabled(),
     configureServerApp(app) {
       const sessionControlServer = createSessionControlServer({
         getSnapshot() {
