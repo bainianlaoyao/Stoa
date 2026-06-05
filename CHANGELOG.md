@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.3.3 (2026-06-05)
+
+### Fixed
+
+- **Session title generation prompt rewritten**: Auto-generated session titles were generic and uninformative (e.g. "Implement project-name"). The system prompt now emphasizes specific work descriptions with good/bad examples; project name and session provider were removed from the LLM input to prevent the model from taking shortcuts
+
 ## v0.3.2 (2026-06-05)
 
 ### Bug Fix
