@@ -91,7 +91,7 @@ const activeSessionViewModel = computed(() => {
 <template>
   <section class="h-full min-h-0" data-surface="command" data-command-surface="true" data-testid="command-panel">
     <div class="h-full p-0 min-h-0 grid" data-testid="command-body">
-      <div class="h-full grid gap-0 min-h-0 items-stretch" :style="{ gridTemplateColumns: sessionListWidth + 'px minmax(0,1fr)' }" data-testid="command-layout">
+      <div class="h-full grid grid-rows-1 gap-0 min-h-0 items-stretch" :style="{ gridTemplateColumns: sessionListWidth + 'px minmax(0,1fr)' }" data-testid="command-layout">
         <div ref="sessionListRef" class="relative min-h-0">
           <WorkspaceHierarchyPanel
             :hierarchy="hierarchy"
