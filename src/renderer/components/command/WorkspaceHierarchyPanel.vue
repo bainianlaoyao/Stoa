@@ -411,7 +411,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <aside class="min-h-0 flex flex-col rounded-none border-r border-line bg-mica" data-testid="workspace-hierarchy-panel" aria-label="Workspace hierarchy">
+  <aside class="h-full min-h-0 flex flex-col rounded-none border-r border-line bg-mica" data-testid="workspace-hierarchy-panel" aria-label="Workspace hierarchy">
     
     <!-- Sleek Fluent Sidebar Header Toolbar -->
     <div class="flex items-center justify-between px-3.5 py-3 border-b border-line bg-surface-soft select-none" data-testid="sidebar-header">
