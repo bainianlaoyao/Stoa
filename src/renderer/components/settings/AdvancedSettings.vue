@@ -1,9 +1,38 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '@renderer/stores/settings'
+import { resolveVisibleSettingsSections } from './settings-search'
+
+const props = withDefaults(defineProps<{
+  searchQuery?: string
+}>(), {
+  searchQuery: ''
+})
 
 const { t } = useI18n()
 const store = useSettingsStore()
+
+type AdvancedSectionId = 'stoactl'
+
+const visibleSections = computed(() =>
+  resolveVisibleSettingsSections<AdvancedSectionId>(props.searchQuery, {
+    stoactl: [
+      t('settings.tabs.advanced.label'),
+      t('settings.stoactlToggle.title'),
+      t('settings.stoactlToggle.description'),
+      'advanced',
+      'cli',
+      'stoa ctl',
+      'stoa-ctl',
+      'experimental'
+    ]
+  })
+)
+
+function isSectionVisible(sectionId: AdvancedSectionId): boolean {
+  return visibleSections.value.has(sectionId)
+}
 
 async function onStoaCtlToggle(): Promise<void> {
   const next = !store.stoaCtlEnabled
@@ -26,7 +55,7 @@ async function onStoaCtlToggle(): Promise<void> {
     </header>
 
     <div class="settings-section">
-      <section class="settings-card" data-settings-card="stoactl-toggle">
+      <section v-if="isSectionVisible('stoactl')" class="settings-card" data-settings-card="stoactl-toggle">
         <div class="settings-card__header">
           <div>
             <h3 class="settings-card__title">{{ t('settings.stoactlToggle.title') }}</h3>
@@ -137,10 +166,8 @@ async function onStoaCtlToggle(): Promise<void> {
 }
 
 .settings-toggle {
-  padding: 14px 16px;
-  border-radius: var(--radius-sm);
-  background: rgba(0, 0, 0, 0.008);
-  border: 1px solid var(--color-line);
+  background: var(--control-fill);
+  border: 1px solid var(--stroke-control);
 }
 
 .settings-toggle__label {
@@ -163,17 +190,8 @@ async function onStoaCtlToggle(): Promise<void> {
 }
 
 .settings-toggle__switch {
-  display: inline-flex;
-  width: 48px;
-  height: 26px;
-  padding: 2px;
-  border-radius: 999px;
-  background: var(--color-black-soft);
-  box-shadow: inset 0 0 0 1px var(--color-line);
-  cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
-  flex: 0 0 auto;
-  border: none;
+  background: var(--control-fill);
+  box-shadow: inset 0 0 0 1px var(--stroke-control);
 }
 
 .settings-toggle__switch:focus-visible {
@@ -191,7 +209,7 @@ async function onStoaCtlToggle(): Promise<void> {
   height: 22px;
   border-radius: 999px;
   background: var(--color-surface-solid);
-  border: 1px solid var(--color-line);
+  border: 1px solid var(--stroke-control);
   box-shadow: var(--shadow-soft);
   transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
 }

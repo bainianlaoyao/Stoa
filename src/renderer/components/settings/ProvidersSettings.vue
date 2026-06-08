@@ -6,6 +6,13 @@ import { listProviderDescriptors } from '@shared/provider-descriptors'
 import { useSettingsStore } from '@renderer/stores/settings'
 import GlassFormField from '../primitives/GlassFormField.vue'
 import GlassPathField from '../primitives/GlassPathField.vue'
+import { resolveVisibleSettingsSections } from './settings-search'
+
+const props = withDefaults(defineProps<{
+  searchQuery?: string
+}>(), {
+  searchQuery: ''
+})
 
 const { t } = useI18n()
 const store = useSettingsStore()
@@ -94,6 +101,63 @@ const providerList = listProviderDescriptors()
   .filter(provider => provider.providerId !== 'local-shell')
   .map(provider => ({ id: provider.providerId, label: provider.displayName }))
 
+type ProviderSectionId = 'evolver-inference' | 'title-generation' | `provider-${string}`
+
+const visibleSections = computed(() => {
+  const sectionTerms: Record<ProviderSectionId, string[]> = {
+    'evolver-inference': [
+      t('providers.title'),
+      t('providers.evolverInference.title'),
+      t('providers.evolverInference.description'),
+      'provider',
+      'providers',
+      'evolver',
+      'inference',
+      'claude code'
+    ],
+    'title-generation': [
+      t('providers.title'),
+      t('providers.titleGeneration.title'),
+      t('providers.titleGeneration.description'),
+      'provider',
+      'providers',
+      'title generation',
+      'model',
+      'custom model',
+      'api key',
+      'base url',
+      'fetch models'
+    ]
+  }
+
+  for (const provider of providerList) {
+    sectionTerms[`provider-${provider.id}`] = [
+      t('providers.title'),
+      t('providers.cardDescription'),
+      provider.label,
+      provider.id,
+      'provider',
+      'providers',
+      'executable'
+    ]
+
+    if (provider.id === 'claude-code') {
+      sectionTerms[`provider-${provider.id}`].push(
+        t('providers.claude.skipPermissions'),
+        'permission',
+        'permissions',
+        'skip permissions'
+      )
+    }
+  }
+
+  return resolveVisibleSettingsSections<ProviderSectionId>(props.searchQuery, sectionTerms)
+})
+
+function isSectionVisible(sectionId: ProviderSectionId): boolean {
+  return visibleSections.value.has(sectionId)
+}
+
 const detectedPaths = reactive<Record<string, string | null>>({})
 const detecting = ref(true)
 
@@ -166,7 +230,11 @@ function handleTitleGenerationPatch(
     </header>
 
     <div class="settings-section">
-      <section class="settings-card" :aria-label="t('providers.evolverInference.ariaLabel')">
+      <section
+        v-if="isSectionVisible('evolver-inference')"
+        class="settings-card"
+        :aria-label="t('providers.evolverInference.ariaLabel')"
+      >
         <div class="settings-card__header">
           <div>
             <h4 class="settings-card__title">{{ t('providers.evolverInference.title') }}</h4>
@@ -192,7 +260,11 @@ function handleTitleGenerationPatch(
         </p>
       </section>
 
-      <section class="settings-card" :aria-label="t('providers.titleGeneration.ariaLabel')">
+      <section
+        v-if="isSectionVisible('title-generation')"
+        class="settings-card"
+        :aria-label="t('providers.titleGeneration.ariaLabel')"
+      >
         <div class="settings-card__header">
           <div>
             <h4 class="settings-card__title">{{ t('providers.titleGeneration.title') }}</h4>
@@ -286,59 +358,60 @@ function handleTitleGenerationPatch(
         </p>
       </section>
 
-      <section
-        v-for="provider in providerList"
-        :key="provider.id"
-        class="settings-card"
-        :aria-label="`${provider.label} provider`"
-      >
-        <div class="settings-card__header">
-          <div>
-            <h4 class="settings-card__title">{{ provider.label }}</h4>
-            <p class="settings-card__description">{{ t('providers.cardDescription') }}</p>
-          </div>
-          <span class="settings-card__badge" :class="`settings-card__badge--${getStatus(provider.id)}`">
-            {{ getStatus(provider.id) }}
-          </span>
-        </div>
-
-        <GlassPathField
-          :data-settings-field="`provider-${provider.id}`"
-          :label="t('providers.executablePath')"
-          :model-value="store.providers[provider.id] ?? ''"
-          :placeholder="getStatus(provider.id) === 'missing' ? t('providers.placeholderMissing') : t('providers.autoDetected')"
-          mono
-          :browse-label="t('providers.browse')"
-          @update:model-value="store.updateSetting('providers', { ...store.providers, [provider.id]: $event })"
-          @browse="browseProvider(provider.id)"
-        />
-
-        <p v-if="detecting" class="settings-item__hint">{{ t('providers.detecting') }}</p>
-        <p v-else-if="getStatus(provider.id) === 'detected'" class="settings-item__hint settings-item__hint--success">{{ t('providers.autoDetected') }}</p>
-        <p v-else-if="getStatus(provider.id) === 'custom'" class="settings-item__hint">{{ t('providers.customPath') }}</p>
-        <p v-else class="settings-item__hint settings-item__hint--warning">{{ t('providers.notFound') }}</p>
-
-        <div
-          v-if="isClaudeCodeProvider(provider.id)"
-          class="settings-toggle"
-          data-settings-field="provider-claude-code-dangerously-skip-permissions"
+      <template v-for="provider in providerList" :key="provider.id">
+        <section
+          v-if="isSectionVisible(`provider-${provider.id}`)"
+          class="settings-card"
+          :aria-label="`${provider.label} provider`"
         >
-          <div class="settings-toggle__label">
-            <span class="settings-toggle__copy">
-              <span class="settings-toggle__title">{{ t('providers.claude.skipPermissions') }}</span>
-              <span class="settings-toggle__description" v-html="t('providers.claude.skipPermissionsDescription')" />
+          <div class="settings-card__header">
+            <div>
+              <h4 class="settings-card__title">{{ provider.label }}</h4>
+              <p class="settings-card__description">{{ t('providers.cardDescription') }}</p>
+            </div>
+            <span class="settings-card__badge" :class="`settings-card__badge--${getStatus(provider.id)}`">
+              {{ getStatus(provider.id) }}
             </span>
-            <Switch
-              :model-value="store.claudeDangerouslySkipPermissions"
-              class="settings-toggle__switch"
-              :class="{ 'settings-toggle__switch--active': store.claudeDangerouslySkipPermissions }"
-              @update:model-value="handleClaudeDangerouslySkipPermissionsChange"
-            >
-              <span class="settings-toggle__thumb" />
-            </Switch>
           </div>
-        </div>
-      </section>
+
+          <GlassPathField
+            :data-settings-field="`provider-${provider.id}`"
+            :label="t('providers.executablePath')"
+            :model-value="store.providers[provider.id] ?? ''"
+            :placeholder="getStatus(provider.id) === 'missing' ? t('providers.placeholderMissing') : t('providers.autoDetected')"
+            mono
+            :browse-label="t('providers.browse')"
+            @update:model-value="store.updateSetting('providers', { ...store.providers, [provider.id]: $event })"
+            @browse="browseProvider(provider.id)"
+          />
+
+          <p v-if="detecting" class="settings-item__hint">{{ t('providers.detecting') }}</p>
+          <p v-else-if="getStatus(provider.id) === 'detected'" class="settings-item__hint settings-item__hint--success">{{ t('providers.autoDetected') }}</p>
+          <p v-else-if="getStatus(provider.id) === 'custom'" class="settings-item__hint">{{ t('providers.customPath') }}</p>
+          <p v-else class="settings-item__hint settings-item__hint--warning">{{ t('providers.notFound') }}</p>
+
+          <div
+            v-if="isClaudeCodeProvider(provider.id)"
+            class="settings-toggle"
+            data-settings-field="provider-claude-code-dangerously-skip-permissions"
+          >
+            <div class="settings-toggle__label">
+              <span class="settings-toggle__copy">
+                <span class="settings-toggle__title">{{ t('providers.claude.skipPermissions') }}</span>
+                <span class="settings-toggle__description" v-html="t('providers.claude.skipPermissionsDescription')" />
+              </span>
+              <Switch
+                :model-value="store.claudeDangerouslySkipPermissions"
+                class="settings-toggle__switch"
+                :class="{ 'settings-toggle__switch--active': store.claudeDangerouslySkipPermissions }"
+                @update:model-value="handleClaudeDangerouslySkipPermissionsChange"
+              >
+                <span class="settings-toggle__thumb" />
+              </Switch>
+            </div>
+          </div>
+        </section>
+      </template>
     </div>
   </div>
 </template>
@@ -351,10 +424,7 @@ function handleTitleGenerationPatch(
 }
 
 .settings-panel__header {
-  display: grid;
-  gap: 6px;
-  padding-bottom: 8px;
-  border-b: 1px solid var(--color-line);
+  border-bottom: 1px solid var(--stroke-divider);
 }
 
 .settings-panel__title {
@@ -380,19 +450,14 @@ function handleTitleGenerationPatch(
 }
 
 .settings-card {
-  display: grid;
-  gap: 16px;
-  padding: 24px;
-  border-radius: var(--radius-lg);
-  background: var(--color-surface-solid);
-  border: 1px solid var(--color-line-strong);
-  box-shadow: var(--shadow-card);
-  transition: all 0.2s ease;
+  transition:
+    border-color var(--duration-rest) var(--curve-standard),
+    box-shadow var(--duration-rest) var(--curve-standard),
+    background-color var(--duration-rest) var(--curve-standard);
 }
 
 .settings-card:hover {
-  border-color: rgba(0, 85, 255, 0.15);
-  box-shadow: var(--shadow-soft);
+  border-color: color-mix(in srgb, var(--color-accent) 15%, transparent);
 }
 
 .settings-card__header {
@@ -420,19 +485,8 @@ function handleTitleGenerationPatch(
 }
 
 .settings-card__badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 4px 8px;
-  border-radius: var(--radius-sm);
-  background: rgba(0, 0, 0, 0.03);
-  border: 1px solid rgba(0, 0, 0, 0.01);
-  color: var(--color-muted);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  white-space: nowrap;
+  background: var(--control-fill);
+  border: 1px solid var(--stroke-control);
 }
 
 .settings-card__badge--detected {
@@ -494,10 +548,9 @@ function handleTitleGenerationPatch(
 }
 
 .settings-toggle {
-  padding: 14px 16px;
   border-radius: var(--radius-sm);
-  background: rgba(0, 0, 0, 0.008);
-  border: 1px solid var(--color-line);
+  background: var(--control-fill);
+  border: 1px solid var(--stroke-control);
 }
 
 .settings-toggle__label {
@@ -530,20 +583,12 @@ function handleTitleGenerationPatch(
 }
 
 :deep(.settings-toggle__switch) {
-  display: inline-flex;
-  width: 48px;
-  height: 26px;
-  padding: 2px;
-  border-radius: 999px;
-  background: var(--color-black-soft);
-  box-shadow: inset 0 0 0 1px var(--color-line);
-  cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
-  flex: 0 0 auto;
+  background: var(--control-fill);
+  box-shadow: inset 0 0 0 1px var(--stroke-control);
 }
 
 :deep(.settings-toggle__switch:hover) {
-  background: var(--color-black-soft);
+  background: var(--control-fill-hover);
 }
 
 :deep(.settings-toggle__switch--active) {

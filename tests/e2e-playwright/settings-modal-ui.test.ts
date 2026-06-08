@@ -101,6 +101,43 @@ test.describe('Settings tabs', () => {
       await cleanupStateDir(stateDir)
     }
   })
+
+  test('search focuses the matching General section instead of showing unrelated cards', async () => {
+    const app = await launchElectronApp()
+    try {
+      await app.page.locator('[data-activity-item="settings"]').click()
+      await app.page.locator('[data-settings-search]').fill('theme')
+
+      await expect(app.page.locator('[data-settings-tab]')).toHaveCount(1)
+      await expect(app.page.locator('[data-settings-tab="general"]')).toBeVisible()
+      await expect(app.page.locator('[data-settings-field="themeMode"]')).toBeVisible()
+      await expect(app.page.locator('[data-settings-field="locale"]')).toHaveCount(0)
+      await expect(app.page.locator('[data-settings-field="shellPath"]')).toHaveCount(0)
+    } finally {
+      const { stateDir } = app
+      await app.close()
+      await cleanupStateDir(stateDir)
+    }
+  })
+
+  test('search auto-expands the matching Terminal section and hides unrelated ones', async () => {
+    const app = await launchElectronApp()
+    try {
+      await app.page.locator('[data-activity-item="settings"]').click()
+      await app.page.locator('[data-settings-search]').fill('cursor')
+
+      await expect(app.page.locator('[data-settings-tab]')).toHaveCount(1)
+      await expect(app.page.locator('[data-settings-tab="terminal"]')).toBeVisible()
+      await expect(app.page.locator('[data-settings-section-toggle="cursor"]')).toHaveAttribute('aria-expanded', 'true')
+      await expect(app.page.locator('[data-settings-field="terminalCursorBlink"]')).toBeVisible()
+      await expect(app.page.locator('[data-settings-field="terminalScrollback"]')).toHaveCount(0)
+      await expect(app.page.locator('[data-settings-field="terminalCopyOnSelection"]')).toHaveCount(0)
+    } finally {
+      const { stateDir } = app
+      await app.close()
+      await cleanupStateDir(stateDir)
+    }
+  })
 })
 
 test.describe('Modal (BaseModal via NewProjectModal)', () => {

@@ -1,13 +1,22 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '@renderer/stores/settings'
 import GlassFormField from '../primitives/GlassFormField.vue'
 import GlassPathField from '../primitives/GlassPathField.vue'
 import { SUPPORTED_LOCALES } from '@renderer/i18n'
+import { resolveVisibleSettingsSections } from './settings-search'
+
+const props = withDefaults(defineProps<{
+  searchQuery?: string
+}>(), {
+  searchQuery: ''
+})
 
 const { t } = useI18n()
 const store = useSettingsStore()
+
+type GeneralSectionId = 'shell' | 'workspaceIde' | 'typography' | 'theme' | 'language'
 
 const detectedShell = ref<string | null>(null)
 const detectedVscode = ref<string | null>(null)
@@ -121,6 +130,70 @@ const themeOptions = computed(() => [
   { value: 'system', label: t('general.themeSection.options.system') }
 ])
 
+const visibleSections = computed(() =>
+  resolveVisibleSettingsSections<GeneralSectionId>(props.searchQuery, {
+    shell: [
+      t('general.title'),
+      t('general.shellSection.title'),
+      t('general.shellSection.description'),
+      'general',
+      'shell',
+      'terminal shell',
+      'powershell',
+      'bash',
+      'zsh',
+      'executable'
+    ],
+    workspaceIde: [
+      t('general.title'),
+      t('general.workspaceIdeSection.title'),
+      t('general.workspaceIdeSection.description'),
+      'general',
+      'workspace',
+      'ide',
+      'editor',
+      'vscode',
+      'vs code'
+    ],
+    typography: [
+      t('general.title'),
+      t('general.typographySection.title'),
+      t('general.typographySection.description'),
+      'general',
+      'typography',
+      'font',
+      'mono',
+      'cjk',
+      'terminal font'
+    ],
+    theme: [
+      t('general.title'),
+      t('general.themeSection.title'),
+      t('general.themeSection.description'),
+      'general',
+      'theme',
+      'appearance',
+      'light',
+      'dark',
+      'system'
+    ],
+    language: [
+      t('general.title'),
+      t('general.languageSection.title'),
+      t('general.languageSection.description'),
+      'general',
+      'language',
+      'locale',
+      'display language',
+      'translation'
+    ]
+  })
+)
+
+function isSectionVisible(sectionId: GeneralSectionId): boolean {
+  return visibleSections.value.has(sectionId)
+}
+
 function handleThemeChange(value: string): void {
   void store.updateSetting('theme', value)
 }
@@ -139,7 +212,7 @@ function handleThemeChange(value: string): void {
     </header>
 
     <div class="settings-section">
-      <section class="settings-card" aria-label="Shell executable">
+      <section v-if="isSectionVisible('shell')" class="settings-card" aria-label="Shell executable">
         <div class="settings-card__header">
           <div>
             <h4 class="settings-card__title">{{ t('general.shellSection.title') }}</h4>
@@ -167,7 +240,7 @@ function handleThemeChange(value: string): void {
         <p v-else-if="detectedShell" class="settings-item__hint settings-item__hint--success">{{ t('general.shellSection.autoDetected') }}</p>
       </section>
 
-      <section class="settings-card" aria-label="Workspace quick access">
+      <section v-if="isSectionVisible('workspaceIde')" class="settings-card" aria-label="Workspace quick access">
         <div class="settings-card__header">
           <div>
             <h4 class="settings-card__title">{{ t('general.workspaceIdeSection.title') }}</h4>
@@ -209,7 +282,7 @@ function handleThemeChange(value: string): void {
         </div>
       </section>
 
-      <section class="settings-card" aria-label="Typography">
+      <section v-if="isSectionVisible('typography')" class="settings-card" aria-label="Typography">
         <div class="settings-card__header">
           <div>
             <h4 class="settings-card__title">{{ t('general.typographySection.title') }}</h4>
@@ -244,7 +317,7 @@ function handleThemeChange(value: string): void {
         />
       </section>
 
-      <section class="settings-card" aria-label="App theme">
+      <section v-if="isSectionVisible('theme')" class="settings-card" aria-label="App theme">
         <div class="settings-card__header">
           <div>
             <h4 class="settings-card__title">{{ t('general.themeSection.title') }}</h4>
@@ -263,7 +336,7 @@ function handleThemeChange(value: string): void {
         />
       </section>
 
-      <section class="settings-card" aria-label="Display language">
+      <section v-if="isSectionVisible('language')" class="settings-card" aria-label="Display language">
         <div class="settings-card__header">
           <div>
             <h4 class="settings-card__title">{{ t('general.languageSection.title') }}</h4>
@@ -293,10 +366,7 @@ function handleThemeChange(value: string): void {
 }
 
 .settings-panel__header {
-  display: grid;
-  gap: 6px;
-  padding-bottom: 8px;
-  border-b: 1px solid var(--color-line);
+  border-bottom: 1px solid var(--stroke-divider);
 }
 
 .settings-panel__title {
@@ -322,19 +392,14 @@ function handleThemeChange(value: string): void {
 }
 
 .settings-card {
-  display: grid;
-  gap: 16px;
-  padding: 24px;
-  border-radius: var(--radius-lg);
-  background: var(--color-surface-solid);
-  border: 1px solid var(--color-line-strong);
-  box-shadow: var(--shadow-card);
-  transition: all 0.2s ease;
+  transition:
+    border-color var(--duration-rest) var(--curve-standard),
+    box-shadow var(--duration-rest) var(--curve-standard),
+    background-color var(--duration-rest) var(--curve-standard);
 }
 
 .settings-card:hover {
-  border-color: rgba(0, 85, 255, 0.15);
-  box-shadow: var(--shadow-soft);
+  border-color: color-mix(in srgb, var(--color-accent) 15%, transparent);
 }
 
 .settings-card__header {
@@ -362,19 +427,8 @@ function handleThemeChange(value: string): void {
 }
 
 .settings-card__badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 4px 8px;
-  border-radius: var(--radius-sm);
-  background: rgba(0, 0, 0, 0.03);
-  border: 1px solid rgba(0, 0, 0, 0.01);
-  color: var(--color-muted);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  white-space: nowrap;
+  background: var(--control-fill);
+  border: 1px solid var(--stroke-control);
 }
 
 .settings-card__badge--mono {

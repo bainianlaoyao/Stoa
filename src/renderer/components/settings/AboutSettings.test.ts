@@ -130,4 +130,93 @@ describe('AboutSettings', () => {
 
     expect(checkForUpdates).toHaveBeenCalledOnce()
   })
+
+  it('shows download button when update is available', async () => {
+    const store = useUpdateStore()
+    store.applyState(createUpdateState({
+      phase: 'available',
+      availableVersion: '0.2.0',
+      message: 'Update 0.2.0 is available.'
+    }))
+
+    const wrapper = mount(AboutSettings, {
+      global: { plugins: [pinia] }
+    })
+
+    const button = wrapper.get('[data-settings-action="download-update"]')
+    expect(button.attributes('disabled')).toBeUndefined()
+    expect(button.text()).toBe('Download now')
+  })
+
+  it('clicking download calls downloadUpdate', async () => {
+    const downloadUpdate = vi.fn().mockResolvedValue(
+      createUpdateState({ phase: 'downloading' })
+    )
+    window.stoa = createStoaMock({ downloadUpdate })
+
+    const store = useUpdateStore()
+    store.applyState(createUpdateState({
+      phase: 'available',
+      availableVersion: '0.2.0'
+    }))
+
+    const wrapper = mount(AboutSettings, {
+      global: { plugins: [pinia] }
+    })
+
+    await wrapper.get('[data-settings-action="download-update"]').trigger('click')
+    expect(downloadUpdate).toHaveBeenCalledOnce()
+  })
+
+  it('disables button while downloading', () => {
+    const store = useUpdateStore()
+    store.applyState(createUpdateState({
+      phase: 'downloading',
+      availableVersion: '0.2.0',
+      downloadProgressPercent: 42
+    }))
+
+    const wrapper = mount(AboutSettings, {
+      global: { plugins: [pinia] }
+    })
+
+    const button = wrapper.get('[data-settings-action="download-update"]')
+    expect(button.attributes('disabled')).toBe('')
+    expect(button.text()).toBe('Downloading...')
+  })
+
+  it('shows install button when update is downloaded', async () => {
+    const store = useUpdateStore()
+    store.applyState(createUpdateState({
+      phase: 'downloaded',
+      downloadedVersion: '0.2.0',
+      message: 'Update 0.2.0 is ready to install.'
+    }))
+
+    const wrapper = mount(AboutSettings, {
+      global: { plugins: [pinia] }
+    })
+
+    const button = wrapper.get('[data-settings-action="install-update"]')
+    expect(button.attributes('disabled')).toBeUndefined()
+    expect(button.text()).toBe('Install now')
+  })
+
+  it('clicking install calls quitAndInstallUpdate', async () => {
+    const quitAndInstallUpdate = vi.fn().mockResolvedValue(undefined)
+    window.stoa = createStoaMock({ quitAndInstallUpdate })
+
+    const store = useUpdateStore()
+    store.applyState(createUpdateState({
+      phase: 'downloaded',
+      downloadedVersion: '0.2.0'
+    }))
+
+    const wrapper = mount(AboutSettings, {
+      global: { plugins: [pinia] }
+    })
+
+    await wrapper.get('[data-settings-action="install-update"]').trigger('click')
+    expect(quitAndInstallUpdate).toHaveBeenCalledOnce()
+  })
 })

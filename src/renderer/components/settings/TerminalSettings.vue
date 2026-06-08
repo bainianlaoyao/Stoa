@@ -1,14 +1,37 @@
 <script setup lang="ts">
+import { computed, reactive } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '@renderer/stores/settings'
 import GlassFormField from '../primitives/GlassFormField.vue'
+import { matchesSettingsQuery, normalizeSettingsQuery } from './settings-search'
+
+const props = withDefaults(defineProps<{
+  searchQuery?: string
+}>(), {
+  searchQuery: ''
+})
 
 const { t } = useI18n()
 const store = useSettingsStore()
 
-// ---------------------------------------------------------------------------
-// Typography options
-// ---------------------------------------------------------------------------
+type TerminalSectionId = 'typography' | 'cursor' | 'display' | 'behavior'
+type DenseTerminalSectionId = Exclude<TerminalSectionId, 'typography'>
+
+const expandedSections = reactive<Record<DenseTerminalSectionId, boolean>>({
+  cursor: false,
+  display: false,
+  behavior: false
+})
+
+const normalizedSearchQuery = computed(() => normalizeSettingsQuery(props.searchQuery))
+const hasSearchQuery = computed(() => normalizedSearchQuery.value.length > 0)
+
+const sectionTerms: Record<TerminalSectionId, string[]> = {
+  typography: ['terminal', 'typography', 'font', 'weight', 'line height', 'letter spacing', 'text'],
+  cursor: ['terminal', 'cursor', 'blink', 'inactive cursor', 'block', 'underline', 'bar'],
+  display: ['terminal', 'display', 'scrollback', 'contrast', 'gpu', 'scrolling'],
+  behavior: ['terminal', 'behavior', 'copy on selection', 'right click', 'alt click', 'word separators', 'input']
+}
 
 const fontSizeOptions = Array.from({ length: 27 }, (_, i) => ({
   value: String(i + 6),
@@ -20,19 +43,15 @@ const fontWeightOptions = [
   { value: 'bold', label: 'Bold' }
 ]
 
-const lineHeightOptions = [1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 2.0].map((v) => ({
-  value: String(v),
-  label: String(v)
+const lineHeightOptions = [1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 2.0].map((value) => ({
+  value: String(value),
+  label: String(value)
 }))
 
 const letterSpacingOptions = Array.from({ length: 15 }, (_, i) => {
-  const val = -2 + i * 0.5
-  return { value: String(val), label: `${val}px` }
+  const value = -2 + i * 0.5
+  return { value: String(value), label: `${value}px` }
 })
-
-// ---------------------------------------------------------------------------
-// Cursor options
-// ---------------------------------------------------------------------------
 
 const cursorBlinkOptions = [
   { value: 'true', label: 'On' },
@@ -53,13 +72,9 @@ const cursorInactiveStyleOptions = [
   { value: 'none', label: 'None' }
 ]
 
-// ---------------------------------------------------------------------------
-// Scrolling & display options
-// ---------------------------------------------------------------------------
-
-const scrollbackOptions = [100, 500, 1000, 5000, 10000, 50000].map((v) => ({
-  value: String(v),
-  label: v.toLocaleString()
+const scrollbackOptions = [100, 500, 1000, 5000, 10000, 50000].map((value) => ({
+  value: String(value),
+  label: value.toLocaleString()
 }))
 
 const gpuAccelerationOptions = [
@@ -68,14 +83,10 @@ const gpuAccelerationOptions = [
   { value: 'off', label: 'Off' }
 ]
 
-const minimumContrastRatioOptions = [1, 2, 3, 4.5, 6, 10].map((v) => ({
-  value: String(v),
-  label: String(v)
+const minimumContrastRatioOptions = [1, 2, 3, 4.5, 6, 10].map((value) => ({
+  value: String(value),
+  label: String(value)
 }))
-
-// ---------------------------------------------------------------------------
-// Behavior options
-// ---------------------------------------------------------------------------
 
 const copyOnSelectionOptions = [
   { value: 'true', label: 'On' },
@@ -94,10 +105,6 @@ const altClickMovesCursorOptions = [
   { value: 'false', label: 'Off' }
 ]
 
-// ---------------------------------------------------------------------------
-// Update helpers
-// ---------------------------------------------------------------------------
-
 function updateTerminal(key: string, value: unknown): void {
   void store.updateSetting('terminal', { ...store.terminal, [key]: value })
 }
@@ -112,6 +119,26 @@ function handleBooleanChange(key: string, value: string): void {
 
 function handleStringChange(key: string, value: string): void {
   updateTerminal(key, value)
+}
+
+function isSectionVisible(sectionId: TerminalSectionId): boolean {
+  return matchesSettingsQuery(normalizedSearchQuery.value, sectionTerms[sectionId])
+}
+
+function isSectionExpanded(sectionId: DenseTerminalSectionId): boolean {
+  if (hasSearchQuery.value && isSectionVisible(sectionId)) {
+    return true
+  }
+
+  return expandedSections[sectionId]
+}
+
+function toggleSection(sectionId: DenseTerminalSectionId): void {
+  if (hasSearchQuery.value && isSectionVisible(sectionId)) {
+    return
+  }
+
+  expandedSections[sectionId] = !expandedSections[sectionId]
 }
 </script>
 
@@ -128,8 +155,7 @@ function handleStringChange(key: string, value: string): void {
     </header>
 
     <div class="settings-section">
-      <!-- Card 1: Typography -->
-      <section class="settings-card" aria-label="Typography">
+      <section v-if="isSectionVisible('typography')" class="settings-card" aria-label="Typography">
         <div class="settings-card__header">
           <div>
             <h4 class="settings-card__title">{{ t('terminalSettings.typography.title') }}</h4>
@@ -180,119 +206,167 @@ function handleStringChange(key: string, value: string): void {
         />
       </section>
 
-      <!-- Card 2: Cursor -->
-      <section class="settings-card" aria-label="Cursor">
-        <div class="settings-card__header">
-          <div>
-            <h4 class="settings-card__title">{{ t('terminalSettings.cursor.title') }}</h4>
-            <p class="settings-card__description">{{ t('terminalSettings.cursor.description') }}</p>
+      <section v-if="isSectionVisible('cursor')" class="settings-card settings-card--collapsible" aria-label="Cursor">
+        <button
+          class="settings-card__expander"
+          type="button"
+          data-settings-section-toggle="cursor"
+          :aria-expanded="isSectionExpanded('cursor')"
+          @click="toggleSection('cursor')"
+        >
+          <div class="settings-card__header">
+            <div>
+              <h4 class="settings-card__title">{{ t('terminalSettings.cursor.title') }}</h4>
+              <p class="settings-card__description">{{ t('terminalSettings.cursor.description') }}</p>
+            </div>
+            <span class="settings-card__meta">
+              <span class="settings-card__badge">{{ t('terminalSettings.cursor.badge') }}</span>
+              <span class="settings-card__chevron" :class="{ 'settings-card__chevron--expanded': isSectionExpanded('cursor') }" aria-hidden="true">
+                <svg viewBox="0 0 16 16" fill="none" focusable="false">
+                  <path d="M4 6l4 4l4-4" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
+                </svg>
+              </span>
+            </span>
           </div>
-          <span class="settings-card__badge">{{ t('terminalSettings.cursor.badge') }}</span>
-        </div>
+        </button>
 
-        <GlassFormField
-          :label="t('terminalSettings.cursor.cursorBlink')"
-          type="select"
-          :model-value="String(store.resolvedTerminalSettings().cursorBlink)"
-          :options="cursorBlinkOptions"
-          data-settings-field="terminalCursorBlink"
-          @update:model-value="handleBooleanChange('cursorBlink', $event)"
-        />
-        <GlassFormField
-          :label="t('terminalSettings.cursor.cursorStyle')"
-          type="select"
-          :model-value="store.resolvedTerminalSettings().cursorStyle"
-          :options="cursorStyleOptions"
-          data-settings-field="terminalCursorStyle"
-          @update:model-value="handleStringChange('cursorStyle', $event)"
-        />
-        <GlassFormField
-          :label="t('terminalSettings.cursor.cursorInactiveStyle')"
-          type="select"
-          :model-value="store.resolvedTerminalSettings().cursorInactiveStyle"
-          :options="cursorInactiveStyleOptions"
-          data-settings-field="terminalCursorInactiveStyle"
-          @update:model-value="handleStringChange('cursorInactiveStyle', $event)"
-        />
+        <div v-if="isSectionExpanded('cursor')" class="settings-card__content">
+          <GlassFormField
+            :label="t('terminalSettings.cursor.cursorBlink')"
+            type="select"
+            :model-value="String(store.resolvedTerminalSettings().cursorBlink)"
+            :options="cursorBlinkOptions"
+            data-settings-field="terminalCursorBlink"
+            @update:model-value="handleBooleanChange('cursorBlink', $event)"
+          />
+          <GlassFormField
+            :label="t('terminalSettings.cursor.cursorStyle')"
+            type="select"
+            :model-value="store.resolvedTerminalSettings().cursorStyle"
+            :options="cursorStyleOptions"
+            data-settings-field="terminalCursorStyle"
+            @update:model-value="handleStringChange('cursorStyle', $event)"
+          />
+          <GlassFormField
+            :label="t('terminalSettings.cursor.cursorInactiveStyle')"
+            type="select"
+            :model-value="store.resolvedTerminalSettings().cursorInactiveStyle"
+            :options="cursorInactiveStyleOptions"
+            data-settings-field="terminalCursorInactiveStyle"
+            @update:model-value="handleStringChange('cursorInactiveStyle', $event)"
+          />
+        </div>
       </section>
 
-      <!-- Card 3: Scrolling & Display -->
-      <section class="settings-card" aria-label="Scrolling and display">
-        <div class="settings-card__header">
-          <div>
-            <h4 class="settings-card__title">{{ t('terminalSettings.display.title') }}</h4>
-            <p class="settings-card__description">{{ t('terminalSettings.display.description') }}</p>
+      <section v-if="isSectionVisible('display')" class="settings-card settings-card--collapsible" aria-label="Scrolling and display">
+        <button
+          class="settings-card__expander"
+          type="button"
+          data-settings-section-toggle="display"
+          :aria-expanded="isSectionExpanded('display')"
+          @click="toggleSection('display')"
+        >
+          <div class="settings-card__header">
+            <div>
+              <h4 class="settings-card__title">{{ t('terminalSettings.display.title') }}</h4>
+              <p class="settings-card__description">{{ t('terminalSettings.display.description') }}</p>
+            </div>
+            <span class="settings-card__meta">
+              <span class="settings-card__badge">{{ t('terminalSettings.display.badge') }}</span>
+              <span class="settings-card__chevron" :class="{ 'settings-card__chevron--expanded': isSectionExpanded('display') }" aria-hidden="true">
+                <svg viewBox="0 0 16 16" fill="none" focusable="false">
+                  <path d="M4 6l4 4l4-4" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
+                </svg>
+              </span>
+            </span>
           </div>
-          <span class="settings-card__badge">{{ t('terminalSettings.display.badge') }}</span>
-        </div>
+        </button>
 
-        <GlassFormField
-          :label="t('terminalSettings.display.scrollback')"
-          type="select"
-          :model-value="String(store.resolvedTerminalSettings().scrollback)"
-          :options="scrollbackOptions"
-          data-settings-field="terminalScrollback"
-          @update:model-value="handleNumberChange('scrollback', $event)"
-        />
-        <GlassFormField
-          :label="t('terminalSettings.display.minimumContrastRatio')"
-          type="select"
-          :model-value="String(store.resolvedTerminalSettings().minimumContrastRatio)"
-          :options="minimumContrastRatioOptions"
-          data-settings-field="terminalMinimumContrastRatio"
-          @update:model-value="handleNumberChange('minimumContrastRatio', $event)"
-        />
-        <GlassFormField
-          :label="t('terminalSettings.display.gpuAcceleration')"
-          type="select"
-          :model-value="store.resolvedTerminalSettings().gpuAcceleration"
-          :options="gpuAccelerationOptions"
-          data-settings-field="terminalGpuAcceleration"
-          @update:model-value="handleStringChange('gpuAcceleration', $event)"
-        />
+        <div v-if="isSectionExpanded('display')" class="settings-card__content">
+          <GlassFormField
+            :label="t('terminalSettings.display.scrollback')"
+            type="select"
+            :model-value="String(store.resolvedTerminalSettings().scrollback)"
+            :options="scrollbackOptions"
+            data-settings-field="terminalScrollback"
+            @update:model-value="handleNumberChange('scrollback', $event)"
+          />
+          <GlassFormField
+            :label="t('terminalSettings.display.minimumContrastRatio')"
+            type="select"
+            :model-value="String(store.resolvedTerminalSettings().minimumContrastRatio)"
+            :options="minimumContrastRatioOptions"
+            data-settings-field="terminalMinimumContrastRatio"
+            @update:model-value="handleNumberChange('minimumContrastRatio', $event)"
+          />
+          <GlassFormField
+            :label="t('terminalSettings.display.gpuAcceleration')"
+            type="select"
+            :model-value="store.resolvedTerminalSettings().gpuAcceleration"
+            :options="gpuAccelerationOptions"
+            data-settings-field="terminalGpuAcceleration"
+            @update:model-value="handleStringChange('gpuAcceleration', $event)"
+          />
+        </div>
       </section>
 
-      <!-- Card 4: Behavior -->
-      <section class="settings-card" aria-label="Behavior">
-        <div class="settings-card__header">
-          <div>
-            <h4 class="settings-card__title">{{ t('terminalSettings.behavior.title') }}</h4>
-            <p class="settings-card__description">{{ t('terminalSettings.behavior.description') }}</p>
+      <section v-if="isSectionVisible('behavior')" class="settings-card settings-card--collapsible" aria-label="Behavior">
+        <button
+          class="settings-card__expander"
+          type="button"
+          data-settings-section-toggle="behavior"
+          :aria-expanded="isSectionExpanded('behavior')"
+          @click="toggleSection('behavior')"
+        >
+          <div class="settings-card__header">
+            <div>
+              <h4 class="settings-card__title">{{ t('terminalSettings.behavior.title') }}</h4>
+              <p class="settings-card__description">{{ t('terminalSettings.behavior.description') }}</p>
+            </div>
+            <span class="settings-card__meta">
+              <span class="settings-card__badge">{{ t('terminalSettings.behavior.badge') }}</span>
+              <span class="settings-card__chevron" :class="{ 'settings-card__chevron--expanded': isSectionExpanded('behavior') }" aria-hidden="true">
+                <svg viewBox="0 0 16 16" fill="none" focusable="false">
+                  <path d="M4 6l4 4l4-4" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" />
+                </svg>
+              </span>
+            </span>
           </div>
-          <span class="settings-card__badge">{{ t('terminalSettings.behavior.badge') }}</span>
-        </div>
+        </button>
 
-        <GlassFormField
-          :label="t('terminalSettings.behavior.copyOnSelection')"
-          type="select"
-          :model-value="String(store.resolvedTerminalSettings().copyOnSelection)"
-          :options="copyOnSelectionOptions"
-          data-settings-field="terminalCopyOnSelection"
-          @update:model-value="handleBooleanChange('copyOnSelection', $event)"
-        />
-        <GlassFormField
-          :label="t('terminalSettings.behavior.rightClickBehavior')"
-          type="select"
-          :model-value="store.resolvedTerminalSettings().rightClickBehavior"
-          :options="rightClickBehaviorOptions"
-          data-settings-field="terminalRightClickBehavior"
-          @update:model-value="handleStringChange('rightClickBehavior', $event)"
-        />
-        <GlassFormField
-          :label="t('terminalSettings.behavior.altClickMovesCursor')"
-          type="select"
-          :model-value="String(store.resolvedTerminalSettings().altClickMovesCursor)"
-          :options="altClickMovesCursorOptions"
-          data-settings-field="terminalAltClickMovesCursor"
-          @update:model-value="handleBooleanChange('altClickMovesCursor', $event)"
-        />
-        <GlassFormField
-          :label="t('terminalSettings.behavior.wordSeparators')"
-          type="text"
-          :model-value="store.resolvedTerminalSettings().wordSeparators"
-          data-settings-field="terminalWordSeparators"
-          @update:model-value="handleStringChange('wordSeparators', $event)"
-        />
+        <div v-if="isSectionExpanded('behavior')" class="settings-card__content">
+          <GlassFormField
+            :label="t('terminalSettings.behavior.copyOnSelection')"
+            type="select"
+            :model-value="String(store.resolvedTerminalSettings().copyOnSelection)"
+            :options="copyOnSelectionOptions"
+            data-settings-field="terminalCopyOnSelection"
+            @update:model-value="handleBooleanChange('copyOnSelection', $event)"
+          />
+          <GlassFormField
+            :label="t('terminalSettings.behavior.rightClickBehavior')"
+            type="select"
+            :model-value="store.resolvedTerminalSettings().rightClickBehavior"
+            :options="rightClickBehaviorOptions"
+            data-settings-field="terminalRightClickBehavior"
+            @update:model-value="handleStringChange('rightClickBehavior', $event)"
+          />
+          <GlassFormField
+            :label="t('terminalSettings.behavior.altClickMovesCursor')"
+            type="select"
+            :model-value="String(store.resolvedTerminalSettings().altClickMovesCursor)"
+            :options="altClickMovesCursorOptions"
+            data-settings-field="terminalAltClickMovesCursor"
+            @update:model-value="handleBooleanChange('altClickMovesCursor', $event)"
+          />
+          <GlassFormField
+            :label="t('terminalSettings.behavior.wordSeparators')"
+            type="text"
+            :model-value="store.resolvedTerminalSettings().wordSeparators"
+            data-settings-field="terminalWordSeparators"
+            @update:model-value="handleStringChange('wordSeparators', $event)"
+          />
+        </div>
       </section>
     </div>
   </div>
@@ -306,93 +380,77 @@ function handleStringChange(key: string, value: string): void {
 }
 
 .settings-panel__header {
-  display: grid;
-  gap: 6px;
-  padding-bottom: 8px;
-  border-b: 1px solid var(--color-line);
-}
-
-.settings-panel__title {
-  margin: 0;
-  color: var(--color-text-strong);
-  font-family: var(--font-ui);
-  font-size: 20px;
-  font-weight: 700;
-  letter-spacing: -0.015em;
-}
-
-.settings-panel__description {
-  margin: 0;
-  color: var(--color-muted);
-  line-height: 1.5;
-  max-width: 640px;
-  font-size: var(--text-body-sm);
-}
-
-.settings-section {
-  display: grid;
-  gap: 20px;
+  border-bottom: 1px solid var(--stroke-divider);
 }
 
 .settings-card {
-  display: grid;
-  gap: 16px;
-  padding: 24px;
-  border-radius: var(--radius-lg);
-  background: var(--color-surface-solid);
-  border: 1px solid var(--color-line-strong);
-  box-shadow: var(--shadow-card);
-  transition: all 0.2s ease;
+  transition:
+    border-color var(--duration-rest) var(--curve-standard),
+    box-shadow var(--duration-rest) var(--curve-standard),
+    background-color var(--duration-rest) var(--curve-standard);
 }
 
 .settings-card:hover {
-  border-color: rgba(0, 85, 255, 0.15);
-  box-shadow: var(--shadow-soft);
-}
-
-.settings-card__header {
-  display: flex;
-  gap: 12px;
-  justify-content: space-between;
-  align-items: start;
-}
-
-.settings-card__title {
-  margin: 0;
-  color: var(--color-text-strong);
-  font-family: var(--font-ui);
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-}
-
-.settings-card__description {
-  margin: 0;
-  color: var(--color-muted);
-  line-height: 1.4;
-  margin-top: 4px;
-  font-size: var(--text-meta);
+  border-color: color-mix(in srgb, var(--color-accent) 15%, transparent);
 }
 
 .settings-card__badge {
+  background: var(--control-fill);
+  border: 1px solid var(--stroke-control);
+}
+
+.settings-card--collapsible {
+  gap: 12px;
+}
+
+.settings-card__expander {
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.settings-card__expander:focus-visible {
+  outline: none;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-focus-ring);
+}
+
+.settings-card__meta {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  padding: 4px 8px;
-  border-radius: var(--radius-sm);
-  background: rgba(0, 0, 0, 0.03);
-  border: 1px solid rgba(0, 0, 0, 0.01);
-  color: var(--color-muted);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  white-space: nowrap;
+  gap: 10px;
+}
+
+.settings-card__chevron {
+  display: inline-flex;
+  color: var(--color-subtle);
+  transition:
+    transform var(--duration-rest) var(--curve-standard),
+    color var(--duration-rest) var(--curve-standard);
+}
+
+.settings-card__chevron svg {
+  width: 16px;
+  height: 16px;
+}
+
+.settings-card__chevron--expanded {
+  transform: rotate(180deg);
+  color: var(--color-accent);
+}
+
+.settings-card__content {
+  display: grid;
+  gap: 16px;
 }
 
 @media (max-width: 980px) {
-  .settings-field {
-    grid-template-columns: 1fr;
+  .settings-card__header {
+    align-items: start;
   }
 }
 </style>

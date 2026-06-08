@@ -4,8 +4,12 @@ export default {
     title: 'Settings',
     lede: 'Manage shell, provider, and application details for the current workspace.',
     heroLabel: 'Current section',
+    searchLabel: 'Search settings',
+    searchPlaceholder: 'Search settings',
     navLabel: 'Sections',
     navText: 'Core preferences and reference information.',
+    noResultsTitle: 'No matching settings',
+    noResultsDescription: 'Try a broader term or clear the current search query.',
     tabs: {
       general: { label: 'General', summary: 'Shell path and terminal font size.' },
       terminal: { label: 'Terminal', summary: 'Typography, cursor, scroll, and behavior.' },
@@ -213,7 +217,10 @@ export default {
       statusUpToDate: 'Up to date',
       statusDisabled: 'Updates unavailable',
       statusError: 'Update error',
-      statusIdle: 'Idle'
+      statusIdle: 'Idle',
+      downloading: 'Downloading...',
+      downloadNow: 'Download now',
+      installNow: 'Install now'
     }
   },
 

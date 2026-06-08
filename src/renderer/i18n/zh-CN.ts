@@ -4,8 +4,12 @@ export default {
     title: '\u8BBE\u7F6E',
     lede: '\u7BA1\u7406\u5F53\u524D\u5DE5\u4F5C\u533A\u7684 Shell\u3001\u63D0\u4F9B\u5546\u548C\u5E94\u7528\u7A0B\u5E8F\u8BE6\u60C5\u3002',
     heroLabel: '\u5F53\u524D\u5206\u533A',
+    searchLabel: '\u641C\u7D22\u8BBE\u7F6E',
+    searchPlaceholder: '\u641C\u7D22\u8BBE\u7F6E',
     navLabel: '\u5206\u533A',
     navText: '\u6838\u5FC3\u504F\u597D\u8BBE\u7F6E\u548C\u53C2\u8003\u4FE1\u606F\u3002',
+    noResultsTitle: '\u6CA1\u6709\u5339\u914D\u7684\u8BBE\u7F6E',
+    noResultsDescription: '\u8BF7\u5C1D\u8BD5\u66F4\u5BBD\u6CDB\u7684\u5173\u952E\u8BCD\uFF0C\u6216\u6E05\u7A7A\u5F53\u524D\u641C\u7D22\u3002',
     tabs: {
       general: { label: '\u901A\u7528', summary: 'Shell \u8DEF\u5F84\u548C\u7EC8\u7AEF\u5B57\u4F53\u5927\u5C0F\u3002' },
       terminal: { label: '\u7EC8\u7AEF', summary: '\u5B57\u4F53\u3001\u5149\u6807\u3001\u6EDA\u52A8\u548C\u884C\u4E3A\u8BBE\u7F6E\u3002' },
@@ -213,7 +217,10 @@ export default {
       statusUpToDate: '\u5DF2\u662F\u6700\u65B0\u7248\u672C',
       statusDisabled: '\u66F4\u65B0\u4E0D\u53EF\u7528',
       statusError: '\u66F4\u65B0\u51FA\u9519',
-      statusIdle: '\u7A7A\u95F2'
+      statusIdle: '\u7A7A\u95F2',
+      downloading: '\u4E0B\u8F7D\u4E2D...',
+      downloadNow: '\u7ACB\u5373\u4E0B\u8F7D',
+      installNow: '\u7ACB\u5373\u5B89\u88C5'
     }
   },
 

@@ -3,9 +3,18 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useUpdateStore } from '@renderer/stores/update'
 import stoaLogo from '@renderer/assets/icons/gemini-svg.svg'
+import { resolveVisibleSettingsSections } from './settings-search'
+
+const props = withDefaults(defineProps<{
+  searchQuery?: string
+}>(), {
+  searchQuery: ''
+})
 
 const { t } = useI18n()
 const updateStore = useUpdateStore()
+
+type AboutSectionId = 'overview' | 'updates' | 'links'
 
 const currentVersion = computed(() => updateStore.state.currentVersion)
 const latestVersion = computed(() => updateStore.state.downloadedVersion ?? updateStore.state.availableVersion)
@@ -49,9 +58,97 @@ const updateStatusTone = computed(() => {
   }
 })
 const isChecking = computed(() => updateStore.state.phase === 'checking')
+const isDownloading = computed(() => updateStore.state.phase === 'downloading')
+const isBusy = computed(() => isChecking.value || isDownloading.value)
+const actionLabel = computed(() => {
+  switch (updateStore.state.phase) {
+    case 'checking':
+      return t('about.updates.checking')
+    case 'available':
+      return t('about.updates.downloadNow')
+    case 'downloading':
+      return t('about.updates.downloading')
+    case 'downloaded':
+      return t('about.updates.installNow')
+    default:
+      return t('about.updates.checkForUpdates')
+  }
+})
+const actionDataAttr = computed(() => {
+  switch (updateStore.state.phase) {
+    case 'available':
+    case 'downloading':
+      return 'download-update'
+    case 'downloaded':
+      return 'install-update'
+    default:
+      return 'check-updates'
+  }
+})
 
-async function handleCheckForUpdates(): Promise<void> {
-  await updateStore.checkForUpdates()
+const visibleSections = computed(() =>
+  resolveVisibleSettingsSections<AboutSectionId>(props.searchQuery, {
+    overview: [
+      t('about.eyebrow'),
+      t('about.title'),
+      t('about.description'),
+      t('about.summary'),
+      t('about.stack'),
+      'about',
+      'stoa',
+      'version',
+      'electron',
+      'vue',
+      'node-pty'
+    ],
+    updates: [
+      t('about.eyebrow'),
+      t('about.updates.title'),
+      t('about.updates.description'),
+      updateStatusLabel.value,
+      updateMessage.value,
+      'about',
+      'update',
+      'updates',
+      'release',
+      'download',
+      'install',
+      'version',
+      'check'
+    ],
+    links: [
+      t('about.eyebrow'),
+      t('about.links.title'),
+      t('about.links.description'),
+      t('about.links.github'),
+      t('about.links.documentation'),
+      t('about.links.reportIssue'),
+      'about',
+      'github',
+      'documentation',
+      'docs',
+      'issue',
+      'report'
+    ]
+  })
+)
+
+const showOverview = computed(() => visibleSections.value.has('overview'))
+const showUpdates = computed(() => visibleSections.value.has('updates'))
+const showLinks = computed(() => visibleSections.value.has('links'))
+const hasSidebar = computed(() => showUpdates.value || showLinks.value)
+
+async function handleAction(): Promise<void> {
+  switch (updateStore.state.phase) {
+    case 'available':
+      await updateStore.downloadUpdate()
+      break
+    case 'downloaded':
+      await updateStore.quitAndInstallUpdate()
+      break
+    default:
+      await updateStore.checkForUpdates()
+  }
 }
 </script>
 
@@ -68,7 +165,12 @@ async function handleCheckForUpdates(): Promise<void> {
     </header>
 
     <div class="settings-section settings-section--about">
-      <section class="settings-card settings-card--hero settings-about" :aria-label="t('about.title')">
+      <section
+        v-if="showOverview"
+        class="settings-card settings-card--hero settings-about"
+        :class="{ 'settings-about--full-span': !hasSidebar }"
+        :aria-label="t('about.title')"
+      >
         <div class="settings-about__brand">
           <div class="settings-about__logo-container">
             <img :src="stoaLogo" alt="" class="settings-about__logo" aria-hidden="true">
@@ -82,8 +184,8 @@ async function handleCheckForUpdates(): Promise<void> {
         <span class="settings-about__stack">{{ t('about.stack') }}</span>
       </section>
 
-      <div class="settings-about__sidebar">
-        <section class="settings-card settings-about__status-card" :aria-label="t('about.updates.title')">
+      <div v-if="hasSidebar" class="settings-about__sidebar">
+        <section v-if="showUpdates" class="settings-card settings-about__status-card" :aria-label="t('about.updates.title')">
           <div class="settings-card__header">
             <div>
               <h4 class="settings-card__title">{{ t('about.updates.title') }}</h4>
@@ -115,29 +217,29 @@ async function handleCheckForUpdates(): Promise<void> {
             <button
               type="button"
               class="btn-primary"
-              data-settings-action="check-updates"
-              :disabled="isChecking"
-              @click="void handleCheckForUpdates()"
+              :data-settings-action="actionDataAttr"
+              :disabled="isBusy"
+              @click="void handleAction()"
             >
-              {{ isChecking ? t('about.updates.checking') : t('about.updates.checkForUpdates') }}
+              {{ actionLabel }}
             </button>
           </div>
         </section>
 
-        <section class="settings-card" :aria-label="t('about.links.title')">
-        <div class="settings-card__header">
-          <div>
-            <h4 class="settings-card__title">{{ t('about.links.title') }}</h4>
-            <p class="settings-card__description">{{ t('about.links.description') }}</p>
+        <section v-if="showLinks" class="settings-card" :aria-label="t('about.links.title')">
+          <div class="settings-card__header">
+            <div>
+              <h4 class="settings-card__title">{{ t('about.links.title') }}</h4>
+              <p class="settings-card__description">{{ t('about.links.description') }}</p>
+            </div>
+            <span class="settings-card__badge">{{ t('about.links.badge') }}</span>
           </div>
-          <span class="settings-card__badge">{{ t('about.links.badge') }}</span>
-        </div>
 
-        <div class="settings-about__links">
-          <a class="settings-about__link" href="https://github.com" target="_blank" rel="noopener noreferrer">{{ t('about.links.github') }}</a>
-          <a class="settings-about__link" href="https://github.com" target="_blank" rel="noopener noreferrer">{{ t('about.links.documentation') }}</a>
-          <a class="settings-about__link" href="https://github.com" target="_blank" rel="noopener noreferrer">{{ t('about.links.reportIssue') }}</a>
-        </div>
+          <div class="settings-about__links">
+            <a class="settings-about__link" href="https://github.com" target="_blank" rel="noopener noreferrer">{{ t('about.links.github') }}</a>
+            <a class="settings-about__link" href="https://github.com" target="_blank" rel="noopener noreferrer">{{ t('about.links.documentation') }}</a>
+            <a class="settings-about__link" href="https://github.com" target="_blank" rel="noopener noreferrer">{{ t('about.links.reportIssue') }}</a>
+          </div>
         </section>
       </div>
     </div>
@@ -152,10 +254,7 @@ async function handleCheckForUpdates(): Promise<void> {
 }
 
 .settings-panel__header {
-  display: grid;
-  gap: 6px;
-  padding-bottom: 8px;
-  border-b: 1px solid var(--color-line);
+  border-bottom: 1px solid var(--stroke-divider);
 }
 
 .settings-panel__header--about {
@@ -189,23 +288,22 @@ async function handleCheckForUpdates(): Promise<void> {
 }
 
 .settings-card {
-  display: grid;
-  gap: 16px;
-  padding: 24px;
-  border-radius: var(--radius-lg);
-  background: var(--color-surface-solid);
-  border: 1px solid var(--color-line-strong);
-  box-shadow: var(--shadow-card);
-  transition: all 0.2s ease;
+  transition:
+    border-color var(--duration-rest) var(--curve-standard),
+    box-shadow var(--duration-rest) var(--curve-standard),
+    background-color var(--duration-rest) var(--curve-standard);
 }
 
 .settings-card:hover {
-  border-color: rgba(0, 85, 255, 0.15);
-  box-shadow: var(--shadow-soft);
+  border-color: color-mix(in srgb, var(--color-accent) 15%, transparent);
 }
 
 .settings-card--hero {
   align-content: start;
+}
+
+.settings-about--full-span {
+  grid-column: 1 / -1;
 }
 
 .settings-card__header {
@@ -233,19 +331,8 @@ async function handleCheckForUpdates(): Promise<void> {
 }
 
 .settings-card__badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 4px 8px;
-  border-radius: var(--radius-sm);
-  background: rgba(0, 0, 0, 0.03);
-  border: 1px solid rgba(0, 0, 0, 0.01);
-  color: var(--color-muted);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  white-space: nowrap;
+  background: var(--control-fill);
+  border: 1px solid var(--stroke-control);
 }
 
 .settings-card__badge--accent {
@@ -282,9 +369,9 @@ async function handleCheckForUpdates(): Promise<void> {
   width: 60px;
   height: 60px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(255,255,255,0.95) 0%, rgba(240,244,255,0.5) 100%);
-  border: 1px solid var(--color-line-strong);
-  box-shadow: 0 8px 24px -6px rgba(0, 85, 255, 0.08), inset 0 1px 0 rgba(255,255,255,0.9);
+  background: var(--color-surface-solid);
+  border: 1px solid var(--stroke-divider);
+  box-shadow: var(--shadow-soft);
   flex-shrink: 0;
 }
 
@@ -327,8 +414,8 @@ async function handleCheckForUpdates(): Promise<void> {
   width: fit-content;
   padding: 4px 8px;
   border-radius: var(--radius-sm);
-  background: rgba(0, 0, 0, 0.03);
-  border: 1px solid rgba(0, 0, 0, 0.01);
+  background: var(--control-fill);
+  border: 1px solid var(--stroke-control);
   font-weight: 500;
 }
 
@@ -404,19 +491,22 @@ async function handleCheckForUpdates(): Promise<void> {
   justify-content: space-between;
   padding: 10px 12px;
   border-radius: var(--radius-sm);
-  background: rgba(0,0,0,0.008);
+  background: var(--control-fill);
   color: var(--color-text-strong);
   text-decoration: none;
   border: 1px solid var(--color-line);
   font-size: var(--text-body-sm);
   font-weight: 500;
-  transition: all 0.2s ease;
+  transition:
+    border-color var(--duration-rest) var(--curve-standard),
+    background-color var(--duration-rest) var(--curve-standard),
+    color var(--duration-rest) var(--curve-standard);
 }
 
 .settings-about__link:hover,
 .settings-about__link:focus-visible {
-  background: rgba(0, 0, 0, 0.03);
-  border-color: var(--color-line-strong);
+  background: var(--control-fill-hover);
+  border-color: var(--stroke-divider);
   outline: none;
 }
 
