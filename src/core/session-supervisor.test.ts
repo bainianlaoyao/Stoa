@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import type { SessionNodeSnapshot, SessionSummary } from '@shared/project-session'
 import type { AuthorityResult } from './session-visibility-service'
 import { SessionSupervisor, type CallerIdentity, type SessionSupervisorDeps } from './session-supervisor'
@@ -106,6 +106,40 @@ describe('SessionSupervisor', () => {
       const result = supervisor.listSessions(sessionCaller('root'))
       expect(result).toHaveLength(3)
     })
+
+    test('sanitizes subagent full result body from generic list projection', () => {
+      const supervisor = new SessionSupervisor(makeDeps({
+        getSnapshot: () => [
+          makeNode({ id: 'root' }, { rootSessionId: 'root', depth: 0 }),
+          makeNode({
+            id: 'child',
+            parentSessionId: 'root',
+            createdBySessionId: 'root',
+            subagentResultSummary: {
+              status: 'completed',
+              title: 'done',
+              createdAt: '2026-06-11T00:00:00.000Z',
+              updatedAt: '2026-06-11T00:00:01.000Z',
+              hasBody: true
+            },
+            subagentResult: {
+              sessionId: 'child',
+              parentSessionId: 'root',
+              inputEpoch: 1,
+              status: 'completed',
+              title: 'done',
+              body: 'secret body',
+              createdAt: '2026-06-11T00:00:00.000Z',
+              updatedAt: '2026-06-11T00:00:01.000Z'
+            }
+          }, { rootSessionId: 'root', depth: 1 })
+        ]
+      }))
+
+      const result = supervisor.listSessions(localUser())
+      expect(result[1]?.session.subagentResultSummary?.hasBody).toBe(true)
+      expect(result[1]?.session.subagentResult).toBeUndefined()
+    })
   })
 
   describe('inspectSession', () => {
@@ -134,10 +168,44 @@ describe('SessionSupervisor', () => {
       const node = supervisor.inspectSession(sessionCaller('root'), 'peer')
       expect(node).toBeNull()
     })
+
+    test('sanitizes subagent full result body from generic inspect projection', () => {
+      const supervisor = new SessionSupervisor(makeDeps({
+        getSnapshot: () => [
+          makeNode({ id: 'root' }, { rootSessionId: 'root', depth: 0 }),
+          makeNode({
+            id: 'child',
+            parentSessionId: 'root',
+            createdBySessionId: 'root',
+            subagentResultSummary: {
+              status: 'completed',
+              title: 'done',
+              createdAt: '2026-06-11T00:00:00.000Z',
+              updatedAt: '2026-06-11T00:00:01.000Z',
+              hasBody: true
+            },
+            subagentResult: {
+              sessionId: 'child',
+              parentSessionId: 'root',
+              inputEpoch: 1,
+              status: 'completed',
+              title: 'done',
+              body: 'secret body',
+              createdAt: '2026-06-11T00:00:00.000Z',
+              updatedAt: '2026-06-11T00:00:01.000Z'
+            }
+          }, { rootSessionId: 'root', depth: 1 })
+        ]
+      }))
+
+      const node = supervisor.inspectSession(localUser(), 'child')
+      expect(node?.session.subagentResultSummary?.hasBody).toBe(true)
+      expect(node?.session.subagentResult).toBeUndefined()
+    })
   })
 
-  describe('promptSession', () => {
-    test('sends prompt text to session via sessionInput', async () => {
+  describe('inputSession', () => {
+    test('sends input text to session via sessionInput', async () => {
       const sent: Array<{ sessionId: string; data: string }> = []
       const deps = makeDeps({
         sessionInput: {
@@ -145,13 +213,13 @@ describe('SessionSupervisor', () => {
         }
       })
       const supervisor = new SessionSupervisor(deps)
-      const result = await supervisor.promptSession(localUser(), 'root', 'hello')
+      const result = await supervisor.inputSession(localUser(), 'root', 'hello')
       expect(result.kind).toBe('dispatched')
       expect(sent).toHaveLength(1)
       expect(sent[0]).toEqual({ sessionId: 'root', data: 'hello\r' })
     })
 
-    test('rejects local-user prompt for non-existent target with unknown_session', async () => {
+    test('rejects local-user input for non-existent target with unknown_session', async () => {
       const sent: Array<{ sessionId: string; data: string }> = []
       const deps = makeDeps({
         sessionInput: {
@@ -160,7 +228,7 @@ describe('SessionSupervisor', () => {
       })
       const supervisor = new SessionSupervisor(deps)
 
-      await expect(supervisor.promptSession(localUser(), 'missing', 'hello'))
+      await expect(supervisor.inputSession(localUser(), 'missing', 'hello'))
         .rejects.toThrow('unknown_session')
       expect(sent).toHaveLength(0)
     })
@@ -174,7 +242,7 @@ describe('SessionSupervisor', () => {
         } as any
       })
       const supervisor = new SessionSupervisor(deps)
-      await expect(supervisor.promptSession(sessionCaller('root'), 'peer', 'hi'))
+      await expect(supervisor.inputSession(sessionCaller('root'), 'peer', 'hi'))
         .rejects.toThrow('unknown_session')
     })
 
@@ -184,12 +252,24 @@ describe('SessionSupervisor', () => {
           visibleSessionIds: () => ['root', 'peer'],
           isVisible: () => true,
           checkAuthority: (_v: string, _t: string, action: string) =>
-            action === 'prompt' ? { allowed: false, reason: 'forbidden_authority_scope' } : { allowed: true }
+            action === 'input' ? { allowed: false, reason: 'forbidden_authority_scope' } : { allowed: true }
         } as any
       })
       const supervisor = new SessionSupervisor(deps)
-      await expect(supervisor.promptSession(sessionCaller('root'), 'peer', 'hi'))
+      await expect(supervisor.inputSession(sessionCaller('root'), 'peer', 'hi'))
         .rejects.toThrow('forbidden_authority_scope')
+    })
+
+    test('records subagent input invalidation when target is a child session', async () => {
+      const recordSubagentInput = vi.fn(async () => null)
+      const supervisor = new SessionSupervisor({
+        ...makeDeps(),
+        recordSubagentInput
+      })
+
+      await supervisor.inputSession(localUser(), 'child', 'hello')
+
+      expect(recordSubagentInput).toHaveBeenCalledWith('child', 'hello')
     })
   })
 
@@ -231,6 +311,32 @@ describe('SessionSupervisor', () => {
       const session = await supervisor.createChildSession(localUser(), { parentId: 'root', projectId: 'proj-1', type: 'codex', title: 'child' })
       expect(called).toBe(true)
       expect(session.id).toBe('new-child')
+    })
+
+    test('preserves initialized subagent facade fields from child session creation', async () => {
+      const deps = makeDeps({
+        createChildSession: async (request) => {
+          expect(request.parentId).toBe('root')
+          return makeSession({
+            id: 'new-child',
+            parentSessionId: 'root',
+            createdBySessionId: 'root',
+            subagentName: 'ryu',
+            subagentInputEpoch: 0,
+            subagentResultSummary: null,
+            subagentResult: null
+          })
+        }
+      })
+      const supervisor = new SessionSupervisor(deps)
+      const session = await supervisor.createChildSession(sessionCaller('root'), { parentId: '', projectId: '', type: 'codex', title: 'child' })
+      expect(session).toMatchObject({
+        id: 'new-child',
+        subagentName: 'ryu',
+        subagentInputEpoch: 0,
+        subagentResultSummary: null,
+        subagentResult: null
+      })
     })
 
     test('rejects when session caller in tree has no create authority on target', async () => {
@@ -465,6 +571,65 @@ describe('SessionSupervisor', () => {
         .resolves.toEqual({ sessionId: 'child', text: 'replay:child' })
     })
 
+    test('getSessionOutput rejects same-depth peer subagent reads without full-body authority', async () => {
+      const deps = makeDeps({
+        getSnapshot: () => [
+          makeNode({ id: 'root' }, { rootSessionId: 'root', depth: 0 }),
+          makeNode({ id: 'a', parentSessionId: 'root', createdBySessionId: 'root' }, { rootSessionId: 'root', depth: 1 }),
+          makeNode({
+            id: 'b',
+            parentSessionId: 'root',
+            createdBySessionId: 'root',
+            lastTurnOutcome: 'completed'
+          }, { rootSessionId: 'root', depth: 1 })
+        ]
+      })
+      const supervisor = new SessionSupervisor(deps)
+
+      await expect(supervisor.getSessionOutput(sessionCaller('a'), 'b'))
+        .rejects.toMatchObject({ code: 'forbidden_authority_scope' })
+    })
+
+    test('getSessionOutput rejects stale subagent terminal fallback after a newer input epoch', async () => {
+      const deps = makeDeps({
+        getSnapshot: () => [
+          makeNode({ id: 'root' }, { rootSessionId: 'root', depth: 0 }),
+          makeNode({
+            id: 'child',
+            parentSessionId: 'root',
+            createdBySessionId: 'root',
+            lastTurnOutcome: 'completed',
+            subagentInputEpoch: 1,
+            subagentLatestInputStateSequence: 7,
+            lastStateSequence: 7
+          }, { rootSessionId: 'root', depth: 1 })
+        ]
+      })
+      const supervisor = new SessionSupervisor(deps)
+
+      await expect(supervisor.getSessionOutput(localUser(), 'child'))
+        .rejects.toMatchObject({ code: 'no_completion_yet' })
+    })
+
+    test('getSessionOutput rejects destroyed subagent terminal fallback', async () => {
+      const deps = makeDeps({
+        getSnapshot: () => [
+          makeNode({ id: 'root' }, { rootSessionId: 'root', depth: 0 }),
+          makeNode({
+            id: 'child',
+            parentSessionId: 'root',
+            createdBySessionId: 'root',
+            lastTurnOutcome: 'completed',
+            archived: true
+          }, { rootSessionId: 'root', depth: 1 })
+        ]
+      })
+      const supervisor = new SessionSupervisor(deps)
+
+      await expect(supervisor.getSessionOutput(localUser(), 'child'))
+        .rejects.toMatchObject({ code: 'no_completion_yet' })
+    })
+
     test('getCompletionReport rejects with no_completion_yet for non-terminal sessions', async () => {
       const supervisor = new SessionSupervisor(makeDeps())
 
@@ -523,6 +688,28 @@ describe('SessionSupervisor', () => {
         failureReason: 'tool_error',
         summary: 'tool failed'
       })
+    })
+
+    test('getCompletionReport rejects stale subagent terminal fallback after a newer input epoch', async () => {
+      const deps = makeDeps({
+        getSnapshot: () => [
+          makeNode({ id: 'root' }, { rootSessionId: 'root', depth: 0 }),
+          makeNode({
+            id: 'child',
+            parentSessionId: 'root',
+            createdBySessionId: 'root',
+            turnEpoch: 2,
+            lastTurnOutcome: 'completed',
+            subagentInputEpoch: 1,
+            subagentLatestInputStateSequence: 9,
+            lastStateSequence: 9
+          }, { rootSessionId: 'root', depth: 1 })
+        ]
+      })
+      const supervisor = new SessionSupervisor(deps)
+
+      await expect(supervisor.getCompletionReport(localUser(), 'child'))
+        .rejects.toMatchObject({ code: 'no_completion_yet' })
     })
   })
 })

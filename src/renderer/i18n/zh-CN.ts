@@ -221,6 +221,20 @@ export default {
       downloading: '\u4E0B\u8F7D\u4E2D...',
       downloadNow: '\u7ACB\u5373\u4E0B\u8F7D',
       installNow: '\u7ACB\u5373\u5B89\u88C5'
+    },
+    webClient: {
+      title: '\u7F51\u9875\u5BA2\u6237\u7AEF',
+      description: '\u5728\u5C40\u57DF\u7F51\u5185\u7684\u4EFB\u4F55\u6D4F\u89C8\u5668\u4E2D\u8BBF\u95EE Stoa',
+      badge: '\u8FDC\u7A0B',
+      url: '\u8BBF\u95EE\u5730\u5740',
+      token: '\u8BA4\u8BC1\u4EE4\u724C',
+      showToken: '\u663E\u793A',
+      hideToken: '\u9690\u85CF',
+      copyUrl: '\u590D\u5236\u5730\u5740',
+      copyToken: '\u590D\u5236\u4EE4\u724C',
+      copied: '\u5DF2\u590D\u5236\uFF01',
+      notAvailable: 'Stoa Server \u672A\u8FD0\u884C',
+      notAvailableDescription: '\u4F7F\u7528 STOA_USE_SERVER=true \u542F\u52A8\u4EE5\u542F\u7528\u7F51\u9875\u5BA2\u6237\u7AEF'
     }
   },
 

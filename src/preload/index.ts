@@ -317,6 +317,10 @@ const api = {
   async gitCreateBranch(projectPath: string, branch: string) {
     return ipcRenderer.invoke(IPC_CHANNELS.gitCreateBranch, projectPath, branch)
   },
+
+  async getServerInfo() {
+    return ipcRenderer.invoke(IPC_CHANNELS.serverGetInfo) as Promise<{ available: boolean; port: number; url: string; token: string }>
+  },
 } satisfies RendererApi
 
 contextBridge.exposeInMainWorld('stoa', api)

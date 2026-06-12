@@ -221,6 +221,20 @@ export default {
       downloading: 'Downloading...',
       downloadNow: 'Download now',
       installNow: 'Install now'
+    },
+    webClient: {
+      title: 'Web Client',
+      description: 'Access Stoa from any browser on your network',
+      badge: 'Remote',
+      url: 'URL',
+      token: 'Auth Token',
+      showToken: 'Show',
+      hideToken: 'Hide',
+      copyUrl: 'Copy URL',
+      copyToken: 'Copy Token',
+      copied: 'Copied!',
+      notAvailable: 'Stoa Server is not running',
+      notAvailableDescription: 'Start with STOA_USE_SERVER=true to enable the web client'
     }
   },
 

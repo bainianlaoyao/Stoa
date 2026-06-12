@@ -1,57 +1,31 @@
-修改文件列表：
+**只读审计结论**
+已按 `depth=2/max_depth=2` 执行，未派发 subagent，未修改文件。
 
-- `src/shared/test-fixtures.ts`
-- `src/shared/project-session.test.ts`
-- `src/shared/session-state-reducer.test.ts`
-- `src/shared/observability-projection.test.ts`
-- `src/renderer/stores/observability-view-models.test.ts`
-- `src/renderer/stores/workspaces.test.ts`
-- `src/renderer/stores/meta-session.test.ts`
-- `src/renderer/stores/update.test.ts`
-- `src/renderer/stores/settings.test.ts`
-- `src/renderer/components/AppShell.test.ts`
-- `src/renderer/components/TerminalViewport.test.ts`
-- `src/renderer/components/PanelExtensions.test.ts`
-- `src/renderer/components/meta-session/MetaSessionSurface.test.ts`
-- `src/renderer/components/command/CommandSurface.test.ts`
-- `src/renderer/components/command/WorkspaceQuickActions.test.ts`
-- `src/renderer/components/command/TerminalSessionDeck.test.ts`
-- `src/renderer/components/settings/AboutSettings.test.ts`
-- `src/renderer/components/settings/GeneralSettings.test.ts`
-- `src/renderer/components/settings/ProvidersSettings.test.ts`
+**Entire CLI**
+- 生命周期事件统一为 `SessionStart/TurnStart/TurnEnd/Compaction/SessionEnd/SubagentStart/SubagentEnd/ModelUpdate`，事件字段包含 `SessionID/PreviousSessionID/SessionRef/ToolUseID/SubagentID/SubagentType/TaskDescription/ModifiedFiles`：`research/upstreams/entire-cli/cmd/entire/cli/agent/event.go:11-42`、`:71-128`。
+- dispatcher 明确路由 session、turn、compaction、subagent start/end：`research/upstreams/entire-cli/cmd/entire/cli/lifecycle.go:31-60`。
+- Claude hook 映射：`SessionStart/UserPromptSubmit/Stop/SessionEnd/PreTask/PostTask` 到 start/turn/subagent 事件；`PostTask` 可带 `ToolResponse.AgentID`：`research/upstreams/entire-cli/cmd/entire/cli/agent/claudecode/lifecycle.go:52-73`、`:99-187`。
+- Codex hook 只映射 session/turn，`PreToolUse` 无 lifecycle 意义；原始 payload 有 `permission_mode`，但生命周期未使用它：`research/upstreams/entire-cli/cmd/entire/cli/agent/codex/lifecycle.go:32-65`、`:68-109`，`research/upstreams/entire-cli/cmd/entire/cli/agent/codex/types.go:29-61`。
+- transcript/report：TurnEnd 会准备并复制 transcript、回填 prompt、扫描 subagent transcripts，并保存 `StepContext`；SubagentEnd 会解析 subagent transcript、合并修改文件并保存 `TaskStepContext`：`research/upstreams/entire-cli/cmd/entire/cli/lifecycle.go:307-364`、`:408-542`、`:545-587`、`:689-811`。
+- wait/notification：Claude Stop hook 等待 transcript flush sentinel，最多 3 秒；SessionStart 可通过 `HookResponseWriter` 输出提示：`research/upstreams/entire-cli/cmd/entire/cli/agent/claudecode/lifecycle.go:195-239`，`research/upstreams/entire-cli/cmd/entire/cli/lifecycle.go:100-113`。
+- status model：session phase 为 `active/idle/ended`，状态机处理 turn start/end、session stop、compaction；compaction 保持 active：`research/upstreams/entire-cli/cmd/entire/cli/session/phase.go:15-64`、`:137-271`。
+- parent-child identity：子任务主键是 parent Task 的 `ToolUseID`，启动前写 `.entire/tmp/pre-task-<toolUseID>.json`，嵌套时取最近 pre-task 文件；`SubagentID` 是辅助身份：`research/upstreams/entire-cli/cmd/entire/cli/state.go:457-583`、`:589-658`。
+- permission/option escalation：Claude 安装 hook 时添加 `permissions.deny = Read(./.entire/metadata/**)`，Codex 安装启用 `codex_hooks = true`；未看到运行时权限升级链路：`research/upstreams/entire-cli/cmd/entire/cli/agent/claudecode/hooks.go:34-35`、`:166-181`，`research/upstreams/entire-cli/cmd/entire/cli/agent/codex/hooks.go:147-150`、`:335-369`。
 
-每类修改摘要：
+**Orca**
+- hook server 负责 loopback HTTP、bearer token、IPC fanout、remote relay ingest、`last-status.json` 持久化：`research/upstreams/orca/src/main/agent-hooks/server.ts:1-12`。
+- status model 明确只有 `working/blocked/waiting/done`；orchestration context 记录 `taskId/dispatchId/parentTerminalHandle/parentPaneKey/coordinatorHandle/orchestrationRunId`：`research/upstreams/orca/src/shared/agent-status-types.ts:1-9`、`:55-102`、`:121-160`。
+- hook normalization：Claude/Codex/Cursor/OpenCode/Copilot 等 start/stop/permission 被归一化为 working/waiting/blocked/done；payload 提取 `toolUseId/toolAgentId/toolAgentType`：`research/upstreams/orca/src/shared/agent-hook-listener.ts:1589-1630`、`:1751-1819`、`:1836-1933`、`:2202-2316`。
+- relay identity：远端 hook envelope 带 `paneKey/tabId/worktreeId/toolUseId/toolAgentId/toolAgentType/isReplay`，`connectionId` 在 wire 上固定 null，由 Orca 接收时 stamping：`research/upstreams/orca/src/shared/agent-hook-relay.ts:50-80`、`:82-109`。
+- server start/stop：启动生成 token、hydrate last-status、监听 `127.0.0.1`，POST 需 `X-Orca-Agent-Hook-Token`；stop 会 flush status，但故意不删除 endpoint file：`research/upstreams/orca/src/main/agent-hooks/server.ts:802-905`、`:907-935`、`:985-1027`、`:1027-1184`。
+- parent-child/permission 细节：Claude permission waiting 会保持 sticky，除非后续 hook 具备可匹配 `toolUseId + agentId/agentType + tool`，因为同 pane 可并发 subagents：`research/upstreams/orca/src/main/agent-hooks/server.ts:232-283`。
+- wait/notification：`orchestration check --wait` 支持阻塞等待并每 15 秒向 stderr 写 JSON heartbeat；`ask` 发送 decision_gate 后按 thread 等回复：`research/upstreams/orca/src/cli/specs/orchestration.ts:23-42`、`:92-96`，`research/upstreams/orca/src/cli/handlers/orchestration.ts:12-45`、`:120-150`、`:305-341`，`research/upstreams/orca/src/main/runtime/rpc/methods/orchestration.ts:249-261`、`:498-562`。
+- orchestration identity：任务有 `parent_id`，dispatch 有 `ctx.id`、`task_id`、`assignee_handle`、`last_heartbeat_at`；worker preamble 强制带 `taskId + dispatchId`，完成时发 `worker_done` 可带 `reportPath`：`research/upstreams/orca/src/main/runtime/orchestration/types.ts:1-81`，`research/upstreams/orca/src/main/runtime/orchestration/db.ts:83-114`、`:410-430`、`:563-688`，`research/upstreams/orca/src/main/runtime/orchestration/preamble.ts:44-80`。
+- coordinator handling：heartbeat 必须按 `dispatchId` 归因；`worker_done` 按 `taskId` 完成 task 和 dispatch；stale heartbeat 只告警不自动失败：`research/upstreams/orca/src/main/runtime/orchestration/coordinator.ts:221-340`、`:418-574`。
+- permission/option escalation：Codex hook 安装会写 trust entries，避免 hooks 进入 review required；decision gates/ask 是人工选项通道：`research/upstreams/orca/src/main/codex/hook-service.ts:297-337`、`:469-515`，`research/upstreams/orca/src/main/runtime/rpc/methods/orchestration.ts:498-562`。
 
-- `SessionSummary` 测试夹具补齐
-  - 先读取了 `src/shared/project-session.ts`，当前导出的 `SessionSummary` 里还没看到 `parentSessionId / createdBySessionId`。
-  - 因为任务要求补齐这两个字段，我在测试辅助里新增了 `SessionSummaryFixture = SessionSummary & { parentSessionId: string | null; createdBySessionId: string | null }`，并让共享 fixture 默认带上这两个字段。
-  - 所有相关测试夹具和直写 session 对象都改为走这个共享 fixture，避免继续散落漏字段。
-
-- `RendererApi` mock 签名补齐
-  - 新增并统一复用了测试侧 `createRendererApiMock()`。
-  - 已补齐这次改造直接打断的新增必填方法：`getSidebarState`、`setSidebarState`、`fsReadDir/fsReadFile/fsWriteFile/fsCreate/fsRename/fsDelete/fsSearch/onFsChanged`、`gitStatus/gitStage/gitUnstage/gitDiscard/gitCommit/gitPush/gitPull/gitFetch/gitRebase/gitMerge/gitBranches/gitLog/gitDiff/gitCheckout/gitCreateBranch`。
-  - 同时把若干 `createStoaMock(...overrides)` 从“对象字面量 + spread”改成 `Object.assign(baseMock, overrides)`，避免 `Partial<RendererApi>` 把必填方法推成可选后再触发类型错误。
-
-- 测试断言随现状收口
-  - `AppShell.test.ts` 里活动栏现在包含 `sidebar-toggle`，旧断言还是 4 项，我更新成 5 项。
-  - 未改任何生产实现。
-
-验证结果：
-
-- 已通过定向测试：
-  - `18` 个测试文件
-  - `183` 个测试全部通过
-
-建议主代理运行的最小验证命令：
-
-```powershell
-rtk npx vitest run src/shared/project-session.test.ts src/shared/session-state-reducer.test.ts src/shared/observability-projection.test.ts src/renderer/stores/observability-view-models.test.ts src/renderer/stores/workspaces.test.ts src/renderer/stores/meta-session.test.ts src/renderer/stores/update.test.ts src/renderer/stores/settings.test.ts src/renderer/components/AppShell.test.ts src/renderer/components/TerminalViewport.test.ts src/renderer/components/PanelExtensions.test.ts src/renderer/components/command/CommandSurface.test.ts src/renderer/components/command/WorkspaceQuickActions.test.ts src/renderer/components/command/TerminalSessionDeck.test.ts src/renderer/components/settings/AboutSettings.test.ts src/renderer/components/settings/GeneralSettings.test.ts src/renderer/components/settings/ProvidersSettings.test.ts src/renderer/components/meta-session/MetaSessionSurface.test.ts
-```
-
-补充说明：
-
-- 我没有处理你明确排除的右侧栏生产代码类型错误。
-- 全量 `typecheck` 目前仍会被仓库里的无关问题挡住，包括：
-  - `src/renderer/app/App.test.ts` 也有同类 `RendererApi` mock 问题，但它不在你这次允许范围内，我没有动。
-  - 多个右侧栏/生产文件类型错误。
-  - 还有一次 `tsconfig.web.tsbuildinfo` 写入 `EPERM`。
+**Evolver 参考**
+- Claude/Codex 适配器只安装 session start/end 与 signal hooks；Codex 仅启用 `codex_hooks = true`，未见 trust/权限升级：`research/upstreams/evolver/src/adapters/claudeCode.js:8-48`、`:63-99`，`research/upstreams/evolver/src/adapters/codex.js:8-58`、`:73-114`。
+- session start 注入近期 evolution memory，session end 记录 git diff/outcome 到 Hub 或本地 memory graph：`research/upstreams/evolver/src/adapters/scripts/evolver-session-start.js:1-4`、`:62-75`、`:149-152`，`research/upstreams/evolver/src/adapters/scripts/evolver-session-end.js:1-5`、`:93-147`、`:149-180`。
+- parent-child 更像 A2A/mailbox session 协作：`session_create/join/leave/message/delegate/submit`，而非 Orca 式 terminal dispatch tree：`research/upstreams/evolver/src/proxy/extensions/sessionHandler.js:3-7`、`:15-115`。
+- mailbox 状态是 `pending/delivered/synced/failed/rejected` 一类消息队列状态；heartbeat 向 Hub 上报 pending counts 并拉取 inbound events：`research/upstreams/evolver/src/proxy/mailbox/store.js:143-170`、`:187-233`、`:248-318`，`research/upstreams/evolver/src/proxy/lifecycle/manager.js:180-270`、`:274-302`。

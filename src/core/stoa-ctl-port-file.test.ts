@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { readFile, writeFile, mkdir, rm } from 'node:fs/promises'
 import { deletePortFile, generateSecret, getPortFilePath, isPidAlive, readPortFile, writePortFile, type PortFileData } from './stoa-ctl-port-file'
 
-const TMP_DIR = join(process.env.TEMP ?? '/tmp', 'stoa-ctl-port-file-test')
+const TMP_DIR = join(process.env.TEMP ?? '/tmp', `stoa-ctl-port-file-test-${process.pid}`)
 
 function makePortFile(overrides: Partial<PortFileData> = {}): PortFileData {
   return {

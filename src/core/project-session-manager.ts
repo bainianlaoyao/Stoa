@@ -87,7 +87,13 @@ function toPersistedSession(session: SessionSummary): PersistedSession {
     updated_at: session.updatedAt,
     last_activated_at: session.lastActivatedAt,
     recovery_mode: session.recoveryMode,
-    archived: session.archived
+    archived: session.archived,
+    subagent_name: session.subagentName ?? null,
+    subagent_result_summary: session.subagentResultSummary ?? null,
+    subagent_input_epoch: session.subagentInputEpoch,
+    subagent_latest_input_at: session.subagentLatestInputAt ?? null,
+    subagent_latest_input_state_sequence: session.subagentLatestInputStateSequence,
+    subagent_result: session.subagentResult ?? null
   }
 }
 
@@ -116,7 +122,13 @@ function toSessionSummary(session: PersistedSession): SessionSummary {
     createdAt: session.created_at,
     updatedAt: session.updated_at,
     lastActivatedAt: session.last_activated_at,
-    archived: session.archived ?? false
+    archived: session.archived ?? false,
+    subagentName: session.subagent_name ?? null,
+    subagentResultSummary: session.subagent_result_summary ?? null,
+    subagentInputEpoch: session.subagent_input_epoch,
+    subagentLatestInputAt: session.subagent_latest_input_at ?? undefined,
+    subagentLatestInputStateSequence: session.subagent_latest_input_state_sequence,
+    subagentResult: session.subagent_result ?? null
   }
 }
 
@@ -503,6 +515,33 @@ export class ProjectSessionManager extends EventEmitter {
     await this.persist()
   }
 
+  async deleteSessionRecord(sessionId: string): Promise<boolean> {
+    const index = this.state.sessions.findIndex((candidate) => candidate.id === sessionId)
+    if (index < 0) {
+      return false
+    }
+
+    const target = this.state.sessions[index]
+    if (!target) {
+      return false
+    }
+
+    const subtree = this.getSessionSubtree(sessionId)
+    const subtreeIds = new Set(subtree.map((session) => session.id))
+    const nextSessions = this.state.sessions.filter((session) => !subtreeIds.has(session.id))
+    this.state.sessions = nextSessions
+
+    if (this.state.activeSessionId && subtreeIds.has(this.state.activeSessionId)) {
+      this.state.activeSessionId = null
+    }
+    if (this.state.activeProjectId === target.projectId && !nextSessions.some((session) => session.projectId === target.projectId && !session.archived)) {
+      this.state.activeProjectId = this.state.projects[0]?.id ?? null
+    }
+    this.reconcileActiveState()
+    await this.persist()
+    return true
+  }
+
   async restoreSession(sessionId: string): Promise<void> {
     const session = this.state.sessions.find(s => s.id === sessionId)
     if (!session) return
@@ -586,6 +625,12 @@ export class ProjectSessionManager extends EventEmitter {
       titleGenerationContext: defaultSessionTitleGenerationContext(),
       recoveryMode: createSessionRecoveryMode(request.type),
       externalSessionId: createSessionExternalId(request.type, request.externalSessionId),
+      subagentName: parentSession ? request.subagentName ?? null : null,
+      subagentInputEpoch: parentSession ? 0 : undefined,
+      subagentLatestInputAt: undefined,
+      subagentLatestInputStateSequence: undefined,
+      subagentResultSummary: null,
+      subagentResult: null,
       createdAt: now,
       updatedAt: now,
       lastActivatedAt: now,
@@ -734,6 +779,58 @@ export class ProjectSessionManager extends EventEmitter {
     }
 
     session.titleGenerationContext = nextContext
+    session.updatedAt = new Date().toISOString()
+    await this.persist()
+    return { ...session, titleGenerationContext: { ...session.titleGenerationContext } }
+  }
+
+  async updateSubagentFacade(
+    sessionId: string,
+    patch: {
+      subagentName?: string | null
+      subagentInputEpoch?: number
+      subagentLatestInputAt?: string | null
+      subagentLatestInputStateSequence?: number
+      subagentResult?: SessionSummary['subagentResult'] | null
+      subagentResultSummary?: SessionSummary['subagentResultSummary'] | null
+    }
+  ): Promise<SessionSummary | null> {
+    const session = this.state.sessions.find((candidate) => candidate.id === sessionId)
+    if (!session) {
+      return null
+    }
+
+    let changed = false
+
+    if (patch.subagentName !== undefined && session.subagentName !== patch.subagentName) {
+      session.subagentName = patch.subagentName
+      changed = true
+    }
+    if (patch.subagentInputEpoch !== undefined && session.subagentInputEpoch !== patch.subagentInputEpoch) {
+      session.subagentInputEpoch = patch.subagentInputEpoch
+      changed = true
+    }
+    if (patch.subagentLatestInputAt !== undefined && session.subagentLatestInputAt !== (patch.subagentLatestInputAt ?? undefined)) {
+      session.subagentLatestInputAt = patch.subagentLatestInputAt ?? undefined
+      changed = true
+    }
+    if (patch.subagentLatestInputStateSequence !== undefined && session.subagentLatestInputStateSequence !== patch.subagentLatestInputStateSequence) {
+      session.subagentLatestInputStateSequence = patch.subagentLatestInputStateSequence
+      changed = true
+    }
+    if (patch.subagentResult !== undefined && session.subagentResult !== patch.subagentResult) {
+      session.subagentResult = patch.subagentResult ?? null
+      changed = true
+    }
+    if (patch.subagentResultSummary !== undefined && session.subagentResultSummary !== patch.subagentResultSummary) {
+      session.subagentResultSummary = patch.subagentResultSummary ?? null
+      changed = true
+    }
+
+    if (!changed) {
+      return { ...session, titleGenerationContext: { ...session.titleGenerationContext } }
+    }
+
     session.updatedAt = new Date().toISOString()
     await this.persist()
     return { ...session, titleGenerationContext: { ...session.titleGenerationContext } }

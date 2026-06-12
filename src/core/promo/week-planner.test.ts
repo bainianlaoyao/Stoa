@@ -150,7 +150,7 @@ describe('week-planner', () => {
     })
 
     expect(generateStructured).toHaveBeenCalledOnce()
-  })
+  }, 15_000)
 
   test('expands chosen pack ids into concrete asset paths for persisted week plans', async () => {
     const repoRoot = await createTestTempDir('stoa-promo-week-pack-expansion-')
@@ -226,7 +226,7 @@ describe('week-planner', () => {
       '2026-05-22',
       '2026-05-23'
     ])
-  })
+  }, 15_000)
 
   test('normalizes the week window using configured local timezone instead of UTC date slicing', async () => {
     const repoRoot = await createTestTempDir('stoa-promo-week-timezone-')

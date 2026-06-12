@@ -231,6 +231,18 @@ describe('SessionVisibilityService', () => {
       expect(service.checkAuthority('A', 'B', 'prompt').allowed).toBe(true)
     })
 
+    test('rejects subagentInput on same-depth peer', () => {
+      const nodes = [
+        node('root', null, 0),
+        node('A', 'root', 1, undefined, { rootSessionId: 'root' }),
+        node('B', 'root', 1, undefined, { rootSessionId: 'root' }),
+      ]
+      const service = new SessionVisibilityService(nodes)
+      const result = service.checkAuthority('A', 'B', 'subagentInput')
+      expect(result.allowed).toBe(false)
+      expect(result.reason).toBe('forbidden_authority_scope')
+    })
+
     test('rejects ancestor targets as unknown_session because they are outside visibility scope', () => {
       const nodes = [
         node('root', null, 0),

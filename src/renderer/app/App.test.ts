@@ -511,6 +511,42 @@ describe('App (root)', () => {
       expect(useWorkspaceStore(pinia).sessions[0]?.title).toBe('Updated From Main')
     })
 
+    it('hydrates without any generic subagent full result body in bootstrap state', async () => {
+      const hydratedState: BootstrapState = {
+        activeProjectId: 'p1',
+        activeSessionId: 's1',
+        terminalWebhookPort: 0,
+        projects: [{ id: 'p1', name: 'Proj', path: '/p', createdAt: 't', updatedAt: 't' }],
+        sessions: [{
+          ...createSessionSummary({
+            id: 's1',
+            projectId: 'p1',
+            parentSessionId: 'root',
+            createdBySessionId: 'root',
+            subagentResultSummary: {
+              status: 'completed',
+              title: 'done',
+              createdAt: 't',
+              updatedAt: 't',
+              hasBody: true
+            }
+          }),
+          subagentResult: undefined
+        }]
+      }
+
+      setupStoa({
+        getBootstrapState: vi.fn().mockResolvedValue(hydratedState)
+      })
+
+      wrapper = await mountApp(pinia)
+      await flush()
+
+      const session = useWorkspaceStore(pinia).sessions[0]
+      expect(session?.subagentResultSummary?.hasBody).toBe(true)
+      expect(session?.subagentResult).toBeUndefined()
+    })
+
     it('fallback onSessionEvent upserts unknown child sessions when graph bridge is unavailable', async () => {
       let listener: ((event: { session: SessionSummary }) => void) | undefined
       const hydratedState: BootstrapState = {

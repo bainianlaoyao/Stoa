@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process'
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { homedir } from 'node:os'
 import { autoUpdater } from 'electron-updater'
 import { IPC_CHANNELS } from '@core/ipc-channels'
 import { InMemoryObservationStore } from '@core/observation-store'
@@ -15,6 +16,7 @@ import { buildSessionCommandEnv } from '@core/session-command-env'
 import { SessionBootstrapPromptService } from '@core/session-bootstrap-prompt-service'
 import { createSessionControlServer } from '@core/session-control-server'
 import { SessionVisibilityService } from '@core/session-visibility-service'
+import { allocateSubagentShortName, SubagentSupervisor } from '@core/subagent-supervisor'
 import { createStoaCtlGate } from '@core/stoa-ctl-feature'
 import { ensureStoaCtlShim, ensureStoaCtlSystemShim, unregisterStoaCtlShim, unregisterStoaCtlSystemShim } from '@core/stoa-ctl-shim'
 import { writePortFile as writeCtlPortFile, deletePortFile as deleteCtlPortFile, generateSecret } from '@core/stoa-ctl-port-file'
@@ -33,20 +35,25 @@ import { syncObservabilitySessionsFromManager } from './observability-sync'
 import { syncManagedSidecars } from './managed-sidecar-maintenance'
 import { UpdateService } from './update-service'
 import { resolveDefaultStoaRuntimeRoot } from './stoa-runtime-root'
+import { StoaServerSpawner, type StoaServerConfig, type SpawnerDeps } from './stoa-server-spawner'
+import type { StoaRuntimeClient } from './stoa-runtime-client'
 import { createHookLeaseManager } from './hook-lease-manager'
 import { mergeSessionDimensions, SessionDimensionsRegistry, type PartialSessionDimensions } from './session-dimensions'
 import { registerFilesystemHandlers } from './sidebar-fs-handlers'
 import { registerGitHandlers } from './sidebar-git-handlers'
 import { DEFAULT_SETTINGS } from '@shared/project-session'
-import type {
-  AppSettings,
-  CreateProjectRequest,
-  CreateSessionRequest,
-  OpenWorkspaceRequest,
-  SessionGraphEvent,
-  SessionNodeSnapshot,
-  SessionSummary,
-  SessionTitleGenerationNotification
+import {
+  type AppSettings,
+  type CreateProjectRequest,
+  type CreateSessionRequest,
+  type OpenWorkspaceRequest,
+  type SessionGraphEvent,
+  type SessionNodeSnapshot,
+  type SessionSummary,
+  type SessionTitleGenerationNotification,
+  sanitizeBootstrapStateForGenericProjection,
+  sanitizeSessionGraphEventForGenericProjection,
+  sanitizeSessionSummaryForGenericProjection
 } from '@shared/project-session'
 import type { UpdateState } from '@shared/update-state'
 import type { PtyHost } from '@core/pty-host'
@@ -56,6 +63,7 @@ let projectSessionManager: ProjectSessionManager | null = null
 let ptyHost: PtyHost | null = null
 let runtimeController: SessionRuntimeController | null = null
 let sessionEventBridge: SessionEventBridge | null = null
+let srSpawner: StoaServerSpawner | null = null
 let sessionInputRouter: SessionInputRouter | null = null
 let observationStore: InMemoryObservationStore | null = null
 let observabilityService: ObservabilityService | null = null
@@ -625,8 +633,8 @@ app.whenReady().then(async () => {
     return ordered
   }
 
-  function pushSessionGraphEvent(
-    sessionId: string,
+  function pushSessionGraphSnapshotEvent(
+    node: SessionNodeSnapshot,
     options: {
       kind?: SessionGraphEvent['kind']
       origin?: SessionGraphEvent['origin']
@@ -638,19 +646,30 @@ app.whenReady().then(async () => {
       return
     }
 
-    const node = activeProjectSessionManager.getSessionNodeSnapshot(sessionId)
-    if (!node) {
-      return
-    }
-
     sessionGraphVersion += 1
-    win.webContents.send(IPC_CHANNELS.sessionGraphEvent, {
+    win.webContents.send(IPC_CHANNELS.sessionGraphEvent, sanitizeSessionGraphEventForGenericProjection({
       kind: options.kind ?? 'updated',
       graphVersion: sessionGraphVersion,
       origin: options.origin ?? 'system',
       initiatorSessionId: options.initiatorSessionId ?? null,
       node
-    } satisfies SessionGraphEvent)
+    } satisfies SessionGraphEvent))
+  }
+
+  function pushSessionGraphEvent(
+    sessionId: string,
+    options: {
+      kind?: SessionGraphEvent['kind']
+      origin?: SessionGraphEvent['origin']
+      initiatorSessionId?: string | null
+    } = {}
+  ): void {
+    const node = activeProjectSessionManager.getSessionNodeSnapshot(sessionId)
+    if (!node) {
+      return
+    }
+
+    pushSessionGraphSnapshotEvent(node, options)
   }
 
   function pushSessionGraphEvents(
@@ -736,6 +755,126 @@ app.whenReady().then(async () => {
   }
 
   const ctlSecret = generateSecret()
+  const createChildSessionForCtl = async (request: CreateSessionRequest & {
+    parentId: string
+    title: string
+    subagentName?: string | null
+    externalSessionId?: string | null
+    initialCols?: number
+    initialRows?: number
+  }) => {
+    const resolvedProjectId = request.projectId
+      || (request.parentId
+        ? activeProjectSessionManager.getSessionNodeSnapshot(request.parentId)?.session.projectId ?? ''
+        : '')
+    if (!resolvedProjectId) {
+      throw new Error('Work session creation requires a project id.')
+    }
+
+    const origin: SessionGraphEvent['origin'] = request.parentId && !request.projectId
+      ? 'session'
+      : 'local-cli'
+    const initiatorSessionId = request.parentId && !request.projectId
+      ? request.parentId
+      : null
+
+    const created = await createWorkSessionWithRuntime({
+      projectId: resolvedProjectId,
+      type: request.type,
+      title: request.title ?? '',
+      parentSessionId: request.parentId || null,
+      createdBySessionId: request.parentId || null,
+      subagentName: request.subagentName ?? null,
+      externalSessionId: request.externalSessionId,
+      initialCols: request.initialCols,
+      initialRows: request.initialRows
+    }, {
+      graphOrigin: origin,
+      initiatorSessionId,
+      preserveActiveSession: true
+    })
+    if (!created) {
+      throw new Error('Work session creation is unavailable.')
+    }
+    return created
+  }
+  const rollbackDispatchedSessionForCtl = async (sessionId: string) => {
+    sessionInputRouter?.resetSession(sessionId)
+    await ptyHost?.killAndWait(sessionId)
+    await hookLeaseManager?.releaseLease(sessionId)
+    sessionTokenRegistry.delete(sessionId)
+    activeRuntimeController.invalidateSessionToken(sessionId)
+    const destroyedNode = activeProjectSessionManager.getSessionNodeSnapshot(sessionId)
+
+    const removed = await activeProjectSessionManager.deleteSessionRecord(sessionId)
+    if (!removed) {
+      return
+    }
+
+    syncObservabilitySessions()
+    const nextActiveSessionId = activeProjectSessionManager.snapshot().activeSessionId
+    if (nextActiveSessionId) {
+      pushObservabilitySnapshotsForSession(nextActiveSessionId)
+    }
+    if (destroyedNode) {
+      pushSessionGraphSnapshotEvent(destroyedNode, {
+        kind: 'destroyed',
+        origin: 'system',
+        initiatorSessionId: null
+      })
+    }
+    await syncUpdateStateToWindow()
+  }
+  const destroySessionForCtl = async (sessionId: string) => {
+    await archiveWorkSessionWithRuntime(sessionId, {
+      graphKind: 'archived',
+      graphOrigin: 'system',
+      initiatorSessionId: null
+    })
+  }
+  const subagentSupervisor = new SubagentSupervisor({
+    getSnapshot() {
+      return listSessionNodeSnapshots()
+    },
+    visibilityService: buildSessionVisibilityService(),
+    sessionInput: {
+      async send(sessionId: string, data: string) {
+        await activeSessionInputRouter?.send(sessionId, data)
+      }
+    },
+    async createChildSession(request) {
+      return await createChildSessionForCtl(request)
+    },
+    async destroySession(sessionId: string) {
+      await destroySessionForCtl(sessionId)
+    },
+    async rollbackDispatchedSession(sessionId: string) {
+      await rollbackDispatchedSessionForCtl(sessionId)
+    },
+    async getTerminalReplay(sessionId: string) {
+      return await activeRuntimeController.getTerminalReplay(sessionId)
+    },
+    async waitForSessionStateChange(sessionId: string, timeoutMs: number) {
+      return await activeRuntimeController.waitForSessionStateChange(sessionId, timeoutMs)
+    },
+    async updateSessionFacade(sessionId, facade) {
+      const updated = await activeProjectSessionManager.updateSubagentFacade(sessionId, facade)
+      if (updated) {
+        syncObservabilityAndPushForSession(sessionId)
+        pushSessionGraphEvent(sessionId, { kind: 'updated', origin: 'system' })
+        return updated
+      }
+      throw new Error(`Unknown session: ${sessionId}`)
+    },
+    async interruptSession(sessionId: string) {
+      const session = activeProjectSessionManager.getSessionNodeSnapshot(sessionId)?.session
+      if (!session) {
+        return false
+      }
+      await activeSessionInputRouter?.send(sessionId, '\u0003')
+      return true
+    }
+  })
   sessionEventBridge = new SessionEventBridge(activeProjectSessionManager, activeRuntimeController, activeObservabilityService, {
     captureEvidence: false,
     captureObservation(event) {
@@ -749,7 +888,9 @@ app.whenReady().then(async () => {
       if (!session) {
         return null
       }
-      return sessionBootstrapPromptService.getPrompt(session.type)
+      return sessionBootstrapPromptService.getPrompt(session.type, {
+        isChild: session.parentSessionId !== null
+      })
     },
     isCtlEnabled: () => stoaCtlGate.isEnabled(),
     configureServerApp(app) {
@@ -763,53 +904,34 @@ app.whenReady().then(async () => {
             await activeSessionInputRouter?.send(sessionId, data)
           }
         },
+        async recordSubagentInput(sessionId: string, text: string) {
+          return await subagentSupervisor.recordInput(sessionId, text)
+        },
         async getTerminalReplay(sessionId: string) {
           return await activeRuntimeController.getTerminalReplay(sessionId)
         },
         async waitForSessionStateChange(sessionId: string, timeoutMs: number) {
           return await activeRuntimeController.waitForSessionStateChange(sessionId, timeoutMs)
         },
-        async createChildSession(request) {
-          const resolvedProjectId = request.projectId
-            || (request.parentId
-              ? activeProjectSessionManager.getSessionNodeSnapshot(request.parentId)?.session.projectId ?? ''
-              : '')
-          if (!resolvedProjectId) {
-            throw new Error('Work session creation requires a project id.')
-          }
-
-          const origin: SessionGraphEvent['origin'] = request.parentId && !request.projectId
-            ? 'session'
-            : 'local-cli'
-          const initiatorSessionId = request.parentId && !request.projectId
-            ? request.parentId
-            : null
-
-          const created = await createWorkSessionWithRuntime({
-            projectId: resolvedProjectId,
-            type: request.type,
-            title: request.title ?? '',
-            parentSessionId: request.parentId || null,
-            createdBySessionId: request.parentId || null,
-            externalSessionId: request.externalSessionId,
-            initialCols: request.initialCols,
-            initialRows: request.initialRows
-          }, {
-            graphOrigin: origin,
-            initiatorSessionId,
-            preserveActiveSession: true
-          })
-          if (!created) {
-            throw new Error('Work session creation is unavailable.')
-          }
-          return created
+        createChildSession: createChildSessionForCtl,
+        destroySession: destroySessionForCtl,
+        async rollbackDispatchedSession(sessionId: string) {
+          await rollbackDispatchedSessionForCtl(sessionId)
         },
-        async destroySession(sessionId: string) {
-          await archiveWorkSessionWithRuntime(sessionId, {
-            graphKind: 'archived',
-            graphOrigin: 'system',
-            initiatorSessionId: null
-          })
+        async updateSessionFacade(sessionId, facade) {
+          const updated = await activeProjectSessionManager.updateSubagentFacade(sessionId, facade)
+          if (!updated) {
+            throw new Error(`Unknown session: ${sessionId}`)
+          }
+          return updated
+        },
+        async interruptSession(sessionId: string) {
+          const session = activeProjectSessionManager.getSessionNodeSnapshot(sessionId)?.session
+          if (!session) {
+            return false
+          }
+          await activeSessionInputRouter?.send(sessionId, '\u0003')
+          return true
         },
         ctlSecret,
         sessionTokenRegistry,
@@ -987,7 +1109,17 @@ app.whenReady().then(async () => {
     } = {}
   ): Promise<SessionSummary | null> {
     const previousActiveSessionId = projectSessionManager?.snapshot().activeSessionId ?? null
-    const session = await projectSessionManager?.createSession(payload)
+    let request = payload
+    if (projectSessionManager && payload.parentSessionId) {
+      const parentNode = activeProjectSessionManager.getSessionNodeSnapshot(payload.parentSessionId)
+      const rootSessionId = parentNode?.tree.rootSessionId ?? payload.parentSessionId
+      request = {
+        ...payload,
+        subagentName: allocateSubagentShortName(listSessionNodeSnapshots(), rootSessionId, payload.subagentName ?? undefined)
+      }
+    }
+
+    const session = await projectSessionManager?.createSession(request)
     if (!session) {
       return null
     }
@@ -1246,14 +1378,52 @@ app.whenReady().then(async () => {
 
   registerGitHandlers(ipcMain)
 
+  // -------------------------------------------------------------------------
+  // Stoa Server (SR) spawning — Phase 5 Desktop Shell Integration
+  // Conditionally enabled via STOA_USE_SERVER=true env var.
+  // This is additive: existing servers (webhook, session-control) are NOT removed.
+  // -------------------------------------------------------------------------
+  const useStoaServer = process.env.STOA_USE_SERVER === 'true'
+
+  if (useStoaServer) {
+    try {
+      const stoaDir = join(homedir(), '.stoa')
+      const srConfig: StoaServerConfig = {
+        portRange: [3270, 3280],
+        stoaDir,
+        authToken: ''
+      }
+      const srDeps: SpawnerDeps = {
+        getResourcesPath: () => process.resourcesPath,
+        isPackaged: app.isPackaged,
+        getAppRootPath: () => app.getAppPath(),
+        createRuntimeClient(port: number, authToken: string): StoaRuntimeClient | null {
+          return null // Will be wired in Phase 5+ when runtime bridge is fully integrated
+        }
+      }
+
+      srSpawner = new StoaServerSpawner(srConfig, srDeps)
+      const srPort = await srSpawner.spawn()
+      console.log(`[main] Stoa Server spawned on port ${srPort}`)
+      await srSpawner.waitForHealth()
+      await srSpawner.connectRuntime()
+      console.log('[main] Stoa Server fully initialized')
+    } catch (error) {
+      console.error('[main] Stoa Server initialization failed:', error)
+      // Non-fatal: existing behaviour continues without SR
+    }
+  }
+
+
   ipcMain.handle(IPC_CHANNELS.projectBootstrap, async () => {
-    return projectSessionManager?.snapshot() ?? {
+    const snapshot = projectSessionManager?.snapshot() ?? {
       activeProjectId: null,
       activeSessionId: null,
       terminalWebhookPort: null,
       projects: [],
       sessions: []
     }
+    return sanitizeBootstrapStateForGenericProjection(snapshot)
   })
 
   ipcMain.handle(IPC_CHANNELS.projectCreate, async (_event, payload: CreateProjectRequest) => {
@@ -1513,7 +1683,8 @@ app.whenReady().then(async () => {
   })
 
   ipcMain.handle(IPC_CHANNELS.sessionRegenerateTitle, async (_event, sessionId: string) => {
-    return await sessionTitleController?.regenerateSessionTitle(sessionId) ?? null
+    const session = await sessionTitleController?.regenerateSessionTitle(sessionId) ?? null
+    return session ? sanitizeSessionSummaryForGenericProjection(session) : null
   })
 
   ipcMain.handle(IPC_CHANNELS.sessionRestore, async (_event, sessionId: string) => {
@@ -1562,7 +1733,7 @@ app.whenReady().then(async () => {
   })
 
   ipcMain.handle(IPC_CHANNELS.sessionListArchived, async () => {
-    return projectSessionManager?.getArchivedSessions() ?? []
+    return (projectSessionManager?.getArchivedSessions() ?? []).map(sanitizeSessionSummaryForGenericProjection)
   })
 
   ipcMain.handle(IPC_CHANNELS.updateGetState, async () => {
@@ -1601,6 +1772,20 @@ app.whenReady().then(async () => {
       } catch (error) {
         console.warn(`[sidecar-uninstall] Failed to uninstall ${providerType} sidecar for ${project.path}:`, error)
       }
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.serverGetInfo, () => {
+    if (!srSpawner) {
+      return { available: false, port: 0, url: '', token: '' }
+    }
+    const port = srSpawner.getPort()
+    const token = srSpawner.getAuthToken()
+    return {
+      available: true,
+      port,
+      url: `http://localhost:${port}`,
+      token
     }
   })
 
@@ -1676,6 +1861,9 @@ app.on('before-quit', async (event) => {
   try {
     await deleteCtlPortFile()
     await prepareForQuitAndInstall()
+    if (srSpawner) {
+      await srSpawner.shutdown()
+    }
   } finally {
     unsubscribeStoaCtlGate()
     app.quit()

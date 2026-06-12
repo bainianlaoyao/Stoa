@@ -22,6 +22,7 @@ describe('build-stoa-ctl', () => {
     const builtModule = await import(moduleUrl)
 
     expect(typeof builtModule.run).toBe('function')
-    expect(builtModule.USAGE_TEXT).toContain('session prompt <sessionId> --text "..."')
+    expect(builtModule.USAGE_TEXT).toContain('session input <sessionId>')
+    expect(builtModule.USAGE_TEXT).not.toContain('session prompt')
   })
 })

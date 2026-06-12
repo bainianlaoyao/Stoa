@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "outDir": "./dist",
+    "types": ["node"],
+    "lib": ["ES2022"],
+    "baseUrl": ".",
+    "paths": {
+      "stoa-shared": ["../stoa-shared/types"],
+      "stoa-shared/*": ["../stoa-shared/types/*"],
+      "@shared/*": ["../src/shared/*"],
+      "@core/*": ["../src/core/*"]
+    }
+  },
+  "include": ["src/**/*.ts"]
+}

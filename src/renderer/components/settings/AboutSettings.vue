@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useUpdateStore } from '@renderer/stores/update'
 import stoaLogo from '@renderer/assets/icons/gemini-svg.svg'
@@ -14,7 +14,7 @@ const props = withDefaults(defineProps<{
 const { t } = useI18n()
 const updateStore = useUpdateStore()
 
-type AboutSectionId = 'overview' | 'updates' | 'links'
+type AboutSectionId = 'overview' | 'updates' | 'webClient' | 'links'
 
 const currentVersion = computed(() => updateStore.state.currentVersion)
 const latestVersion = computed(() => updateStore.state.downloadedVersion ?? updateStore.state.availableVersion)
@@ -86,6 +86,40 @@ const actionDataAttr = computed(() => {
   }
 })
 
+// Web Client state
+const serverInfo = ref<{ available: boolean; port: number; url: string; token: string }>({
+  available: false,
+  port: 0,
+  url: '',
+  token: ''
+})
+const showToken = ref(false)
+const copiedField = ref<'url' | 'token' | null>(null)
+
+onMounted(async () => {
+  try {
+    if (window.stoa?.getServerInfo) {
+      serverInfo.value = await window.stoa.getServerInfo()
+    }
+  } catch {
+    // Leave as unavailable
+  }
+})
+
+async function copyToClipboard(value: string, field: 'url' | 'token'): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(value)
+    copiedField.value = field
+    setTimeout(() => {
+      if (copiedField.value === field) {
+        copiedField.value = null
+      }
+    }, 1500)
+  } catch {
+    // Clipboard may be unavailable
+  }
+}
+
 const visibleSections = computed(() =>
   resolveVisibleSettingsSections<AboutSectionId>(props.searchQuery, {
     overview: [
@@ -116,6 +150,21 @@ const visibleSections = computed(() =>
       'version',
       'check'
     ],
+    webClient: [
+      t('about.eyebrow'),
+      t('about.webClient.title'),
+      t('about.webClient.description'),
+      t('about.webClient.url'),
+      t('about.webClient.token'),
+      'about',
+      'web',
+      'client',
+      'browser',
+      'remote',
+      'server',
+      'url',
+      'token'
+    ],
     links: [
       t('about.eyebrow'),
       t('about.links.title'),
@@ -135,8 +184,9 @@ const visibleSections = computed(() =>
 
 const showOverview = computed(() => visibleSections.value.has('overview'))
 const showUpdates = computed(() => visibleSections.value.has('updates'))
+const showWebClient = computed(() => visibleSections.value.has('webClient'))
 const showLinks = computed(() => visibleSections.value.has('links'))
-const hasSidebar = computed(() => showUpdates.value || showLinks.value)
+const hasSidebar = computed(() => showUpdates.value || showWebClient.value || showLinks.value)
 
 async function handleAction(): Promise<void> {
   switch (updateStore.state.phase) {
@@ -224,6 +274,63 @@ async function handleAction(): Promise<void> {
               {{ actionLabel }}
             </button>
           </div>
+        </section>
+
+        <section v-if="showWebClient" class="settings-card settings-about__status-card" :aria-label="t('about.webClient.title')">
+          <div class="settings-card__header">
+            <div>
+              <h4 class="settings-card__title">{{ t('about.webClient.title') }}</h4>
+              <p class="settings-card__description">{{ t('about.webClient.description') }}</p>
+            </div>
+            <span
+              class="settings-card__badge"
+              :class="serverInfo.available ? 'settings-card__badge--success' : ''"
+            >{{ serverInfo.available ? t('about.webClient.badge') : t('about.webClient.notAvailable') }}</span>
+          </div>
+
+          <template v-if="serverInfo.available">
+            <div class="settings-about__status-grid">
+              <div class="settings-about__status-row settings-about__status-row--stacked">
+                <span class="settings-about__status-label">{{ t('about.webClient.url') }}</span>
+                <div class="settings-about__copyable">
+                  <a
+                    :href="serverInfo.url"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="settings-about__link-value"
+                  >{{ serverInfo.url }}</a>
+                  <button
+                    type="button"
+                    class="settings-about__copy-btn"
+                    :data-settings-action="copiedField === 'url' ? 'copied-url' : 'copy-url'"
+                    @click="void copyToClipboard(serverInfo.url, 'url')"
+                  >{{ copiedField === 'url' ? t('about.webClient.copied') : t('about.webClient.copyUrl') }}</button>
+                </div>
+              </div>
+              <div class="settings-about__status-row settings-about__status-row--stacked">
+                <span class="settings-about__status-label">{{ t('about.webClient.token') }}</span>
+                <div class="settings-about__copyable">
+                  <code class="settings-about__token-value">{{ showToken ? serverInfo.token : '••••••••••••••••' }}</code>
+                  <button
+                    type="button"
+                    class="settings-about__copy-btn"
+                    :data-settings-action="showToken ? 'hide-token' : 'show-token'"
+                    @click="showToken = !showToken"
+                  >{{ showToken ? t('about.webClient.hideToken') : t('about.webClient.showToken') }}</button>
+                  <button
+                    v-if="showToken"
+                    type="button"
+                    class="settings-about__copy-btn"
+                    :data-settings-action="copiedField === 'token' ? 'copied-token' : 'copy-token'"
+                    @click="void copyToClipboard(serverInfo.token, 'token')"
+                  >{{ copiedField === 'token' ? t('about.webClient.copied') : t('about.webClient.copyToken') }}</button>
+                </div>
+              </div>
+            </div>
+          </template>
+          <template v-else>
+            <p class="settings-about__status-message">{{ t('about.webClient.notAvailableDescription') }}</p>
+          </template>
         </section>
 
         <section v-if="showLinks" class="settings-card" :aria-label="t('about.links.title')">
@@ -483,6 +590,70 @@ async function handleAction(): Promise<void> {
 .settings-about__links {
   display: grid;
   gap: 8px;
+}
+
+.settings-about__copyable {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.settings-about__link-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--control-fill);
+  border: 1px solid var(--color-line);
+  color: var(--color-accent);
+  text-decoration: none;
+  font-family: var(--font-mono);
+  font-size: var(--text-meta);
+  word-break: break-all;
+  transition: border-color var(--duration-rest) var(--curve-standard);
+}
+
+.settings-about__link-value:hover,
+.settings-about__link-value:focus-visible {
+  border-color: color-mix(in srgb, var(--color-accent) 20%, transparent);
+  outline: none;
+}
+
+.settings-about__token-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--control-fill);
+  border: 1px solid var(--color-line);
+  color: var(--color-text-strong);
+  font-family: var(--font-mono);
+  font-size: var(--text-meta);
+  word-break: break-all;
+}
+
+.settings-about__copy-btn {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--control-fill);
+  border: 1px solid var(--stroke-control);
+  color: var(--color-text-strong);
+  font-family: var(--font-ui);
+  font-size: var(--text-meta);
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    border-color var(--duration-rest) var(--curve-standard),
+    background-color var(--duration-rest) var(--curve-standard);
+}
+
+.settings-about__copy-btn:hover,
+.settings-about__copy-btn:focus-visible {
+  background: var(--control-fill-hover);
+  border-color: var(--stroke-divider);
+  outline: none;
 }
 
 .settings-about__link {

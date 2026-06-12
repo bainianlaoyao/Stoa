@@ -13,6 +13,7 @@ import type {
   ProjectObservabilitySnapshot,
   SessionPresenceSnapshot
 } from '@shared/observability'
+import { getStoaClient, isStoaClientMode } from '@renderer/stores/stoa-store-plugin'
 
 interface SessionTreeProjection {
   treeDepth: number
@@ -237,7 +238,108 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
     }
   }
 
+  // ── StoaClient-based hydration ──
+
+  async function hydrateFromStoaClient(): Promise<void> {
+    const client = getStoaClient()
+    if (!client) return
+
+    const res = await client.get<BootstrapState>('/api/v1/bootstrap')
+    if (res.data) {
+      hydrate(res.data)
+    }
+  }
+
+  function subscribeToSessionGraphViaStoaClient(): (() => void) | null {
+    const client = getStoaClient()
+    if (!client) return null
+
+    return client.subscribe('session:graph', (payload) => {
+      applySessionGraphEvent(payload as SessionGraphEvent)
+    })
+  }
+
+  function subscribeToObservabilityViaStoaClient(): (() => void) | null {
+    const client = getStoaClient()
+    if (!client) return null
+
+    const unsubSession = client.subscribe('observability:presence', (payload) => {
+      applySessionPresenceSnapshot(payload as SessionPresenceSnapshot)
+    })
+
+    const unsubProject = client.subscribe('observability:project', (payload) => {
+      applyProjectObservabilitySnapshot(payload as ProjectObservabilitySnapshot)
+    })
+
+    const unsubApp = client.subscribe('observability:app', (payload) => {
+      applyAppObservabilitySnapshot(payload as AppObservabilitySnapshot)
+    })
+
+    return () => {
+      unsubSession()
+      unsubProject()
+      unsubApp()
+    }
+  }
+
   async function hydrateObservability(): Promise<void> {
+    // Try StoaClient path first
+    if (isStoaClientMode()) {
+      const unsubObservability = subscribeToObservabilityViaStoaClient()
+      if (unsubObservability) {
+        unsubscribeObservability()
+        // Store unsubscribe as an observability handler
+        unsubscribeSessionPresenceChanged.value = unsubObservability
+      }
+
+      const client = getStoaClient()
+      if (client) {
+        const nextSessionPresenceEntries = await Promise.all(
+          sessions.value.map(async (session) => {
+            try {
+              const res = await client.get<SessionPresenceSnapshot | null>(
+                `/api/v1/observability/sessions/${session.id}/presence`
+              )
+              return res.data ? [session.id, res.data] as const : null
+            } catch {
+              return null
+            }
+          })
+        )
+
+        const nextProjectObservabilityEntries = await Promise.all(
+          projects.value.map(async (project) => {
+            try {
+              const res = await client.get<ProjectObservabilitySnapshot | null>(
+                `/api/v1/observability/projects/${project.id}`
+              )
+              return res.data ? [project.id, res.data] as const : null
+            } catch {
+              return null
+            }
+          })
+        )
+
+        for (const entry of nextSessionPresenceEntries) {
+          if (entry) applySessionPresenceSnapshot(entry[1])
+        }
+
+        for (const entry of nextProjectObservabilityEntries) {
+          if (entry) applyProjectObservabilitySnapshot(entry[1])
+        }
+
+        try {
+          const res = await client.get<AppObservabilitySnapshot | null>('/api/v1/observability/app')
+          if (res.data) applyAppObservabilitySnapshot(res.data)
+        } catch {
+          // App observability is optional
+        }
+
+        return
+      }
+    }
+
+    // Legacy IPC path
     const stoa = window.stoa
 
     if (!stoa) {
@@ -536,6 +638,7 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
     projectObservabilityMap,
     projectHierarchy,
     hydrate,
+    hydrateFromStoaClient,
     hydrateObservability,
     applySessionPresenceSnapshot,
     addProject,
@@ -548,6 +651,7 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
     restoreSession,
     removeProject,
     unsubscribeObservability,
-    applySessionGraphEvent
+    applySessionGraphEvent,
+    subscribeToSessionGraphViaStoaClient
   }
 })

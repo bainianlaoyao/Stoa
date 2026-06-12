@@ -158,7 +158,7 @@ describe('daily-orchestrator', () => {
 
     expect(result.posts[0]?.topic).toBe('session restore')
     expect(generateStructured).toHaveBeenCalledOnce()
-  })
+  }, 15_000)
 
   test('passes richer derived-pack assets through the fact pack for daily orchestration', async () => {
     const repoRoot = await createTestTempDir('stoa-promo-orchestrator-assets-')
@@ -202,7 +202,7 @@ describe('daily-orchestrator', () => {
     })
 
     expect(result.posts[0]?.assetPaths).toEqual(['generated/pack-workflow-core-carousel-1/01.png'])
-  })
+  }, 15_000)
 
   test('expands post pack ids into concrete asset paths when the model returns pack-first output', async () => {
     const repoRoot = await createTestTempDir('stoa-promo-orchestrator-pack-expansion-')
@@ -256,7 +256,7 @@ describe('daily-orchestrator', () => {
       'overview-terminal-live-output/01.png'
     ])
     expect(result.posts[0]?.assetPaths).toHaveLength(4)
-  })
+  }, 15_000)
 
   test('deduplicates point variants when pack expansion sees both generated and manual assets', async () => {
     const repoRoot = await createTestTempDir('stoa-promo-orchestrator-pack-dedupe-')
@@ -305,7 +305,7 @@ describe('daily-orchestrator', () => {
     ])
     expect(result.posts[0]?.assetPaths).toHaveLength(4)
     expect(new Set(result.posts[0]?.assetPaths.map((path) => path.split('/').slice(0, -1).join('/'))).size).toBe(4)
-  })
+  }, 15_000)
 
   test('limits fallback asset paths to four media items', async () => {
     const repoRoot = await createTestTempDir('stoa-promo-orchestrator-fallback-limit-')

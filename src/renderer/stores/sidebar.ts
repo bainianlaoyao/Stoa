@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 import type { SidebarTab, SidebarState } from '@shared/sidebar-types'
 import { useWorkspaceStore } from '@renderer/stores/workspaces'
+import { getStoaClient, isStoaClientMode } from '@renderer/stores/stoa-store-plugin'
 
 const DEFAULT_WIDTH = 280
 const MIN_WIDTH = 220
@@ -94,9 +95,37 @@ export const useSidebarStore = defineStore('sidebar', () => {
     },
   )
 
+  // ── StoaClient / IPC abstraction ──
+
+  async function fetchSidebarState(): Promise<SidebarState | null> {
+    if (isStoaClientMode()) {
+      const client = getStoaClient()
+      if (client) {
+        try {
+          const res = await client.get<SidebarState>('/api/v1/sidebar')
+          return res.data ?? null
+        } catch {
+          return null
+        }
+      }
+    }
+    return window.stoa.getSidebarState()
+  }
+
+  async function persistSidebarState(state: Partial<SidebarState>): Promise<void> {
+    if (isStoaClientMode()) {
+      const client = getStoaClient()
+      if (client) {
+        await client.put('/api/v1/sidebar', state)
+        return
+      }
+    }
+    await window.stoa.setSidebarState(state)
+  }
+
   async function hydrate(): Promise<void> {
     try {
-      const state = await window.stoa.getSidebarState()
+      const state = await fetchSidebarState()
       if (state) {
         open.value = state.open
         activeTab.value = state.activeTab
@@ -115,7 +144,7 @@ export const useSidebarStore = defineStore('sidebar', () => {
 
   async function persistState(): Promise<void> {
     try {
-      await window.stoa.setSidebarState({
+      await persistSidebarState({
         open: open.value,
         activeTab: activeTab.value,
         width: width.value,

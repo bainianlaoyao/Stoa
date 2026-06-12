@@ -108,8 +108,30 @@ function makeDeps(overrides: Partial<SessionControlServerDeps> = {}): SessionCon
     getTerminalReplay: async () => '',
     sessionTokenRegistry: new Map([
       ['root', 'tok_root_1234'],
-      ['child', 'tok_child_5678']
+      ['child', 'tok_child_5678'],
+      ['a', 'tok_a_1111'],
+      ['b', 'tok_b_2222']
     ]),
+    updateSessionFacade: async (sessionId: string, facade) => {
+      const node = nodes.find(n => n.session.id === sessionId)
+      if (node) {
+        Object.assign(node.session, {
+          ...facade,
+          ...(facade.subagentLatestInputAt === null ? { subagentLatestInputAt: undefined } : {}),
+          ...(facade.subagentName === null ? { subagentName: null } : {}),
+          ...(facade.subagentResultSummary === null ? { subagentResultSummary: null } : {}),
+          ...(facade.subagentResult === null ? { subagentResult: null } : {})
+        })
+        return node.session
+      }
+      const normalizedFacade = {
+        id: sessionId,
+        ...facade,
+        ...(facade.subagentLatestInputAt === null ? { subagentLatestInputAt: undefined } : {})
+      }
+      return makeSession(normalizedFacade as Partial<SessionSummary>)
+    },
+    interruptSession: async () => true,
     ...overrides
   }
 }
@@ -192,7 +214,7 @@ describe('SessionControlServer', () => {
   })
 
   describe('/ctl/capabilities', () => {
-    test('returns capability list', async () => {
+    test('returns capability list with sessionInput and subagent capabilities', async () => {
       const { port } = await startServer(makeDeps())
       const res = await get(port, '/ctl/capabilities', { 'x-stoa-secret': 'test-secret-1234' })
       expect(res.statusCode).toBe(200)
@@ -202,7 +224,45 @@ describe('SessionControlServer', () => {
       expect(body.data.supports.sessionWait).toBe(true)
       expect(body.data.supports.sessionOutput).toBe(true)
       expect(body.data.supports.sessionCompletionReport).toBe(true)
+      expect(body.data.supports.sessionInput).toBe(true)
+      expect(body.data.supports.subagentList).toBe(true)
+      expect(body.data.supports.subagentDispatch).toBe(true)
+      expect(body.data.supports.subagentWait).toBe(true)
+      expect(body.data.supports.subagentInput).toBe(true)
+      expect(body.data.supports.subagentStop).toBe(true)
       expect(body.data.controlTransport).toBe('loopback-http')
+    })
+
+    test('does not expose sessionPrompt', async () => {
+      const { port } = await startServer(makeDeps())
+      const res = await get(port, '/ctl/capabilities', { 'x-stoa-secret': 'test-secret-1234' })
+      expect(res.statusCode).toBe(200)
+      const body = JSON.parse(res.body)
+      expect(body.data.supports.sessionPrompt).toBeFalsy()
+    })
+
+    test('does not expose subagentResult for local-user', async () => {
+      const { port } = await startServer(makeDeps())
+      const res = await get(port, '/ctl/capabilities', { 'x-stoa-secret': 'test-secret-1234' })
+      expect(res.statusCode).toBe(200)
+      const body = JSON.parse(res.body)
+      expect(body.data.supports.subagentResult).toBeFalsy()
+    })
+
+    test('does not expose subagentResult for root session', async () => {
+      const { port } = await startServer(makeDeps())
+      const res = await get(port, '/ctl/capabilities', { 'x-stoa-session-id': 'root', 'x-stoa-session-token': 'tok_root_1234' })
+      expect(res.statusCode).toBe(200)
+      const body = JSON.parse(res.body)
+      expect(body.data.supports.subagentResult).toBeFalsy()
+    })
+
+    test('exposes subagentResult for child session', async () => {
+      const { port } = await startServer(makeDeps())
+      const res = await get(port, '/ctl/capabilities', { 'x-stoa-session-id': 'child', 'x-stoa-session-token': 'tok_child_5678' })
+      expect(res.statusCode).toBe(200)
+      const body = JSON.parse(res.body)
+      expect(body.data.supports.subagentResult).toBe(true)
     })
   })
 
@@ -214,6 +274,40 @@ describe('SessionControlServer', () => {
       const body = JSON.parse(res.body)
       expect(body.data.nodes).toHaveLength(2)
     })
+
+    test('does not expose subagentResult full body in generic list projection', async () => {
+      const { port } = await startServer(makeDeps({
+        getSnapshot: () => [
+          makeNode({ id: 'root' }, { rootSessionId: 'root', depth: 0 }),
+          makeNode({
+            id: 'child',
+            parentSessionId: 'root',
+            createdBySessionId: 'root',
+            subagentResultSummary: {
+              status: 'completed',
+              title: 'done',
+              createdAt: '2026-06-11T00:00:00.000Z',
+              updatedAt: '2026-06-11T00:00:01.000Z',
+              hasBody: true
+            },
+            subagentResult: {
+              sessionId: 'child',
+              parentSessionId: 'root',
+              inputEpoch: 1,
+              status: 'completed',
+              title: 'done',
+              body: 'secret body',
+              createdAt: '2026-06-11T00:00:00.000Z',
+              updatedAt: '2026-06-11T00:00:01.000Z'
+            }
+          }, { rootSessionId: 'root', depth: 1 })
+        ]
+      }))
+      const res = await get(port, '/ctl/session/list', { 'x-stoa-secret': 'test-secret-1234' })
+      const body = JSON.parse(res.body)
+      expect(body.data.nodes[1].session.subagentResultSummary.hasBody).toBe(true)
+      expect(body.data.nodes[1].session.subagentResult).toBeUndefined()
+    })
   })
 
   describe('/ctl/session/:id/inspect', () => {
@@ -223,6 +317,40 @@ describe('SessionControlServer', () => {
       expect(res.statusCode).toBe(200)
       const body = JSON.parse(res.body)
       expect(body.data.node.session.id).toBe('root')
+    })
+
+    test('does not expose subagentResult full body in generic inspect projection', async () => {
+      const { port } = await startServer(makeDeps({
+        getSnapshot: () => [
+          makeNode({ id: 'root' }, { rootSessionId: 'root', depth: 0 }),
+          makeNode({
+            id: 'child',
+            parentSessionId: 'root',
+            createdBySessionId: 'root',
+            subagentResultSummary: {
+              status: 'completed',
+              title: 'done',
+              createdAt: '2026-06-11T00:00:00.000Z',
+              updatedAt: '2026-06-11T00:00:01.000Z',
+              hasBody: true
+            },
+            subagentResult: {
+              sessionId: 'child',
+              parentSessionId: 'root',
+              inputEpoch: 1,
+              status: 'completed',
+              title: 'done',
+              body: 'secret body',
+              createdAt: '2026-06-11T00:00:00.000Z',
+              updatedAt: '2026-06-11T00:00:01.000Z'
+            }
+          }, { rootSessionId: 'root', depth: 1 })
+        ]
+      }))
+      const res = await get(port, '/ctl/session/child/inspect', { 'x-stoa-secret': 'test-secret-1234' })
+      const body = JSON.parse(res.body)
+      expect(body.data.node.session.subagentResultSummary.hasBody).toBe(true)
+      expect(body.data.node.session.subagentResult).toBeUndefined()
     })
 
     test('returns unknown_session for non-existent session', async () => {
@@ -304,6 +432,33 @@ describe('SessionControlServer', () => {
         } as any
       }))
       const res = await get(port, '/ctl/session/child/output', { 'x-stoa-session-id': 'root', 'x-stoa-session-token': 'tok_root_1234' })
+      expect(res.statusCode).toBe(403)
+      const body = JSON.parse(res.body)
+      expect(body.error.code).toBe('forbidden_authority_scope')
+    })
+
+    test('returns forbidden_authority_scope for visible same-depth peer backing subagent output', async () => {
+      const nodes = [
+        makeNode({ id: 'root' }, { rootSessionId: 'root', depth: 0 }),
+        makeNode({ id: 'a', parentSessionId: 'root', createdBySessionId: 'root' }, { rootSessionId: 'root', depth: 1 }),
+        makeNode({
+          id: 'b',
+          parentSessionId: 'root',
+          createdBySessionId: 'root',
+          lastTurnOutcome: 'completed'
+        }, { rootSessionId: 'root', depth: 1 })
+      ]
+      const { port } = await startServer(makeDeps({
+        getSnapshot: () => nodes,
+        visibilityService: new SessionVisibilityService(() => nodes),
+        sessionTokenRegistry: new Map([
+          ['root', 'tok_root_1234'],
+          ['child', 'tok_child_5678'],
+          ['a', 'tok_a_1111'],
+          ['b', 'tok_b_2222']
+        ])
+      }))
+      const res = await get(port, '/ctl/session/b/output', { 'x-stoa-session-id': 'a', 'x-stoa-session-token': 'tok_a_1111' })
       expect(res.statusCode).toBe(403)
       const body = JSON.parse(res.body)
       expect(body.error.code).toBe('forbidden_authority_scope')
@@ -413,10 +568,10 @@ describe('SessionControlServer', () => {
     })
   })
 
-  describe('/ctl/session/:id/prompt', () => {
-    test('dispatches prompt to session', async () => {
+  describe('/ctl/session/:id/input', () => {
+    test('dispatches input to session', async () => {
       const { port } = await startServer(makeDeps())
-      const res = await post(port, '/ctl/session/root/prompt', { 'x-stoa-secret': 'test-secret-1234' }, JSON.stringify({ text: 'hello' }))
+      const res = await post(port, '/ctl/session/root/input', { 'x-stoa-secret': 'test-secret-1234' }, JSON.stringify({ text: 'hello' }))
       expect(res.statusCode).toBe(200)
       const body = JSON.parse(res.body)
       expect(body.data.kind).toBe('dispatched')
@@ -428,11 +583,11 @@ describe('SessionControlServer', () => {
           visibleSessionIds: () => ['root', 'child'],
           isVisible: () => true,
           checkAuthority: (_v: string, _t: string, action: string) =>
-            action === 'prompt' ? { allowed: false, reason: 'forbidden_authority_scope' } : { allowed: true }
+            action === 'input' ? { allowed: false, reason: 'forbidden_authority_scope' } : { allowed: true }
         } as any
       })
       const { port } = await startServer(deps)
-      const res = await post(port, '/ctl/session/child/prompt', { 'x-stoa-session-id': 'root', 'x-stoa-session-token': 'tok_root_1234' }, JSON.stringify({ text: 'hi' }))
+      const res = await post(port, '/ctl/session/child/input', { 'x-stoa-session-id': 'root', 'x-stoa-session-token': 'tok_root_1234' }, JSON.stringify({ text: 'hi' }))
       expect(res.statusCode).toBe(403)
       const body = JSON.parse(res.body)
       expect(body.error.code).toBe('forbidden_authority_scope')
@@ -447,10 +602,18 @@ describe('SessionControlServer', () => {
         } as any
       })
       const { port } = await startServer(deps)
-      const res = await post(port, '/ctl/session/child/prompt', { 'x-stoa-session-id': 'root', 'x-stoa-session-token': 'tok_root_1234' }, JSON.stringify({ text: 'hi' }))
+      const res = await post(port, '/ctl/session/child/input', { 'x-stoa-session-id': 'root', 'x-stoa-session-token': 'tok_root_1234' }, JSON.stringify({ text: 'hi' }))
       expect(res.statusCode).toBe(404)
       const body = JSON.parse(res.body)
       expect(body.error.code).toBe('unknown_session')
+    })
+  })
+
+  describe('/ctl/session/:id/prompt (deleted)', () => {
+    test('returns 404 for deleted prompt route', async () => {
+      const { port } = await startServer(makeDeps())
+      const res = await post(port, '/ctl/session/root/prompt', { 'x-stoa-secret': 'test-secret-1234' }, JSON.stringify({ text: 'hello' }))
+      expect(res.statusCode).toBe(404)
     })
   })
 
@@ -583,7 +746,20 @@ describe('SessionControlServer', () => {
     })
 
     test('creates a child session when parentId and projectId are provided', async () => {
-      const { port } = await startServer(makeDeps())
+      const { port } = await startServer(makeDeps({
+        createChildSession: async (request) => {
+          expect(request.parentId).toBe('root')
+          return makeSession({
+            id: 'new-child',
+            parentSessionId: 'root',
+            createdBySessionId: 'root',
+            subagentName: 'ryu',
+            subagentInputEpoch: 0,
+            subagentResultSummary: null,
+            subagentResult: null
+          })
+        }
+      }))
       const res = await post(port, '/ctl/session/create', { 'x-stoa-secret': 'test-secret-1234' }, JSON.stringify({
         parentId: 'root',
         projectId: 'proj-1',
@@ -593,6 +769,8 @@ describe('SessionControlServer', () => {
       expect(res.statusCode).toBe(200)
       const body = JSON.parse(res.body)
       expect(body.data.session).toBeDefined()
+      expect(body.data.session.subagentName).toBe('ryu')
+      expect(body.data.session.subagentInputEpoch).toBe(0)
     })
 
     test('returns 400 for missing projectId in local-user child create', async () => {
@@ -685,6 +863,269 @@ describe('SessionControlServer', () => {
       expect(res.statusCode).toBe(503)
       const body = JSON.parse(res.body)
       expect(body.error.code).toBe('disabled')
+    })
+  })
+
+  describe('/ctl/subagent/list', () => {
+    test('returns only child sessions (no root sessions)', async () => {
+      const { port } = await startServer(makeDeps())
+      const res = await get(port, '/ctl/subagent/list', { 'x-stoa-secret': 'test-secret-1234' })
+      expect(res.statusCode).toBe(200)
+      const body = JSON.parse(res.body)
+      expect(body.data.subagents).toHaveLength(1)
+      expect(body.data.subagents[0].id).toBe('child')
+      expect(body.data.subagents[0].parentSessionId).toBe('root')
+    })
+  })
+
+  describe('/ctl/subagent/dispatch', () => {
+    test('dispatches a new subagent with auto-allocated name', async () => {
+      const { port } = await startServer(makeDeps({
+        createChildSession: async () => makeSession({ id: 'sa-1', parentSessionId: 'root' })
+      }))
+      const res = await post(port, '/ctl/subagent/dispatch', { 'x-stoa-session-id': 'root', 'x-stoa-session-token': 'tok_root_1234' }, JSON.stringify({
+        type: 'claude-code',
+        text: 'do something'
+      }))
+      expect(res.statusCode).toBe(200)
+      const body = JSON.parse(res.body)
+      expect(body.data.subagent).toBeDefined()
+      expect(body.data.subagent.name).toBeTruthy()
+      expect(body.data.subagent.id).toBe('sa-1')
+    })
+
+    test('returns 400 for missing type', async () => {
+      const { port } = await startServer(makeDeps())
+      const res = await post(port, '/ctl/subagent/dispatch', { 'x-stoa-secret': 'test-secret-1234' }, JSON.stringify({
+        text: 'hello',
+        parentId: 'root'
+      }))
+      expect(res.statusCode).toBe(400)
+    })
+
+    test('returns 400 for blank text', async () => {
+      const { port } = await startServer(makeDeps())
+      const res = await post(port, '/ctl/subagent/dispatch', { 'x-stoa-secret': 'test-secret-1234' }, JSON.stringify({
+        type: 'claude-code',
+        text: '',
+        parentId: 'root'
+      }))
+      expect(res.statusCode).toBe(400)
+    })
+
+    test('local-user must provide parentId', async () => {
+      const { port } = await startServer(makeDeps())
+      const res = await post(port, '/ctl/subagent/dispatch', { 'x-stoa-secret': 'test-secret-1234' }, JSON.stringify({
+        type: 'claude-code',
+        text: 'hello'
+      }))
+      expect(res.statusCode).toBe(400)
+    })
+  })
+
+  describe('/ctl/subagent/wait', () => {
+    test('returns aggregate result with ok:true even on per-target errors', async () => {
+      const { port } = await startServer(makeDeps())
+      const res = await post(port, '/ctl/subagent/wait', { 'x-stoa-secret': 'test-secret-1234' }, JSON.stringify({
+        targets: ['nonexistent'],
+        mode: 'all',
+        timeoutMs: 100
+      }))
+      expect(res.statusCode).toBe(200)
+      const body = JSON.parse(res.body)
+      expect(body.ok).toBe(true)
+      expect(body.data.result.targets).toHaveLength(1)
+      expect(body.data.result.targets[0].state).toBe('error')
+    })
+
+    test('returns 400 for missing targets', async () => {
+      const { port } = await startServer(makeDeps())
+      const res = await post(port, '/ctl/subagent/wait', { 'x-stoa-secret': 'test-secret-1234' }, JSON.stringify({
+        mode: 'all'
+      }))
+      expect(res.statusCode).toBe(400)
+    })
+
+    test('does not double-count staggered completions in mode all', async () => {
+      const nodes = [
+        makeNode({ id: 'root' }, { rootSessionId: 'root', depth: 0 }),
+        makeNode({
+          id: 'child-a',
+          parentSessionId: 'root',
+          subagentName: 'ryu',
+          lastTurnOutcome: 'completed',
+          runtimeState: 'alive'
+        }, { rootSessionId: 'root', depth: 1 }),
+        makeNode({
+          id: 'child-b',
+          parentSessionId: 'root',
+          subagentName: 'mai',
+          lastTurnOutcome: 'none',
+          runtimeState: 'alive'
+        }, { rootSessionId: 'root', depth: 1 })
+      ]
+      let waited = false
+      const { port } = await startServer(makeDeps({
+        getSnapshot: () => nodes,
+        waitForSessionStateChange: async () => {
+          if (!waited) {
+            waited = true
+            nodes[2]!.session.lastTurnOutcome = 'completed'
+            nodes[2]!.session.updatedAt = '2026-06-10T12:00:05.000Z'
+          }
+          return 'updated'
+        }
+      }))
+      const res = await post(port, '/ctl/subagent/wait', { 'x-stoa-secret': 'test-secret-1234' }, JSON.stringify({
+        targets: ['ryu', 'mai'],
+        mode: 'all',
+        timeoutMs: 100
+      }))
+      expect(res.statusCode).toBe(200)
+      const body = JSON.parse(res.body)
+      expect(body.data.result.conditionMet).toBe(true)
+      expect(body.data.result.overallStatus).toBe('complete')
+      expect(body.data.result.targets.filter((target: { state: string }) => target.state === 'completed')).toHaveLength(2)
+    })
+  })
+
+  describe('/ctl/subagent/input', () => {
+    test('sends input to a resolved subagent', async () => {
+      const nodes = [
+        makeNode({ id: 'root' }, { rootSessionId: 'root', depth: 0 }),
+        makeNode({ id: 'child', parentSessionId: 'root', subagentName: 'ryu' }, { rootSessionId: 'root', depth: 1 })
+      ]
+      let sentText: string | null = null
+      const { port } = await startServer(makeDeps({
+        getSnapshot: () => nodes,
+        sessionInput: { send: async (_id: string, data: string) => { sentText = data } },
+        updateSessionFacade: async (sessionId: string, facade) => {
+          const node = nodes.find(n => n.session.id === sessionId)
+          if (node) Object.assign(node.session, facade)
+          return node!.session
+        }
+      }))
+      const res = await post(port, '/ctl/subagent/input', { 'x-stoa-secret': 'test-secret-1234' }, JSON.stringify({
+        target: 'ryu',
+        text: 'followup'
+      }))
+      expect(res.statusCode).toBe(200)
+      const body = JSON.parse(res.body)
+      expect(body.data.delivered).toBe(true)
+      expect(sentText).toContain('followup')
+    })
+
+    test('returns unknown_subagent for root session as target', async () => {
+      const { port } = await startServer(makeDeps())
+      const res = await post(port, '/ctl/subagent/input', { 'x-stoa-secret': 'test-secret-1234' }, JSON.stringify({
+        target: 'root',
+        text: 'hello'
+      }))
+      expect(res.statusCode).toBe(404)
+      const body = JSON.parse(res.body)
+      expect(body.error.code).toBe('unknown_subagent')
+    })
+
+    test('rejects same-depth peer session caller with forbidden_authority_scope', async () => {
+      const nodes = [
+        makeNode({ id: 'root' }, { rootSessionId: 'root', depth: 0 }),
+        makeNode({ id: 'a', parentSessionId: 'root', subagentName: 'ryu' }, { rootSessionId: 'root', depth: 1 }),
+        makeNode({ id: 'b', parentSessionId: 'root', subagentName: 'mai' }, { rootSessionId: 'root', depth: 1 })
+      ]
+      const visibilityService = new SessionVisibilityService(() => nodes)
+      const { port } = await startServer(makeDeps({
+        getSnapshot: () => nodes,
+        visibilityService
+      }))
+      const res = await post(port, '/ctl/subagent/input', { 'x-stoa-session-id': 'a', 'x-stoa-session-token': 'tok_a_1111' }, JSON.stringify({
+        target: 'mai',
+        text: 'peer poke'
+      }))
+      expect(res.statusCode).toBe(403)
+      const body = JSON.parse(res.body)
+      expect(body.error.code).toBe('forbidden_authority_scope')
+    })
+  })
+
+  describe('/ctl/subagent/stop', () => {
+    test('returns aggregate result with ok:true', async () => {
+      const nodes = [
+        makeNode({ id: 'root' }, { rootSessionId: 'root', depth: 0 }),
+        makeNode({ id: 'child', parentSessionId: 'root', subagentName: 'ryu' }, { rootSessionId: 'root', depth: 1 })
+      ]
+      const { port } = await startServer(makeDeps({
+        getSnapshot: () => nodes,
+        updateSessionFacade: async (sessionId: string, facade) => {
+          const node = nodes.find(n => n.session.id === sessionId)
+          if (node) Object.assign(node.session, facade)
+          return node!.session
+        }
+      }))
+      const res = await post(port, '/ctl/subagent/stop', { 'x-stoa-secret': 'test-secret-1234' }, JSON.stringify({
+        targets: ['ryu'],
+        mode: 'interrupt'
+      }))
+      expect(res.statusCode).toBe(200)
+      const body = JSON.parse(res.body)
+      expect(body.ok).toBe(true)
+      expect(body.data.result.overallStatus).toBe('complete')
+    })
+  })
+
+  describe('/ctl/subagent/result', () => {
+    test('returns subagent_result_forbidden for local-user', async () => {
+      const { port } = await startServer(makeDeps())
+      const res = await post(port, '/ctl/subagent/result', { 'x-stoa-secret': 'test-secret-1234' }, JSON.stringify({
+        status: 'completed',
+        text: 'done'
+      }))
+      expect(res.statusCode).toBe(403)
+      const body = JSON.parse(res.body)
+      expect(body.error.code).toBe('subagent_result_forbidden')
+    })
+
+    test('returns subagent_result_forbidden for root session', async () => {
+      const { port } = await startServer(makeDeps())
+      const res = await post(port, '/ctl/subagent/result', { 'x-stoa-session-id': 'root', 'x-stoa-session-token': 'tok_root_1234' }, JSON.stringify({
+        status: 'completed',
+        text: 'done'
+      }))
+      expect(res.statusCode).toBe(403)
+      const body = JSON.parse(res.body)
+      expect(body.error.code).toBe('subagent_result_forbidden')
+    })
+
+    test('child session can submit result', async () => {
+      const nodes = [
+        makeNode({ id: 'root' }, { rootSessionId: 'root', depth: 0 }),
+        makeNode({ id: 'child', parentSessionId: 'root' }, { rootSessionId: 'root', depth: 1 })
+      ]
+      const { port } = await startServer(makeDeps({
+        getSnapshot: () => nodes,
+        updateSessionFacade: async (sessionId: string, facade) => {
+          const node = nodes.find(n => n.session.id === sessionId)
+          if (node) Object.assign(node.session, facade)
+          return node!.session
+        }
+      }))
+      const res = await post(port, '/ctl/subagent/result', { 'x-stoa-session-id': 'child', 'x-stoa-session-token': 'tok_child_5678' }, JSON.stringify({
+        status: 'completed',
+        text: 'all done'
+      }))
+      expect(res.statusCode).toBe(200)
+      const body = JSON.parse(res.body)
+      expect(body.data.result.status).toBe('completed')
+    })
+
+    test('returns 400 for invalid status', async () => {
+      const { port } = await startServer(makeDeps())
+      const res = await post(port, '/ctl/subagent/result', { 'x-stoa-session-id': 'child', 'x-stoa-session-token': 'tok_child_5678' }, JSON.stringify({
+        status: 'interrupted',
+        text: 'done'
+      }))
+      expect(res.statusCode).toBe(400)
+      const body = JSON.parse(res.body)
+      expect(body.error.code).toBe('invalid_result_status')
     })
   })
 })

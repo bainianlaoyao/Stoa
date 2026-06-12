@@ -1,6 +1,8 @@
 import type { SessionNodeSnapshot } from '@shared/project-session'
 
-export type AuthorityAction = 'inspect' | 'status' | 'report' | 'prompt' | 'create' | 'destroy' | 'wait' | 'read-output'
+export type AuthorityAction =
+  | 'inspect' | 'status' | 'report' | 'prompt' | 'create' | 'destroy' | 'wait' | 'read-output'
+  | 'input' | 'subagentInput' | 'subagentWait' | 'subagentInterrupt' | 'subagentDestroy' | 'submitOwnResult'
 
 export interface AuthorityResult {
   allowed: boolean
@@ -72,10 +74,26 @@ export class SessionVisibilityService implements SessionVisibilityReader {
       || action === 'status'
       || action === 'report'
       || action === 'prompt'
+      || action === 'input'
+      || action === 'subagentWait'
       || action === 'wait'
       || action === 'read-output'
     ) {
       return { allowed: true }
+    }
+
+    if (action === 'submitOwnResult') {
+      return { allowed: false, reason: 'forbidden_authority_scope' }
+    }
+
+    if (action === 'subagentInterrupt' || action === 'subagentDestroy') {
+      if (targetId === viewerId) {
+        return { allowed: true }
+      }
+      if (this.isDescendantOf(targetNode, viewerId, byId)) {
+        return { allowed: true }
+      }
+      return { allowed: false, reason: 'forbidden_authority_scope' }
     }
 
     if (action === 'create') {

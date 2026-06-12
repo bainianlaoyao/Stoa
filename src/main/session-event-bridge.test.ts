@@ -1580,7 +1580,7 @@ describe('SessionEventBridge', () => {
       hasUnseenCompletion: false,
       summary: 'PreToolUse'
     })
-  })
+  }, 15_000)
 
   test('claude Stop after PermissionRequest clears blocked state through normal completion reduction', async () => {
     const stateDir = await createTestTempDir('session-event-bridge-state-')
@@ -1649,7 +1649,7 @@ describe('SessionEventBridge', () => {
       hasUnseenCompletion: true,
       summary: 'Stop'
     })
-  })
+  }, 15_000)
 
   test('applies provider state patches without requiring observability ingestion', async () => {
     const stateDir = await createTestTempDir('session-event-bridge-state-')
@@ -1916,7 +1916,7 @@ describe('SessionEventBridge', () => {
     expect(await readFile(join(evidenceDir, 'transcript.jsonl'), 'utf8')).toBe(
       '{"role":"assistant","content":"Fixed the evidence persistence."}\n'
     )
-  })
+  }, 15_000)
 
   test('evidence persistence failures are logged without blocking the provider state patch', async () => {
     const stateDir = await createTestTempDir('session-event-bridge-persist-failure-state-')

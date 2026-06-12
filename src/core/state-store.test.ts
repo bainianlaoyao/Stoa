@@ -133,7 +133,28 @@ describe('state-store', () => {
           recovery_mode: 'fresh-shell',
           archived: false,
           parent_session_id: null,
-          created_by_session_id: null
+          created_by_session_id: null,
+          subagent_name: 'ryu',
+          subagent_result_summary: {
+            status: 'completed',
+            title: 'Done',
+            createdAt: '2026-04-19T00:00:00.000Z',
+            updatedAt: '2026-04-19T00:01:00.000Z',
+            hasBody: true
+          },
+          subagent_input_epoch: 2,
+          subagent_latest_input_at: '2026-04-19T00:00:30.000Z',
+          subagent_latest_input_state_sequence: 5,
+          subagent_result: {
+            sessionId: 'session_shell_1',
+            parentSessionId: 'session_parent',
+            inputEpoch: 2,
+            status: 'completed',
+            title: 'Done',
+            body: 'body',
+            createdAt: '2026-04-19T00:00:00.000Z',
+            updatedAt: '2026-04-19T00:01:00.000Z'
+          }
         }
       ]
     }
@@ -148,6 +169,10 @@ describe('state-store', () => {
     expect(read.sessions[0]!.runtime_state).toBe('alive')
     expect(read.sessions[0]!.parent_session_id).toBe(null)
     expect(read.sessions[0]!.created_by_session_id).toBe(null)
+    expect(read.sessions[0]!.subagent_name).toBe('ryu')
+    expect(read.sessions[0]!.subagent_result_summary?.status).toBe('completed')
+    expect(read.sessions[0]!.subagent_input_epoch).toBe(2)
+    expect(read.sessions[0]!.subagent_latest_input_state_sequence).toBe(5)
   })
 
   test('overwrites an existing project sessions file on repeated writes', async () => {

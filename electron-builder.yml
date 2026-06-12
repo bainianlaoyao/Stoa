@@ -9,6 +9,10 @@ files:
 extraResources:
   - from: research/upstreams/evolver
     to: evolver
+  - from: stoa-server/dist/**
+    to: stoa-server
+  - from: stoa-server/node_modules/**
+    to: stoa-server/node_modules
 asarUnpack:
   - node_modules/node-pty/**
   - out/tools/entire-bridge/**

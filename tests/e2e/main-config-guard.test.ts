@@ -433,6 +433,7 @@ describe('E2E: Main Process Config Guard', () => {
         'gitCheckout',
         'gitCreateBranch',
         'shellShowItemInFolder',
+        'getServerInfo',
       ]
 
       for (const method of knownInvokeMethods) {

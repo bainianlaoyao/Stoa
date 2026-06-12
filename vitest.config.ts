@@ -25,11 +25,13 @@ export default defineConfig({
       '**/.git/**',
       '**/.tmp/**',
       '**/.worktrees/**',
+      '**/.claude/worktrees/**',
       '**/dist/**',
       '**/release/**',
       '**/research/upstreams/**',
       '**/e2e-playwright/**',
-      '**/tests/generated/playwright/**'
+      '**/tests/generated/playwright/**',
+      '**/stoa-server/**'
     ]
   }
 })

@@ -44,7 +44,8 @@ describe('stoa-ctl command surface', () => {
     expect(module.USAGE_TEXT).toContain('session wait <sessionId> [--timeout <seconds>]')
     expect(module.USAGE_TEXT).not.toContain('--timeout-ms')
     expect(module.USAGE_TEXT).toContain('session report <sessionId>')
-    expect(module.USAGE_TEXT).toContain('session prompt <sessionId> --text "..."')
+    expect(module.USAGE_TEXT).toContain('session input <sessionId> --text <text>|--file <path>|--stdin')
+    expect(module.USAGE_TEXT).not.toContain('session prompt')
     expect(module.USAGE_TEXT).toContain('session destroy <sessionId>')
     expect(module.USAGE_TEXT).not.toContain('meta-sessions')
     expect(module.USAGE_TEXT).not.toContain('proposals')
@@ -508,11 +509,11 @@ describe('stoa-ctl command surface', () => {
     expect(writes.join('')).toContain('"session_child_1"')
   })
 
-  test('prompts a session through the unified session endpoint', async () => {
+  test('sends input to a session through the session input endpoint', async () => {
     const module = await import('./index')
     const writes: string[] = []
     const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
-      expect(String(input)).toBe('http://127.0.0.1:43129/ctl/session/session_child_1/prompt')
+      expect(String(input)).toBe('http://127.0.0.1:43129/ctl/session/session_child_1/input')
       expect(init?.method).toBe('POST')
       expect(init?.body).toBe('{"text":"hello"}')
       return createResponse({
@@ -520,7 +521,7 @@ describe('stoa-ctl command surface', () => {
       })
     })
 
-    const exitCode = await module.run(['session', 'prompt', 'session_child_1', '--text', 'hello'], {
+    const exitCode = await module.run(['session', 'input', 'session_child_1', '--text', 'hello'], {
       fetch: fetchImpl,
       env: sessionEnv,
       stdout: { write(chunk: string) { writes.push(chunk) } },
@@ -695,5 +696,519 @@ describe('stoa-ctl command surface', () => {
         'file:/D:/Data/DEV/ultra_simple_panel/tools/stoa-ctl/index.ts'
       )
     ).toBe(true)
+  })
+
+  test('rejects legacy session prompt command with usage error', async () => {
+    const module = await import('./index')
+    const stderr: string[] = []
+
+    const exitCode = await module.run(['session', 'prompt', 'session_child_1', '--text', 'hello'], {
+      fetch: async () => { throw new Error('should not be called') },
+      env: sessionEnv,
+      stdout: { write() {} },
+      stderr: { write(chunk: string) { stderr.push(chunk) } },
+      sleep: async () => {}
+    })
+
+    expect(exitCode).toBe(2)
+    expect(stderr.join('')).toContain('Usage')
+    expect(stderr.join('')).toContain('session input')
+  })
+
+  test('usage text does not contain --artifact', async () => {
+    const module = await import('./index')
+    expect(module.USAGE_TEXT).not.toContain('--artifact')
+  })
+
+  test('usage text contains subagent command group', async () => {
+    const module = await import('./index')
+    expect(module.USAGE_TEXT).toContain('subagent list')
+    expect(module.USAGE_TEXT).toContain('subagent dispatch')
+    expect(module.USAGE_TEXT).toContain('subagent wait')
+    expect(module.USAGE_TEXT).toContain('subagent input')
+    expect(module.USAGE_TEXT).toContain('subagent stop')
+    expect(module.USAGE_TEXT).toContain('subagent result')
+  })
+
+  // ── parseInputSource tests ──
+
+  test('parseInputSource rejects when no input source is provided', async () => {
+    const module = await import('./index')
+    await expect(
+      module.parseInputSource([], { readFileUtf8: async () => '', readStdin: async () => '' })
+    ).rejects.toThrow('Missing input source')
+  })
+
+  test('parseInputSource rejects when multiple input sources are provided', async () => {
+    const module = await import('./index')
+    await expect(
+      module.parseInputSource(['--text', 'hello', '--file', 'foo.txt'], { readFileUtf8: async () => '', readStdin: async () => '' })
+    ).rejects.toThrow('Multiple input sources')
+  })
+
+  test('parseInputSource returns text content for --text', async () => {
+    const module = await import('./index')
+    const result = await module.parseInputSource(['--text', 'hello world'], { readFileUtf8: async () => '', readStdin: async () => '' })
+    expect(result).toBe('hello world')
+  })
+
+  test('parseInputSource returns file content for --file', async () => {
+    const module = await import('./index')
+    const result = await module.parseInputSource(['--file', '/some/path.md'], { readFileUtf8: async () => 'file content', readStdin: async () => '' })
+    expect(result).toBe('file content')
+  })
+
+  test('parseInputSource returns stdin content for --stdin', async () => {
+    const module = await import('./index')
+    const result = await module.parseInputSource(['--stdin'], { readFileUtf8: async () => '', readStdin: async () => 'stdin content' })
+    expect(result).toBe('stdin content')
+  })
+
+  test('parseInputSource rejects whitespace-only content', async () => {
+    const module = await import('./index')
+    await expect(
+      module.parseInputSource(['--text', '   '], { readFileUtf8: async () => '', readStdin: async () => '' })
+    ).rejects.toThrow('blank')
+  })
+
+  // ── subagent list tests ──
+
+  test('subagent list shows subagents with short names and formal IDs', async () => {
+    const module = await import('./index')
+    const writes: string[] = []
+    const fetchImpl = vi.fn(async (input: string | URL | Request) => {
+      expect(String(input)).toBe('http://127.0.0.1:43129/ctl/subagent/list')
+      return createResponse({
+        body: '{"ok":true,"data":{"subagents":[{"name":"ryu","id":"session_child_1","parentSessionId":"session_root_1","type":"claude-code","title":"Worker 1","phase":"running","resultStatus":null,"updatedAt":"2026-06-10T12:00:00Z"}]},"error":null}'
+      })
+    })
+
+    const exitCode = await module.run(['subagent', 'list'], {
+      fetch: fetchImpl,
+      env: sessionEnv,
+      stdout: { write(chunk: string) { writes.push(chunk) } },
+      stderr: { write() {} },
+      sleep: async () => {}
+    })
+
+    expect(exitCode).toBe(0)
+    const output = writes.join('')
+    expect(output).toContain('ryu')
+    expect(output).toContain('session_child_1')
+  })
+
+  test('subagent list shows no subagents message when empty', async () => {
+    const module = await import('./index')
+    const writes: string[] = []
+    const fetchImpl = vi.fn(async () => createResponse({
+      body: '{"ok":true,"data":{"subagents":[]},"error":null}'
+    }))
+
+    const exitCode = await module.run(['subagent', 'list'], {
+      fetch: fetchImpl,
+      env: sessionEnv,
+      stdout: { write(chunk: string) { writes.push(chunk) } },
+      stderr: { write() {} },
+      sleep: async () => {}
+    })
+
+    expect(exitCode).toBe(0)
+    expect(writes.join('')).toContain('No visible subagents')
+  })
+
+  // ── subagent dispatch tests ──
+
+  test('subagent dispatch creates a child and delivers initial input', async () => {
+    const module = await import('./index')
+    const writes: string[] = []
+    const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      expect(String(input)).toBe('http://127.0.0.1:43129/ctl/subagent/dispatch')
+      expect(init?.method).toBe('POST')
+      expect(JSON.parse(String(init?.body))).toEqual({
+        type: 'claude-code',
+        text: 'do the thing'
+      })
+      return createResponse({
+        body: '{"ok":true,"data":{"subagent":{"name":"ryu","id":"session_child_2","title":"Worker","phase":"running"}},"error":null}'
+      })
+    })
+
+    const exitCode = await module.run(['subagent', 'dispatch', '--type', 'claude-code', '--text', 'do the thing'], {
+      fetch: fetchImpl,
+      env: sessionEnv,
+      stdout: { write(chunk: string) { writes.push(chunk) } },
+      stderr: { write() {} },
+      sleep: async () => {}
+    })
+
+    expect(exitCode).toBe(0)
+    const output = writes.join('')
+    expect(output).toContain('Subagent dispatched')
+    expect(output).toContain('Name: ryu')
+    expect(output).toContain('ID: session_child_2')
+  })
+
+  test('subagent dispatch rejects session caller passing --parent', async () => {
+    const module = await import('./index')
+    const stderr: string[] = []
+
+    const exitCode = await module.run(['subagent', 'dispatch', '--type', 'claude-code', '--text', 'hi', '--parent', 'session_x'], {
+      fetch: async () => { throw new Error('should not be called') },
+      env: sessionEnv,
+      stdout: { write() {} },
+      stderr: { write(chunk: string) { stderr.push(chunk) } },
+      sleep: async () => {}
+    })
+
+    expect(exitCode).toBe(2)
+    expect(stderr.join('')).toContain('Usage')
+  })
+
+  test('subagent dispatch rejects local-user without --parent', async () => {
+    const module = await import('./index')
+    const stderr: string[] = []
+
+    const exitCode = await module.run(['subagent', 'dispatch', '--type', 'claude-code', '--text', 'hi'], {
+      fetch: async () => { throw new Error('should not be called') },
+      env: {},
+      stdout: { write() {} },
+      stderr: { write(chunk: string) { stderr.push(chunk) } },
+      sleep: async () => {},
+      readPortFile: async () => ({
+        port: 54321,
+        pid: process.pid,
+        secret: 'abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
+        startedAt: new Date().toISOString()
+      })
+    })
+
+    expect(exitCode).toBe(2)
+    expect(stderr.join('')).toContain('Usage')
+  })
+
+  // ── subagent wait tests ──
+
+  test('subagent wait sends multiple targets with mode and timeout', async () => {
+    const module = await import('./index')
+    const writes: string[] = []
+    const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      expect(String(input)).toBe('http://127.0.0.1:43129/ctl/subagent/wait')
+      expect(init?.method).toBe('POST')
+      const body = JSON.parse(String(init?.body))
+      expect(body).toEqual({
+        targets: ['ryu', 'mai'],
+        mode: 'all',
+        timeoutMs: 60000
+      })
+      return createResponse({
+        body: JSON.stringify({
+          ok: true,
+          data: {
+            result: {
+              mode: 'all',
+              conditionMet: true,
+              overallStatus: 'complete',
+              timeoutMs: 60000,
+              elapsedMs: 5000,
+              targets: [
+                { target: 'ryu', name: 'ryu', id: 's1', state: 'completed', status: 'completed', source: 'explicit', title: null, body: 'done', updatedAt: '2026-06-10T12:00:00Z' },
+                { target: 'mai', name: 'mai', id: 's2', state: 'completed', status: 'completed', source: 'explicit', title: null, body: 'also done', updatedAt: '2026-06-10T12:00:00Z' }
+              ]
+            }
+          },
+          error: null
+        })
+      })
+    })
+
+    const exitCode = await module.run(['subagent', 'wait', 'ryu', 'mai', '--mode', 'all', '--timeout', '60'], {
+      fetch: fetchImpl,
+      env: sessionEnv,
+      stdout: { write(chunk: string) { writes.push(chunk) } },
+      stderr: { write() {} },
+      sleep: async () => {}
+    })
+
+    expect(exitCode).toBe(0)
+    const output = writes.join('')
+    expect(output).toContain('Wait completed')
+    expect(output).toContain('ryu')
+    expect(output).toContain('mai')
+  })
+
+  test('subagent wait exits 0 iff conditionMet is true', async () => {
+    const module = await import('./index')
+    const writes: string[] = []
+    const fetchImpl = vi.fn(async () => createResponse({
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          result: {
+            mode: 'all',
+            conditionMet: false,
+            overallStatus: 'timeout',
+            timeoutMs: 1000,
+            elapsedMs: 1000,
+            targets: [
+              { target: 'ryu', name: 'ryu', id: 's1', state: 'pending', phase: 'running' }
+            ]
+          }
+        },
+        error: null
+      })
+    }))
+
+    const exitCode = await module.run(['subagent', 'wait', 'ryu', '--timeout', '1'], {
+      fetch: fetchImpl,
+      env: sessionEnv,
+      stdout: { write(chunk: string) { writes.push(chunk) } },
+      stderr: { write() {} },
+      sleep: async () => {}
+    })
+
+    expect(exitCode).toBe(7)
+    expect(writes.join('')).toContain('Condition met: false')
+  })
+
+  test('subagent wait defaults to mode all', async () => {
+    const module = await import('./index')
+    const fetchImpl = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body))
+      expect(body.mode).toBe('all')
+      return createResponse({
+        body: JSON.stringify({
+          ok: true,
+          data: {
+            result: {
+              mode: 'all',
+              conditionMet: true,
+              overallStatus: 'complete',
+              timeoutMs: null,
+              elapsedMs: 100,
+              targets: [
+                { target: 'ryu', name: 'ryu', id: 's1', state: 'completed', status: 'completed', source: 'explicit', title: null, body: 'done', updatedAt: '2026-06-10T12:00:00Z' }
+              ]
+            }
+          },
+          error: null
+        })
+      })
+    })
+
+    const exitCode = await module.run(['subagent', 'wait', 'ryu'], {
+      fetch: fetchImpl,
+      env: sessionEnv,
+      stdout: { write() {} },
+      stderr: { write() {} },
+      sleep: async () => {}
+    })
+
+    expect(exitCode).toBe(0)
+  })
+
+  // ── subagent input tests ──
+
+  test('subagent input sends follow-up input to a subagent', async () => {
+    const module = await import('./index')
+    const writes: string[] = []
+    const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      expect(String(input)).toBe('http://127.0.0.1:43129/ctl/subagent/input')
+      expect(init?.method).toBe('POST')
+      expect(JSON.parse(String(init?.body))).toEqual({
+        target: 'ryu',
+        text: 'continue'
+      })
+      return createResponse({
+        body: '{"ok":true,"data":{"delivered":true,"subagent":{"name":"ryu","id":"session_child_1"},"updatedAt":"2026-06-10T12:00:00Z"},"error":null}'
+      })
+    })
+
+    const exitCode = await module.run(['subagent', 'input', 'ryu', '--text', 'continue'], {
+      fetch: fetchImpl,
+      env: sessionEnv,
+      stdout: { write(chunk: string) { writes.push(chunk) } },
+      stderr: { write() {} },
+      sleep: async () => {}
+    })
+
+    expect(exitCode).toBe(0)
+    expect(writes.join('')).toContain('Input delivered')
+    expect(writes.join('')).toContain('ryu')
+  })
+
+  // ── subagent stop tests ──
+
+  test('subagent stop sends stop request for multiple targets', async () => {
+    const module = await import('./index')
+    const writes: string[] = []
+    const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      expect(String(input)).toBe('http://127.0.0.1:43129/ctl/subagent/stop')
+      expect(init?.method).toBe('POST')
+      const body = JSON.parse(String(init?.body))
+      expect(body).toEqual({
+        targets: ['ryu', 'mai'],
+        mode: 'interrupt'
+      })
+      return createResponse({
+        body: JSON.stringify({
+          ok: true,
+          data: {
+            result: {
+              mode: 'interrupt',
+              overallStatus: 'complete',
+              targets: [
+                { target: 'ryu', name: 'ryu', id: 's1', state: 'interrupt_requested', updatedAt: '2026-06-10T12:00:00Z' },
+                { target: 'mai', name: 'mai', id: 's2', state: 'interrupt_requested', updatedAt: '2026-06-10T12:00:00Z' }
+              ]
+            }
+          },
+          error: null
+        })
+      })
+    })
+
+    const exitCode = await module.run(['subagent', 'stop', 'ryu', 'mai'], {
+      fetch: fetchImpl,
+      env: sessionEnv,
+      stdout: { write(chunk: string) { writes.push(chunk) } },
+      stderr: { write() {} },
+      sleep: async () => {}
+    })
+
+    expect(exitCode).toBe(0)
+    expect(writes.join('')).toContain('Stop completed')
+  })
+
+  test('subagent stop exits 0 iff overallStatus is complete', async () => {
+    const module = await import('./index')
+    const writes: string[] = []
+    const fetchImpl = vi.fn(async () => createResponse({
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          result: {
+            mode: 'interrupt',
+            overallStatus: 'partial',
+            targets: [
+              { target: 'ryu', name: 'ryu', id: 's1', state: 'interrupt_requested', updatedAt: '2026-06-10T12:00:00Z' },
+              { target: 'mai', mode: 'interrupt', state: 'error', error: { code: 'unknown_subagent', message: 'not found' } }
+            ]
+          }
+        },
+        error: null
+      })
+    }))
+
+    const exitCode = await module.run(['subagent', 'stop', 'ryu', 'mai'], {
+      fetch: fetchImpl,
+      env: sessionEnv,
+      stdout: { write(chunk: string) { writes.push(chunk) } },
+      stderr: { write() {} },
+      sleep: async () => {}
+    })
+
+    expect(exitCode).toBe(7)
+    expect(writes.join('')).toContain('Overall status: partial')
+  })
+
+  test('subagent stop rejects invalid mode', async () => {
+    const module = await import('./index')
+    const stderr: string[] = []
+
+    const exitCode = await module.run(['subagent', 'stop', 'ryu', '--mode', 'terminate'], {
+      fetch: async () => { throw new Error('should not be called') },
+      env: sessionEnv,
+      stdout: { write() {} },
+      stderr: { write(chunk: string) { stderr.push(chunk) } },
+      sleep: async () => {}
+    })
+
+    expect(exitCode).toBe(2)
+    expect(stderr.join('')).toContain('Usage')
+  })
+
+  // ── subagent result tests ──
+
+  test('subagent result submits result with status and text', async () => {
+    const module = await import('./index')
+    const writes: string[] = []
+    const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      expect(String(input)).toBe('http://127.0.0.1:43129/ctl/subagent/result')
+      expect(init?.method).toBe('POST')
+      expect(JSON.parse(String(init?.body))).toEqual({
+        status: 'completed',
+        text: 'task finished'
+      })
+      return createResponse({
+        body: '{"ok":true,"data":{"result":{"status":"completed","title":null,"createdAt":"2026-06-10T12:00:00Z","updatedAt":"2026-06-10T12:00:00Z","hasBody":true}},"error":null}'
+      })
+    })
+
+    const exitCode = await module.run(['subagent', 'result', '--status', 'completed', '--text', 'task finished'], {
+      fetch: fetchImpl,
+      env: sessionEnv,
+      stdout: { write(chunk: string) { writes.push(chunk) } },
+      stderr: { write() {} },
+      sleep: async () => {}
+    })
+
+    expect(exitCode).toBe(0)
+    const output = writes.join('')
+    expect(output).toContain('Subagent result recorded.')
+    expect(output).toContain('Status: completed')
+    expect(output).toContain('Content: included')
+    expect(output).toContain('Updated: 2026-06-10T12:00:00Z')
+    expect(output).not.toContain('"ok":true')
+    expect(output).not.toContain('"status":"completed"')
+  })
+
+  test('subagent result includes title in stdout when present', async () => {
+    const module = await import('./index')
+    const writes: string[] = []
+    const fetchImpl = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+      expect(JSON.parse(String(init?.body))).toEqual({
+        status: 'blocked',
+        text: 'need clarification',
+        title: 'Blocked on upstream'
+      })
+      return createResponse({
+        body: '{"ok":true,"data":{"result":{"status":"blocked","title":"Blocked on upstream","createdAt":"2026-06-10T12:00:00Z","updatedAt":"2026-06-10T12:05:00Z","hasBody":true}},"error":null}'
+      })
+    })
+
+    const exitCode = await module.run([
+      'subagent', 'result',
+      '--status', 'blocked',
+      '--title', 'Blocked on upstream',
+      '--text', 'need clarification'
+    ], {
+      fetch: fetchImpl,
+      env: sessionEnv,
+      stdout: { write(chunk: string) { writes.push(chunk) } },
+      stderr: { write() {} },
+      sleep: async () => {}
+    })
+
+    expect(exitCode).toBe(0)
+    const output = writes.join('')
+    expect(output).toContain('Status: blocked')
+    expect(output).toContain('Title: Blocked on upstream')
+    expect(output).toContain('Updated: 2026-06-10T12:05:00Z')
+  })
+
+  test('subagent result rejects invalid status', async () => {
+    const module = await import('./index')
+    const stderr: string[] = []
+
+    const exitCode = await module.run(['subagent', 'result', '--status', 'interrupted', '--text', 'hi'], {
+      fetch: async () => { throw new Error('should not be called') },
+      env: sessionEnv,
+      stdout: { write() {} },
+      stderr: { write(chunk: string) { stderr.push(chunk) } },
+      sleep: async () => {}
+    })
+
+    expect(exitCode).toBe(2)
+    expect(stderr.join('')).toContain('Usage')
   })
 })

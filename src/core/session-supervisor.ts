@@ -1,13 +1,15 @@
 import { derivePresencePhase } from '@shared/session-state-reducer'
-import type {
-  SessionCompletionReport,
-  SessionNodeSnapshot,
-  SessionOutputResult,
-  SessionStatusSnapshot,
-  SessionSummary,
-  SessionType,
-  SessionWaitOptions,
-  SessionWaitResult
+import {
+  sanitizeSessionNodeSnapshotForGenericProjection,
+  type SessionCompletionReport,
+  type SessionNodeSnapshot,
+  type SessionOutputResult,
+  type SessionStatusSnapshot,
+  type SessionSummary,
+  type SessionType,
+  type SessionWaitOptions,
+  type SessionWaitResult,
+  type SubagentCommandErrorCode
 } from '@shared/project-session'
 import type { SessionVisibilityReader } from './session-visibility-service'
 
@@ -26,6 +28,7 @@ export interface CreateChildSessionRequest {
   projectId: string
   type: SessionType
   title: string
+  subagentName?: string | null
   externalSessionId?: string | null
   initialCols?: number
   initialRows?: number
@@ -39,11 +42,26 @@ export interface SessionSupervisorDeps {
   destroySession(sessionId: string): Promise<void>
   getTerminalReplay(sessionId: string): Promise<string>
   waitForSessionStateChange?(sessionId: string, timeoutMs: number): Promise<'updated' | 'timeout'>
+  recordSubagentInput?(
+    sessionId: string,
+    text: string
+  ): Promise<SessionSummary | null>
 }
 
 export class SessionControlError extends Error {
   constructor(
-    readonly code: 'unknown_session' | 'forbidden_authority_scope' | 'wait_timeout' | 'no_completion_yet',
+    readonly code:
+      | 'unknown_session'
+      | 'forbidden_authority_scope'
+      | 'wait_timeout'
+      | 'no_completion_yet'
+      | 'unknown_subagent'
+      | 'ambiguous_subagent_name'
+      | 'duplicate_subagent_name'
+      | 'subagent_result_forbidden'
+      | 'invalid_input_source'
+      | 'invalid_result_status'
+      | 'interrupt_unsupported',
     message: string
   ) {
     super(message)
@@ -57,10 +75,12 @@ export class SessionSupervisor {
   listSessions(caller: CallerIdentity): SessionNodeSnapshot[] {
     const all = this.deps.getSnapshot()
     if (caller.type === 'local-user') {
-      return all
+      return all.map(sanitizeSessionNodeSnapshotForGenericProjection)
     }
     const visibleIds = this.deps.visibilityService.visibleSessionIds(caller.sessionId)
-    return all.filter((n) => visibleIds.includes(n.session.id))
+    return all
+      .filter((n) => visibleIds.includes(n.session.id))
+      .map(sanitizeSessionNodeSnapshotForGenericProjection)
   }
 
   inspectSession(caller: CallerIdentity, targetId: string): SessionNodeSnapshot | null {
@@ -70,21 +90,22 @@ export class SessionSupervisor {
       return null
     }
     if (caller.type === 'local-user') {
-      return target
+      return sanitizeSessionNodeSnapshotForGenericProjection(target)
     }
     const visibleIds = this.deps.visibilityService.visibleSessionIds(caller.sessionId)
     if (!visibleIds.includes(targetId)) {
       return null
     }
-    return target
+    return sanitizeSessionNodeSnapshotForGenericProjection(target)
   }
 
-  async promptSession(caller: CallerIdentity, targetId: string, text: string): Promise<{ kind: 'dispatched' }> {
+  async inputSession(caller: CallerIdentity, targetId: string, text: string): Promise<{ kind: 'dispatched' }> {
     this.requireKnownSession(targetId)
     if (caller.type === 'session') {
-      this.assertAuthority(caller.sessionId, targetId, 'prompt')
+      this.assertAuthority(caller.sessionId, targetId, 'input')
     }
     await this.deps.sessionInput.send(targetId, `${text}\r`)
+    await this.deps.recordSubagentInput?.(targetId, text)
     return { kind: 'dispatched' }
   }
 
@@ -117,7 +138,9 @@ export class SessionSupervisor {
   }
 
   async getSessionOutput(caller: CallerIdentity, targetId: string): Promise<SessionOutputResult> {
-    this.requireVisibleSession(caller, targetId, 'read-output')
+    const target = this.requireVisibleSession(caller, targetId, 'read-output')
+    this.assertSubagentBodyAuthority(caller, target)
+    this.assertReadableCurrentSubagentTerminal(target.session)
     return {
       sessionId: targetId,
       text: await this.deps.getTerminalReplay(targetId)
@@ -126,6 +149,8 @@ export class SessionSupervisor {
 
   async getCompletionReport(caller: CallerIdentity, targetId: string): Promise<SessionCompletionReport> {
     const target = this.requireVisibleSession(caller, targetId, 'report')
+    this.assertSubagentBodyAuthority(caller, target)
+    this.assertReadableCurrentSubagentTerminal(target.session)
     const report = this.toCompletionReport(target.session)
     if (!report) {
       throw new SessionControlError('no_completion_yet', 'no_completion_yet')
@@ -138,10 +163,11 @@ export class SessionSupervisor {
     targetId: string,
     options: SessionWaitOptions = {}
   ): Promise<SessionWaitResult> {
-    this.requireVisibleSession(caller, targetId, 'wait')
+    const initialTarget = this.requireVisibleSession(caller, targetId, 'wait')
+    this.assertSubagentBodyAuthority(caller, initialTarget)
     const timeoutMs = Math.max(0, options.timeoutMs ?? 300_000)
 
-    if (!this.isTerminalSession(targetId)) {
+    if (!this.hasReadableTerminalResult(targetId)) {
       const waitResult = await this.waitUntilTerminal(targetId, timeoutMs)
       if (waitResult === 'timeout') {
         throw new SessionControlError('wait_timeout', 'wait_timeout')
@@ -149,10 +175,12 @@ export class SessionSupervisor {
     }
 
     const node = this.requireVisibleSession(caller, targetId, 'wait')
+    this.assertSubagentBodyAuthority(caller, node)
+    this.assertReadableCurrentSubagentTerminal(node.session)
     const output = await this.getSessionOutput(caller, targetId)
     const report = this.toCompletionReport(node.session)
     return {
-      session: node,
+      session: sanitizeSessionNodeSnapshotForGenericProjection(node),
       status: this.toStatusSnapshot(node.session),
       output,
       report
@@ -162,7 +190,8 @@ export class SessionSupervisor {
   private assertAuthority(
     viewerId: string,
     targetId: string,
-    action: 'inspect' | 'status' | 'report' | 'prompt' | 'create' | 'destroy' | 'wait' | 'read-output'
+    action: 'inspect' | 'status' | 'report' | 'prompt' | 'input' | 'create' | 'destroy' | 'wait' | 'read-output'
+      | 'subagentInput' | 'subagentWait' | 'subagentInterrupt' | 'subagentDestroy' | 'submitOwnResult'
   ): void {
     const result = this.deps.visibilityService.checkAuthority(viewerId, targetId, action)
     if (!result.allowed) {
@@ -184,7 +213,8 @@ export class SessionSupervisor {
   private requireVisibleSession(
     caller: CallerIdentity,
     targetId: string,
-    action: 'inspect' | 'status' | 'report' | 'prompt' | 'create' | 'destroy' | 'wait' | 'read-output'
+    action: 'inspect' | 'status' | 'report' | 'prompt' | 'input' | 'create' | 'destroy' | 'wait' | 'read-output'
+      | 'subagentInput' | 'subagentWait' | 'subagentInterrupt' | 'subagentDestroy' | 'submitOwnResult'
   ): SessionNodeSnapshot {
     const target = this.requireKnownSession(targetId)
     if (caller.type === 'session') {
@@ -254,16 +284,92 @@ export class SessionSupervisor {
     }
   }
 
-  private isTerminalSession(sessionId: string): boolean {
+  private assertSubagentBodyAuthority(caller: CallerIdentity, target: SessionNodeSnapshot): void {
+    if (target.session.parentSessionId === null) {
+      return
+    }
+
+    if (!this.canReadSubagentFullBody(caller, target)) {
+      throw new SessionControlError('forbidden_authority_scope', 'forbidden_authority_scope')
+    }
+  }
+
+  private assertReadableCurrentSubagentTerminal(session: SessionSummary): void {
+    if (session.parentSessionId === null) {
+      return
+    }
+
+    if (!this.hasCurrentSubagentTerminalResult(session)) {
+      throw new SessionControlError('no_completion_yet', 'no_completion_yet')
+    }
+  }
+
+  private canReadSubagentFullBody(caller: CallerIdentity, target: SessionNodeSnapshot): boolean {
+    if (caller.type === 'local-user') {
+      return true
+    }
+
+    const callerId = caller.sessionId
+    const targetId = target.session.id
+    if (callerId === targetId) {
+      return true
+    }
+
+    const byId = new Map(this.deps.getSnapshot().map((node) => [node.session.id, node]))
+    let cursorId: string | null = target.session.parentSessionId
+    while (cursorId) {
+      if (cursorId === callerId) {
+        return true
+      }
+      const parent = byId.get(cursorId)
+      if (!parent) {
+        break
+      }
+      cursorId = parent.session.parentSessionId
+    }
+
+    return false
+  }
+
+  private hasReadableTerminalResult(sessionId: string): boolean {
     const node = this.deps.getSnapshot().find((candidate) => candidate.session.id === sessionId)
-    return !!node && this.toCompletionReport(node.session) !== null
+    return !!node && this.hasCurrentTerminalResult(node.session)
+  }
+
+  private hasCurrentTerminalResult(session: SessionSummary): boolean {
+    if (this.toCompletionReport(session) === null) {
+      return false
+    }
+
+    if (session.parentSessionId === null) {
+      return true
+    }
+
+    return this.hasCurrentSubagentTerminalResult(session)
+  }
+
+  private hasCurrentSubagentTerminalResult(session: SessionSummary): boolean {
+    if (session.archived) {
+      return false
+    }
+
+    const inputEpoch = session.subagentInputEpoch ?? 0
+    if (inputEpoch === 0) {
+      return true
+    }
+
+    if (session.subagentLatestInputStateSequence === undefined) {
+      return true
+    }
+
+    return session.lastStateSequence > session.subagentLatestInputStateSequence
   }
 
   private async waitUntilTerminal(sessionId: string, timeoutMs: number): Promise<'updated' | 'timeout'> {
     const deadline = Date.now() + timeoutMs
 
     while (Date.now() <= deadline) {
-      if (this.isTerminalSession(sessionId)) {
+      if (this.hasReadableTerminalResult(sessionId)) {
         return 'updated'
       }
 
@@ -274,7 +380,7 @@ export class SessionSupervisor {
           Math.min(SESSION_WAIT_STATE_CHANGE_SLICE_MS, remaining)
         )
         if (result === 'timeout') {
-          if (this.isTerminalSession(sessionId)) {
+          if (this.hasReadableTerminalResult(sessionId)) {
             return 'updated'
           }
           if (Date.now() >= deadline) {
@@ -288,6 +394,6 @@ export class SessionSupervisor {
       await new Promise((resolve) => setTimeout(resolve, Math.min(25, Math.max(1, deadline - Date.now()))))
     }
 
-    return this.isTerminalSession(sessionId) ? 'updated' : 'timeout'
+    return this.hasReadableTerminalResult(sessionId) ? 'updated' : 'timeout'
   }
 }

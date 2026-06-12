@@ -9,6 +9,7 @@ import type {
 import { normalizeTerminalSettings, type TerminalSettings } from '@shared/terminal-settings'
 import i18n, { SUPPORTED_LOCALES } from '@renderer/i18n'
 import type { SupportedLocale } from '@renderer/i18n'
+import { getStoaClient, isStoaClientMode } from '@renderer/stores/stoa-store-plugin'
 
 export const useSettingsStore = defineStore('settings', () => {
   const shellPath = ref('')
@@ -29,8 +30,102 @@ export const useSettingsStore = defineStore('settings', () => {
   const theme = ref<'light' | 'dark' | 'system'>('system')
   const loaded = ref(false)
 
+  // ── StoaClient / IPC abstraction ──
+
+  async function fetchSettings() {
+    if (isStoaClientMode()) {
+      const client = getStoaClient()
+      if (client) {
+        const res = await client.get<import('@shared/project-session').AppSettings>('/api/v1/settings')
+        return res.data ?? null
+      }
+    }
+    return window.stoa.getSettings()
+  }
+
+  async function persistSetting(key: string, value: unknown): Promise<void> {
+    if (isStoaClientMode()) {
+      const client = getStoaClient()
+      if (client) {
+        await client.put(`/api/v1/settings/${encodeURIComponent(key)}`, { value })
+        return
+      }
+    }
+    await window.stoa.setSetting(key, value)
+  }
+
+  async function detectShell(): Promise<string | null> {
+    if (isStoaClientMode()) {
+      const client = getStoaClient()
+      if (client) {
+        const res = await client.post<string | null>('/api/v1/settings/detect/shell')
+        return res.data ?? null
+      }
+    }
+    return window.stoa.detectShell()
+  }
+
+  async function detectProvider(providerId: string): Promise<string | null> {
+    if (isStoaClientMode()) {
+      const client = getStoaClient()
+      if (client) {
+        const res = await client.post<string | null>('/api/v1/settings/detect/provider', { providerId })
+        return res.data ?? null
+      }
+    }
+    return window.stoa.detectProvider(providerId)
+  }
+
+  async function detectVscode(): Promise<string | null> {
+    if (isStoaClientMode()) {
+      const client = getStoaClient()
+      if (client) {
+        const res = await client.post<string | null>('/api/v1/settings/detect/vscode')
+        return res.data ?? null
+      }
+    }
+    return window.stoa.detectVscode()
+  }
+
+  function subscribeToSettingsChangedViaStoaClient(): (() => void) | null {
+    const client = getStoaClient()
+    if (!client) return null
+
+    return client.subscribe('settings:changed', (payload) => {
+      const { key, value } = payload as { key: string; value: unknown }
+      applyRemoteSettingChange(key, value)
+    })
+  }
+
+  function applyRemoteSettingChange(key: string, value: unknown): void {
+    if (key === 'shellPath' && typeof value === 'string') {
+      shellPath.value = value
+    } else if (key === 'terminal' && typeof value === 'object' && value !== null) {
+      terminal.value = { ...(value as Partial<TerminalSettings>) }
+    } else if (key === 'providers' && typeof value === 'object' && value !== null) {
+      providers.value = { ...(value as Record<string, string>) }
+    } else if (key === 'titleGeneration' && isTitleGenerationSettings(value)) {
+      titleGeneration.value = { ...value }
+    } else if (key === 'workspaceIde' && isWorkspaceIdeSettings(value)) {
+      workspaceIde.value = { ...value }
+    } else if (key === 'evolverInferenceProvider' && value === 'claude-code') {
+      evolverInferenceProvider.value = value
+    } else if (key === 'evolverExecutionMode' && value === 'workspace-shell') {
+      evolverExecutionMode.value = value
+    } else if (key === 'claudeDangerouslySkipPermissions' && typeof value === 'boolean') {
+      claudeDangerouslySkipPermissions.value = value
+    } else if (key === 'locale' && typeof value === 'string') {
+      locale.value = value
+    } else if (key === 'theme' && (value === 'light' || value === 'dark' || value === 'system')) {
+      theme.value = value
+      applyTheme(value)
+    } else if (key === 'stoaCtlEnabled' && typeof value === 'boolean') {
+      stoaCtlEnabled.value = value
+    }
+  }
+
   async function loadSettings(): Promise<void> {
-    const settings = await window.stoa.getSettings()
+    const settings = await fetchSettings()
     if (settings) {
       shellPath.value = settings.shellPath
       terminal.value = { ...settings.terminal ?? {} }
@@ -62,7 +157,7 @@ export const useSettingsStore = defineStore('settings', () => {
   }
 
   async function updateSetting(key: string, value: unknown): Promise<void> {
-    await window.stoa.setSetting(key, value)
+    await persistSetting(key, value)
     if (key === 'shellPath' && typeof value === 'string') {
       shellPath.value = value
     } else if (key === 'terminal' && typeof value === 'object' && value !== null) {
@@ -97,7 +192,7 @@ export const useSettingsStore = defineStore('settings', () => {
   }
 
   async function detectAndSetShell(): Promise<string | null> {
-    const detected = await window.stoa.detectShell()
+    const detected = await detectShell()
     if (detected && !shellPath.value) {
       await updateSetting('shellPath', detected)
     }
@@ -105,7 +200,7 @@ export const useSettingsStore = defineStore('settings', () => {
   }
 
   async function detectAndSetProvider(providerId: string): Promise<string | null> {
-    const detected = await window.stoa.detectProvider(providerId)
+    const detected = await detectProvider(providerId)
     if (detected && !providers.value[providerId]) {
       const updated = { ...providers.value, [providerId]: detected }
       await updateSetting('providers', updated)
@@ -114,7 +209,7 @@ export const useSettingsStore = defineStore('settings', () => {
   }
 
   async function detectAndSetVscode(force?: boolean): Promise<string | null> {
-    const detected = await window.stoa.detectVscode()
+    const detected = await detectVscode()
     if (detected && (force || !workspaceIde.value.executablePath)) {
       await updateSetting('workspaceIde', { id: workspaceIde.value.id, executablePath: detected })
     }
@@ -194,6 +289,7 @@ export const useSettingsStore = defineStore('settings', () => {
     loaded,
     resolvedTerminalSettings,
     loadSettings, updateSetting, detectAndSetShell, detectAndSetProvider, detectAndSetVscode,
-    pickFolder, pickFile, applyLocale, applyTheme
+    pickFolder, pickFile, applyLocale, applyTheme,
+    subscribeToSettingsChangedViaStoaClient
   }
 })

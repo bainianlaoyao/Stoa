@@ -186,6 +186,12 @@ function isValidPersistedSession(value: unknown): value is PersistedSession {
     && hasNullableString(value, 'last_activated_at')
     && hasEnumValue<SessionRecoveryMode>(value, 'recovery_mode', ['fresh-shell', 'resume-external'])
     && hasBoolean(value, 'archived')
+    && hasOptionalNullableString(value, 'subagent_name')
+    && hasOptionalSubagentResultSummary(value, 'subagent_result_summary')
+    && hasOptionalNumber(value, 'subagent_input_epoch')
+    && hasOptionalNullableString(value, 'subagent_latest_input_at')
+    && hasOptionalNumber(value, 'subagent_latest_input_state_sequence')
+    && hasOptionalSubagentResult(value, 'subagent_result')
 }
 
 function hasString(value: object, key: string): boolean {
@@ -206,6 +212,47 @@ function hasNullableNumber(value: object, key: string): boolean {
 
 function hasBoolean(value: object, key: string): boolean {
   return key in value && typeof value[key as keyof typeof value] === 'boolean'
+}
+
+function hasOptionalNumber(value: object, key: string): boolean {
+  return !(key in value) || typeof value[key as keyof typeof value] === 'number'
+}
+
+function hasOptionalNullableString(value: object, key: string): boolean {
+  return !(key in value)
+    || value[key as keyof typeof value] === null
+    || typeof value[key as keyof typeof value] === 'string'
+}
+
+function hasOptionalSubagentResultSummary(value: object, key: string): boolean {
+  if (!(key in value) || value[key as keyof typeof value] === null) {
+    return true
+  }
+  const candidate = value[key as keyof typeof value]
+  return typeof candidate === 'object'
+    && candidate !== null
+    && hasEnumValue(candidate, 'status', ['completed', 'failed', 'blocked', 'cancelled'])
+    && hasNullableString(candidate, 'title')
+    && hasString(candidate, 'createdAt')
+    && hasString(candidate, 'updatedAt')
+    && hasBoolean(candidate, 'hasBody')
+}
+
+function hasOptionalSubagentResult(value: object, key: string): boolean {
+  if (!(key in value) || value[key as keyof typeof value] === null) {
+    return true
+  }
+  const candidate = value[key as keyof typeof value]
+  return typeof candidate === 'object'
+    && candidate !== null
+    && hasString(candidate, 'sessionId')
+    && hasString(candidate, 'parentSessionId')
+    && hasNumber(candidate, 'inputEpoch')
+    && hasEnumValue(candidate, 'status', ['completed', 'failed', 'blocked', 'cancelled'])
+    && hasNullableString(candidate, 'title')
+    && hasString(candidate, 'body')
+    && hasString(candidate, 'createdAt')
+    && hasString(candidate, 'updatedAt')
 }
 
 function hasEnumValue<TValue extends string>(value: object, key: string, allowed: readonly TValue[]): boolean {

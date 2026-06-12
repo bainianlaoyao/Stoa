@@ -144,6 +144,12 @@ export interface SessionSummary {
   updatedAt: string
   lastActivatedAt: string | null
   archived: boolean
+  subagentName?: string | null
+  subagentResultSummary?: SubagentResultSummary | null
+  subagentInputEpoch?: number
+  subagentLatestInputAt?: string
+  subagentLatestInputStateSequence?: number
+  subagentResult?: SubagentResult | null
 }
 
 export interface SessionTitleGenerationContext {
@@ -187,6 +193,12 @@ export interface PersistedSession {
   last_activated_at: string | null
   recovery_mode: SessionRecoveryMode
   archived: boolean
+  subagent_name?: string | null
+  subagent_result_summary?: SubagentResultSummary | null
+  subagent_input_epoch?: number
+  subagent_latest_input_at?: string | null
+  subagent_latest_input_state_sequence?: number
+  subagent_result?: SubagentResult | null
 }
 
 export interface AppSettings {
@@ -290,6 +302,7 @@ export interface CreateSessionRequest {
   title: string
   parentSessionId?: string | null
   createdBySessionId?: string | null
+  subagentName?: string | null
   externalSessionId?: string | null
   initialCols?: number
   initialRows?: number
@@ -368,6 +381,193 @@ export interface SessionGraphEvent {
   origin: 'renderer' | 'local-cli' | 'session' | 'system'
   initiatorSessionId: string | null
   node: SessionNodeSnapshot
+}
+
+export function sanitizeSessionSummaryForGenericProjection(session: SessionSummary): SessionSummary {
+  const { subagentResult: _subagentResult, titleGenerationContext, ...rest } = session
+  return {
+    ...rest,
+    titleGenerationContext: { ...titleGenerationContext }
+  }
+}
+
+export function sanitizeSessionNodeSnapshotForGenericProjection(node: SessionNodeSnapshot): SessionNodeSnapshot {
+  return {
+    session: sanitizeSessionSummaryForGenericProjection(node.session),
+    tree: { ...node.tree }
+  }
+}
+
+export function sanitizeBootstrapStateForGenericProjection(state: BootstrapState): BootstrapState {
+  return {
+    ...state,
+    projects: state.projects.map((project) => ({ ...project })),
+    sessions: state.sessions.map(sanitizeSessionSummaryForGenericProjection)
+  }
+}
+
+export function sanitizeSessionGraphEventForGenericProjection(event: SessionGraphEvent): SessionGraphEvent {
+  return {
+    ...event,
+    node: sanitizeSessionNodeSnapshotForGenericProjection(event.node)
+  }
+}
+
+// ── Subagent facade types ──
+
+export interface SubagentResult {
+  sessionId: string
+  parentSessionId: string
+  inputEpoch: number
+  status: 'completed' | 'failed' | 'blocked' | 'cancelled'
+  title: string | null
+  body: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface SubagentResultSummary {
+  status: 'completed' | 'failed' | 'blocked' | 'cancelled'
+  title: string | null
+  createdAt: string
+  updatedAt: string
+  hasBody: boolean
+}
+
+export interface InternalSubagentFacadeState {
+  subagentInputEpoch?: number
+  subagentLatestInputAt?: string
+  subagentLatestInputStateSequence?: number
+  subagentResult?: SubagentResult | null
+}
+
+export type SubagentWaitMode = 'all' | 'any'
+export type SubagentWaitOverallStatus = 'complete' | 'partial' | 'timeout' | 'failed'
+export type SubagentResultSource = 'explicit' | 'terminal' | 'host'
+
+export interface SubagentWaitCompletedTarget {
+  target: string
+  name: string
+  id: string
+  state: 'completed'
+  status: 'completed' | 'failed' | 'blocked' | 'cancelled' | 'interrupted' | 'destroyed'
+  source: SubagentResultSource
+  title: string | null
+  body: string
+  updatedAt: string
+}
+
+export interface SubagentWaitPendingTarget {
+  target: string
+  name: string
+  id: string
+  state: 'pending'
+  phase: string
+}
+
+export interface SubagentWaitErrorTarget {
+  target: string
+  state: 'error'
+  error: SessionCommandErrorEnvelope
+}
+
+export interface SubagentWaitAggregate {
+  mode: SubagentWaitMode
+  conditionMet: boolean
+  overallStatus: SubagentWaitOverallStatus
+  timeoutMs: number | null
+  elapsedMs: number
+  targets: Array<SubagentWaitCompletedTarget | SubagentWaitPendingTarget | SubagentWaitErrorTarget>
+}
+
+export type SubagentStopOverallStatus = 'complete' | 'partial' | 'failed'
+
+export interface SubagentStopSuccessTarget {
+  target: string
+  name: string
+  id: string
+  mode: 'interrupt' | 'destroy'
+  state: 'interrupt_requested' | 'destroyed'
+  updatedAt: string
+}
+
+export interface SubagentStopErrorTarget {
+  target: string
+  mode: 'interrupt' | 'destroy'
+  state: 'error'
+  error: SessionCommandErrorEnvelope
+}
+
+export interface SubagentStopAggregate {
+  mode: 'interrupt' | 'destroy'
+  overallStatus: SubagentStopOverallStatus
+  targets: Array<SubagentStopSuccessTarget | SubagentStopErrorTarget>
+}
+
+export interface SubagentListItem {
+  name: string
+  id: string
+  parentSessionId: string
+  type: SessionType
+  title: string
+  phase: string
+  resultStatus: SubagentResultSummary['status'] | null
+  updatedAt: string
+}
+
+export interface SubagentDispatchRequest {
+  type: SessionType
+  text: string
+  title?: string
+  name?: string
+  parentId?: string
+  initialCols?: number
+  initialRows?: number
+}
+
+export interface SubagentWaitRequest {
+  targets: string[]
+  mode?: 'all' | 'any'
+  timeoutMs?: number
+}
+
+export interface SubagentInputRequest {
+  target: string
+  text: string
+}
+
+export interface SubagentStopRequest {
+  targets: string[]
+  mode?: 'interrupt' | 'destroy'
+}
+
+export interface SubagentResultRequest {
+  status: 'completed' | 'failed' | 'blocked' | 'cancelled'
+  text: string
+  title?: string
+}
+
+export type SubagentCommandErrorCode =
+  | 'unknown_subagent'
+  | 'ambiguous_subagent_name'
+  | 'duplicate_subagent_name'
+  | 'subagent_result_forbidden'
+  | 'invalid_input_source'
+  | 'invalid_result_status'
+  | 'interrupt_unsupported'
+
+export interface SessionCommandErrorEnvelope {
+  code:
+    | 'unknown_session'
+    | 'unknown_project'
+    | 'forbidden_visibility_scope'
+    | 'forbidden_authority_scope'
+    | 'invalid_parent_session'
+    | 'cross_project_parent_forbidden'
+    | 'internal_error'
+    | SubagentCommandErrorCode
+  message: string
+  nextSteps: string[] | null
 }
 
 export interface ObservationEventListOptions {
@@ -502,6 +702,8 @@ export interface RendererApi {
   gitDiff: (projectPath: string, filePath?: string, staged?: boolean) => Promise<string>
   gitCheckout: (projectPath: string, branch: string) => Promise<void>
   gitCreateBranch: (projectPath: string, branch: string) => Promise<void>
+
+  getServerInfo: () => Promise<{ available: boolean; port: number; url: string; token: string }>
 }
 
 export interface CanonicalSessionEvent {
