@@ -1776,17 +1776,29 @@ app.whenReady().then(async () => {
   })
 
   ipcMain.handle(IPC_CHANNELS.serverGetInfo, () => {
-    if (!srSpawner) {
-      return { available: false, port: 0, url: '', token: '' }
+    // Priority 1: Stoa Server spawner (when STOA_USE_SERVER=true)
+    if (srSpawner) {
+      const port = srSpawner.getPort()
+      const token = srSpawner.getAuthToken()
+      return {
+        available: true,
+        port,
+        url: `http://localhost:${port}`,
+        token
+      }
     }
-    const port = srSpawner.getPort()
-    const token = srSpawner.getAuthToken()
-    return {
-      available: true,
-      port,
-      url: `http://localhost:${port}`,
-      token
+    // Priority 2: Fall back to existing webhook/session-control server port
+    // This is always running, so the user always sees a reachable URL.
+    const fallbackPort = webhookPort
+    if (fallbackPort) {
+      return {
+        available: true,
+        port: fallbackPort,
+        url: `http://localhost:${fallbackPort}`,
+        token: ctlSecret
+      }
     }
+    return { available: false, port: 0, url: '', token: '' }
   })
 
   ipcMain.handle(IPC_CHANNELS.evidenceListSessionSnapshots, async (_event, sessionId: string) => {
