@@ -211,6 +211,7 @@ export interface AppSettings {
   workspaceIde: WorkspaceIdeSettings
   claudeDangerouslySkipPermissions: boolean
   stoaCtlEnabled: boolean
+  stoaServerEnabled: boolean
   locale: string
   theme: 'light' | 'dark' | 'system'
 }
@@ -255,6 +256,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   },
   claudeDangerouslySkipPermissions: false,
   stoaCtlEnabled: false,
+  stoaServerEnabled: false,
   locale: 'en',
   theme: 'system'
 }

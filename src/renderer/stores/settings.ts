@@ -26,6 +26,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const evolverExecutionMode = ref<EvolverExecutionMode>('workspace-shell')
   const claudeDangerouslySkipPermissions = ref(false)
   const stoaCtlEnabled = ref(false)
+  const stoaServerEnabled = ref(false)
   const locale = ref<string>(i18n.global.locale.value as string)
   const theme = ref<'light' | 'dark' | 'system'>('system')
   const loaded = ref(false)
@@ -121,6 +122,8 @@ export const useSettingsStore = defineStore('settings', () => {
       applyTheme(value)
     } else if (key === 'stoaCtlEnabled' && typeof value === 'boolean') {
       stoaCtlEnabled.value = value
+    } else if (key === 'stoaServerEnabled' && typeof value === 'boolean') {
+      stoaServerEnabled.value = value
     }
   }
 
@@ -140,6 +143,7 @@ export const useSettingsStore = defineStore('settings', () => {
       }
       claudeDangerouslySkipPermissions.value = settings.claudeDangerouslySkipPermissions === true
       stoaCtlEnabled.value = settings.stoaCtlEnabled === true
+      stoaServerEnabled.value = settings.stoaServerEnabled === true
       if (settings.locale && SUPPORTED_LOCALES.includes(settings.locale as SupportedLocale)) {
         locale.value = settings.locale
       } else {
@@ -184,6 +188,8 @@ export const useSettingsStore = defineStore('settings', () => {
       applyTheme(value)
     } else if (key === 'stoaCtlEnabled' && typeof value === 'boolean') {
       stoaCtlEnabled.value = value
+    } else if (key === 'stoaServerEnabled' && typeof value === 'boolean') {
+      stoaServerEnabled.value = value
     }
   }
 
@@ -284,6 +290,7 @@ export const useSettingsStore = defineStore('settings', () => {
     evolverExecutionMode,
     claudeDangerouslySkipPermissions,
     stoaCtlEnabled,
+    stoaServerEnabled,
     locale,
     theme,
     loaded,

@@ -23,6 +23,13 @@ export default {
       enabledLabel: 'Enabled',
       disabledLabel: 'Disabled',
       warningOnEnable: 'Enabling stoa-ctl will register it in your user PATH and start the /ctl HTTP control plane. Restart required to take effect on new sessions.'
+    },
+    stoaServerToggle: {
+      title: 'Stoa Server',
+      description: 'Run the Stoa Server background process for HTTP/WebSocket API access and web client support.',
+      enabledLabel: 'Server is running',
+      disabledLabel: 'Server is stopped',
+      warningOnEnable: 'Enabling Stoa Server will start a background HTTP server on localhost. Continue?'
     }
   },
 
@@ -234,7 +241,7 @@ export default {
       copyToken: 'Copy Token',
       copied: 'Copied!',
       notAvailable: 'Stoa Server is not running',
-      notAvailableDescription: 'Start with STOA_USE_SERVER=true to enable the web client'
+      notAvailableDescription: 'Enable Stoa Server in Advanced settings, or start with STOA_USE_SERVER=true to enable the web client'
     }
   },
 

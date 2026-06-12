@@ -1380,10 +1380,11 @@ app.whenReady().then(async () => {
 
   // -------------------------------------------------------------------------
   // Stoa Server (SR) spawning — Phase 5 Desktop Shell Integration
-  // Conditionally enabled via STOA_USE_SERVER=true env var.
+  // Conditionally enabled via stoaServerEnabled setting or STOA_USE_SERVER=true env var.
   // This is additive: existing servers (webhook, session-control) are NOT removed.
   // -------------------------------------------------------------------------
-  const useStoaServer = process.env.STOA_USE_SERVER === 'true'
+  const persistedSettings = projectSessionManager?.getSettings() ?? null
+  const useStoaServer = persistedSettings?.stoaServerEnabled === true || process.env.STOA_USE_SERVER === 'true'
 
   if (useStoaServer) {
     try {

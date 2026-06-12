@@ -23,6 +23,13 @@ export default {
       enabledLabel: '\u5DF2\u542F\u7528',
       disabledLabel: '\u5DF2\u7981\u7528',
       warningOnEnable: '\u542F\u7528 stoa-ctl \u5C06\u628A\u5B83\u6CE8\u518C\u5230\u4F60\u7684\u7528\u6237 PATH,\u5E76\u542F\u52A8 /ctl HTTP \u63A7\u5236\u5E73\u9762\u3002\u65B0\u4F1A\u8BDD\u9700\u8981\u91CD\u542F\u540E\u751F\u6548\u3002'
+    },
+    stoaServerToggle: {
+      title: 'Stoa \u670D\u52A1\u5668',
+      description: '\u8FD0\u884C Stoa Server \u540E\u53F0\u8FDB\u7A0B\uFF0C\u542F\u7528 HTTP/WebSocket API \u8BBF\u95EE\u548C\u7F51\u9875\u5BA2\u6237\u7AEF\u652F\u6301\u3002',
+      enabledLabel: '\u670D\u52A1\u5668\u8FD0\u884C\u4E2D',
+      disabledLabel: '\u670D\u52A1\u5668\u5DF2\u505C\u6B62',
+      warningOnEnable: '\u542F\u7528 Stoa Server \u5C06\u5728\u672C\u5730\u542F\u52A8\u4E00\u4E2A\u540E\u53F0 HTTP \u670D\u52A1\u5668\u3002\u786E\u5B9A\u8981\u7EE7\u7EED\u5417\uFF1F'
     }
   },
 
@@ -234,7 +241,7 @@ export default {
       copyToken: '\u590D\u5236\u4EE4\u724C',
       copied: '\u5DF2\u590D\u5236\uFF01',
       notAvailable: 'Stoa Server \u672A\u8FD0\u884C',
-      notAvailableDescription: '\u4F7F\u7528 STOA_USE_SERVER=true \u542F\u52A8\u4EE5\u542F\u7528\u7F51\u9875\u5BA2\u6237\u7AEF'
+      notAvailableDescription: '\u5728\u9AD8\u7EA7\u8BBE\u7F6E\u4E2D\u542F\u7528 Stoa Server\uFF0C\u6216\u4F7F\u7528 STOA_USE_SERVER=true \u542F\u52A8\u4EE5\u542F\u7528\u7F51\u9875\u5BA2\u6237\u7AEF'
     }
   },
 
