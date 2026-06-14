@@ -665,6 +665,43 @@ describe('Meta-Session', () => {
   })
 })
 
+describe('Server Info', () => {
+  it('getServerInfo returns a directly launchable fragment url when discovery reports the web client is enabled', async () => {
+    client.get.mockResolvedValueOnce(ok({
+      name: 'stoa',
+      version: '0.1.0',
+      port: 3270,
+      webClient: true,
+      lanMode: false
+    }))
+
+    await expect(adapter.getServerInfo()).resolves.toEqual({
+      available: true,
+      port: 3270,
+      url: 'http://localhost:3270/#token=mock-token',
+      token: 'mock-token'
+    })
+    expect(client.get).toHaveBeenCalledWith('/api/v1/discovery')
+  })
+
+  it('getServerInfo reports unavailable when discovery says the web client is disabled', async () => {
+    client.get.mockResolvedValueOnce(ok({
+      name: 'stoa',
+      version: '0.1.0',
+      port: 3270,
+      webClient: false,
+      lanMode: false
+    }))
+
+    await expect(adapter.getServerInfo()).resolves.toEqual({
+      available: false,
+      port: 3270,
+      url: '',
+      token: 'mock-token'
+    })
+  })
+})
+
 // ── WebSocket subscriptions ──────────────────────────────────────────
 
 describe('WebSocket subscriptions', () => {

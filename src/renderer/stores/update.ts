@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import type { UpdateState } from '@shared/update-state'
+import { getStoaClient, isStoaClientMode, requireRendererApi } from '@renderer/stores/stoa-store-plugin'
 
 function createDefaultState(): UpdateState {
   return {
@@ -44,30 +45,42 @@ export const useUpdateStore = defineStore('update', () => {
     dismissedPromptKey.value = promptKey.value
   }
 
+  function getUpdateBridge() {
+    if (isStoaClientMode()) {
+      const client = getStoaClient()
+      if (client) {
+        // Reuse the existing RendererApi adapter/stub behavior in web mode.
+        return requireRendererApi()
+      }
+    }
+
+    return requireRendererApi()
+  }
+
   async function refresh(): Promise<UpdateState> {
-    const nextState = await window.stoa.getUpdateState()
+    const nextState = await getUpdateBridge().getUpdateState()
     applyState(nextState)
     return nextState
   }
 
   async function checkForUpdates(): Promise<UpdateState> {
-    const nextState = await window.stoa.checkForUpdates()
+    const nextState = await getUpdateBridge().checkForUpdates()
     applyState(nextState)
     return nextState
   }
 
   async function downloadUpdate(): Promise<UpdateState> {
-    const nextState = await window.stoa.downloadUpdate()
+    const nextState = await getUpdateBridge().downloadUpdate()
     applyState(nextState)
     return nextState
   }
 
   async function quitAndInstallUpdate(): Promise<void> {
-    await window.stoa.quitAndInstallUpdate()
+    await getUpdateBridge().quitAndInstallUpdate()
   }
 
   async function dismissUpdate(): Promise<void> {
-    await window.stoa.dismissUpdate()
+    await getUpdateBridge().dismissUpdate()
     dismissPrompt()
   }
 

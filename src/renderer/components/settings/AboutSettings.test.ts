@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia, type Pinia } from 'pinia'
 import AboutSettings from './AboutSettings.vue'
 import { useUpdateStore } from '@renderer/stores/update'
@@ -97,6 +97,26 @@ describe('AboutSettings', () => {
     for (const link of links) {
       expect(link.attributes('target')).toBe('_blank')
     }
+  })
+
+  it('renders a directly launchable web client link when server info is available', async () => {
+    window.stoa = createStoaMock({
+      getServerInfo: vi.fn().mockResolvedValue({
+        available: true,
+        port: 3270,
+        url: 'http://127.0.0.1:3270/#token=test-token',
+        token: 'test-token'
+      })
+    })
+
+    const wrapper = mount(AboutSettings, {
+      global: { plugins: [pinia] }
+    })
+    await flushPromises()
+
+    const launchLink = wrapper.get('.settings-about__link-value')
+    expect(launchLink.attributes('href')).toBe('http://127.0.0.1:3270/#token=test-token')
+    expect(launchLink.text()).toContain('#token=test-token')
   })
 
   it('shows the current update status from the store', () => {

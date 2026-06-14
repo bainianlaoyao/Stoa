@@ -79,6 +79,7 @@ const sessionContextMenuVisible = ref(false)
 const sessionContextMenuSessionId = ref('')
 const sessionContextMenuSessionTitle = ref('')
 const sessionContextMenuPosition = ref({ x: 0, y: 0 })
+const locallySeenCompletionSessionIds = ref<Set<string>>(new Set())
 
 let longPressTimer: ReturnType<typeof setTimeout> | null = null
 let longPressActivated = false
@@ -225,6 +226,9 @@ function sessionRowViewModel(sessionId: string): SessionRowViewModel | null {
 }
 
 function sessionTone(session: HierarchySession): string {
+  if (locallySeenCompletionSessionIds.value.has(session.id) && sessionRowViewModel(session.id)?.phase === 'complete') {
+    return 'neutral'
+  }
   return sessionRowViewModel(session.id)?.tone ?? 'neutral'
 }
 
@@ -244,11 +248,24 @@ function sessionStatusLabel(session: HierarchySession): string | null {
 }
 
 function sessionPhase(session: HierarchySession): string {
+  if (locallySeenCompletionSessionIds.value.has(session.id) && sessionRowViewModel(session.id)?.phase === 'complete') {
+    return 'ready'
+  }
   return sessionRowViewModel(session.id)?.phase ?? (session.runtimeState === 'exited' ? 'complete' : 'unknown')
 }
 
 function sessionAttentionReason(session: HierarchySession): string | null {
+  if (locallySeenCompletionSessionIds.value.has(session.id) && sessionRowViewModel(session.id)?.phase === 'complete') {
+    return null
+  }
   return sessionRowViewModel(session.id)?.attentionReason ?? null
+}
+
+function handleSessionClick(session: HierarchySession): void {
+  if (sessionRowViewModel(session.id)?.phase === 'complete') {
+    locallySeenCompletionSessionIds.value = new Set([...locallySeenCompletionSessionIds.value, session.id])
+  }
+  emit('selectSession', session.id)
 }
 
 function isProjectCollapsed(projectId: string): boolean {
@@ -538,7 +555,7 @@ onBeforeUnmount(() => {
                 :data-session-title="row.session.title"
                 :data-session-type="row.session.type"
                 type="button"
-                @click="emit('selectSession', row.session.id)"
+                @click="handleSessionClick(row.session)"
                 @contextmenu="openSessionContextMenu($event, row.session)"
               >
                 <div

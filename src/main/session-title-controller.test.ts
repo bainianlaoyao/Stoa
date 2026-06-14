@@ -87,24 +87,28 @@ function createNotification(
   }
 }
 
+function createSettingsSnapshot(): AppSettings {
+  return {
+    shellPath: '',
+    terminal: {},
+    providers: {},
+    evolverInferenceProvider: 'claude-code',
+    evolverExecutionMode: 'workspace-shell',
+    titleGeneration: titleSettings,
+    workspaceIde: { id: 'vscode', executablePath: '' },
+    claudeDangerouslySkipPermissions: false,
+    stoaCtlEnabled: false,
+    locale: 'en',
+    theme: 'system'
+  }
+}
+
 describe('SessionTitleController', () => {
   test('records first-turn prompt context from assistant evidence', async () => {
     const updateSessionTitleGenerationContext = vi.fn()
     const controller = new SessionTitleController({
       snapshotSource: {
-        getSettings: () => ({
-          shellPath: '',
-          terminal: {},
-          providers: {},
-          evolverInferenceProvider: 'claude-code',
-          evolverExecutionMode: 'workspace-shell',
-          titleGeneration: titleSettings,
-          workspaceIde: { id: 'vscode', executablePath: '' },
-          claudeDangerouslySkipPermissions: false,
-          stoaCtlEnabled: false,
-          locale: 'en',
-          theme: 'system'
-        }),
+        getSettings: () => createSettingsSnapshot(),
         snapshot: () => ({
           activeProjectId: 'project_1',
           activeSessionId: 'session_1',
@@ -156,19 +160,7 @@ describe('SessionTitleController', () => {
 
     const controller = new SessionTitleController({
       snapshotSource: {
-        getSettings: () => ({
-          shellPath: '',
-          terminal: {},
-          providers: {},
-          evolverInferenceProvider: 'claude-code',
-          evolverExecutionMode: 'workspace-shell',
-          titleGeneration: titleSettings,
-          workspaceIde: { id: 'vscode', executablePath: '' },
-          claudeDangerouslySkipPermissions: false,
-          stoaCtlEnabled: false,
-          locale: 'en',
-          theme: 'system'
-        }),
+        getSettings: () => createSettingsSnapshot(),
         snapshot: () => ({
           activeProjectId: 'project_1',
           activeSessionId: 'session_1',
@@ -196,19 +188,7 @@ describe('SessionTitleController', () => {
   test('skips auto-generation when the completed turn was already auto-titled', async () => {
     const controller = new SessionTitleController({
       snapshotSource: {
-        getSettings: () => ({
-          shellPath: '',
-          terminal: {},
-          providers: {},
-          evolverInferenceProvider: 'claude-code',
-          evolverExecutionMode: 'workspace-shell',
-          titleGeneration: titleSettings,
-          workspaceIde: { id: 'vscode', executablePath: '' },
-          claudeDangerouslySkipPermissions: false,
-          stoaCtlEnabled: false,
-          locale: 'en',
-          theme: 'system'
-        }),
+        getSettings: () => createSettingsSnapshot(),
         snapshot: () => ({
           activeProjectId: 'project_1',
           activeSessionId: 'session_1',
@@ -239,19 +219,7 @@ describe('SessionTitleController', () => {
     const updateSessionTitle = vi.fn()
     const controller = new SessionTitleController({
       snapshotSource: {
-        getSettings: () => ({
-          shellPath: '',
-          terminal: {},
-          providers: {},
-          evolverInferenceProvider: 'claude-code',
-          evolverExecutionMode: 'workspace-shell',
-          titleGeneration: titleSettings,
-          workspaceIde: { id: 'vscode', executablePath: '' },
-          claudeDangerouslySkipPermissions: false,
-          stoaCtlEnabled: false,
-          locale: 'en',
-          theme: 'system'
-        }),
+        getSettings: () => createSettingsSnapshot(),
         snapshot: () => ({
           activeProjectId: 'project_1',
           activeSessionId: 'session_1',
@@ -295,19 +263,7 @@ describe('SessionTitleController', () => {
 
     const controller = new SessionTitleController({
       snapshotSource: {
-        getSettings: () => ({
-          shellPath: '',
-          terminal: {},
-          providers: {},
-          evolverInferenceProvider: 'claude-code',
-          evolverExecutionMode: 'workspace-shell',
-          titleGeneration: titleSettings,
-          workspaceIde: { id: 'vscode', executablePath: '' },
-          claudeDangerouslySkipPermissions: false,
-          stoaCtlEnabled: false,
-          locale: 'en',
-          theme: 'system'
-        }),
+        getSettings: () => createSettingsSnapshot(),
         snapshot: () => ({
           activeProjectId: 'project_1',
           activeSessionId: 'session_1',
@@ -346,19 +302,7 @@ describe('SessionTitleController', () => {
 
     const controller = new SessionTitleController({
       snapshotSource: {
-        getSettings: () => ({
-          shellPath: '',
-          terminal: {},
-          providers: {},
-          evolverInferenceProvider: 'claude-code',
-          evolverExecutionMode: 'workspace-shell',
-          titleGeneration: titleSettings,
-          workspaceIde: { id: 'vscode', executablePath: '' },
-          claudeDangerouslySkipPermissions: false,
-          stoaCtlEnabled: false,
-          locale: 'en',
-          theme: 'system'
-        }),
+        getSettings: () => createSettingsSnapshot(),
         snapshot: () => ({
           activeProjectId: 'project_1',
           activeSessionId: 'session_1',
@@ -396,19 +340,7 @@ describe('SessionTitleController', () => {
     const updateSessionTitle = vi.fn().mockResolvedValue(updatedSession)
     const controller = new SessionTitleController({
       snapshotSource: {
-        getSettings: () => ({
-          shellPath: '',
-          terminal: {},
-          providers: {},
-          evolverInferenceProvider: 'claude-code',
-          evolverExecutionMode: 'workspace-shell',
-          titleGeneration: titleSettings,
-          workspaceIde: { id: 'vscode', executablePath: '' },
-          claudeDangerouslySkipPermissions: false,
-          stoaCtlEnabled: false,
-          locale: 'en',
-          theme: 'system'
-        }),
+        getSettings: () => createSettingsSnapshot(),
         snapshot: () => ({
           activeProjectId: 'project_1',
           activeSessionId: 'session_1',
@@ -441,19 +373,7 @@ describe('SessionTitleController', () => {
     const generateTitle = vi.fn().mockResolvedValue(null)
     const controller = new SessionTitleController({
       snapshotSource: {
-        getSettings: () => ({
-          shellPath: '',
-          terminal: {},
-          providers: {},
-          evolverInferenceProvider: 'claude-code',
-          evolverExecutionMode: 'workspace-shell',
-          titleGeneration: titleSettings,
-          workspaceIde: { id: 'vscode', executablePath: '' },
-          claudeDangerouslySkipPermissions: false,
-          stoaCtlEnabled: false,
-          locale: 'en',
-          theme: 'system'
-        }),
+        getSettings: () => createSettingsSnapshot(),
         snapshot: () => ({
           activeProjectId: 'project_1',
           activeSessionId: 'session_1',
@@ -484,19 +404,7 @@ describe('SessionTitleController', () => {
     const onNotification = vi.fn()
     const controller = new SessionTitleController({
       snapshotSource: {
-        getSettings: () => ({
-          shellPath: '',
-          terminal: {},
-          providers: {},
-          evolverInferenceProvider: 'claude-code',
-          evolverExecutionMode: 'workspace-shell',
-          titleGeneration: titleSettings,
-          workspaceIde: { id: 'vscode', executablePath: '' },
-          claudeDangerouslySkipPermissions: false,
-          stoaCtlEnabled: false,
-          locale: 'en',
-          theme: 'system'
-        }),
+        getSettings: () => createSettingsSnapshot(),
         snapshot: () => ({
           activeProjectId: 'project_1',
           activeSessionId: 'session_1',
@@ -537,19 +445,7 @@ describe('SessionTitleController', () => {
 
     const controller = new SessionTitleController({
       snapshotSource: {
-        getSettings: () => ({
-          shellPath: '',
-          terminal: {},
-          providers: {},
-          evolverInferenceProvider: 'claude-code',
-          evolverExecutionMode: 'workspace-shell',
-          titleGeneration: titleSettings,
-          workspaceIde: { id: 'vscode', executablePath: '' },
-          claudeDangerouslySkipPermissions: false,
-          stoaCtlEnabled: false,
-          locale: 'en',
-          theme: 'system'
-        }),
+        getSettings: () => createSettingsSnapshot(),
         snapshot: () => ({
           activeProjectId: 'project_1',
           activeSessionId: 'session_1',
@@ -578,19 +474,7 @@ describe('SessionTitleController', () => {
     const onNotification = vi.fn()
     const controller = new SessionTitleController({
       snapshotSource: {
-        getSettings: () => ({
-          shellPath: '',
-          terminal: {},
-          providers: {},
-          evolverInferenceProvider: 'claude-code',
-          evolverExecutionMode: 'workspace-shell',
-          titleGeneration: titleSettings,
-          workspaceIde: { id: 'vscode', executablePath: '' },
-          claudeDangerouslySkipPermissions: false,
-          stoaCtlEnabled: false,
-          locale: 'en',
-          theme: 'system'
-        }),
+        getSettings: () => createSettingsSnapshot(),
         snapshot: () => ({
           activeProjectId: 'project_1',
           activeSessionId: 'session_1',

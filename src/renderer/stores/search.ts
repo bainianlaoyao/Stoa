@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { SearchResult, SearchOptions } from '@shared/sidebar-types'
+import { getStoaClient, isStoaClientMode, requireRendererApi } from '@renderer/stores/stoa-store-plugin'
 
 export const useSearchStore = defineStore('search', () => {
   const query = ref('')
@@ -17,6 +18,18 @@ export const useSearchStore = defineStore('search', () => {
 
   // Monotonic counter to cancel stale in-flight searches
   let latestSearchId = 0
+
+  async function runSearch(options: SearchOptions): Promise<SearchResult> {
+    if (isStoaClientMode()) {
+      const client = getStoaClient()
+      if (client) {
+        const res = await client.post<SearchResult>('/api/v1/fs/search', options)
+        return res.data!
+      }
+    }
+
+    return requireRendererApi().fsSearch(options)
+  }
 
   async function search(rootPath: string): Promise<void> {
     if (!query.value.trim()) return
@@ -39,7 +52,7 @@ export const useSearchStore = defineStore('search', () => {
     }
 
     try {
-      const result = await window.stoa.fsSearch(options)
+      const result = await runSearch(options)
       if (latestSearchId === searchId) {
         results.value = result
       }

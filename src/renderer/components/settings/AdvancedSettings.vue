@@ -13,7 +13,7 @@ const props = withDefaults(defineProps<{
 const { t } = useI18n()
 const store = useSettingsStore()
 
-type AdvancedSectionId = 'stoactl' | 'stoaServer'
+type AdvancedSectionId = 'stoactl'
 
 const visibleSections = computed(() =>
   resolveVisibleSettingsSections<AdvancedSectionId>(props.searchQuery, {
@@ -25,18 +25,6 @@ const visibleSections = computed(() =>
       'cli',
       'stoa ctl',
       'stoa-ctl',
-      'experimental'
-    ],
-    stoaServer: [
-      t('settings.stoaServerToggle.title'),
-      t('settings.stoaServerToggle.description'),
-      'advanced',
-      'server',
-      'stoa server',
-      'web client',
-      'remote',
-      'http',
-      'api',
       'experimental'
     ]
   })
@@ -53,15 +41,6 @@ async function onStoaCtlToggle(): Promise<void> {
     if (!confirmed) return
   }
   await store.updateSetting('stoaCtlEnabled', next)
-}
-
-async function onStoaServerToggle(): Promise<void> {
-  const next = !store.stoaServerEnabled
-  if (next) {
-    const confirmed = window.confirm(t('settings.stoaServerToggle.warningOnEnable'))
-    if (!confirmed) return
-  }
-  await store.updateSetting('stoaServerEnabled', next)
 }
 </script>
 
@@ -114,43 +93,6 @@ async function onStoaServerToggle(): Promise<void> {
         </div>
       </section>
 
-      <section v-if="isSectionVisible('stoaServer')" class="settings-card" data-settings-card="stoaServer-toggle">
-        <div class="settings-card__header">
-          <div>
-            <h3 class="settings-card__title">{{ t('settings.stoaServerToggle.title') }}</h3>
-            <p class="settings-card__description">
-              {{ t('settings.stoaServerToggle.description') }}
-            </p>
-          </div>
-        </div>
-
-        <div
-          class="settings-toggle"
-          data-testid="settings-stoaServer-toggle-row"
-          data-settings-field="stoaServer-enabled"
-        >
-          <div class="settings-toggle__label">
-            <span class="settings-toggle__copy">
-              <span class="settings-toggle__title">
-                {{ store.stoaServerEnabled
-                  ? t('settings.stoaServerToggle.enabledLabel')
-                  : t('settings.stoaServerToggle.disabledLabel') }}
-              </span>
-            </span>
-            <button
-              type="button"
-              role="switch"
-              :aria-checked="store.stoaServerEnabled"
-              data-testid="settings-stoaServer-toggle"
-              :aria-label="t('settings.stoaServerToggle.title')"
-              :class="['settings-toggle__switch', { 'settings-toggle__switch--active': store.stoaServerEnabled }]"
-              @click="onStoaServerToggle"
-            >
-              <span class="settings-toggle__thumb" />
-            </button>
-          </div>
-        </div>
-      </section>
     </div>
   </section>
 </template>

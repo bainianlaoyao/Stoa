@@ -51,6 +51,58 @@ function isStaleSnapshot(current: SequencedSnapshot, next: SequencedSnapshot): b
   return current.sourceSequence === next.sourceSequence && current.updatedAt >= next.updatedAt
 }
 
+function isFailureEscalation(current: SessionPresenceSnapshot, next: SessionPresenceSnapshot): boolean {
+  return next.phase === 'failure'
+    && current.phase !== 'failure'
+    && next.sourceSequence >= current.sourceSequence
+}
+
+function isSessionPresenceSnapshot(value: unknown): value is SessionPresenceSnapshot {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+
+  const candidate = value as Partial<SessionPresenceSnapshot>
+  return typeof candidate.sessionId === 'string'
+    && typeof candidate.projectId === 'string'
+    && typeof candidate.providerId === 'string'
+    && typeof candidate.providerLabel === 'string'
+    && typeof candidate.phase === 'string'
+    && typeof candidate.runtimeState === 'string'
+    && typeof candidate.turnState === 'string'
+    && typeof candidate.turnEpoch === 'number'
+    && typeof candidate.lastTurnOutcome === 'string'
+    && typeof candidate.hasUnseenCompletion === 'boolean'
+    && typeof candidate.confidence === 'string'
+    && typeof candidate.health === 'string'
+    && typeof candidate.hasUnreadTurn === 'boolean'
+    && typeof candidate.evidenceSequence === 'number'
+    && typeof candidate.sourceSequence === 'number'
+    && typeof candidate.updatedAt === 'string'
+}
+
+function isLightweightSessionPresenceEvent(value: unknown): value is {
+  sessionId: string
+  projectId: string
+  phase: SessionPresenceSnapshot['phase']
+  timestamp?: string
+} {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+
+  const candidate = value as { sessionId?: unknown; projectId?: unknown; phase?: unknown }
+  return typeof candidate.sessionId === 'string'
+    && typeof candidate.projectId === 'string'
+    && (
+      candidate.phase === 'ready'
+      || candidate.phase === 'running'
+      || candidate.phase === 'blocked'
+      || candidate.phase === 'complete'
+      || candidate.phase === 'failure'
+    )
+}
+
 function fallbackTreeProjection(session: SessionSummary, hint?: SessionTreeMeta): SessionTreeProjection {
   return {
     treeDepth: hint?.depth ?? 0,
@@ -264,7 +316,11 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
     if (!client) return null
 
     const unsubSession = client.subscribe('observability:presence', (payload) => {
-      applySessionPresenceSnapshot(payload as SessionPresenceSnapshot)
+      if (isSessionPresenceSnapshot(payload)) {
+        applySessionPresenceSnapshot(payload)
+      } else if (isLightweightSessionPresenceEvent(payload)) {
+        applyLightweightSessionPresenceEvent(payload)
+      }
     })
 
     const unsubProject = client.subscribe('observability:project', (payload) => {
@@ -403,8 +459,17 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
   }
 
   function applySessionPresenceSnapshot(snapshot: SessionPresenceSnapshot): void {
+    if (!isSessionPresenceSnapshot(snapshot)) {
+      return
+    }
+
     const current = sessionPresenceById.value[snapshot.sessionId]
-    if (current && backendSessionPresenceIds.has(snapshot.sessionId) && isStaleSnapshot(current, snapshot)) {
+    if (
+      current
+      && backendSessionPresenceIds.has(snapshot.sessionId)
+      && isStaleSnapshot(current, snapshot)
+      && !isFailureEscalation(current, snapshot)
+    ) {
       return
     }
 
@@ -412,6 +477,43 @@ export const useWorkspaceStore = defineStore('workspaces', () => {
     sessionPresenceById.value = {
       ...sessionPresenceById.value,
       [snapshot.sessionId]: snapshot
+    }
+  }
+
+  function applyLightweightSessionPresenceEvent(event: {
+    sessionId: string
+    projectId: string
+    phase: SessionPresenceSnapshot['phase']
+    timestamp?: string
+  }): void {
+    const session = sessions.value.find((candidate) => candidate.id === event.sessionId)
+    if (!session) {
+      return
+    }
+
+    const current = sessionPresenceById.value[event.sessionId]
+    const nowIso = typeof event.timestamp === 'string' ? event.timestamp : new Date().toISOString()
+    const next = buildSessionPresenceSnapshot(session, {
+      activeSessionId: activeSessionId.value,
+      nowIso,
+      modelLabel: current?.modelLabel ?? null,
+      lastAssistantSnippet: current?.lastAssistantSnippet ?? null,
+      lastEvidenceType: current?.lastEvidenceType ?? null,
+      lastEventAt: nowIso,
+      evidenceSequence: current?.evidenceSequence ?? 0,
+      sourceSequence: Math.max(current?.sourceSequence ?? 0, session.lastStateSequence)
+    })
+    next.phase = event.phase
+    next.health = event.phase === 'failure' ? 'lost' : next.health
+    next.hasUnreadTurn = event.phase === 'complete' ? true : next.hasUnreadTurn
+
+    if (current && current.sourceSequence > next.sourceSequence) {
+      return
+    }
+
+    sessionPresenceById.value = {
+      ...sessionPresenceById.value,
+      [event.sessionId]: next
     }
   }
 

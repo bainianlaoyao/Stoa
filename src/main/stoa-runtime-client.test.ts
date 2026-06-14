@@ -23,31 +23,15 @@ import type { RuntimeClientDeps, StoaRuntimeClientOptions } from './stoa-runtime
 interface MockWebSocketInstance {
   url: string
   readyState: number
-  sentMessages: Array<{ type: string; payload: unknown }>
+  sentMessages: Array<Record<string, unknown> & { type: string }>
   eventListeners: Map<string, Array<(...args: unknown[]) => void>>
   close: ReturnType<typeof vi.fn>
   send: ReturnType<typeof vi.fn>
   addEventListener: (event: string, handler: (...args: unknown[]) => void) => void
+  removeEventListener: (event: string, handler: (...args: unknown[]) => void) => void
 }
 
 const instances: MockWebSocketInstance[] = []
-
-function createMockWs(url: string): MockWebSocketInstance {
-  const inst: MockWebSocketInstance = {
-    url,
-    readyState: 0, // CONNECTING
-    sentMessages: [],
-    eventListeners: new Map(),
-    close: vi.fn(() => {
-      inst.readyState = 3 // CLOSED
-    }),
-    send: vi.fn((data: string) => {
-      inst.sentMessages.push(JSON.parse(data))
-    })
-  }
-  instances.push(inst)
-  return inst
-}
 
 // Intercept the global WebSocket constructor
 const OriginalWebSocket = globalThis.WebSocket
@@ -65,7 +49,7 @@ class MockWebSocket {
 
   url: string
   readyState: number
-  sentMessages: Array<{ type: string; payload: unknown }> = []
+  sentMessages: Array<Record<string, unknown> & { type: string }> = []
   private eventListeners = new Map<string, Array<(...args: unknown[]) => void>>()
 
   close = vi.fn(() => {
@@ -89,8 +73,15 @@ class MockWebSocket {
     this.eventListeners.get(event)!.push(handler)
   }
 
-  removeListener(_event: string, _handler: (...args: unknown[]) => void): void {
-    // no-op for tests
+  removeEventListener(event: string, handler: (...args: unknown[]) => void): void {
+    const listeners = this.eventListeners.get(event)
+    if (!listeners) {
+      return
+    }
+    this.eventListeners.set(
+      event,
+      listeners.filter((listener) => listener !== handler)
+    )
   }
 }
 
@@ -169,7 +160,7 @@ function simulateClose(code = 1000, reason = ''): void {
 }
 
 /** Get the latest sent message from the WS */
-function getLastSentMessage(): { type: string; payload: unknown } | undefined {
+function getLastSentMessage(): (Record<string, unknown> & { type: string }) | undefined {
   const inst = instances[instances.length - 1]
   if (!inst || inst.sentMessages.length === 0) return undefined
   return inst.sentMessages[inst.sentMessages.length - 1]
@@ -207,38 +198,16 @@ describe('StoaRuntimeClient - connection setup', () => {
     expect(client.connected).toBe(true)
   })
 
-  it('rejects connect() on WebSocket error when not yet connected', async () => {
+  it('rejects connect() on WebSocket error before opening', async () => {
     const { StoaRuntimeClient } = await import('./stoa-runtime-client')
     const client = new StoaRuntimeClient(createOptions(), createDeps())
 
     const connectPromise = client.connect()
 
-    // Get the raw WS instance and set it to null on the client BEFORE
-    // dispatching error, to match the production code's check
-    // (the client sets this.ws AFTER the event listeners are registered)
-    const inst = instances[instances.length - 1]
-    // The client code sets this.ws = ws synchronously after addEventListener,
-    // so by the time we dispatch here, this.ws is already set.
-    // We need to simulate the error BEFORE this.ws is set, which only
-    // happens in real WS when the error fires during the constructor.
-    // For the test, we manually set ws to null, then fire error.
-    // But that's not possible with the current architecture.
-    // Instead, let's verify the behavior by closing the connection
-    // and checking the reconnect is NOT scheduled (disposed).
-    // Actually the simplest approach: verify the promise rejects when
-    // the WS error fires with ws still in CONNECTING state.
     dispatchWsEvent('error', new ErrorEvent('fail', { message: 'ECONNREFUSED' }))
 
-    // The production code only rejects if this.ws === null at the time
-    // of the error. Since our mock sets this.ws synchronously,
-    // the promise won't reject. We verify the promise hangs instead,
-    // which is the expected behavior when error fires after ws is set.
-    // Use a timeout race to verify it doesn't reject.
-    const result = await Promise.race([
-      connectPromise.then(() => 'resolved'),
-      new Promise<string>((resolve) => setTimeout(() => resolve('pending'), 100))
-    ])
-    expect(result).toBe('pending')
+    await expect(connectPromise).rejects.toThrow(/Failed to connect/)
+    expect(client.connected).toBe(false)
   })
 
   it('throws if connect() is called after dispose()', async () => {
@@ -275,8 +244,8 @@ describe('StoaRuntimeClient - command handling', () => {
 
     const response = getLastSentMessage()
     expect(response).toBeDefined()
-    expect(response!.type).toBe('runtime:response')
-    expect(response!.payload).toEqual({
+    expect(response).toEqual({
+      type: 'runtime:response',
       replyTo: 'corr-001',
       ok: true,
       data: { status: 'launched' }
@@ -315,7 +284,7 @@ describe('StoaRuntimeClient - command handling', () => {
 
     // Second response should indicate already_running
     const last = getLastSentMessage()
-    expect((last!.payload as Record<string, unknown>).data).toEqual({ status: 'already_running' })
+    expect(last!.data).toEqual({ status: 'already_running' })
   })
 
   it('handles runtime:launch failure and returns error response', async () => {
@@ -336,8 +305,8 @@ describe('StoaRuntimeClient - command handling', () => {
     await new Promise((r) => setImmediate(r))
 
     const last = getLastSentMessage()
-    expect((last!.payload as Record<string, unknown>).ok).toBe(false)
-    expect((last!.payload as Record<string, unknown>).error).toMatch(/Failed to launch session/)
+    expect(last!.ok).toBe(false)
+    expect(last!.error).toMatch(/Failed to launch session/)
   })
 
   it('handles runtime:kill by calling ptyHost.killAndWait', async () => {
@@ -360,7 +329,7 @@ describe('StoaRuntimeClient - command handling', () => {
     expect(deps.ptyHost.killAndWait).toHaveBeenCalledWith('sess-kill')
 
     const last = getLastSentMessage()
-    expect((last!.payload as Record<string, unknown>).ok).toBe(true)
+    expect(last!.ok).toBe(true)
   })
 
   it('handles runtime:input by writing to ptyHost', async () => {
@@ -401,8 +370,8 @@ describe('StoaRuntimeClient - command handling', () => {
     await new Promise((r) => setImmediate(r))
 
     const last = getLastSentMessage()
-    expect((last!.payload as Record<string, unknown>).ok).toBe(false)
-    expect((last!.payload as Record<string, unknown>).error).toMatch(/payload\.data/)
+    expect(last!.ok).toBe(false)
+    expect(last!.error).toMatch(/payload\.data/)
   })
 
   it('handles runtime:resize by calling ptyHost.resize', async () => {
@@ -443,8 +412,8 @@ describe('StoaRuntimeClient - command handling', () => {
     await new Promise((r) => setImmediate(r))
 
     const last = getLastSentMessage()
-    expect((last!.payload as Record<string, unknown>).ok).toBe(false)
-    expect((last!.payload as Record<string, unknown>).error).toMatch(/payload\.cols and payload\.rows/)
+    expect(last!.ok).toBe(false)
+    expect(last!.error).toMatch(/payload\.cols and payload\.rows/)
   })
 
   it('handles runtime:interrupt by sending Ctrl+C (ETX)', async () => {
@@ -488,11 +457,11 @@ describe('StoaRuntimeClient - command handling', () => {
     expect(deps.getTerminalReplay).toHaveBeenCalledWith('sess-replay')
 
     const last = getLastSentMessage()
-    expect((last!.payload as Record<string, unknown>).ok).toBe(true)
-    expect((last!.payload as Record<string, unknown>).data).toEqual({ data: 'replay-buffer-data' })
+    expect(last!.ok).toBe(true)
+    expect(last!.data).toEqual({ text: 'replay-buffer-data' })
   })
 
-  it('handles runtime:create-child-session and returns new sessionId', async () => {
+  it('handles runtime:create-child-session and returns childSessionId', async () => {
     const { StoaRuntimeClient } = await import('./stoa-runtime-client')
     const deps = createDeps()
     const client = new StoaRuntimeClient(createOptions(), deps)
@@ -505,7 +474,6 @@ describe('StoaRuntimeClient - command handling', () => {
       type: 'runtime:create-child-session',
       sessionId: 'parent-session',
       payload: {
-        parentId: 'parent-session',
         type: 'shell',
         title: 'Child task',
         initialCols: 100,
@@ -526,11 +494,11 @@ describe('StoaRuntimeClient - command handling', () => {
     )
 
     const last = getLastSentMessage()
-    expect((last!.payload as Record<string, unknown>).ok).toBe(true)
-    expect((last!.payload as Record<string, unknown>).data).toEqual({ sessionId: 'child-session-123' })
+    expect(last!.ok).toBe(true)
+    expect(last!.data).toEqual({ childSessionId: 'child-session-123' })
   })
 
-  it('handles runtime:create-child-session error when parentId is missing', async () => {
+  it('uses the command sessionId as parentId for runtime:create-child-session', async () => {
     const { StoaRuntimeClient } = await import('./stoa-runtime-client')
     const deps = createDeps()
     const client = new StoaRuntimeClient(createOptions(), deps)
@@ -547,9 +515,9 @@ describe('StoaRuntimeClient - command handling', () => {
     }))
     await new Promise((r) => setImmediate(r))
 
-    const last = getLastSentMessage()
-    expect((last!.payload as Record<string, unknown>).ok).toBe(false)
-    expect((last!.payload as Record<string, unknown>).error).toMatch(/parentId/)
+    expect(deps.createChildSession).toHaveBeenCalledWith(
+      expect.objectContaining({ parentId: 'parent-session' })
+    )
   })
 
   it('responds with error for unknown runtime command types', async () => {
@@ -570,8 +538,8 @@ describe('StoaRuntimeClient - command handling', () => {
     await new Promise((r) => setImmediate(r))
 
     const last = getLastSentMessage()
-    expect((last!.payload as Record<string, unknown>).ok).toBe(false)
-    expect((last!.payload as Record<string, unknown>).error).toMatch(/Unknown runtime command/)
+    expect(last!.ok).toBe(false)
+    expect(last!.error).toMatch(/Unknown runtime command/)
   })
 
   it('ignores non-JSON messages', async () => {
@@ -622,9 +590,11 @@ describe('StoaRuntimeClient - terminal data forwarding', () => {
     client.forwardTerminalData('sess-1', 'output data from PTY')
 
     const last = getLastSentMessage()
-    expect(last).toBeDefined()
-    expect(last!.type).toBe('runtime:terminal-data')
-    expect(last!.payload).toEqual({ sessionId: 'sess-1', data: 'output data from PTY' })
+    expect(last).toEqual({
+      type: 'runtime:terminal-data',
+      sessionId: 'sess-1',
+      data: 'output data from PTY'
+    })
   })
 })
 
@@ -817,8 +787,8 @@ describe('StoaRuntimeClient - command handler error propagation', () => {
     await new Promise((r) => setImmediate(r))
 
     const last = getLastSentMessage()
-    expect((last!.payload as Record<string, unknown>).ok).toBe(false)
-    expect((last!.payload as Record<string, unknown>).error).toMatch(/Process not found/)
+    expect(last!.ok).toBe(false)
+    expect(last!.error).toMatch(/Process not found/)
   })
 
   it('returns error response when createChildSession throws', async () => {
@@ -841,7 +811,7 @@ describe('StoaRuntimeClient - command handler error propagation', () => {
     await new Promise((r) => setImmediate(r))
 
     const last = getLastSentMessage()
-    expect((last!.payload as Record<string, unknown>).ok).toBe(false)
-    expect((last!.payload as Record<string, unknown>).error).toMatch(/Cannot create child/)
+    expect(last!.ok).toBe(false)
+    expect(last!.error).toMatch(/Cannot create child/)
   })
 })

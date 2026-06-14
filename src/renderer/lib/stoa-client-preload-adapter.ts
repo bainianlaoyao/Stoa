@@ -60,6 +60,7 @@ import type {
   MetaSessionProposal,
   MetaSessionSummary,
 } from '@shared/meta-session'
+import { buildStoaWebLaunchUrl } from '@shared/stoa-web-launch-url'
 
 export class StoaClientPreloadAdapter implements RendererApi {
   readonly windowsBuildNumber = undefined
@@ -640,11 +641,13 @@ export class StoaClientPreloadAdapter implements RendererApi {
     // The discovery endpoint provides the port; base URL and token come from the client constructor.
     const res = await this.client.get<{ name: string; version: string; port: number; webClient: boolean; lanMode: boolean }>('/api/v1/discovery')
     const data = res.data!
+    const token = this.client.getToken()
+    const available = data.webClient === true
     return {
-      available: true,
+      available,
       port: data.port,
-      url: this.client.getBaseUrl(),
-      token: this.client.getToken()
+      url: available ? buildStoaWebLaunchUrl(this.client.getBaseUrl(), token) : '',
+      token
     }
   }
 }

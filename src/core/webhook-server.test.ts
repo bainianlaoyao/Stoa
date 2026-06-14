@@ -199,6 +199,31 @@ describe('local webhook server', () => {
     expect(accepted[0]?.event_id).toBe('evt_webhook_1')
   })
 
+  test('routes canonical event posts through proxyEvent before local onEvent', async () => {
+    const proxied: CanonicalSessionEvent[] = []
+    const accepted: CanonicalSessionEvent[] = []
+    const server = createLocalWebhookServer({
+      getSessionSecret(sessionId) {
+        return sessionId === 'session_demo_001' ? 'secret-1' : null
+      },
+      proxyEvent(event) {
+        proxied.push(event)
+      },
+      onEvent(event) {
+        accepted.push(event)
+      }
+    })
+    servers.push(server)
+    const port = await server.start()
+
+    const response = await postEvent(port, createEvent(), 'secret-1')
+
+    expect(response.statusCode).toBe(202)
+    expect(proxied).toHaveLength(1)
+    expect(proxied[0]?.event_id).toBe('evt_webhook_1')
+    expect(accepted).toHaveLength(0)
+  })
+
   test('accepts Claude hook events when session headers and secret match', async () => {
     const accepted: CanonicalSessionEvent[] = []
     const authorizationInputs: Array<{

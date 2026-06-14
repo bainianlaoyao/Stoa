@@ -84,6 +84,7 @@ type HookAuthorizationResult = HookAuthorizationSuccess | HookAuthorizationFailu
 
 export interface LocalWebhookServerOptions {
   onEvent?: (event: CanonicalSessionEvent) => Promise<unknown> | unknown
+  proxyEvent?: (event: CanonicalSessionEvent) => Promise<unknown> | unknown
   onMemoryNotification?: (notification: {
     sessionId: string
     projectId: string
@@ -299,13 +300,23 @@ export function createLocalWebhookServer(options: LocalWebhookServerOptions = {}
       return
     }
 
+    if (WEBHOOK_DEBUG) {
+      console.log('[webhook-debug] canonical event request', {
+        sessionId: request.body.session_id,
+        projectId: request.body.project_id,
+        eventType: request.body.event_type,
+        intent: request.body.payload.intent,
+        proxied: Boolean(options.proxyEvent)
+      })
+    }
+
     const expectedSecret = options.getSessionSecret?.(request.body.session_id) ?? null
     if (!expectedSecret || request.header('x-stoa-secret') !== expectedSecret) {
       response.status(401).json({ accepted: false, reason: 'invalid_secret' })
       return
     }
 
-    const result = await options.onEvent?.(request.body)
+    const result = await (options.proxyEvent ?? options.onEvent)?.(request.body)
     if (result === undefined || result === null) {
       response.status(202).json({ accepted: true })
       return

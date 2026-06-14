@@ -8,6 +8,7 @@
  * It will be wired into the Electron main process during Phase 5.
  */
 import type { PtyHost } from '@core/pty-host'
+import type { SessionType } from '@shared/project-session'
 
 // ---------------------------------------------------------------------------
 // Wire protocol types — mirror stoa-server/src/ws/events.ts + plan §6.3
@@ -28,11 +29,16 @@ export interface RuntimeCommand {
 }
 
 export interface RuntimeResponse {
+  type: 'runtime:response'
   replyTo: string
   ok: boolean
   data?: unknown
   error?: string
 }
+
+type RuntimeOutboundMessage =
+  | RuntimeResponse
+  | { type: 'runtime:terminal-data'; sessionId: string; data: string }
 
 // ---------------------------------------------------------------------------
 // Dependency injection — callers provide these at construction time
@@ -58,6 +64,11 @@ export interface RuntimeClientDeps {
    * Returns true if the launch succeeded, false otherwise.
    */
   launchSession: (sessionId: string, options?: {
+    projectId?: string
+    title?: string
+    type?: SessionType
+    cwd?: string
+    externalSessionId?: string | null
     initialDimensions?: { cols?: number; rows?: number }
   }) => Promise<boolean>
   /**
@@ -99,6 +110,7 @@ export interface StoaRuntimeClientOptions {
 const RECONNECT_BASE_MS = 1_000
 const RECONNECT_MAX_MS = 30_000
 const RECONNECT_JITTER_MS = 500
+const CONNECT_TIMEOUT_MS = 5_000
 
 export class StoaRuntimeClient {
   private ws: WebSocket | null = null
@@ -135,11 +147,38 @@ export class StoaRuntimeClient {
 
     return await new Promise<void>((resolve, reject) => {
       const ws = new WebSocket(url.toString())
+      let settled = false
+      const cleanup = (): void => {
+        clearTimeout(connectTimeout)
+      }
+      const settleResolve = (): void => {
+        if (settled) return
+        settled = true
+        cleanup()
+        resolve()
+      }
+      const settleReject = (error: Error): void => {
+        if (settled) return
+        settled = true
+        cleanup()
+        if (this.ws === ws) {
+          this.ws = null
+        }
+        reject(error)
+      }
+      const connectTimeout = setTimeout(() => {
+        settleReject(new Error(`Timed out connecting to ${this.options.serverUrl}`))
+        try {
+          ws.close()
+        } catch {
+          // Ignore close failures after timeout.
+        }
+      }, CONNECT_TIMEOUT_MS)
 
       ws.addEventListener('open', () => {
         console.log('[stoa-runtime-client] Connected to', this.options.serverUrl)
         this.reconnectAttempts = 0
-        resolve()
+        settleResolve()
       })
 
       ws.addEventListener('message', (event: MessageEvent) => {
@@ -150,6 +189,13 @@ export class StoaRuntimeClient {
 
       ws.addEventListener('close', (event: CloseEvent) => {
         console.log(`[stoa-runtime-client] Disconnected (code=${event.code}, reason=${event.reason || 'none'})`)
+        if (!settled) {
+          settleReject(new Error(`Connection closed before opening ${this.options.serverUrl}`))
+          if (!this.disposed) {
+            this.scheduleReconnect()
+          }
+          return
+        }
         this.ws = null
         this.rejectAllPending('Connection closed')
         if (!this.disposed) {
@@ -163,9 +209,7 @@ export class StoaRuntimeClient {
 
       // On first connection failure, reject the promise so the caller knows.
       ws.addEventListener('error', () => {
-        if (this.ws === null) {
-          reject(new Error(`Failed to connect to ${this.options.serverUrl}`))
-        }
+        settleReject(new Error(`Failed to connect to ${this.options.serverUrl}`))
       }, { once: true })
 
       this.ws = ws
@@ -245,17 +289,17 @@ export class StoaRuntimeClient {
           result = await this.handleGetTerminalReplay(sessionId)
           break
         case 'runtime:create-child-session':
-          result = await this.handleCreateChildSession(payload)
+          result = await this.handleCreateChildSession(sessionId, payload)
           break
         default:
           throw new Error(`Unknown runtime command: ${type}`)
       }
 
-      this.sendResponse({ replyTo, ok: true, data: result })
+      this.sendResponse({ type: 'runtime:response', replyTo, ok: true, data: result })
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       console.error(`[stoa-runtime-client] Command ${type} failed for session ${sessionId}:`, message)
-      this.sendResponse({ replyTo, ok: false, error: message })
+      this.sendResponse({ type: 'runtime:response', replyTo, ok: false, error: message })
     }
   }
 
@@ -279,6 +323,11 @@ export class StoaRuntimeClient {
     }
 
     const launched = await this.deps.launchSession(sessionId, {
+      projectId: typeof payload.projectId === 'string' ? payload.projectId : undefined,
+      title: typeof payload.title === 'string' ? payload.title : undefined,
+      type: isSessionType(payload.type) ? payload.type : undefined,
+      cwd: typeof payload.cwd === 'string' ? payload.cwd : undefined,
+      externalSessionId: typeof payload.externalSessionId === 'string' ? payload.externalSessionId : payload.externalSessionId === null ? null : undefined,
       initialDimensions: Object.keys(initialDimensions).length > 0 ? initialDimensions : undefined
     })
 
@@ -319,15 +368,10 @@ export class StoaRuntimeClient {
 
   private async handleGetTerminalReplay(sessionId: string): Promise<unknown> {
     const replay = await this.deps.getTerminalReplay(sessionId)
-    return { data: replay }
+    return { text: replay }
   }
 
-  private async handleCreateChildSession(payload: Record<string, unknown>): Promise<unknown> {
-    const parentId = payload.parentId
-    if (typeof parentId !== 'string') {
-      throw new Error('runtime:create-child-session requires payload.parentId')
-    }
-
+  private async handleCreateChildSession(parentId: string, payload: Record<string, unknown>): Promise<unknown> {
     const sessionId = await this.deps.createChildSession({
       parentId,
       projectId: typeof payload.projectId === 'string' ? payload.projectId : undefined,
@@ -340,7 +384,7 @@ export class StoaRuntimeClient {
     })
 
     this.activeSessions.add(sessionId)
-    return { sessionId }
+    return { childSessionId: sessionId }
   }
 
   // -----------------------------------------------------------------------
@@ -361,7 +405,8 @@ export class StoaRuntimeClient {
   forwardTerminalData(sessionId: string, data: string): void {
     this.send({
       type: 'runtime:terminal-data',
-      payload: { sessionId, data }
+      sessionId,
+      data
     })
   }
 
@@ -370,13 +415,10 @@ export class StoaRuntimeClient {
   // -----------------------------------------------------------------------
 
   private sendResponse(response: RuntimeResponse): void {
-    this.send({
-      type: 'runtime:response',
-      payload: response
-    })
+    this.send(response)
   }
 
-  private send(message: { type: string; payload: unknown }): void {
+  private send(message: RuntimeOutboundMessage): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       return
     }
@@ -432,7 +474,7 @@ export class StoaRuntimeClient {
     for (const [replyTo, entry] of this.pendingCommands) {
       clearTimeout(entry.timer)
       this.pendingCommands.delete(replyTo)
-      entry.resolve({ replyTo, ok: false, error: reason })
+      entry.resolve({ type: 'runtime:response', replyTo, ok: false, error: reason })
     }
   }
 }
@@ -443,4 +485,8 @@ export class StoaRuntimeClient {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function isSessionType(value: unknown): value is SessionType {
+  return value === 'shell' || value === 'opencode' || value === 'codex' || value === 'claude-code'
 }

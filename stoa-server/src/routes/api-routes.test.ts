@@ -23,6 +23,8 @@ import { createObservabilityRoutes } from './observability';
 import { createStubRuntimeBridge } from './runtime-bridge';
 import type { RuntimeBridgeClient } from './runtime-bridge';
 import { ProjectSessionManager } from '../services/project-session-manager';
+import { AppError } from '../shared/errors';
+import { RuntimeBridgeError } from '../ws/runtime-bridge-handler';
 
 // ---------------------------------------------------------------------------
 // Shared test fixtures
@@ -62,6 +64,27 @@ function createMockAppObservability() {
     sourceSequence: 0,
     updatedAt: new Date().toISOString(),
   };
+}
+
+function createMockRuntimeBridge(overrides: Partial<RuntimeBridgeClient> = {}): RuntimeBridgeClient {
+  return {
+    launch: vi.fn(async () => {}),
+    kill: vi.fn(async () => {}),
+    input: vi.fn(async () => {}),
+    resize: vi.fn(async () => {}),
+    interrupt: vi.fn(async () => {}),
+    getTerminalReplay: vi.fn(async () => 'terminal output'),
+    createChildSession: vi.fn(async () => 'child-session-id'),
+    ...overrides,
+  };
+}
+
+function createBridgeUnavailableError(message = 'Runtime bridge not connected'): AppError {
+  return new AppError({
+    code: 'internal_error',
+    message,
+    statusCode: 503,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -246,19 +269,97 @@ describe('API routes — /api/v1/', () => {
   });
 
   describe('POST /api/v1/sessions', () => {
-    it('creates a session and returns 201', async () => {
+    it('creates a session, launches runtime, and returns 201', async () => {
       const manager = ProjectSessionManager.createForTest();
       const project = await manager.createProject({ path: '/tmp/test-project', name: 'Test' });
-      const { app } = createTestApp({ manager });
+      const runtimeBridge = createMockRuntimeBridge();
+      const { app } = createTestApp({ manager, runtimeBridge });
+      const res = await app.request('/api/v1/sessions', {
+        method: 'POST',
+        headers: { ...AUTH, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId: project.id, type: 'shell', initialCols: 132, initialRows: 44 }),
+      });
+      expect(res.status).toBe(201);
+      const body = (await res.json()) as { ok: boolean; data: { id: string; projectId: string } };
+      expect(body.ok).toBe(true);
+      expect(body.data.projectId).toBe(project.id);
+      expect(runtimeBridge.launch).toHaveBeenCalledWith(body.data.id, expect.objectContaining({
+        cwd: '/tmp/test-project',
+        projectId: project.id,
+        title: 'shell-1',
+        type: 'shell',
+        cols: 132,
+        rows: 44,
+      }));
+    });
+
+    it('marks the created session alive after runtime launch succeeds', async () => {
+      const manager = ProjectSessionManager.createForTest();
+      const project = await manager.createProject({ path: '/tmp/test-project', name: 'Test' });
+      const runtimeBridge = createMockRuntimeBridge();
+      const { app } = createTestApp({ manager, runtimeBridge });
       const res = await app.request('/api/v1/sessions', {
         method: 'POST',
         headers: { ...AUTH, 'Content-Type': 'application/json' },
         body: JSON.stringify({ projectId: project.id, type: 'shell' }),
       });
+
       expect(res.status).toBe(201);
-      const body = (await res.json()) as { ok: boolean; data: { projectId: string } };
-      expect(body.ok).toBe(true);
-      expect(body.data.projectId).toBe(project.id);
+      const body = await parseJson<ApiResponseEnvelope<{ id: string; runtimeState: string }>>(res);
+      expect(body.data.runtimeState).toBe('alive');
+
+      const bootstrap = await app.request('/api/v1/bootstrap', { headers: AUTH });
+      const bootstrapBody = await parseJson<ApiResponseEnvelope<{ sessions: Array<{ id: string; runtimeState: string }> }>>(bootstrap);
+      expect(bootstrapBody.data.sessions.find((session) => session.id === body.data.id)?.runtimeState).toBe('alive');
+    });
+
+    it('rolls back the session record when runtime launch fails', async () => {
+      const manager = ProjectSessionManager.createForTest();
+      const project = await manager.createProject({ path: '/tmp/test-project', name: 'Test' });
+      const runtimeBridge = createMockRuntimeBridge({
+        launch: vi.fn(async () => {
+          throw createBridgeUnavailableError('runtime unavailable');
+        }),
+      });
+      const { app } = createTestApp({ manager, runtimeBridge });
+      const res = await app.request('/api/v1/sessions', {
+        method: 'POST',
+        headers: { ...AUTH, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId: project.id, type: 'shell' }),
+      });
+      expect(res.status).toBe(503);
+      const body = await parseJson<ApiErrorEnvelope>(res);
+      expect(body.error.message).toBe('runtime unavailable');
+      expect(manager.snapshot().sessions).toEqual([]);
+    });
+
+    it('maps live runtime bridge unavailability to 503 and rolls back the session record', async () => {
+      const manager = ProjectSessionManager.createForTest();
+      const project = await manager.createProject({ path: '/tmp/test-project', name: 'Test' });
+      const runtimeBridge = createMockRuntimeBridge({
+        launch: vi.fn(async (sessionId: string) => {
+          throw new RuntimeBridgeError(
+            'no_provider',
+            `No runtime provider is currently managing session ${sessionId}`,
+            { command: 'runtime:launch', sessionId },
+          );
+        }),
+      });
+      const { app } = createTestApp({ manager, runtimeBridge });
+      const res = await app.request('/api/v1/sessions', {
+        method: 'POST',
+        headers: { ...AUTH, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId: project.id, type: 'shell' }),
+      });
+
+      expect(res.status).toBe(503);
+      const body = await parseJson<ApiErrorEnvelope>(res);
+      expect(body.error.code).toBe('runtime_unavailable');
+      expect(body.error.details).toMatchObject({
+        reason: 'no_provider',
+        command: 'runtime:launch',
+      });
+      expect(manager.snapshot().sessions).toEqual([]);
     });
 
     it('returns 422 when projectId is missing', async () => {
@@ -280,14 +381,29 @@ describe('API routes — /api/v1/', () => {
       });
       expect(res.status).toBe(422);
     });
+
+    it('returns 422 when initial dimensions are not positive integers', async () => {
+      const manager = ProjectSessionManager.createForTest();
+      const project = await manager.createProject({ path: '/tmp/test-project', name: 'Test' });
+      const runtimeBridge = createMockRuntimeBridge();
+      const { app } = createTestApp({ manager, runtimeBridge });
+      const res = await app.request('/api/v1/sessions', {
+        method: 'POST',
+        headers: { ...AUTH, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId: project.id, type: 'shell', initialCols: 0 }),
+      });
+      expect(res.status).toBe(422);
+      expect(runtimeBridge.launch).not.toHaveBeenCalled();
+    });
   });
 
   describe('PUT /api/v1/sessions/:id/archive', () => {
-    it('archives a session and returns 200', async () => {
+    it('kills runtime, archives a session, and returns 200', async () => {
       const manager = ProjectSessionManager.createForTest();
       const project = await manager.createProject({ path: '/tmp/test-project', name: 'Test' });
       const session = await manager.createSession({ projectId: project.id, type: 'shell', title: 'shell-1' });
-      const { app } = createTestApp({ manager });
+      const runtimeBridge = createMockRuntimeBridge();
+      const { app } = createTestApp({ manager, runtimeBridge });
       const res = await app.request(`/api/v1/sessions/${session.id}/archive`, {
         method: 'PUT',
         headers: AUTH,
@@ -296,6 +412,26 @@ describe('API routes — /api/v1/', () => {
       const body = (await res.json()) as { data: { id: string; archived: boolean } };
       expect(body.data.id).toBe(session.id);
       expect(body.data.archived).toBe(true);
+      expect(runtimeBridge.kill).toHaveBeenCalledWith(session.id);
+      expect(manager.snapshot().sessions.find((candidate) => candidate.id === session.id)?.archived).toBe(true);
+    });
+
+    it('does not archive the session when runtime kill fails', async () => {
+      const manager = ProjectSessionManager.createForTest();
+      const project = await manager.createProject({ path: '/tmp/test-project', name: 'Test' });
+      const session = await manager.createSession({ projectId: project.id, type: 'shell', title: 'shell-1' });
+      const runtimeBridge = createMockRuntimeBridge({
+        kill: vi.fn(async () => {
+          throw createBridgeUnavailableError('kill failed');
+        }),
+      });
+      const { app } = createTestApp({ manager, runtimeBridge });
+      const res = await app.request(`/api/v1/sessions/${session.id}/archive`, {
+        method: 'PUT',
+        headers: AUTH,
+      });
+      expect(res.status).toBe(503);
+      expect(manager.snapshot().sessions.find((candidate) => candidate.id === session.id)?.archived).toBe(false);
     });
 
     it('returns 404 for unknown session', async () => {
@@ -309,12 +445,13 @@ describe('API routes — /api/v1/', () => {
   });
 
   describe('PUT /api/v1/sessions/:id/restore', () => {
-    it('restores a session and returns 200', async () => {
+    it('restores a session, launches runtime, and returns 200', async () => {
       const manager = ProjectSessionManager.createForTest();
       const project = await manager.createProject({ path: '/tmp/test-project', name: 'Test' });
       const session = await manager.createSession({ projectId: project.id, type: 'shell', title: 'shell-1' });
       await manager.archiveSession(session.id);
-      const { app } = createTestApp({ manager });
+      const runtimeBridge = createMockRuntimeBridge();
+      const { app } = createTestApp({ manager, runtimeBridge });
       const res = await app.request(`/api/v1/sessions/${session.id}/restore`, {
         method: 'PUT',
         headers: AUTH,
@@ -323,6 +460,27 @@ describe('API routes — /api/v1/', () => {
       const body = (await res.json()) as { data: { id: string; restored: boolean } };
       expect(body.data.id).toBe(session.id);
       expect(body.data.restored).toBe(true);
+      expect(runtimeBridge.launch).toHaveBeenCalledWith(session.id, {});
+      expect(manager.snapshot().sessions.find((candidate) => candidate.id === session.id)?.archived).toBe(false);
+    });
+
+    it('returns the runtime error when restore launch fails after restoring the record', async () => {
+      const manager = ProjectSessionManager.createForTest();
+      const project = await manager.createProject({ path: '/tmp/test-project', name: 'Test' });
+      const session = await manager.createSession({ projectId: project.id, type: 'shell', title: 'shell-1' });
+      await manager.archiveSession(session.id);
+      const runtimeBridge = createMockRuntimeBridge({
+        launch: vi.fn(async () => {
+          throw createBridgeUnavailableError('launch failed');
+        }),
+      });
+      const { app } = createTestApp({ manager, runtimeBridge });
+      const res = await app.request(`/api/v1/sessions/${session.id}/restore`, {
+        method: 'PUT',
+        headers: AUTH,
+      });
+      expect(res.status).toBe(503);
+      expect(manager.snapshot().sessions.find((candidate) => candidate.id === session.id)?.archived).toBe(false);
     });
   });
 
@@ -497,14 +655,40 @@ describe('API routes — /api/v1/', () => {
     });
   });
 
-  describe('Runtime bridge stubs', () => {
+  describe('Runtime bridge session operations', () => {
     function makeAppWithSession() {
       const manager = ProjectSessionManager.createForTest();
-      return createTestApp({ manager });
+      const runtimeBridge = createMockRuntimeBridge();
+      return { ...createTestApp({ manager, runtimeBridge }), runtimeBridge };
     }
 
-    it('POST /sessions/:id/restart returns 503 via runtime bridge stub', async () => {
-      const { app, manager } = makeAppWithSession();
+    it('POST /sessions/:id/restart kills and relaunches the runtime', async () => {
+      const { app, manager, runtimeBridge } = makeAppWithSession();
+      const project = await manager.createProject({ path: '/tmp/test-project', name: 'Test' });
+      const session = await manager.createSession({ projectId: project.id, type: 'shell', title: 'shell-1' });
+      const res = await app.request(`/api/v1/sessions/${session.id}/restart`, {
+        method: 'POST',
+        headers: { ...AUTH, 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      expect(res.status).toBe(200);
+      expect(runtimeBridge.kill).toHaveBeenCalledWith(session.id);
+      expect(runtimeBridge.launch).toHaveBeenCalledWith(session.id, expect.objectContaining({
+        cwd: '/tmp/test-project',
+        projectId: project.id,
+        title: 'shell-1',
+        type: 'shell',
+      }));
+    });
+
+    it('POST /sessions/:id/restart does not launch when runtime kill fails', async () => {
+      const manager = ProjectSessionManager.createForTest();
+      const runtimeBridge = createMockRuntimeBridge({
+        kill: vi.fn(async () => {
+          throw createBridgeUnavailableError('kill failed');
+        }),
+      });
+      const { app } = createTestApp({ manager, runtimeBridge });
       const project = await manager.createProject({ path: '/tmp/test-project', name: 'Test' });
       const session = await manager.createSession({ projectId: project.id, type: 'shell', title: 'shell-1' });
       const res = await app.request(`/api/v1/sessions/${session.id}/restart`, {
@@ -513,18 +697,23 @@ describe('API routes — /api/v1/', () => {
         body: JSON.stringify({}),
       });
       expect(res.status).toBe(503);
+      expect(runtimeBridge.kill).toHaveBeenCalledWith(session.id);
+      expect(runtimeBridge.launch).not.toHaveBeenCalled();
     });
 
-    it('GET /sessions/:id/terminal-replay returns 503 via runtime bridge stub', async () => {
-      const { app, manager } = makeAppWithSession();
+    it('GET /sessions/:id/terminal-replay returns runtime replay output', async () => {
+      const { app, manager, runtimeBridge } = makeAppWithSession();
       const project = await manager.createProject({ path: '/tmp/test-project', name: 'Test' });
       const session = await manager.createSession({ projectId: project.id, type: 'shell', title: 'shell-1' });
       const res = await app.request(`/api/v1/sessions/${session.id}/terminal-replay`, { headers: AUTH });
-      expect(res.status).toBe(503);
+      expect(res.status).toBe(200);
+      const body = await parseJson<ApiResponseEnvelope<string>>(res);
+      expect(body.data).toBe('terminal output');
+      expect(runtimeBridge.getTerminalReplay).toHaveBeenCalledWith(session.id);
     });
 
-    it('POST /sessions/:id/input returns 503 via runtime bridge stub', async () => {
-      const { app, manager } = makeAppWithSession();
+    it('POST /sessions/:id/input sends runtime input', async () => {
+      const { app, manager, runtimeBridge } = makeAppWithSession();
       const project = await manager.createProject({ path: '/tmp/test-project', name: 'Test' });
       const session = await manager.createSession({ projectId: project.id, type: 'shell', title: 'shell-1' });
       const res = await app.request(`/api/v1/sessions/${session.id}/input`, {
@@ -532,17 +721,32 @@ describe('API routes — /api/v1/', () => {
         headers: { ...AUTH, 'Content-Type': 'application/json' },
         body: JSON.stringify({ data: 'ls' }),
       });
-      expect(res.status).toBe(503);
+      expect(res.status).toBe(200);
+      expect(runtimeBridge.input).toHaveBeenCalledWith(session.id, 'ls');
     });
 
-    it('POST /sessions/:id/resize returns 503 via runtime bridge stub', async () => {
-      const { app, manager } = makeAppWithSession();
+    it('POST /sessions/:id/resize resizes the runtime terminal', async () => {
+      const { app, manager, runtimeBridge } = makeAppWithSession();
       const project = await manager.createProject({ path: '/tmp/test-project', name: 'Test' });
       const session = await manager.createSession({ projectId: project.id, type: 'shell', title: 'shell-1' });
       const res = await app.request(`/api/v1/sessions/${session.id}/resize`, {
         method: 'POST',
         headers: { ...AUTH, 'Content-Type': 'application/json' },
         body: JSON.stringify({ cols: 80, rows: 24 }),
+      });
+      expect(res.status).toBe(200);
+      expect(runtimeBridge.resize).toHaveBeenCalledWith(session.id, 80, 24);
+    });
+
+    it('POST /sessions/:id/input returns 503 when the runtime bridge is unavailable', async () => {
+      const manager = ProjectSessionManager.createForTest();
+      const { app } = createTestApp({ manager });
+      const project = await manager.createProject({ path: '/tmp/test-project', name: 'Test' });
+      const session = await manager.createSession({ projectId: project.id, type: 'shell', title: 'shell-1' });
+      const res = await app.request(`/api/v1/sessions/${session.id}/input`, {
+        method: 'POST',
+        headers: { ...AUTH, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data: 'ls' }),
       });
       expect(res.status).toBe(503);
     });
@@ -585,22 +789,24 @@ describe('API routes — /api/v1/', () => {
       const { app, manager } = makeAppWithSession();
       const project = await manager.createProject({ path: '/tmp/test-project', name: 'Test' });
       const session = await manager.createSession({ projectId: project.id, type: 'shell', title: 'shell-1' });
-      const res = await app.request(`/api/v1/sessions/${session.id}/context/full`, { headers: AUTH });
+      const res = await app.request(`/api/v1/sessions/${session.id}/context/full?maxChars=1234`, { headers: AUTH });
       expect(res.status).toBe(200);
-      const body = (await res.json()) as { data: { sessionId: string; text: string } };
+      const body = (await res.json()) as { data: { sessionId: string; text: string; maxChars: number } };
       expect(body.data.sessionId).toBe(session.id);
       expect(body.data.text).toBe('');
+      expect(body.data.maxChars).toBe(1234);
     });
 
     it('GET /sessions/:id/context/slim returns placeholder', async () => {
       const { app, manager } = makeAppWithSession();
       const project = await manager.createProject({ path: '/tmp/test-project', name: 'Test' });
       const session = await manager.createSession({ projectId: project.id, type: 'shell', title: 'shell-1' });
-      const res = await app.request(`/api/v1/sessions/${session.id}/context/slim`, { headers: AUTH });
+      const res = await app.request(`/api/v1/sessions/${session.id}/context/slim?maxChars=4321`, { headers: AUTH });
       expect(res.status).toBe(200);
-      const body = (await res.json()) as { data: { sessionId: string; text: string } };
+      const body = (await res.json()) as { data: { sessionId: string; text: string; maxChars: number } };
       expect(body.data.sessionId).toBe(session.id);
       expect(body.data.text).toBe('');
+      expect(body.data.maxChars).toBe(4321);
     });
 
     it('GET /sessions/:id/evidence returns empty list', async () => {

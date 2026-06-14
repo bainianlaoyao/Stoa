@@ -212,12 +212,45 @@ export async function waitForTerminalBufferText(
 }
 
 export async function getMainE2EDebugState(electronApp: ElectronApplication): Promise<MainE2EDebugState | null> {
-  return await electronApp.evaluate(async () => {
+  const debugState = await electronApp.evaluate(async () => {
     const api = (globalThis as typeof globalThis & {
       __VIBECODING_MAIN_E2E__?: MainE2EDebugApi
     }).__VIBECODING_MAIN_E2E__
     return api?.getDebugState() ?? null
   })
+
+  const page = electronApp.windows()[0]
+  const serverInfo = await page?.evaluate(async () => {
+    return await (window as typeof window & {
+      stoaElectron?: {
+        getServerInfo: () => Promise<{ available: boolean; port: number; token: string }>
+      }
+    }).stoaElectron?.getServerInfo() ?? null
+  }) ?? null
+
+  if (!serverInfo?.available) {
+    return debugState
+  }
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${serverInfo.port}/api/v1/bootstrap`, {
+      headers: {
+        Authorization: `Bearer ${serverInfo.token}`
+      }
+    })
+    const body = await response.json() as { ok?: boolean; data?: BootstrapState }
+    if (response.ok && body.ok && body.data) {
+      return {
+        webhookPort: debugState?.webhookPort ?? null,
+        sessionSecrets: debugState?.sessionSecrets ?? {},
+        snapshot: body.data
+      }
+    }
+  } catch {
+    // Fall back to Electron-local debug state if SR debug fetch is unavailable.
+  }
+
+  return debugState
 }
 
 export async function getDebugModeActive(electronApp: ElectronApplication): Promise<boolean> {
@@ -265,21 +298,123 @@ export async function postWebhookEvent(options: {
   port: number
   secret: string
   event: CanonicalSessionEvent
+  electronApp?: ElectronApplication
 }): Promise<{ status: number; body: unknown }> {
-  const response = await fetch(`http://127.0.0.1:${options.port}/events`, {
+  let targetPort = options.port
+  let targetSecret = options.secret
+  let usesStoaServer = false
+
+  if (options.electronApp) {
+    const page = options.electronApp.windows()[0]
+    const serverInfo = await page?.evaluate(async () => {
+      return await (window as typeof window & {
+        stoaElectron?: {
+          getServerInfo: () => Promise<{ available: boolean; port: number; token: string }>
+        }
+      }).stoaElectron?.getServerInfo() ?? null
+    }) ?? null
+
+    if (serverInfo?.available) {
+      targetPort = serverInfo.port
+      targetSecret = serverInfo.token
+      usesStoaServer = true
+    }
+  }
+
+  const beforeSequence = usesStoaServer
+    ? await readStoaServerSessionSequence(targetPort, targetSecret, options.event.session_id)
+    : null
+
+  const response = await fetch(`http://127.0.0.1:${targetPort}/events`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      'x-stoa-secret': options.secret
+      'x-stoa-secret': targetSecret
     },
     body: JSON.stringify(options.event)
   })
 
   const body = await response.json().catch(() => null)
+
+  if (response.ok && usesStoaServer) {
+    await waitForStoaServerEventProjection(targetPort, targetSecret, options.event, beforeSequence)
+  }
+
   return {
     status: response.status,
     body
   }
+}
+
+async function readStoaServerSessionSequence(
+  port: number,
+  token: string,
+  sessionId: string
+): Promise<number | null> {
+  const session = await readStoaServerSession(port, token, sessionId)
+  return typeof session?.lastStateSequence === 'number' ? session.lastStateSequence : null
+}
+
+async function readStoaServerSession(
+  port: number,
+  token: string,
+  sessionId: string
+): Promise<BootstrapState['sessions'][number] | null> {
+  const response = await fetch(`http://127.0.0.1:${port}/api/v1/bootstrap`, {
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  })
+  const body = await response.json().catch(() => null) as { ok?: boolean; data?: BootstrapState } | null
+  if (!response.ok || !body?.ok || !body.data) {
+    return null
+  }
+  return body.data.sessions.find((session) => session.id === sessionId) ?? null
+}
+
+async function waitForStoaServerEventProjection(
+  port: number,
+  token: string,
+  event: CanonicalSessionEvent,
+  beforeSequence: number | null
+): Promise<void> {
+  const deadline = Date.now() + 5_000
+  let lastSession: BootstrapState['sessions'][number] | null = null
+
+  while (Date.now() < deadline) {
+    lastSession = await readStoaServerSession(port, token, event.session_id)
+    if (lastSession && isEventProjected(lastSession, event, beforeSequence)) {
+      return
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+
+  throw new Error(
+    `Timed out waiting for Stoa Server to project ${event.payload.intent} for session ${event.session_id}. Last session: ${JSON.stringify(lastSession)}`
+  )
+}
+
+function isEventProjected(
+  session: BootstrapState['sessions'][number],
+  event: CanonicalSessionEvent,
+  beforeSequence: number | null
+): boolean {
+  if (beforeSequence !== null && session.lastStateSequence <= beforeSequence) {
+    return false
+  }
+
+  if (event.payload.intent === 'runtime.exited_failed') {
+    return session.runtimeState === 'exited'
+      && session.runtimeExitReason === 'failed'
+      && session.runtimeExitCode === event.payload.runtimeExitCode
+  }
+
+  if (event.payload.intent === 'runtime.exited_clean') {
+    return session.runtimeState === 'exited'
+      && session.runtimeExitReason === 'clean'
+  }
+
+  return true
 }
 
 export async function postClaudeHookEvent(options: {

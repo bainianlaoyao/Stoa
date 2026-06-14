@@ -30,13 +30,16 @@ import { SessionRuntimeController } from './session-runtime-controller'
 import { SessionEventBridge } from './session-event-bridge'
 import { SessionInputRouter } from './session-input-router'
 import { launchTrackedSessionRuntime } from './launch-tracked-session-runtime'
+import { startSessionRuntime, type SessionRuntimeManager } from '@core/session-runtime'
 import { SessionTitleController } from './session-title-controller'
 import { syncObservabilitySessionsFromManager } from './observability-sync'
 import { syncManagedSidecars } from './managed-sidecar-maintenance'
 import { UpdateService } from './update-service'
+import { getStoaServerWebInfo } from './stoa-server-web-info'
+import { fetchStoaServerSettings } from './sr-settings-client'
 import { resolveDefaultStoaRuntimeRoot } from './stoa-runtime-root'
 import { StoaServerSpawner, type StoaServerConfig, type SpawnerDeps } from './stoa-server-spawner'
-import type { StoaRuntimeClient } from './stoa-runtime-client'
+import { StoaRuntimeClient } from './stoa-runtime-client'
 import { createHookLeaseManager } from './hook-lease-manager'
 import { mergeSessionDimensions, SessionDimensionsRegistry, type PartialSessionDimensions } from './session-dimensions'
 import { registerFilesystemHandlers } from './sidebar-fs-handlers'
@@ -44,12 +47,15 @@ import { registerGitHandlers } from './sidebar-git-handlers'
 import { DEFAULT_SETTINGS } from '@shared/project-session'
 import {
   type AppSettings,
+  type BootstrapState,
+  type CanonicalSessionEvent,
   type CreateProjectRequest,
   type CreateSessionRequest,
   type OpenWorkspaceRequest,
   type SessionGraphEvent,
   type SessionNodeSnapshot,
   type SessionSummary,
+  type SessionType,
   type SessionTitleGenerationNotification,
   sanitizeBootstrapStateForGenericProjection,
   sanitizeSessionGraphEventForGenericProjection,
@@ -71,6 +77,7 @@ let updateService: UpdateService | null = null
 let evidenceStore: SessionEvidenceStore | null = null
 let hookLeaseManager: ReturnType<typeof createHookLeaseManager> | null = null
 let sessionTitleController: SessionTitleController | null = null
+let stoaRuntimeClient: StoaRuntimeClient | null = null
 const e2eWorkspaceOpenRequests: OpenWorkspaceRequest[] = []
 let isQuittingAfterBridgeStop = false
 const stoaCtlGate = createStoaCtlGate(false)
@@ -211,7 +218,10 @@ function installMainE2EDebugApi(): void {
     getDebugState() {
       return {
         webhookPort: projectSessionManager?.snapshot().terminalWebhookPort ?? null,
-        sessionSecrets: hookLeaseManager?.debugSnapshotSessionSecrets() ?? sessionEventBridge?.debugSnapshotSessionSecrets() ?? {},
+        sessionSecrets: {
+          ...(sessionEventBridge?.debugSnapshotSessionSecrets() ?? {}),
+          ...(hookLeaseManager?.debugSnapshotSessionSecrets() ?? {})
+        },
         snapshot: projectSessionManager?.snapshot() ?? null
       }
     },
@@ -717,6 +727,12 @@ app.whenReady().then(async () => {
     pushSessionGraphEvent(sessionId, { kind: 'updated', origin: 'system' })
   }
 
+  const originalAppendTerminalData = activeRuntimeController.appendTerminalData.bind(activeRuntimeController)
+  activeRuntimeController.appendTerminalData = async (chunk: { sessionId: string; data: string }) => {
+    await originalAppendTerminalData(chunk)
+    stoaRuntimeClient?.forwardTerminalData(chunk.sessionId, chunk.data)
+  }
+
   const originalApplyProviderStatePatch = activeRuntimeController.applyProviderStatePatch.bind(activeRuntimeController)
   activeRuntimeController.applyProviderStatePatch = async (patch: import('@shared/project-session').SessionStatePatchEvent) => {
     await originalApplyProviderStatePatch(patch)
@@ -880,6 +896,12 @@ app.whenReady().then(async () => {
     captureObservation(event) {
       return sessionTitleController?.captureObservation(event)
     },
+    mirrorCanonicalEvent(event) {
+      return mirrorCanonicalEventToStoaServer(event)
+    },
+    proxyCanonicalEvent(event) {
+      return mirrorCanonicalEventToStoaServer(event)
+    },
     authorizeHookRequest: activeHookLeaseManager
       ? async (input) => await activeHookLeaseManager.authorizeHookRequest(input)
       : undefined,
@@ -992,12 +1014,42 @@ app.whenReady().then(async () => {
   installMainE2EDebugApi()
   await cleanupSidebarTempFile()
 
+  async function mirrorCanonicalEventToStoaServer(event: CanonicalSessionEvent): Promise<void> {
+    if (!srSpawner) {
+      return
+    }
+
+    const response = await fetch(`http://127.0.0.1:${srSpawner.getPort()}/events`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${srSpawner.getAuthToken()}`,
+        'Content-Type': 'application/json',
+        'x-stoa-secret': srSpawner.getAuthToken()
+      },
+      body: JSON.stringify(event)
+    })
+
+    if (!response.ok) {
+      throw new Error(`Stoa event mirror failed with status ${response.status}`)
+    }
+  }
+
   async function resolveRuntimePaths(sessionType: CreateSessionRequest['type']): Promise<{
     shellPath: string | null
     providerPath: string | null
     claudeDangerouslySkipPermissions: boolean
   }> {
-    const settings = projectSessionManager?.getSettings() ?? DEFAULT_SETTINGS
+    let settings = projectSessionManager?.getSettings() ?? DEFAULT_SETTINGS
+    if (srSpawner) {
+      try {
+        settings = await fetchStoaServerSettings({
+          port: srSpawner.getPort(),
+          authToken: srSpawner.getAuthToken()
+        }) ?? settings
+      } catch (error) {
+        console.warn('[main] Failed to read Stoa Server settings for runtime launch:', error)
+      }
+    }
     const resolvedPaths = await resolveProviderRuntimePaths(
       sessionType,
       settings,
@@ -1010,6 +1062,38 @@ app.whenReady().then(async () => {
     return {
       ...resolvedPaths,
       claudeDangerouslySkipPermissions: settings.claudeDangerouslySkipPermissions === true
+    }
+  }
+
+  async function ensureLocalSessionHookBinding(input: {
+    sessionId: string
+    projectId: string
+    sessionType: SessionType
+  }): Promise<{
+    secret: string
+    hookLeasePath: string | null
+    hookSpawnOwnerInstanceId: string | null
+    hookSpawnGeneration: number | null
+  }> {
+    const activeSessionEventBridge = sessionEventBridge
+    if (!activeSessionEventBridge) {
+      throw new Error('Session event bridge is unavailable')
+    }
+    const hookLease = await activeHookLeaseManager.ensureLease({
+      sessionId: input.sessionId,
+      projectId: input.projectId,
+      sessionType: input.sessionType,
+      webhookBaseUrl: `http://127.0.0.1:${webhookPort}`
+    })
+    const existingSecret = activeSessionEventBridge.debugSnapshotSessionSecrets()[input.sessionId]
+    const secret = hookLease?.lease.sessionSecret ?? existingSecret ?? activeSessionEventBridge.issueSessionSecret(input.sessionId)
+    activeSessionEventBridge.registerSessionSecret(input.sessionId, secret)
+    activeRuntimeController.registerSessionToken(input.sessionId, secret)
+    return {
+      secret,
+      hookLeasePath: hookLease?.path ?? null,
+      hookSpawnOwnerInstanceId: hookLease?.lease.ownerInstanceId ?? null,
+      hookSpawnGeneration: hookLease?.lease.generation ?? null
     }
   }
 
@@ -1098,6 +1182,80 @@ app.whenReady().then(async () => {
       await runtimeController.markRuntimeFailedToStart(sessionId, `启动失败: ${err instanceof Error ? err.message : String(err)}`)
       return false
     }
+  }
+
+  async function launchSrOwnedSessionRuntime(
+    sessionId: string,
+    options: {
+      projectId?: string
+      title?: string
+      type?: SessionType
+      cwd?: string
+      externalSessionId?: string | null
+      initialDimensions?: { cols?: number; rows?: number }
+    }
+  ): Promise<boolean> {
+    if (!ptyHost || !runtimeController || !stoaRuntimeClient || !options.projectId || !options.cwd || !options.type) {
+      return false
+    }
+
+    const hookBinding = await ensureLocalSessionHookBinding({
+      sessionId,
+      projectId: options.projectId,
+      sessionType: options.type
+    })
+    const dimensions = mergeSessionDimensions(getSessionDimensions(sessionId), options.initialDimensions)
+    if (hasCompleteSessionDimensions(dimensions)) {
+      rememberSessionDimensions(sessionId, dimensions)
+    }
+
+    const descriptor = getProviderDescriptorBySessionType(options.type)
+    const provider = getProvider(descriptor.providerId)
+    const { shellPath, providerPath, claudeDangerouslySkipPermissions } = await resolveRuntimePaths(options.type)
+    const runtimeManager: SessionRuntimeManager = {
+      async markRuntimeStarting() {},
+      async markRuntimeAlive() {},
+      async markRuntimeFailedToStart() {},
+      async markRuntimeExited() {},
+      async appendTerminalData(chunk) {
+        await runtimeController?.appendTerminalData(chunk)
+        stoaRuntimeClient?.forwardTerminalData(chunk.sessionId, chunk.data)
+      }
+    }
+
+    await startSessionRuntime({
+      session: {
+        id: sessionId,
+        projectId: options.projectId,
+        path: options.cwd,
+        title: options.title?.trim() || sessionId,
+        type: options.type,
+        runtimeState: 'created',
+        turnState: 'idle',
+        externalSessionId: options.externalSessionId ?? null,
+        sessionSecret: hookBinding.secret,
+        hookLeasePath: hookBinding.hookLeasePath,
+        hookSpawnOwnerInstanceId: hookBinding.hookSpawnOwnerInstanceId,
+        hookSpawnGeneration: hookBinding.hookSpawnGeneration
+      },
+      webhookPort,
+      provider,
+      ptyHost,
+      manager: runtimeManager,
+      shellPath,
+      providerPath,
+      claudeDangerouslySkipPermissions,
+      initialDimensions: dimensions,
+      commandEnv: buildSessionCommandEnv({
+        sessionId,
+        sessionToken: hookBinding.secret,
+        webhookPort,
+        stoaCtlBinDir: join(app.getPath('userData'), 'bin'),
+        stoaCtlEnabled: stoaCtlGate.isEnabled()
+      })
+    })
+
+    return true
   }
 
   async function createWorkSessionWithRuntime(
@@ -1379,41 +1537,83 @@ app.whenReady().then(async () => {
   registerGitHandlers(ipcMain)
 
   // -------------------------------------------------------------------------
-  // Stoa Server (SR) spawning — Phase 5 Desktop Shell Integration
-  // Conditionally enabled via stoaServerEnabled setting or STOA_USE_SERVER=true env var.
-  // This is additive: existing servers (webhook, session-control) are NOT removed.
+  // Stoa Server (SR) spawning — required desktop runtime
   // -------------------------------------------------------------------------
-  const persistedSettings = projectSessionManager?.getSettings() ?? null
-  const useStoaServer = persistedSettings?.stoaServerEnabled === true || process.env.STOA_USE_SERVER === 'true'
-
-  if (useStoaServer) {
-    try {
-      const stoaDir = join(homedir(), '.stoa')
-      const srConfig: StoaServerConfig = {
-        portRange: [3270, 3280],
-        stoaDir,
-        authToken: ''
+  const stoaDir = process.env.VIBECODING_STATE_DIR
+    ? join(process.env.VIBECODING_STATE_DIR, '.stoa-server')
+    : join(homedir(), '.stoa')
+  const srConfig: StoaServerConfig = {
+    portRange: [3270, 3280],
+    stoaDir,
+    authToken: ''
+  }
+  const srDeps: SpawnerDeps = {
+    getResourcesPath: () => process.resourcesPath,
+    isPackaged: app.isPackaged,
+    getAppRootPath: () => process.cwd(),
+    getNodeExecPath: () => process.env.npm_node_execpath ?? 'node',
+    createRuntimeClient(port: number, authToken: string): StoaRuntimeClient | null {
+      if (!ptyHost || !runtimeController) {
+        throw new Error('Runtime dependencies are unavailable during Stoa Server bootstrap')
       }
-      const srDeps: SpawnerDeps = {
-        getResourcesPath: () => process.resourcesPath,
-        isPackaged: app.isPackaged,
-        getAppRootPath: () => app.getAppPath(),
-        createRuntimeClient(port: number, authToken: string): StoaRuntimeClient | null {
-          return null // Will be wired in Phase 5+ when runtime bridge is fully integrated
+
+      stoaRuntimeClient = new StoaRuntimeClient({
+        serverUrl: `ws://127.0.0.1:${port}`,
+        authToken
+      }, {
+        ptyHost,
+        appendTerminalData: async (chunk) => {
+          await runtimeController?.appendTerminalData(chunk)
+        },
+        getTerminalReplay: async (sessionId) => {
+          return await runtimeController?.getTerminalReplay(sessionId) ?? ''
+        },
+        launchSession: async (sessionId, options) => {
+          if (options?.projectId && options.cwd && options.type) {
+            return await launchSrOwnedSessionRuntime(sessionId, options)
+          }
+          return await launchSessionRuntimeWithGuard(sessionId, 'session-restart', {
+            initialDimensions: options?.initialDimensions
+          })
+        },
+        createChildSession: async (payload) => {
+          const created = await createWorkSessionWithRuntime({
+            projectId: payload.projectId ?? '',
+            parentSessionId: payload.parentId,
+            createdBySessionId: payload.parentId,
+            type: payload.type as CreateSessionRequest['type'],
+            title: payload.title ?? '',
+            subagentName: payload.subagentName ?? null,
+            externalSessionId: payload.externalSessionId ?? null,
+            initialCols: payload.initialCols,
+            initialRows: payload.initialRows
+          }, {
+            graphOrigin: 'session',
+            initiatorSessionId: payload.parentId,
+            preserveActiveSession: true
+          })
+
+          if (!created) {
+            throw new Error('Failed to create child session through runtime bridge')
+          }
+
+          return created.id
+        },
+        markRuntimeExited: async (sessionId, exitCode, summary) => {
+          await runtimeController?.markRuntimeExited(sessionId, exitCode, summary)
         }
-      }
+      })
 
-      srSpawner = new StoaServerSpawner(srConfig, srDeps)
-      const srPort = await srSpawner.spawn()
-      console.log(`[main] Stoa Server spawned on port ${srPort}`)
-      await srSpawner.waitForHealth()
-      await srSpawner.connectRuntime()
-      console.log('[main] Stoa Server fully initialized')
-    } catch (error) {
-      console.error('[main] Stoa Server initialization failed:', error)
-      // Non-fatal: existing behaviour continues without SR
+      return stoaRuntimeClient
     }
   }
+
+  srSpawner = new StoaServerSpawner(srConfig, srDeps)
+  const srPort = await srSpawner.spawn()
+  console.log(`[main] Stoa Server spawned on port ${srPort}`)
+  await srSpawner.waitForHealth()
+  await srSpawner.connectRuntime()
+  console.log('[main] Stoa Server fully initialized')
 
 
   ipcMain.handle(IPC_CHANNELS.projectBootstrap, async () => {
@@ -1776,30 +1976,8 @@ app.whenReady().then(async () => {
     }
   })
 
-  ipcMain.handle(IPC_CHANNELS.serverGetInfo, () => {
-    // Priority 1: Stoa Server spawner (when STOA_USE_SERVER=true)
-    if (srSpawner) {
-      const port = srSpawner.getPort()
-      const token = srSpawner.getAuthToken()
-      return {
-        available: true,
-        port,
-        url: `http://localhost:${port}`,
-        token
-      }
-    }
-    // Priority 2: Fall back to existing webhook/session-control server port
-    // This is always running, so the user always sees a reachable URL.
-    const fallbackPort = webhookPort
-    if (fallbackPort) {
-      return {
-        available: true,
-        port: fallbackPort,
-        url: `http://localhost:${fallbackPort}`,
-        token: ctlSecret
-      }
-    }
-    return { available: false, port: 0, url: '', token: '' }
+  ipcMain.handle(IPC_CHANNELS.serverGetInfo, async () => {
+    return await getStoaServerWebInfo(srSpawner)
   })
 
   ipcMain.handle(IPC_CHANNELS.evidenceListSessionSnapshots, async (_event, sessionId: string) => {

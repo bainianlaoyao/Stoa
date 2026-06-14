@@ -29,6 +29,7 @@ export default defineConfig({
       '**/dist/**',
       '**/release/**',
       '**/research/upstreams/**',
+      '**/e2e-web/**',
       '**/e2e-playwright/**',
       '**/tests/generated/playwright/**',
       '**/stoa-server/**'

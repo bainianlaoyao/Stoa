@@ -3,9 +3,8 @@
  * Plan section 9.4: unauthenticated by design.
  */
 import { Hono } from 'hono';
-import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { SERVER_NAME, SERVER_VERSION } from '../shared/constants';
+import { isWebClientAvailable } from '../shared/web-client-path';
 
 const startTime = Date.now();
 
@@ -39,13 +38,6 @@ export function createDiscoveryRoutes(options: DiscoveryOptions = {}): Hono {
   });
 
   return routes;
-}
-
-/**
- * Check if the web client build artifacts exist.
- */
-export function isWebClientAvailable(): boolean {
-  return existsSync(resolve(process.cwd(), 'dist/web/index.html'));
 }
 
 /**

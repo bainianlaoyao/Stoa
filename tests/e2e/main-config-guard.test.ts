@@ -16,6 +16,8 @@ const preloadPathSource = readSrc('src/main/preload-path.ts')
 const sharedTypesSource = readSrc('src/shared/index.d.ts')
 const projectSessionSource = readSrc('src/shared/project-session.ts')
 const controllerSource = readSrc('src/main/session-runtime-controller.ts')
+const desktopBootstrapSource = readSrc('src/renderer/bootstrap-electron.ts')
+const stoaServerE2eSource = readSrc('stoa-server/e2e-test.mjs')
 
 function extractObjectBlock(source: string, keyword: string): string | null {
   const idx = source.indexOf(keyword)
@@ -211,33 +213,58 @@ describe('E2E: Main Process Config Guard', () => {
       expect(ctlSecretIndex).toBeLessThan(bridgeStartIndex)
       expect(mainSource).toContain('ctlSecret')
     })
+
+    it('main process passes the repository root to the development SR spawner', () => {
+      const srDeps = extractObjectBlock(mainSource, 'const srDeps: SpawnerDeps =')
+
+      expect(srDeps, 'Could not find Stoa Server spawner deps in main/index.ts').not.toBeNull()
+      expect(srDeps!).toMatch(/getAppRootPath\s*:\s*\(\)\s*=>\s*process\.cwd\(\)/)
+      expect(srDeps!).not.toMatch(/getAppRootPath\s*:\s*\(\)\s*=>\s*app\.getAppPath\(\)/)
+    })
+
+    it('main process runs the development SR with the host Node executable', () => {
+      const srDeps = extractObjectBlock(mainSource, 'const srDeps: SpawnerDeps =')
+
+      expect(srDeps, 'Could not find Stoa Server spawner deps in main/index.ts').not.toBeNull()
+      expect(srDeps!).toMatch(/getNodeExecPath\s*:\s*\(\)\s*=>\s*process\.env\.npm_node_execpath\s*\?\?\s*'node'/)
+    })
+
+    it('standalone Stoa Server e2e uses an isolated runtime STOA_DIR', () => {
+      expect(stoaServerE2eSource).toContain('STOA_DIR')
+      expect(stoaServerE2eSource).toContain('TEST_STOA_DIR')
+      expect(stoaServerE2eSource).toContain('STOA_AUTH_TOKEN')
+      expect(stoaServerE2eSource).not.toContain('STOA_DB_PATH')
+      expect(stoaServerE2eSource).not.toMatch(/homedir\s*\(\s*\)/)
+      expect(stoaServerE2eSource).not.toMatch(/join\([^)]*['"]\.stoa['"]/)
+    })
   })
 
   describe('IPC handler registration completeness', () => {
-    it('every invoke RendererApi method has a corresponding ipcMain.handle registration', () => {
-      const rendererApiMethods = extractRendererApiMethods(projectSessionSource)
+    it('every Electron native invoke method has a corresponding ipcMain.handle registration', () => {
+      const rendererApiMethods = [
+        'getServerInfo',
+        'openWorkspace',
+        'titleGenerationFetchModels',
+        'pickFolder',
+        'pickFile',
+        'detectShell',
+        'detectProvider',
+        'detectVscode',
+        'getUpdateState',
+        'checkForUpdates',
+        'downloadUpdate',
+        'quitAndInstallUpdate',
+        'dismissUpdate',
+        'minimizeWindow',
+        'maximizeWindow',
+        'closeWindow',
+        'isWindowMaximized',
+        'fsOpenFile',
+        'shellShowItemInFolder'
+      ]
       const channelToConstant = new Map<string, string>([
-        ['getBootstrapState', 'projectBootstrap'],
-        ['createProject', 'projectCreate'],
-        ['deleteProject', 'projectDelete'],
-        ['deleteProject', 'projectDelete'],
-        ['createSession', 'sessionCreate'],
+        ['getServerInfo', 'serverGetInfo'],
         ['openWorkspace', 'workspaceOpen'],
-        ['setActiveProject', 'projectSetActive'],
-        ['setActiveSession', 'sessionSetActive'],
-        ['getSessionPresence', 'observabilityGetSessionPresence'],
-        ['getProjectObservability', 'observabilityGetProject'],
-        ['getAppObservability', 'observabilityGetApp'],
-        ['listSessionObservationEvents', 'observabilityListSessionEvents'],
-        ['getTerminalReplay', 'sessionTerminalReplay'],
-        ['sendSessionResize', 'sessionResize'],
-        ['archiveSession', 'sessionArchive'],
-        ['regenerateSessionTitle', 'sessionRegenerateTitle'],
-        ['restoreSession', 'sessionRestore'],
-        ['restartSession', 'sessionRestart'],
-        ['listArchivedSessions', 'sessionListArchived'],
-        ['getSettings', 'settingsGet'],
-        ['setSetting', 'settingsSet'],
         ['titleGenerationFetchModels', 'titleGenerationFetchModels'],
         ['pickFolder', 'dialogPickFolder'],
         ['pickFile', 'dialogPickFile'],
@@ -249,10 +276,12 @@ describe('E2E: Main Process Config Guard', () => {
         ['downloadUpdate', 'updateDownload'],
         ['quitAndInstallUpdate', 'updateQuitAndInstall'],
         ['dismissUpdate', 'updateDismiss'],
-        ['uninstallSidecars', 'sidecarUninstall'],
-        ['listSessionEvidence', 'evidenceListSessionSnapshots'],
-        ['contextExportFullText', 'contextExportFullText'],
-        ['contextExportSlimText', 'contextExportSlimText']
+        ['minimizeWindow', 'windowMinimize'],
+        ['maximizeWindow', 'windowMaximize'],
+        ['closeWindow', 'windowClose'],
+        ['isWindowMaximized', 'windowIsMaximized'],
+        ['fsOpenFile', 'fsOpenFile'],
+        ['shellShowItemInFolder', 'shellShowItemInFolder']
       ])
 
       for (const method of rendererApiMethods) {
@@ -264,23 +293,6 @@ describe('E2E: Main Process Config Guard', () => {
         expect(
           mainSource,
           `Missing ipcMain.handle(IPC_CHANNELS.${constantName}) for method "${method}"`
-        ).toMatch(pattern)
-      }
-    })
-
-    it('send-only RendererApi methods have a corresponding ipcMain.on registration', () => {
-      const sendMethods = new Map<string, string>([
-        ['sendSessionInput', 'sessionInput'],
-        ['sendSessionBinaryInput', 'sessionBinaryInput']
-      ])
-
-      for (const [method, constantName] of sendMethods) {
-        const pattern = new RegExp(
-          `ipcMain\\.on\\(\\s*IPC_CHANNELS\\.${constantName}\\b`
-        )
-        expect(
-          mainSource,
-          `Missing ipcMain.on(IPC_CHANNELS.${constantName}) for send-only method "${method}"`
         ).toMatch(pattern)
       }
     })
@@ -366,74 +378,27 @@ describe('E2E: Main Process Config Guard', () => {
   })
 
   describe('Preload type contract completeness', () => {
-    it('preload api object implements all current invoke RendererApi methods', () => {
+    it('preload api object implements all Electron native invoke methods', () => {
       const knownInvokeMethods = [
-        'getBootstrapState',
-        'createProject',
-        'deleteProject',
-        'createSession',
+        'getServerInfo',
         'openWorkspace',
-        'setActiveProject',
-        'setActiveSession',
-        'getSessionPresence',
-        'getProjectObservability',
-        'getAppObservability',
-        'listSessionObservationEvents',
-        'getTerminalReplay',
-        'sendSessionResize',
-        'getSettings',
-        'setSetting',
         'titleGenerationFetchModels',
         'pickFolder',
         'pickFile',
         'detectShell',
         'detectProvider',
         'detectVscode',
-        'archiveSession',
-        'regenerateSessionTitle',
-        'restoreSession',
-        'restartSession',
-        'listArchivedSessions',
         'getUpdateState',
         'checkForUpdates',
         'downloadUpdate',
         'quitAndInstallUpdate',
         'dismissUpdate',
-        'uninstallSidecars',
-        'listSessionEvidence',
-        'contextExportFullText',
-        'contextExportSlimText',
         'minimizeWindow',
         'maximizeWindow',
         'closeWindow',
         'isWindowMaximized',
-        'getSidebarState',
-        'setSidebarState',
-        'fsReadDir',
-        'fsReadFile',
-        'fsWriteFile',
-        'fsCreate',
-        'fsRename',
-        'fsDelete',
-        'fsSearch',
         'fsOpenFile',
-        'gitStatus',
-        'gitStage',
-        'gitUnstage',
-        'gitDiscard',
-        'gitCommit',
-        'gitPush',
-        'gitPull',
-        'gitFetch',
-        'gitRebase',
-        'gitMerge',
-        'gitBranches',
-        'gitLog',
-        'gitDiff',
-        'gitCheckout',
-        'gitCreateBranch',
         'shellShowItemInFolder',
-        'getServerInfo',
       ]
 
       for (const method of knownInvokeMethods) {
@@ -448,20 +413,20 @@ describe('E2E: Main Process Config Guard', () => {
         methodCount,
         `Expected exactly ${knownInvokeMethods.length} invoke methods in preload api`
       ).toHaveLength(knownInvokeMethods.length)
-    })
 
-    it('preload api object implements send-only RendererApi methods', () => {
-      const knownSendMethods = ['sendSessionInput', 'sendSessionBinaryInput']
+      const stoaRuntimeAdapterMethods = [
+        'archiveSession',
+        'regenerateSessionTitle',
+        'restoreSession',
+        'restartSession',
+        'listArchivedSessions',
+      ]
 
-      for (const method of knownSendMethods) {
+      for (const method of stoaRuntimeAdapterMethods) {
         expect(
           preloadSource,
-          `Preload is missing send method "${method}"`
-        ).toMatch(new RegExp(`${method}\\s*\\(.*\\)\\s*\\{`))
-        expect(
-          preloadSource,
-          `Send method "${method}" should use ipcRenderer.send`
-        ).toMatch(new RegExp(`ipcRenderer\\.send\\(\\s*IPC_CHANNELS\\.\\w+`))
+          `Preload must not expose SR adapter method "${method}"`
+        ).not.toMatch(new RegExp(`async\\s+${method}\\s*\\(`))
       }
     })
 
@@ -472,52 +437,31 @@ describe('E2E: Main Process Config Guard', () => {
         invocations.map(({ method, channel }) => [method, resolveChannelReference(channel, constants)])
       )
 
-      expect(invMap.get('getBootstrapState')).toBe('project:bootstrap')
-      expect(invMap.get('createProject')).toBe('project:create')
-      expect(invMap.get('deleteProject')).toBe('project:delete')
-      expect(invMap.get('createSession')).toBe('session:create')
-      expect(invMap.get('deleteProject')).toBe('project:delete')
+      expect(invMap.get('getServerInfo')).toBe('server:get-info')
       expect(invMap.get('openWorkspace')).toBe('workspace:open')
-      expect(invMap.get('setActiveProject')).toBe('project:set-active')
-      expect(invMap.get('setActiveSession')).toBe('session:set-active')
-      expect(invMap.get('getSessionPresence')).toBe('observability:get-session-presence')
-      expect(invMap.get('getProjectObservability')).toBe('observability:get-project-observability')
-      expect(invMap.get('getAppObservability')).toBe('observability:get-app-observability')
-      expect(invMap.get('listSessionObservationEvents')).toBe('observability:list-session-events')
-      expect(invMap.get('getTerminalReplay')).toBe('session:terminal-replay')
-      expect(invMap.get('sendSessionResize')).toBe('session:resize')
-      expect(invMap.get('getSettings')).toBe('settings:get')
-      expect(invMap.get('setSetting')).toBe('settings:set')
       expect(invMap.get('titleGenerationFetchModels')).toBe('settings:title-generation-fetch-models')
       expect(invMap.get('pickFolder')).toBe('dialog:pick-folder')
       expect(invMap.get('pickFile')).toBe('dialog:pick-file')
       expect(invMap.get('detectShell')).toBe('settings:detect-shell')
       expect(invMap.get('detectProvider')).toBe('settings:detect-provider')
       expect(invMap.get('detectVscode')).toBe('settings:detect-vscode')
-      expect(invMap.get('archiveSession')).toBe('session:archive')
-      expect(invMap.get('regenerateSessionTitle')).toBe('session:regenerate-title')
-      expect(invMap.get('restoreSession')).toBe('session:restore')
-      expect(invMap.get('restartSession')).toBe('session:restart')
-      expect(invMap.get('listArchivedSessions')).toBe('session:list-archived')
       expect(invMap.get('getUpdateState')).toBe('update:get-state')
       expect(invMap.get('checkForUpdates')).toBe('update:check')
       expect(invMap.get('downloadUpdate')).toBe('update:download')
       expect(invMap.get('quitAndInstallUpdate')).toBe('update:quit-and-install')
       expect(invMap.get('dismissUpdate')).toBe('update:dismiss')
-      expect(invMap.get('uninstallSidecars')).toBe('sidecar:uninstall')
-      expect(invMap.get('listSessionEvidence')).toBe('evidence:list-session-snapshots')
-      expect(invMap.get('contextExportFullText')).toBe('context:export-full-text')
-      expect(invMap.get('contextExportSlimText')).toBe('context:export-slim-text')
-    })
-
-    it('preload send-only methods use correct channel names', () => {
-      expect(preloadSource).toMatch(/sendSessionInput[\s\S]*ipcRenderer\.send\(\s*IPC_CHANNELS\.sessionInput/)
-      expect(preloadSource).toMatch(/sendSessionBinaryInput[\s\S]*ipcRenderer\.send\(\s*IPC_CHANNELS\.sessionBinaryInput/)
+      expect(invMap.get('minimizeWindow')).toBe('window:minimize')
+      expect(invMap.get('maximizeWindow')).toBe('window:maximize')
+      expect(invMap.get('closeWindow')).toBe('window:close')
+      expect(invMap.get('isWindowMaximized')).toBe('window:is-maximized')
+      expect(invMap.get('fsOpenFile')).toBe('fs:open-file')
+      expect(invMap.get('shellShowItemInFolder')).toBe('shell:show-item-in-folder')
     })
 
     it('window.stoa type declaration exists in shared/index.d.ts', () => {
       expect(sharedTypesSource).toMatch(/stoa/)
       expect(sharedTypesSource).toMatch(/RendererApi/)
+      expect(sharedTypesSource).toMatch(/stoaElectron/)
       expect(sharedTypesSource).toMatch(/declare\s+global/)
     })
 
@@ -578,31 +522,13 @@ describe('E2E: Main Process Config Guard', () => {
   })
 
   describe('Push channel registration', () => {
-    it('preload registers listener for terminal:data channel', () => {
-      expect(preloadSource).toMatch(/ipcRenderer\.on\(\s*IPC_CHANNELS\.terminalData/)
-    })
-
-    it('preload registers listener for observability push channels', () => {
-      expect(preloadSource).toMatch(/ipcRenderer\.on\(\s*IPC_CHANNELS\.observabilitySessionPresenceChanged/)
-      expect(preloadSource).toMatch(/ipcRenderer\.on\(\s*IPC_CHANNELS\.observabilityProjectChanged/)
-      expect(preloadSource).toMatch(/ipcRenderer\.on\(\s*IPC_CHANNELS\.observabilityAppChanged/)
-    })
-
-    it('preload registers listener for update:state channel', () => {
-      expect(preloadSource).toMatch(/ipcRenderer\.on\(\s*IPC_CHANNELS\.updateState/)
-    })
-
-    it('preload registers listener for session:graph-event channel', () => {
-      expect(preloadSource).toMatch(/ipcRenderer\.on\(\s*IPC_CHANNELS\.sessionGraphEvent/)
-      expect(preloadSource).not.toMatch(/ipcRenderer\.on\(\s*IPC_CHANNELS\.metaSessionEvent/)
-    })
-
-    it('preload registers listener for memory:notification channel', () => {
-      expect(preloadSource).toMatch(/ipcRenderer\.on\(\s*IPC_CHANNELS\.memoryNotification/)
-    })
-
-    it('preload registers listener for title-generation:notification channel', () => {
-      expect(preloadSource).toMatch(/ipcRenderer\.on\(\s*IPC_CHANNELS\.titleGenerationNotification/)
+    it('desktop renderer bootstrap composes window.stoa from SR adapter plus native preload bridge', () => {
+      expect(desktopBootstrapSource).toMatch(/window\.stoaElectron/)
+      expect(desktopBootstrapSource).toMatch(/window\.stoaElectron is missing/)
+      expect(desktopBootstrapSource).toMatch(/Stoa Server is unavailable/)
+      expect(desktopBootstrapSource).toMatch(/new StoaClientPreloadAdapter/)
+      expect(desktopBootstrapSource).toMatch(/Object\.assign\(adapter,\s*nativeBridge\)/)
+      expect(desktopBootstrapSource).toMatch(/window\.stoa = adapter/)
     })
 
     it('main process uses webContents.send for update state', () => {

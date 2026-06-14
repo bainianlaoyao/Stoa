@@ -9,7 +9,9 @@
   "main": "out/main/index.cjs",
   "scripts": {
     "dev": "electron-vite dev",
-    "build": "electron-vite build && node scripts/build-stoa-ctl.mjs",
+    "build": "pnpm run build:web && electron-vite build && node scripts/build-stoa-ctl.mjs",
+    "build:web": "vite build --config vite.web.config.ts",
+    "build:stoa-server": "pnpm --filter stoa-server run build",
     "promo": "tsx --tsconfig tsconfig.node.json tools/promo/index.ts",
     "build:entire-bridge": "node scripts/build-entire-bridge.mjs --build",
     "test:entire-bridge": "node scripts/build-entire-bridge.mjs --test",
@@ -31,10 +33,14 @@
     "typecheck": "vue-tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.node.json",
     "test": "vitest run",
     "test:generate": "tsx --tsconfig tsconfig.node.json testing/generators/write-generated-playwright.ts",
-    "test:e2e": "npm run build && playwright test",
+    "test:e2e": "npm run build && npm run build:stoa-server && playwright test",
+    "test:e2e:all": "npm run build && npm run build:stoa-server && playwright test",
+    "test:e2e:electron": "npm run build && playwright test --project=electron",
+    "test:e2e:web": "npm run build && npm run build:stoa-server && playwright test --project=web",
     "test:behavior-coverage": "vitest run testing/generators/behavior-coverage.test.ts",
     "test:all": "npm run test:generate && npm run test && npm run test:e2e && npm run test:behavior-coverage",
     "test:watch": "vitest",
+    "playwright:install": "playwright install chromium",
     "ci:local": "pnpm run test:generate && pnpm run typecheck && pnpm vitest run && pnpm run test:e2e && pnpm run test:behavior-coverage && pnpm run build && pnpm run package && pnpm run verify:packaging && pnpm run verify:release-smoke"
   },
   "dependencies": {

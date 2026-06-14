@@ -25,16 +25,16 @@ import type { StoaRuntimeClient } from './stoa-runtime-client'
 const mockFork = vi.fn()
 vi.mock('node:child_process', () => {
   return {
-    default: { fork: (...args: unknown[]) => mockFork(...args) },
-    fork: (...args: unknown[]) => mockFork(...args)
+    default: { fork: mockFork },
+    fork: mockFork
   }
 })
 
 const mockRandomBytes = vi.fn(() => Buffer.from('a'.repeat(64)))
 vi.mock('node:crypto', () => {
   return {
-    default: { randomBytes: (...args: unknown[]) => mockRandomBytes(...args) },
-    randomBytes: (...args: unknown[]) => mockRandomBytes(...args)
+    default: { randomBytes: mockRandomBytes },
+    randomBytes: mockRandomBytes
   }
 })
 
@@ -152,17 +152,20 @@ function createDeps(overrides: Partial<{
   getResourcesPath: () => string
   isPackaged: boolean
   getAppRootPath: () => string
+  getNodeExecPath: () => string
   createRuntimeClient: (port: number, authToken: string) => StoaRuntimeClient | null
 }> = {}): {
   getResourcesPath: () => string
   isPackaged: boolean
   getAppRootPath: () => string
+  getNodeExecPath: () => string
   createRuntimeClient: (port: number, authToken: string) => StoaRuntimeClient | null
 } {
   return {
     getResourcesPath: overrides.getResourcesPath ?? (() => '/resources'),
     isPackaged: overrides.isPackaged ?? false,
     getAppRootPath: overrides.getAppRootPath ?? (() => '/app/root'),
+    getNodeExecPath: overrides.getNodeExecPath ?? (() => '/node/bin/node'),
     createRuntimeClient:
       overrides.createRuntimeClient ?? (() => createFakeRuntimeClient())
   }
@@ -377,9 +380,13 @@ describe('StoaServerSpawner - spawn()', () => {
     await spawner.spawn()
     expect(mockFork).toHaveBeenCalledWith(
       join('/usr/resources', 'stoa-server', 'index.cjs'),
-      ['--port', '5000'],
-      expect.objectContaining({ stdio: 'pipe' })
+      ['--port', '5000', '--web'],
+      expect.objectContaining({
+        stdio: 'pipe',
+        env: expect.objectContaining({ STOA_AUTH_TOKEN: 'tok', STOA_DIR: stoaDir })
+      })
     )
+    expect(mockFork.mock.calls[0][2]).not.toHaveProperty('execPath')
   })
 
   it('uses app root path entry point in development mode', async () => {
@@ -397,8 +404,12 @@ describe('StoaServerSpawner - spawn()', () => {
     await spawner.spawn()
     expect(mockFork).toHaveBeenCalledWith(
       join('/app', 'stoa-server', 'dist', 'index.cjs'),
-      ['--port', '5100'],
-      expect.objectContaining({ stdio: 'pipe' })
+      ['--port', '5100', '--web'],
+      expect.objectContaining({
+        stdio: 'pipe',
+        execPath: '/node/bin/node',
+        env: expect.objectContaining({ STOA_AUTH_TOKEN: 'tok', STOA_DIR: stoaDir })
+      })
     )
   })
 
@@ -549,7 +560,7 @@ describe('StoaServerSpawner - connectRuntime()', () => {
     expect(runtimeClient.connect).toHaveBeenCalledOnce()
   })
 
-  it('skips connection when createRuntimeClient returns null', async () => {
+  it('throws when createRuntimeClient returns null because SR runtime is mandatory', async () => {
     const stoaDir = createTempStoaDir()
     const createRuntimeClient = vi.fn().mockReturnValue(null)
     const { StoaServerSpawner } = await import('./stoa-server-spawner')
@@ -563,7 +574,9 @@ describe('StoaServerSpawner - connectRuntime()', () => {
     mockFork.mockReturnValueOnce(childProcess)
     await spawner.spawn()
 
-    await expect(spawner.connectRuntime()).resolves.toBeUndefined()
+    await expect(spawner.connectRuntime()).rejects.toThrow(
+      'No runtime client provided for Stoa Server runtime bridge'
+    )
     expect(createRuntimeClient).toHaveBeenCalledOnce()
   })
 })
@@ -657,16 +670,19 @@ describe('StoaServerSpawner - shutdown()', () => {
 describe('StoaServerSpawner - crash handling', () => {
   it('schedules a restart with a new port when the child crashes', async () => {
     const stoaDir = createTempStoaDir()
+    const runtimeClient = createFakeRuntimeClient()
     const { StoaServerSpawner } = await import('./stoa-server-spawner')
     const spawner = new StoaServerSpawner(
       { portRange: [9000, 9005], stoaDir, authToken: 'tok' },
-      createDeps({ createRuntimeClient: () => null })
+      createDeps({ createRuntimeClient: () => runtimeClient })
     )
 
     // Initial spawn picks port 9000
     portAvailability.set(9000, true)
     const { process: childProcess } = createMockChildProcess()
+    const { process: restartedChildProcess } = createMockChildProcess()
     mockFork.mockReturnValueOnce(childProcess)
+    mockFork.mockReturnValueOnce(restartedChildProcess)
 
     await spawner.spawn()
 
@@ -703,7 +719,8 @@ describe('StoaServerSpawner - crash handling', () => {
     expect(mockFork.mock.calls.length).toBeGreaterThanOrEqual(2)
     const secondCall = mockFork.mock.calls[1]
     expect(secondCall[0]).toBe(join('/app/root', 'stoa-server', 'dist', 'index.cjs'))
-    expect(secondCall[1]).toEqual(['--port', '9001'])
+    expect(secondCall[1]).toEqual(['--port', '9001', '--web'])
+    expect(runtimeClient.connect).toHaveBeenCalledOnce()
   })
 
   it('does not schedule a restart on a clean (code=0) exit', async () => {
@@ -723,6 +740,43 @@ describe('StoaServerSpawner - crash handling', () => {
     childProcess.emit('exit', 0, null)
     // No second fork should be queued
     expect(mockFork).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not restart again when the restarted process crashes', async () => {
+    const stoaDir = createTempStoaDir()
+    const { StoaServerSpawner } = await import('./stoa-server-spawner')
+    const spawner = new StoaServerSpawner(
+      { portRange: [9300, 9305], stoaDir, authToken: 'tok' },
+      createDeps()
+    )
+
+    portAvailability.set(9300, true)
+    portAvailability.set(9301, true)
+    const { process: childProcess } = createMockChildProcess()
+    const { process: restartedChildProcess } = createMockChildProcess()
+    mockFork.mockReturnValueOnce(childProcess)
+    mockFork.mockReturnValueOnce(restartedChildProcess)
+    mockFetch.mockResolvedValue({ ok: true } as unknown as Response)
+
+    await spawner.spawn()
+
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      childProcess.emit('exit', 1, null)
+      for (let i = 0; i < 50; i++) {
+        await vi.advanceTimersByTimeAsync(100)
+      }
+      expect(mockFork).toHaveBeenCalledTimes(2)
+
+      restartedChildProcess.emit('exit', 1, null)
+      for (let i = 0; i < 50; i++) {
+        await vi.advanceTimersByTimeAsync(100)
+      }
+    } finally {
+      vi.useRealTimers()
+    }
+
+    expect(mockFork).toHaveBeenCalledTimes(2)
   })
 
   it('does not restart after shutdown() was called', async () => {

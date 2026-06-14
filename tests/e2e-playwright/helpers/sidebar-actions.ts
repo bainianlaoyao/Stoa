@@ -44,22 +44,35 @@ export function getFileRow(page: Page, relativePath: string): Locator {
   return page.locator(`[data-testid="file-row-${relativePath}"]`)
 }
 
-export async function expandFolder(page: Page, folderName: string): Promise<void> {
-  // Find a visible file row whose text matches the folder name
+async function findVisibleFolderRow(page: Page, folderName: string): Promise<Locator> {
   const rows = page.locator('[data-testid^="file-row-"]')
   const count = await rows.count()
   for (let i = 0; i < count; i++) {
-    const text = await rows.nth(i).textContent()
+    const row = rows.nth(i)
+    const text = await row.textContent()
     if (text?.trim() === folderName) {
-      await rows.nth(i).click()
-      return
+      return row
     }
   }
   throw new Error(`Folder "${folderName}" not found in file explorer`)
 }
 
+export async function expandFolder(page: Page, folderName: string): Promise<void> {
+  const rows = page.locator('[data-testid^="file-row-"]')
+  const beforeCount = await rows.count()
+  const row = await findVisibleFolderRow(page, folderName)
+
+  await row.click()
+  await expect.poll(() => rows.count(), { timeout: 5000 }).toBeGreaterThan(beforeCount)
+}
+
 export async function collapseFolder(page: Page, folderName: string): Promise<void> {
-  await expandFolder(page, folderName) // clicking an expanded folder collapses it
+  const rows = page.locator('[data-testid^="file-row-"]')
+  const beforeCount = await rows.count()
+  const row = await findVisibleFolderRow(page, folderName)
+
+  await row.click()
+  await expect.poll(() => rows.count(), { timeout: 5000 }).toBeLessThan(beforeCount)
 }
 
 export async function createFileViaToolbar(page: Page, name: string): Promise<void> {

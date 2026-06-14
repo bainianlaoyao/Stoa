@@ -20,8 +20,18 @@ export function createAuthMiddleware(
   token: string = process.env.STOA_AUTH_TOKEN ?? 'stoa-dev-token',
 ): MiddlewareHandler {
   return async (c, next) => {
-    // Skip auth for discovery endpoint (plan section 9.4)
-    if (c.req.path === '/api/v1/discovery' || c.req.path === '/api/v1/discovery/') {
+    const path = c.req.path
+
+    // Skip auth for public routes and the web SPA shell/assets.
+    if (
+      path === '/api/v1/discovery'
+      || path === '/api/v1/discovery/'
+      || path === '/events'
+      || path === '/memory-notifications'
+      || path.startsWith('/hooks/')
+      || path === '/'
+      || path.startsWith('/assets/')
+    ) {
       return next();
     }
 

@@ -231,9 +231,6 @@ function normalizeAppSettings(settings?: Partial<AppSettings>): AppSettings {
     stoaCtlEnabled: typeof settings.stoaCtlEnabled === 'boolean'
       ? settings.stoaCtlEnabled
       : defaults.stoaCtlEnabled,
-    stoaServerEnabled: typeof settings.stoaServerEnabled === 'boolean'
-      ? settings.stoaServerEnabled
-      : defaults.stoaServerEnabled,
     locale: typeof settings.locale === 'string' ? settings.locale : defaults.locale,
     theme: settings.theme === 'light' || settings.theme === 'dark' || settings.theme === 'system'
       ? settings.theme
@@ -354,6 +351,16 @@ export class ProjectSessionManager extends EventEmitter {
 
   snapshot(): BootstrapState {
     return structuredCloneState(this.state)
+  }
+
+  async replaceShadowState(state: BootstrapState, settings?: AppSettings): Promise<void> {
+    const nextSettings = settings ? normalizeAppSettings(settings) : this.settings
+    this.state = structuredCloneState({
+      ...state,
+      terminalWebhookPort: this.state.terminalWebhookPort
+    })
+    this.settings = { ...nextSettings }
+    await this.persist()
   }
 
   async flush(): Promise<void> {
@@ -679,8 +686,6 @@ export class ProjectSessionManager extends EventEmitter {
       this.settings.claudeDangerouslySkipPermissions = value
     } else if (key === 'stoaCtlEnabled' && typeof value === 'boolean') {
       this.settings.stoaCtlEnabled = value
-    } else if (key === 'stoaServerEnabled' && typeof value === 'boolean') {
-      this.settings.stoaServerEnabled = value
     } else if (key === 'locale' && typeof value === 'string') {
       this.settings.locale = value
     } else if (key === 'theme' && (value === 'light' || value === 'dark' || value === 'system')) {

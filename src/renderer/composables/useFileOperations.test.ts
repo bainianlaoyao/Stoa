@@ -1,10 +1,22 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { computed, nextTick, ref } from 'vue'
+import { computed } from 'vue'
 
 const mockFsCreate = vi.fn()
 const mockFsRename = vi.fn()
 const mockFsDelete = vi.fn()
+const mockClientPost = vi.fn()
+const mockClientDelete = vi.fn()
+
+vi.mock('@renderer/stores/stoa-store-plugin', async () => {
+  const actual = await vi.importActual<typeof import('@renderer/stores/stoa-store-plugin')>('@renderer/stores/stoa-store-plugin')
+  return {
+    ...actual,
+    isStoaClientMode: vi.fn(() => false),
+    getStoaClient: vi.fn(() => null),
+    requireRendererApi: vi.fn(() => window.stoa),
+  }
+})
 
 function mockWindowStoa(): void {
   ;(window as any).stoa = {
@@ -25,6 +37,8 @@ describe('useFileOperations', () => {
     mockFsCreate.mockReset().mockResolvedValue(undefined)
     mockFsRename.mockReset().mockResolvedValue(undefined)
     mockFsDelete.mockReset().mockResolvedValue(undefined)
+    mockClientPost.mockReset().mockResolvedValue(undefined)
+    mockClientDelete.mockReset().mockResolvedValue(undefined)
     mockWindowStoa()
 
     const mod = await import('@renderer/composables/useFileOperations')
@@ -235,5 +249,28 @@ describe('useFileOperations', () => {
       isDirectory: false,
     })
     expect(invalidatePath).toHaveBeenCalledWith('/project')
+  })
+
+  it('commitInput prefers StoaClient in client mode', async () => {
+    const plugin = await import('@renderer/stores/stoa-store-plugin')
+    vi.mocked(plugin.isStoaClientMode).mockReturnValue(true)
+    vi.mocked(plugin.getStoaClient).mockReturnValue({
+      post: mockClientPost,
+      delete: mockClientDelete
+    } as never)
+
+    const projectPath = computed(() => '/project')
+    const invalidatePath = vi.fn()
+    const { startCreateFile, commitInput } = useFileOperations(projectPath, invalidatePath)
+
+    startCreateFile('/project/src', 1)
+    await commitInput('web-file.ts')
+
+    expect(mockClientPost).toHaveBeenCalledWith('/api/v1/fs/entry', {
+      projectPath: '/project',
+      relativePath: 'src/web-file.ts',
+      isDirectory: false,
+    })
+    expect(mockFsCreate).not.toHaveBeenCalled()
   })
 })

@@ -43,6 +43,8 @@ interface SessionEventBridgeOptions {
   nowIso?: () => string
   evidenceStore?: EvidenceStoreLike
   transcriptSnapshotter?: (event: CanonicalSessionEvent) => Promise<Awaited<ReturnType<typeof createTranscriptSnapshot>>>
+  mirrorCanonicalEvent?: (event: CanonicalSessionEvent) => Promise<void> | void
+  proxyCanonicalEvent?: (event: CanonicalSessionEvent) => Promise<unknown> | unknown
   onMemoryNotification?: (event: MemoryNotificationEvent) => void
   turnMaintenanceRunner?: TurnMaintenanceRunner
   createRuntimeStateStore?: (projectPath: string) => RuntimeStateStoreLike
@@ -74,6 +76,8 @@ export class SessionEventBridge {
   private readonly nowIso: () => string
   private readonly evidenceStore: EvidenceStoreLike
   private readonly transcriptSnapshotter: (event: CanonicalSessionEvent) => Promise<Awaited<ReturnType<typeof createTranscriptSnapshot>>>
+  private readonly mirrorCanonicalEvent?: (event: CanonicalSessionEvent) => Promise<void> | void
+  private readonly proxyCanonicalEvent?: (event: CanonicalSessionEvent) => Promise<unknown> | unknown
   private readonly onMemoryNotification?: (event: MemoryNotificationEvent) => void
   private readonly turnMaintenanceRunner?: TurnMaintenanceRunner
   private readonly createRuntimeStateStore: (projectPath: string) => RuntimeStateStoreLike
@@ -102,6 +106,8 @@ export class SessionEventBridge {
         ?? defaultEvidenceStore.listEvidenceRefsForTurn.bind(defaultEvidenceStore)
     }
     this.transcriptSnapshotter = options.transcriptSnapshotter ?? createTranscriptSnapshot
+    this.mirrorCanonicalEvent = options.mirrorCanonicalEvent
+    this.proxyCanonicalEvent = options.proxyCanonicalEvent
     this.onMemoryNotification = options.onMemoryNotification
     this.turnMaintenanceRunner = options.turnMaintenanceRunner
     this.createRuntimeStateStore = options.createRuntimeStateStore ?? ((projectPath) => new RuntimeStateStore(projectPath))
@@ -127,6 +133,9 @@ export class SessionEventBridge {
         onEvent: async (event) => {
           return await this.enqueueSessionEvent(event)
         },
+        proxyEvent: this.proxyCanonicalEvent
+          ? async (event) => await this.proxyCanonicalEvent?.(event)
+          : undefined,
         onMemoryNotification: async (notification) => {
           this.onMemoryNotification?.({
             id: randomUUID(),
@@ -171,6 +180,7 @@ export class SessionEventBridge {
         const observationEvent = this.toObservationEvent(normalized)
         this.observability?.ingest(observationEvent)
         await this.observationTap?.captureObservation?.(observationEvent)
+        await this.mirrorCanonicalEvent?.(normalized)
         await this.controller.applyProviderStatePatch(this.toSessionStatePatch(normalized))
         await this.handleLifecycle(normalized, evidenceRef)
 
@@ -783,8 +793,9 @@ function mapIntentToObservation(intent: CanonicalSessionEvent['payload']['intent
     case 'agent.turn_failed':
       return { category: 'presence', type: 'presence.failure', severity: 'error', retention: 'critical' }
     case 'runtime.exited_clean':
-    case 'runtime.exited_failed':
       return { category: 'lifecycle', type: 'lifecycle.session_exited', severity: 'info', retention: 'operational' }
+    case 'runtime.exited_failed':
+      return { category: 'presence', type: 'presence.failure', severity: 'error', retention: 'critical' }
     case 'runtime.created':
       return { category: 'lifecycle', type: 'lifecycle.session_created', severity: 'info', retention: 'ephemeral' }
     case 'runtime.failed_to_start':

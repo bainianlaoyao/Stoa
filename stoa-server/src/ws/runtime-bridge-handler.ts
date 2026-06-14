@@ -39,6 +39,7 @@ export interface RuntimeCommand {
 
 /** Wire shape of a runtime response received provider → SR. */
 export interface RuntimeResponse {
+  type: 'runtime:response'
   replyTo: string
   ok: boolean
   data?: unknown
@@ -246,7 +247,7 @@ export class RuntimeBridgeHandler {
     sessionId: string,
     command: Omit<RuntimeCommand, 'sessionId' | 'replyTo'> & { type: RuntimeCommandType }
   ): Promise<unknown> {
-    const provider = this.getProviderForSession(sessionId)
+    const provider = this.getProviderForCommand(sessionId, command.type)
     if (!provider) {
       throw new RuntimeBridgeError(
         'no_provider',
@@ -338,7 +339,7 @@ export class RuntimeBridgeHandler {
     if (!parsed || typeof parsed !== 'object') return
     const frame = parsed as Record<string, unknown>
 
-    if (typeof frame.replyTo === 'string') {
+    if (frame.type === 'runtime:response' && typeof frame.replyTo === 'string') {
       this.handleResponse(provider, frame)
       return
     }
@@ -370,6 +371,13 @@ export class RuntimeBridgeHandler {
       }
     }
     return null
+  }
+
+  private getProviderForCommand(sessionId: string, command: RuntimeCommandType): RuntimeProvider | null {
+    const assigned = this.getProviderForSession(sessionId)
+    if (assigned) return assigned
+    if (command !== 'runtime:launch') return null
+    return this.providers.values().next().value ?? null
   }
 
   /**
@@ -441,11 +449,14 @@ export class RuntimeBridgeHandler {
 
     // Track which session this command successfully touched so future
     // commands route to the same provider.
-    if (
-      pending.command.type === 'runtime:launch'
-      || pending.command.type === 'runtime:create-child-session'
-    ) {
+    if (pending.command.type === 'runtime:launch') {
       provider.managedSessions.add(pending.command.sessionId)
+    }
+    if (pending.command.type === 'runtime:create-child-session') {
+      const childSessionId = extractChildSessionId(data)
+      if (childSessionId) {
+        provider.managedSessions.add(childSessionId)
+      }
     }
 
     pending.resolve(data)
@@ -524,4 +535,10 @@ function normalizePtyState(value: unknown): ProviderPtyState | null {
     rows,
     startedAt
   }
+}
+
+function extractChildSessionId(value: unknown): string | null {
+  if (!value || typeof value !== 'object') return null
+  const candidate = (value as { childSessionId?: unknown }).childSessionId
+  return typeof candidate === 'string' ? candidate : null
 }

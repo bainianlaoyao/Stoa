@@ -7,6 +7,7 @@ import type { ErrorHandler } from 'hono';
 import { nanoid } from 'nanoid';
 import type { ApiResponse } from '../shared/errors';
 import { AppError } from '../shared/errors';
+import { RuntimeBridgeError } from '../ws/runtime-bridge-handler';
 
 export function createErrorHandler(): ErrorHandler {
   return (err, c) => {
@@ -25,6 +26,23 @@ export function createErrorHandler(): ErrorHandler {
         meta: { requestId, timestamp },
       };
       return c.json(body, err.statusCode as 400);
+    }
+
+    if (err instanceof RuntimeBridgeError) {
+      const body: ApiResponse = {
+        ok: false,
+        error: {
+          code: 'runtime_unavailable',
+          message: err.message,
+          details: {
+            reason: err.code,
+            command: err.command,
+            sessionId: err.sessionId,
+          },
+        },
+        meta: { requestId, timestamp },
+      };
+      return c.json(body, 503);
     }
 
     // Unknown error — treat as internal server error

@@ -64,8 +64,9 @@ function mapIntentToObservation(intent: string): ObservationMapping {
     case 'agent.turn_failed':
       return { category: 'presence', type: 'presence.failure', severity: 'error', retention: 'critical' }
     case 'runtime.exited_clean':
-    case 'runtime.exited_failed':
       return { category: 'lifecycle', type: 'lifecycle.session_exited', severity: 'info', retention: 'operational' }
+    case 'runtime.exited_failed':
+      return { category: 'presence', type: 'presence.failure', severity: 'error', retention: 'critical' }
     case 'runtime.created':
       return { category: 'lifecycle', type: 'lifecycle.session_created', severity: 'info', retention: 'ephemeral' }
     case 'runtime.failed_to_start':
@@ -91,7 +92,7 @@ export class EventSequenceAllocator {
   private sequences: Map<string, number> = new Map()
 
   allocate(sessionId: string, lastKnownSequence: number): number {
-    const current = this.sequences.get(sessionId) ?? lastKnownSequence
+    const current = Math.max(this.sequences.get(sessionId) ?? 0, lastKnownSequence)
     const next = current + 1
     this.sequences.set(sessionId, next)
     return next
@@ -150,6 +151,7 @@ export class SessionEventProcessor {
   private readonly titleGenerator?: TitleGenerationTrigger
   private readonly nowIso: () => string
   private readonly sequenceAllocator: EventSequenceAllocator
+  private readonly activeTurnEpochs: Map<string, number> = new Map()
 
   /**
    * Per-session serialized event processing queue — mirrors the
@@ -259,14 +261,14 @@ export class SessionEventProcessor {
     }
 
     // 5. Broadcast observability presence update
-    const observation = mapIntentToObservation(event.payload.intent)
+    const observation = mapIntentToObservation(patch.intent)
     if (observation.category === 'presence') {
       try {
         this.wsHub.broadcast('observability:presence', {
           sessionId: event.session_id,
           projectId: event.project_id,
           phase: observation.type.split('.')[1] ?? 'unknown',
-          intent: event.payload.intent,
+          intent: patch.intent,
           timestamp: this.nowIso()
         })
       } catch (error) {
@@ -275,14 +277,14 @@ export class SessionEventProcessor {
     }
 
     // 6. Title generation on turn completion
-    if (event.payload.intent === 'agent.turn_completed' && this.titleGenerator?.onTurnCompleted) {
+    if (patch.intent === 'agent.turn_completed' && this.titleGenerator?.onTurnCompleted) {
       const promptText = event.evidence?.promptText ?? session?.titleGenerationContext?.prompt ?? null
       const assistantSnippet = event.evidence?.lastAssistantMessage ?? session?.titleGenerationContext?.assistantSnippet ?? null
       this.titleGenerator.onTurnCompleted({
         sessionId: event.session_id,
         projectId: event.project_id,
         turnEpoch: patch.turnEpoch ?? session?.turnEpoch ?? 0,
-        intent: event.payload.intent,
+        intent: patch.intent,
         summary: event.payload.summary ?? '',
         promptText: promptText ?? null,
         assistantSnippet: assistantSnippet ?? null
@@ -297,17 +299,18 @@ export class SessionEventProcessor {
    */
   private toSessionStatePatch(
     event: CanonicalSessionEvent,
-    session: { lastStateSequence: number; turnEpoch: number } | undefined
+    session: { lastStateSequence: number; turnEpoch: number; turnState?: string } | undefined
   ): SessionStatePatchEvent {
     const lastSeq = session?.lastStateSequence ?? 0
     const sequence = this.sequenceAllocator.allocate(event.session_id, lastSeq)
     const turnEpoch = this.resolveTurnEpoch(event, session)
+    const intent = this.resolveIntent(event, session, turnEpoch)
 
     return {
       sessionId: event.session_id,
       sequence,
       occurredAt: event.timestamp,
-      intent: event.payload.intent,
+      intent,
       source: 'provider',
       sourceEventType: event.event_type,
       turnEpoch,
@@ -327,18 +330,53 @@ export class SessionEventProcessor {
    */
   private resolveTurnEpoch(
     event: CanonicalSessionEvent,
-    session: { turnEpoch: number } | undefined
+    session: { turnEpoch: number; turnState?: string } | undefined
   ): number | undefined {
     const explicitEpoch = event.payload.turnEpoch
-    if (typeof explicitEpoch === 'number') return explicitEpoch
+    if (typeof explicitEpoch === 'number') {
+      this.activeTurnEpochs.set(event.session_id, explicitEpoch)
+      return explicitEpoch
+    }
 
-    // Agent events use the current session epoch; runtime events
-    // don't carry a meaningful epoch.
     if (!event.payload.intent.startsWith('agent.')) {
       return undefined
     }
 
-    return session?.turnEpoch ?? 0
+    const activeEpoch = this.activeTurnEpochs.get(event.session_id)
+    if (activeEpoch !== undefined) {
+      return activeEpoch
+    }
+
+    const currentEpoch = session?.turnEpoch ?? 0
+    if (
+      event.payload.intent === 'agent.turn_started'
+      || event.payload.intent === 'agent.tool_started'
+      || event.payload.intent === 'agent.permission_requested'
+    ) {
+      const nextEpoch = currentEpoch + 1
+      this.activeTurnEpochs.set(event.session_id, nextEpoch)
+      return nextEpoch
+    }
+
+    return currentEpoch
+  }
+
+  private resolveIntent(
+    event: CanonicalSessionEvent,
+    session: { turnState?: string } | undefined,
+    turnEpoch: number | undefined
+  ): CanonicalSessionEvent['payload']['intent'] {
+    if (event.payload.intent !== 'agent.turn_completed') {
+      return event.payload.intent
+    }
+
+    const hasActiveTurn = this.activeTurnEpochs.get(event.session_id) === turnEpoch
+    if (!hasActiveTurn && session?.turnState !== 'running') {
+      return 'agent.recovered'
+    }
+
+    this.activeTurnEpochs.delete(event.session_id)
+    return event.payload.intent
   }
 
   /**

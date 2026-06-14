@@ -3,6 +3,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { computed, nextTick } from 'vue'
 import type { DirEntry } from '@shared/sidebar-types'
 
+const mockClientGet = vi.fn()
+
+vi.mock('@renderer/stores/stoa-store-plugin', async () => {
+  const actual = await vi.importActual<typeof import('@renderer/stores/stoa-store-plugin')>('@renderer/stores/stoa-store-plugin')
+  return {
+    ...actual,
+    isStoaClientMode: vi.fn(() => false),
+    getStoaClient: vi.fn(() => null),
+    requireRendererApi: vi.fn(() => window.stoa),
+  }
+})
+
 // Mock window.stoa before importing composable
 const mockFsReadDir = vi.fn<(projectPath: string, relativePath?: string) => Promise<DirEntry[]>>()
 
@@ -28,6 +40,7 @@ describe('useFileTree', () => {
   beforeEach(async () => {
     mockFsReadDir.mockReset()
     mockFsReadDir.mockResolvedValue([])
+    mockClientGet.mockReset()
     mockWindowStoa()
 
     // Dynamic import to get fresh module
@@ -276,5 +289,27 @@ describe('useFileTree', () => {
 
     expect(flatRows.value[2].name).toBe('file.ts')
     expect(flatRows.value[2].depth).toBe(2)
+  })
+
+  it('loads directories through StoaClient in client mode', async () => {
+    const plugin = await import('@renderer/stores/stoa-store-plugin')
+    vi.mocked(plugin.isStoaClientMode).mockReturnValue(true)
+    vi.mocked(plugin.getStoaClient).mockReturnValue({
+      get: mockClientGet
+    } as never)
+
+    mockClientGet.mockResolvedValue({
+      data: [
+        dirEntry({ name: 'src', path: '/project/src', relativePath: 'src', isDirectory: true }),
+      ]
+    })
+
+    const projectPath = computed(() => '/project')
+    const { flatRows, loading } = useFileTree(projectPath)
+    await vi.waitFor(() => expect(loading.value).toBe(false))
+
+    expect(mockClientGet).toHaveBeenCalledWith('/api/v1/fs/dir?projectPath=%2Fproject')
+    expect(mockFsReadDir).not.toHaveBeenCalled()
+    expect(flatRows.value).toHaveLength(1)
   })
 })

@@ -35,6 +35,10 @@ export class LiveRuntimeBridgeClient implements RuntimeBridgeClient {
     await this.dispatch(sessionId, 'runtime:launch', {
       command: options.command ?? null,
       cwd: options.cwd ?? null,
+      projectId: options.projectId ?? null,
+      title: options.title ?? null,
+      type: options.type ?? null,
+      externalSessionId: options.externalSessionId ?? null,
       cols: options.cols ?? null,
       rows: options.rows ?? null,
       env: options.env ?? null

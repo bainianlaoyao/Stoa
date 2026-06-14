@@ -1,7 +1,6 @@
 import Database from 'better-sqlite3';
-import { readFileSync } from 'node:fs';
-import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { existsSync, readFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import * as schema from './schema';
 
@@ -29,17 +28,22 @@ export function createDb(dbPath: string) {
  * is not available, so we inline the schema creation SQL as a fallback.
  */
 function readMigrationsSql(): string {
+  const candidatePaths = [
+    resolve(process.cwd(), 'stoa-server/src/db/migrations/0000_faithful_tempest.sql'),
+    resolve(process.cwd(), 'src/db/migrations/0000_faithful_tempest.sql'),
+  ];
+
   try {
-    // ESM __dirname equivalent
-    const __dirname = dirname(fileURLToPath(import.meta.url));
-    // In dev (tsx), the file is at src/db/connection.ts
-    // After tsup build, it might be at dist/index.cjs — migrations won't be there
-    const migrationPath = join(__dirname, 'migrations', '0000_faithful_tempest.sql');
-    return readFileSync(migrationPath, 'utf-8');
+    const migrationPath = candidatePaths.find((path) => existsSync(path));
+    if (migrationPath) {
+      return readFileSync(migrationPath, 'utf-8');
+    }
   } catch {
-    // Fallback: inline the schema creation SQL
-    return INLINE_SCHEMA_SQL;
+    // Fall through to the inline schema below.
   }
+
+  // Fallback: inline the schema creation SQL
+  return INLINE_SCHEMA_SQL;
 }
 
 const INLINE_SCHEMA_SQL = `

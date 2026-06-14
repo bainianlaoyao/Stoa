@@ -261,9 +261,6 @@ function normalizeAppSettings(settings?: Partial<AppSettings>): AppSettings {
     stoaCtlEnabled: typeof settings.stoaCtlEnabled === 'boolean'
       ? settings.stoaCtlEnabled
       : defaults.stoaCtlEnabled,
-    stoaServerEnabled: typeof settings.stoaServerEnabled === 'boolean'
-      ? settings.stoaServerEnabled
-      : defaults.stoaServerEnabled,
     locale: typeof settings.locale === 'string' ? settings.locale : defaults.locale,
     theme: settings.theme === 'light' || settings.theme === 'dark' || settings.theme === 'system'
       ? settings.theme
@@ -616,7 +613,13 @@ export class ProjectSessionManager extends EventEmitter {
     this.state.activeProjectId = session.projectId
     if (session.turnState === 'idle' && session.lastTurnOutcome === 'completed' && session.hasUnseenCompletion) {
       const patch = this.createSessionStatePatch(session, 'agent.completion_seen', 'Completion seen', { source: 'ui' })
-      this.applySessionStateReductionToSession(session, patch, new Date().toISOString())
+      if (this.applySessionStateReductionToSession(session, patch, new Date().toISOString())) {
+        this.broadcastGraph({
+          kind: 'session_state_changed',
+          projectId: session.projectId,
+          sessionId: session.id
+        })
+      }
     }
     await this.persist()
   }
@@ -841,8 +844,6 @@ export class ProjectSessionManager extends EventEmitter {
       this.settings.theme = value
     } else if (key === 'stoaCtlEnabled' && typeof value === 'boolean') {
       this.settings.stoaCtlEnabled = value
-    } else if (key === 'stoaServerEnabled' && typeof value === 'boolean') {
-      this.settings.stoaServerEnabled = value
     }
     await this.persist()
     this.emit('settings:updated', this.getSettings())
@@ -1106,7 +1107,34 @@ export class ProjectSessionManager extends EventEmitter {
 
   private broadcastGraph(partial: Omit<SessionGraphWsEvent, 'graphVersion'>): void {
     this.graphVersion += 1
-    const event: SessionGraphWsEvent = { ...partial, graphVersion: this.graphVersion }
+    let event: SessionGraphWsEvent | (Omit<SessionGraphWsEvent, 'kind'> & {
+      kind: 'created' | 'updated' | 'archived' | 'restored' | 'destroyed'
+      origin: 'system'
+      initiatorSessionId: null
+      node: NonNullable<ReturnType<ProjectSessionManager['getSessionNodeSnapshot']>>
+    }) = { ...partial, graphVersion: this.graphVersion }
+    if (partial.sessionId) {
+      const node = this.getSessionNodeSnapshot(partial.sessionId)
+      if (node) {
+        const kind =
+          partial.kind === 'session_created'
+            ? 'created'
+            : partial.kind === 'session_archived'
+              ? 'archived'
+              : partial.kind === 'session_restored'
+                ? 'restored'
+                : partial.kind === 'session_destroyed'
+                  ? 'destroyed'
+                  : 'updated'
+        event = {
+          ...event,
+          kind,
+          origin: 'system',
+          initiatorSessionId: null,
+          node
+        }
+      }
+    }
     try {
       this.wsHub.broadcast('session:graph', event)
     } catch (error) {

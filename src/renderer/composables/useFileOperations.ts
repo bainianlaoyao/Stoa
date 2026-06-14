@@ -1,4 +1,5 @@
 import { ref, type Ref } from 'vue'
+import { getStoaClient, isStoaClientMode, requireRendererApi } from '@renderer/stores/stoa-store-plugin'
 
 export interface InlineInput {
   parentPath: string
@@ -10,6 +11,53 @@ export interface InlineInput {
 
 export function useFileOperations(projectPath: Ref<string | null>, invalidatePath: (dirPath: string) => void) {
   const inlineInput = ref<InlineInput | null>(null)
+
+  async function renameEntry(request: {
+    projectPath: string
+    oldRelativePath: string
+    newRelativePath: string
+  }): Promise<void> {
+    if (isStoaClientMode()) {
+      const client = getStoaClient()
+      if (client) {
+        await client.post('/api/v1/fs/rename', request)
+        return
+      }
+    }
+
+    await requireRendererApi().fsRename(request)
+  }
+
+  async function createEntry(request: {
+    projectPath: string
+    relativePath: string
+    isDirectory: boolean
+  }): Promise<void> {
+    if (isStoaClientMode()) {
+      const client = getStoaClient()
+      if (client) {
+        await client.post('/api/v1/fs/entry', request)
+        return
+      }
+    }
+
+    await requireRendererApi().fsCreate(request)
+  }
+
+  async function deleteFsEntry(request: {
+    projectPath: string
+    relativePath: string
+  }): Promise<void> {
+    if (isStoaClientMode()) {
+      const client = getStoaClient()
+      if (client) {
+        await client.delete('/api/v1/fs/entry', request)
+        return
+      }
+    }
+
+    await requireRendererApi().fsDelete(request)
+  }
 
   function startCreateFile(parentPath: string, depth: number): void {
     inlineInput.value = { parentPath, type: 'file', depth }
@@ -46,12 +94,12 @@ export function useFileOperations(projectPath: Ref<string | null>, invalidatePat
       if (input.type === 'rename' && input.existingPath) {
         const oldRel = input.existingPath.slice(projectPath.value.length + 1)
         const newRel = oldRel.slice(0, oldRel.lastIndexOf('/') + 1) + name
-        await window.stoa.fsRename({ projectPath: projectPath.value, oldRelativePath: oldRel, newRelativePath: newRel })
+        await renameEntry({ projectPath: projectPath.value, oldRelativePath: oldRel, newRelativePath: newRel })
         invalidatePath(input.parentPath || projectPath.value)
       } else {
         const parentRel = input.parentPath ? input.parentPath.slice(projectPath.value.length + 1) : ''
         const relativePath = parentRel ? `${parentRel}/${name}` : name
-        await window.stoa.fsCreate({
+        await createEntry({
           projectPath: projectPath.value,
           relativePath,
           isDirectory: input.type === 'folder',
@@ -68,7 +116,7 @@ export function useFileOperations(projectPath: Ref<string | null>, invalidatePat
 
     try {
       const relativePath = entryPath.slice(projectPath.value.length + 1)
-      await window.stoa.fsDelete({ projectPath: projectPath.value, relativePath })
+      await deleteFsEntry({ projectPath: projectPath.value, relativePath })
       invalidatePath(parentDir || projectPath.value)
     } catch {
       // Error handled silently

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import type {
   AppObservabilitySnapshot,
@@ -8,7 +8,9 @@ import type {
 } from '@shared/observability'
 import type { RendererApi, SessionGraphEvent, SessionSummary, SessionTreeMeta } from '@shared/project-session'
 import { createRendererApiMock, createSessionSummaryFixture } from '@shared/test-fixtures'
+import { resetStoaClientForStores } from '@renderer/stores/stoa-store-plugin'
 import { useWorkspaceStore } from './workspaces'
+
 
 function deferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void
@@ -187,8 +189,13 @@ function sessionSummaryFixture(patch: Partial<SessionSummary> = {}): SessionSumm
 
 describe('project/session renderer store', () => {
   beforeEach(() => {
+    resetStoaClientForStores()
     setActivePinia(createPinia())
     window.stoa = createStoaMock()
+  })
+
+  afterEach(() => {
+    resetStoaClientForStores()
   })
 
   test('hydrates explicit projects and sessions without name+path grouping', () => {
@@ -782,6 +789,66 @@ describe('project/session renderer store', () => {
       })
     })
 
+    test('ignores lightweight SR presence events so graph updates can derive row status', () => {
+      const store = useWorkspaceStore()
+      store.hydrate({
+        activeProjectId: 'project_alpha',
+        activeSessionId: 'session_codex_1',
+        terminalWebhookPort: 43127,
+        projects: [{ id: 'project_alpha', name: 'alpha', path: 'D:/alpha', createdAt: 'a', updatedAt: 'a' }],
+        sessions: [sessionSummaryFixture({
+          id: 'session_codex_1',
+          type: 'codex',
+          runtimeState: 'alive',
+          turnState: 'idle',
+          turnEpoch: 0,
+          lastStateSequence: 1,
+          title: 'Codex'
+        })]
+      })
+
+      store.applySessionPresenceSnapshot({
+        sessionId: 'session_codex_1',
+        projectId: 'project_alpha',
+        phase: 'running',
+        intent: 'agent.turn_started',
+        timestamp: '2026-06-14T00:00:00.000Z'
+      } as unknown as SessionPresenceSnapshot)
+      store.applySessionGraphEvent({
+        kind: 'updated',
+        graphVersion: 3,
+        origin: 'system',
+        initiatorSessionId: null,
+        node: {
+          session: sessionSummaryFixture({
+            id: 'session_codex_1',
+            projectId: 'project_alpha',
+            type: 'codex',
+            runtimeState: 'alive',
+            turnState: 'running',
+            turnEpoch: 1,
+            lastTurnOutcome: 'none',
+            hasUnseenCompletion: false,
+            lastStateSequence: 2,
+            title: 'Codex'
+          }),
+          tree: {
+            rootSessionId: 'session_codex_1',
+            depth: 0,
+            childCount: 0,
+            descendantCount: 0
+          }
+        }
+      })
+
+      expect(store.sessionPresenceById.session_codex_1).toMatchObject({
+        phase: 'running',
+        runtimeState: 'alive',
+        turnState: 'running',
+        sourceSequence: 2
+      })
+    })
+
     test('does not let equal sourceSequence fallback overwrite backend snapshot', async () => {
       const backendPresence = sessionPresenceFixture({
         phase: 'blocked',
@@ -827,7 +894,7 @@ describe('project/session renderer store', () => {
       expect(store.sessionPresenceById.session_op_1).toEqual(backendPresence)
     })
 
-    test('updates active complete session to ready after backend completion_seen patch', async () => {
+    test('keeps active complete session visible until backend completion_seen patch arrives', async () => {
       let sessionListener: ((snapshot: SessionPresenceSnapshot) => void) | undefined
 
       window.stoa = createStoaMock({
@@ -880,6 +947,71 @@ describe('project/session renderer store', () => {
       sessionListener?.(readyPresence)
 
       expect(store.activeSessionPresence).toEqual(readyPresence)
+    })
+
+    test('applies same-sequence backend failure presence over locally ready completion state', async () => {
+      let sessionListener: ((snapshot: SessionPresenceSnapshot) => void) | undefined
+
+      window.stoa = createStoaMock({
+        getSessionPresence: vi.fn().mockResolvedValue(sessionPresenceFixture({
+          sessionId: 'session_claude_failure',
+          projectId: 'project_alpha',
+          phase: 'complete',
+          runtimeState: 'alive',
+          turnState: 'idle',
+          turnEpoch: 1,
+          lastTurnOutcome: 'completed',
+          hasUnseenCompletion: true,
+          sourceSequence: 13,
+          updatedAt: '2026-04-24T08:00:00.000Z'
+        })),
+        onSessionPresenceChanged: vi.fn().mockImplementation((callback: (snapshot: SessionPresenceSnapshot) => void) => {
+          sessionListener = callback
+          return () => {}
+        })
+      })
+
+      const store = useWorkspaceStore()
+      store.hydrate({
+        activeProjectId: 'project_alpha',
+        activeSessionId: 'session_claude_failure',
+        terminalWebhookPort: 43127,
+        projects: [{ id: 'project_alpha', name: 'alpha', path: 'D:/alpha', createdAt: 'a', updatedAt: 'a' }],
+        sessions: [sessionSummaryFixture({
+          id: 'session_claude_failure',
+          projectId: 'project_alpha',
+          type: 'claude-code',
+          runtimeState: 'alive',
+          turnState: 'idle',
+          turnEpoch: 1,
+          lastTurnOutcome: 'completed',
+          hasUnseenCompletion: true,
+          lastStateSequence: 13,
+          title: 'Claude failure'
+        })]
+      })
+
+      await store.hydrateObservability()
+
+      const failurePresence = sessionPresenceFixture({
+        sessionId: 'session_claude_failure',
+        projectId: 'project_alpha',
+        phase: 'failure',
+        runtimeState: 'exited',
+        turnState: 'idle',
+        turnEpoch: 1,
+        lastTurnOutcome: 'completed',
+        hasUnseenCompletion: false,
+        runtimeExitCode: 42,
+        runtimeExitReason: 'failed',
+        failureReason: 'runtime_crash',
+        health: 'lost',
+        sourceSequence: 13,
+        updatedAt: '2026-04-24T08:00:00.000Z'
+      })
+      sessionListener?.(failurePresence)
+
+      expect(store.activeSessionPresence).toEqual(failurePresence)
     })
 
     test('keeps Claude alive unknown ready instead of running', () => {

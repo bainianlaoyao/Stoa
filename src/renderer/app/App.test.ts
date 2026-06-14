@@ -329,6 +329,20 @@ describe('App (root)', () => {
       expect(onSessionEvent).toHaveBeenCalledOnce()
     })
 
+    it('on mount can bootstrap through a window.stoa web adapter without preload-specific assumptions', async () => {
+      const onSessionGraphEvent = vi.fn().mockReturnValue(() => {})
+      setupStoa({
+        onSessionGraphEvent,
+        onSessionEvent: vi.fn().mockReturnValue(() => {})
+      })
+
+      wrapper = await mountApp(pinia)
+      await flush()
+
+      expect(window.stoa.getBootstrapState).toHaveBeenCalledOnce()
+      expect(onSessionGraphEvent).toHaveBeenCalledOnce()
+    })
+
     it('applies pushed update state from the bridge', async () => {
       let listener: ((state: UpdateState) => void) | undefined
       setupStoa({

@@ -1,8 +1,6 @@
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
-import vue from '@vitejs/plugin-vue'
-import tailwindcss from '@tailwindcss/vite'
-import VueI18nPlugin from '@intlify/unplugin-vue-i18n/vite'
 import { resolve } from 'node:path'
+import { createRendererAliases, createRendererPlugins } from './vite.renderer.shared'
 
 export default defineConfig({
   main: {
@@ -46,18 +44,8 @@ export default defineConfig({
       }
     },
     resolve: {
-      alias: {
-        '@renderer': resolve('src/renderer'),
-        '@shared': resolve('src/shared'),
-        '@extensions': resolve('src/extensions')
-      }
+      alias: createRendererAliases()
     },
-    plugins: [
-      vue(),
-      tailwindcss(),
-      VueI18nPlugin({
-        include: [resolve('src/renderer/i18n/en.ts'), resolve('src/renderer/i18n/zh-CN.ts')]
-      })
-    ]
+    plugins: createRendererPlugins()
   }
 })

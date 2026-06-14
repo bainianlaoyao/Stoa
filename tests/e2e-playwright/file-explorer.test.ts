@@ -5,6 +5,7 @@ import { createProject, createSession } from './helpers/ui-actions'
 import {
   openSidebar,
   expandFolder,
+  collapseFolder,
   collapseAll,
   refreshFileTree,
   assertExplorerEntries,
@@ -65,7 +66,7 @@ test.describe('FileExplorer E2E', () => {
     let names = await getVisibleExplorerEntryNames(app.page)
     expect(names).toContain('index.ts')
 
-    await expandFolder(app.page, 'src')
+    await collapseFolder(app.page, 'src')
 
     names = await getVisibleExplorerEntryNames(app.page)
     expect(names).not.toContain('index.ts')

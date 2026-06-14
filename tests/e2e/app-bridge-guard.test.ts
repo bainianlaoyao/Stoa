@@ -47,6 +47,9 @@ const mockCreatedSession: SessionSummary = {
   archived: false
 }
 
+const missingRendererBridgeMessage =
+  'Renderer bridge unavailable: window.stoa is missing and StoaClient is not initialized.'
+
 async function flush(): Promise<void> {
   await new Promise((r) => setTimeout(r, 0))
   await new Promise((r) => setTimeout(r, 0))
@@ -286,7 +289,7 @@ describe('E2E: App.vue Bridge Guard (window.stoa undefined)', () => {
     })
 
     // -----------------------------------------------------------------------
-    it('handleProjectSelect throws because void expression is not guarded', async () => {
+    it('handleProjectSelect throws renderer bridge unavailable error because void expression is not guarded', async () => {
       setupStoa()
       wrapper = mountApp(pinia)
       await flush()
@@ -295,16 +298,16 @@ describe('E2E: App.vue Bridge Guard (window.stoa undefined)', () => {
 
       const appShell = wrapper.findComponent({ name: 'AppShell' })
 
-      // handleProjectSelect uses `void window.stoa.setActiveProject(...)`.
-      // When stoa is undefined, accessing .setActiveProject throws
-      // TypeError synchronously — the emit propagates it.
+      // handleProjectSelect uses `void requireRendererApi().setActiveProject(...)`.
+      // When stoa is undefined, requireRendererApi throws synchronously and the
+      // emit propagates that error.
       expect(() => {
         appShell.vm.$emit('selectProject', 'project_1')
-      }).toThrow(TypeError)
+      }).toThrowError(missingRendererBridgeMessage)
     })
 
     // -----------------------------------------------------------------------
-    it('handleSessionSelect throws because void expression is not guarded', async () => {
+    it('handleSessionSelect throws renderer bridge unavailable error because void expression is not guarded', async () => {
       const hydratedState: BootstrapState = {
         activeProjectId: 'p1',
         activeSessionId: null,
@@ -324,10 +327,10 @@ describe('E2E: App.vue Bridge Guard (window.stoa undefined)', () => {
 
       const appShell = wrapper.findComponent({ name: 'AppShell' })
 
-      // handleSessionSelect uses `void window.stoa.setActiveSession(...)`.
+      // handleSessionSelect uses `void requireRendererApi().setActiveSession(...)`.
       expect(() => {
         appShell.vm.$emit('selectSession', 's1')
-      }).toThrow(TypeError)
+      }).toThrowError(missingRendererBridgeMessage)
     })
   })
 

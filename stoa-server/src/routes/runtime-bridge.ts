@@ -27,6 +27,10 @@ export interface RuntimeBridgeClient {
 export interface LaunchOptions {
   command?: string
   cwd?: string
+  projectId?: string
+  title?: string
+  type?: string
+  externalSessionId?: string | null
   cols?: number
   rows?: number
   env?: Record<string, string>

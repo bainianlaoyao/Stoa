@@ -6,12 +6,12 @@
  *   PUT    /sessions/:id/active              — set active session
  *   PUT    /sessions/:id/archive             — archive session
  *   PUT    /sessions/:id/restore             — restore session
- *   POST   /sessions/:id/restart             — restart (runtime bridge stub)
+ *   POST   /sessions/:id/restart             — restart runtime
  *   PUT    /sessions/:id/title               — update session title
  *   GET    /sessions?archive=archived         — list archived sessions (paginated)
- *   GET    /sessions/:id/terminal-replay      — terminal replay (runtime bridge stub)
- *   POST   /sessions/:id/input               — send input (runtime bridge stub)
- *   POST   /sessions/:id/resize              — resize (runtime bridge stub)
+ *   GET    /sessions/:id/terminal-replay      — terminal replay
+ *   POST   /sessions/:id/input               — send input
+ *   POST   /sessions/:id/resize              — resize
  *   DELETE /projects/:id/sidecar             — uninstall sidecar (stub)
  *   GET    /sessions/:id/evidence             — list evidence snapshots (stub)
  *   GET    /sessions/:id/context/full         — full text export (stub)
@@ -27,7 +27,7 @@ import type {
 } from 'stoa-shared';
 import { AppError, type ApiResponse } from '../shared/errors';
 import { ProjectSessionManager } from '../services/project-session-manager';
-import type { RuntimeBridgeClient } from './runtime-bridge';
+import type { LaunchOptions, RuntimeBridgeClient } from './runtime-bridge';
 
 export interface SessionsRouteDeps {
   manager: ProjectSessionManager;
@@ -72,6 +72,38 @@ function ensureProjectExists(state: BootstrapState, projectId: string): void {
       details: { projectId },
     });
   }
+}
+
+function parseOptionalPositiveInteger(value: unknown): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) {
+    throw new AppError({
+      code: 'validation_error',
+      message: 'initialCols and initialRows must be positive integers when provided',
+      statusCode: 422,
+      details: { field: 'initialCols,initialRows' },
+    });
+  }
+  return value;
+}
+
+function buildLaunchOptions(
+  state: BootstrapState,
+  session: SessionSummary,
+  dimensions: { cols?: number; rows?: number } = {},
+): LaunchOptions {
+  const project = state.projects.find((candidate) => candidate.id === session.projectId);
+  return {
+    projectId: session.projectId,
+    title: session.title,
+    type: session.type,
+    externalSessionId: session.externalSessionId,
+    cwd: project?.path,
+    cols: dimensions.cols,
+    rows: dimensions.rows,
+  };
 }
 
 export function createSessionsRoutes(deps: SessionsRouteDeps): Hono {
@@ -136,6 +168,8 @@ export function createSessionsRoutes(deps: SessionsRouteDeps): Hono {
         details: { field: 'type', received: type },
       });
     }
+    const initialCols = parseOptionalPositiveInteger(body.initialCols);
+    const initialRows = parseOptionalPositiveInteger(body.initialRows);
     const request: CreateSessionRequest = {
       projectId,
       type: type as SessionType,
@@ -144,12 +178,12 @@ export function createSessionsRoutes(deps: SessionsRouteDeps): Hono {
       createdBySessionId: body.createdBySessionId as string | null | undefined ?? null,
       subagentName: body.subagentName as string | null | undefined ?? null,
       externalSessionId: body.externalSessionId as string | null | undefined ?? null,
-      initialCols: typeof body.initialCols === 'number' ? body.initialCols : undefined,
-      initialRows: typeof body.initialRows === 'number' ? body.initialRows : undefined,
+      initialCols,
+      initialRows,
     };
+    let session: SessionSummary;
     try {
-      const session = await manager.createSession(request);
-      return c.json(envelope(session), 201);
+      session = await manager.createSession(request);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       throw new AppError({
@@ -157,6 +191,21 @@ export function createSessionsRoutes(deps: SessionsRouteDeps): Hono {
         message,
         statusCode: 409,
       });
+    }
+
+    try {
+      const state = manager.snapshot();
+      await runtimeBridge.launch(
+        session.id,
+        buildLaunchOptions(state, session, { cols: initialCols, rows: initialRows }),
+      );
+      await manager.markRuntimeStarting(session.id, `Starting ${session.type}`, session.externalSessionId);
+      await manager.markRuntimeAlive(session.id, session.externalSessionId);
+      const launchedSession = manager.snapshot().sessions.find((candidate) => candidate.id === session.id) ?? session;
+      return c.json(envelope(launchedSession), 201);
+    } catch (error) {
+      await manager.deleteSessionRecord(session.id);
+      throw error;
     }
   });
 
@@ -172,6 +221,7 @@ export function createSessionsRoutes(deps: SessionsRouteDeps): Hono {
     const sessionId = c.req.param('id');
     const state = manager.snapshot();
     ensureSessionExists(state, sessionId);
+    await runtimeBridge.kill(sessionId);
     await manager.archiveSession(sessionId);
     return c.json(envelope({ id: sessionId, archived: true }));
   });
@@ -181,15 +231,16 @@ export function createSessionsRoutes(deps: SessionsRouteDeps): Hono {
     const state = manager.snapshot();
     ensureSessionExists(state, sessionId);
     await manager.restoreSession(sessionId);
+    await runtimeBridge.launch(sessionId, {});
     return c.json(envelope({ id: sessionId, restored: true }));
   });
 
   routes.post('/sessions/:id/restart', async (c) => {
     const sessionId = c.req.param('id');
     const state = manager.snapshot();
-    ensureSessionExists(state, sessionId);
-    // Runtime bridge stub — throws 503 until Phase 3
-    await runtimeBridge.launch(sessionId, {});
+    const session = ensureSessionExists(state, sessionId);
+    await runtimeBridge.kill(sessionId);
+    await runtimeBridge.launch(sessionId, buildLaunchOptions(state, session));
     return c.json(envelope({ id: sessionId, restarted: true }));
   });
 
@@ -217,9 +268,8 @@ export function createSessionsRoutes(deps: SessionsRouteDeps): Hono {
     const sessionId = c.req.param('id');
     const state = manager.snapshot();
     ensureSessionExists(state, sessionId);
-    // Runtime bridge stub — throws 503 until Phase 3
     const replay = await runtimeBridge.getTerminalReplay(sessionId);
-    return c.json(envelope({ sessionId, replay }));
+    return c.json(envelope(replay));
   });
 
   routes.post('/sessions/:id/input', async (c) => {
@@ -236,7 +286,6 @@ export function createSessionsRoutes(deps: SessionsRouteDeps): Hono {
     }
     const state = manager.snapshot();
     ensureSessionExists(state, sessionId);
-    // Runtime bridge stub — throws 503 until Phase 3
     await runtimeBridge.input(sessionId, data);
     return c.json(envelope({ sessionId, sent: true }));
   });
@@ -256,7 +305,6 @@ export function createSessionsRoutes(deps: SessionsRouteDeps): Hono {
     }
     const state = manager.snapshot();
     ensureSessionExists(state, sessionId);
-    // Runtime bridge stub — throws 503 until Phase 3
     await runtimeBridge.resize(sessionId, cols, rows);
     return c.json(envelope({ sessionId, resized: true }));
   });
@@ -290,7 +338,7 @@ export function createSessionsRoutes(deps: SessionsRouteDeps): Hono {
     const state = manager.snapshot();
     ensureSessionExists(state, sessionId);
     const maxChars = Math.min(
-      Math.max(1, Number(c.req.query('maxLength') ?? 100_000)),
+      Math.max(1, Number(c.req.query('maxChars') ?? 100_000)),
       1_000_000,
     );
     // Requires MetaSessionContextAssembler wired to observation store
@@ -309,7 +357,7 @@ export function createSessionsRoutes(deps: SessionsRouteDeps): Hono {
     const state = manager.snapshot();
     ensureSessionExists(state, sessionId);
     const maxChars = Math.min(
-      Math.max(1, Number(c.req.query('maxLength') ?? 100_000)),
+      Math.max(1, Number(c.req.query('maxChars') ?? 100_000)),
       1_000_000,
     );
     return c.json(envelope({

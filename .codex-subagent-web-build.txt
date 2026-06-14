@@ -1,0 +1,49 @@
+已完成，范围只落在 build/bootstrap，没有改 `App.vue` 和 store 业务逻辑。
+
+**改了哪些文件**
+- 构建配置
+  - `vite.web.config.ts`
+  - `vite.renderer.shared.ts`
+  - `electron.vite.config.ts`
+  - `package.json`
+  - `tsconfig.node.json`
+- renderer web bootstrap
+  - `src/renderer/main.ts`
+  - `src/renderer/bootstrap-web.ts`
+  - `src/renderer/bootstrap-web.test.ts`
+  - `src/renderer/index.html`
+  - `src/renderer/stores/stoa-store-plugin.ts`
+- stoa-server 静态资源接入
+  - `stoa-server/src/routes/static.ts`
+  - `stoa-server/src/routes/discovery.ts`
+  - `stoa-server/src/shared/web-client-path.ts`
+  - `stoa-server/src/index.ts`
+
+**这次实现的结果**
+- 新增标准 Vite web 构建，复用现有 renderer 的 Vue/Tailwind/i18n 配置，产物输出到 `stoa-server/dist/web`
+- 根脚本新增 `build:web`，并让现有 `build` 先包含 web 构建
+- `src/renderer/main.ts` 现在会在 `window.stoa` 不存在时自动走 web bootstrap
+- web bootstrap 按 `window.location.origin + ?token=...` 初始化 `StoaClient`，绑定 `window.stoa = StoaClientPreloadAdapter`
+- 首次 `getBootstrapState()` 后会自动 `flushBuffer()`，避免 WS 事件永久卡在缓冲区
+- Electron 模式保持不变，因为 preload 已经先注入了 `window.stoa`
+- `stoa-server --web` 现在实际从 `stoa-server/dist/web` 提供 SPA 静态资源，不再依赖 placeholder
+- server 侧静态目录解析做成了多候选路径，兼容从仓库根或 `stoa-server/` 目录启动
+- `index.html` 的 CSP 放开了 `http/https/ws/wss` 连接，避免 web 模式下 WS 被 CSP 拦截
+
+**跑了什么验证**
+- 通过：`pnpm run build:web`
+- 通过：`pnpm exec vue-tsc --noEmit -p tsconfig.web.json`
+- 通过：`pnpm vitest run src/renderer/bootstrap-web.test.ts`
+- 通过：`pnpm vitest run src/renderer/bootstrap-web.test.ts src/renderer/lib/stoa-client.test.ts src/renderer/lib/stoa-client-preload-adapter.test.ts`
+- 通过：在 `stoa-server/` 目录执行 `pnpm vitest run src/routes/routes.test.ts src/routes/api-routes.test.ts`
+
+**未解决阻塞**
+- 根级 node typecheck 仍未全绿：`pnpm exec tsc --noEmit -p tsconfig.node.json` 失败
+- 失败点在现有仓库代码，不在这次 web/bootstrap 改动面，主要包括：
+  - `src/core/memory/runtime-host.ts`
+  - 多处 `src/main/session-title-controller.test.ts`
+  - `src/main/stoa-runtime-client.test.ts`
+  - `src/main/stoa-server-spawner.test.ts`
+- `build:web` 还有一个非阻塞告警：主 chunk 约 `1.0 MB`，Vite 提示可后续再做 code-splitting
+
+如果你要，我下一步可以继续把根级 `tsc` 红字一起清掉。

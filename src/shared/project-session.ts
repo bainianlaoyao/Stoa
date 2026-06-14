@@ -211,7 +211,6 @@ export interface AppSettings {
   workspaceIde: WorkspaceIdeSettings
   claudeDangerouslySkipPermissions: boolean
   stoaCtlEnabled: boolean
-  stoaServerEnabled: boolean
   locale: string
   theme: 'light' | 'dark' | 'system'
 }
@@ -256,7 +255,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   },
   claudeDangerouslySkipPermissions: false,
   stoaCtlEnabled: false,
-  stoaServerEnabled: false,
   locale: 'en',
   theme: 'system'
 }
@@ -706,6 +704,30 @@ export interface RendererApi {
   gitCreateBranch: (projectPath: string, branch: string) => Promise<void>
 
   getServerInfo: () => Promise<{ available: boolean; port: number; url: string; token: string }>
+}
+
+export interface ElectronRendererNativeApi {
+  windowsBuildNumber: number | undefined
+  getServerInfo: () => Promise<{ available: boolean; port: number; url: string; token: string }>
+  openWorkspace: (request: OpenWorkspaceRequest) => Promise<void>
+  titleGenerationFetchModels: (baseUrl: string, apiKey: string) => Promise<string[]>
+  pickFolder: (options?: { title?: string }) => Promise<string | null>
+  pickFile: (options?: { title?: string; filters?: Array<{ name: string; extensions: string[] }> }) => Promise<string | null>
+  detectShell: () => Promise<string | null>
+  detectProvider: (providerId: string) => Promise<string | null>
+  detectVscode: () => Promise<string | null>
+  minimizeWindow: () => Promise<void>
+  maximizeWindow: () => Promise<void>
+  closeWindow: () => Promise<void>
+  isWindowMaximized: () => Promise<boolean>
+  onWindowMaximizeChange: (callback: (maximized: boolean) => void) => () => void
+  getUpdateState: () => Promise<UpdateState>
+  checkForUpdates: () => Promise<UpdateState>
+  downloadUpdate: () => Promise<UpdateState>
+  quitAndInstallUpdate: () => Promise<void>
+  dismissUpdate: () => Promise<void>
+  fsOpenFile: (filePath: string, line?: number, column?: number) => Promise<void>
+  shellShowItemInFolder: (filePath: string) => Promise<void>
 }
 
 export interface CanonicalSessionEvent {

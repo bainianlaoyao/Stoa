@@ -334,6 +334,76 @@ describe('SessionEventBridge', () => {
     expect(controller.applyProviderStatePatch).toHaveBeenCalledOnce()
   })
 
+  test('mirrors canonical events before local provider patch side effects', async () => {
+    const manager = ProjectSessionManager.createForTest()
+    const order: string[] = []
+    const controller = {
+      applyProviderStatePatch: vi.fn(async () => {
+        order.push('apply')
+      })
+    }
+    const mirrorCanonicalEvent = vi.fn(async () => {
+      order.push('mirror')
+    })
+    const bridge = new SessionEventBridge(manager, controller, undefined, {
+      mirrorCanonicalEvent
+    })
+    bridges.push(bridge)
+
+    const port = await bridge.start()
+    const secret = bridge.issueSessionSecret('session_sr_only')
+    const event = createCanonicalEvent({
+      event_type: 'runtime.exited_failed',
+      session_id: 'session_sr_only',
+      project_id: 'project_sr_only',
+      source: 'provider-adapter',
+      payload: {
+        intent: 'runtime.exited_failed',
+        runtimeExitCode: 42,
+        runtimeExitReason: 'failed',
+        summary: 'Runtime failed'
+      }
+    })
+    const response = await postEvent(port, event, secret)
+
+    expect(response.statusCode).toBe(202)
+    expect(mirrorCanonicalEvent).toHaveBeenCalledWith(event)
+    expect(controller.applyProviderStatePatch).toHaveBeenCalledOnce()
+    expect(order).toEqual(['mirror', 'apply'])
+  })
+
+  test('proxies raw canonical event posts without applying local provider patches', async () => {
+    const manager = ProjectSessionManager.createForTest()
+    const controller = {
+      applyProviderStatePatch: vi.fn(async () => {})
+    }
+    const proxyCanonicalEvent = vi.fn(async () => null)
+    const bridge = new SessionEventBridge(manager, controller, undefined, {
+      proxyCanonicalEvent
+    })
+    bridges.push(bridge)
+
+    const port = await bridge.start()
+    const secret = bridge.issueSessionSecret('session_sr_only')
+    const event = createCanonicalEvent({
+      event_type: 'runtime.exited_failed',
+      session_id: 'session_sr_only',
+      project_id: 'project_sr_only',
+      source: 'provider-adapter',
+      payload: {
+        intent: 'runtime.exited_failed',
+        runtimeExitCode: 42,
+        runtimeExitReason: 'failed',
+        summary: 'Runtime failed'
+      }
+    })
+    const response = await postEvent(port, event, secret)
+
+    expect(response.statusCode).toBe(202)
+    expect(proxyCanonicalEvent).toHaveBeenCalledWith(event)
+    expect(controller.applyProviderStatePatch).not.toHaveBeenCalled()
+  })
+
   test('shared loopback server can expose meta session control routes via configureServerApp', async () => {
     const manager = ProjectSessionManager.createForTest()
     const controller = {

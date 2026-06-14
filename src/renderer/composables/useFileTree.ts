@@ -1,5 +1,6 @@
 import { ref, computed, watch, type Ref } from 'vue'
 import type { DirEntry } from '@shared/sidebar-types'
+import { getStoaClient, isStoaClientMode, requireRendererApi } from '@renderer/stores/stoa-store-plugin'
 
 export interface TreeNode {
   name: string
@@ -48,7 +49,22 @@ async function loadDir(projectPath: string, dirPath?: string): Promise<void> {
 
   try {
     const relativePath = dirPath ? toRelative(dirPath, projectPath) : undefined
-    const entries: DirEntry[] = await window.stoa.fsReadDir(projectPath, relativePath)
+    let entries: DirEntry[]
+
+    if (isStoaClientMode()) {
+      const client = getStoaClient()
+      if (client) {
+        const path = `/api/v1/fs/dir?projectPath=${encodeURIComponent(projectPath)}${
+          relativePath ? `&path=${encodeURIComponent(relativePath)}` : ''
+        }`
+        const response = await client.get<DirEntry[]>(path)
+        entries = response.data ?? []
+      } else {
+        entries = await requireRendererApi().fsReadDir(projectPath, relativePath)
+      }
+    } else {
+      entries = await requireRendererApi().fsReadDir(projectPath, relativePath)
+    }
 
     // Map DirEntry → TreeNode
     const depth = dirPath

@@ -1,0 +1,10 @@
+这次改动主要在 renderer 接线层，目标文件包括 [App.vue](/D:/Data/DEV/ultra_simple_panel/src/renderer/app/App.vue), [main.ts](/D:/Data/DEV/ultra_simple_panel/src/renderer/main.ts), [bootstrap-web.ts](/D:/Data/DEV/ultra_simple_panel/src/renderer/bootstrap-web.ts), [stoa-store-plugin.ts](/D:/Data/DEV/ultra_simple_panel/src/renderer/stores/stoa-store-plugin.ts), [git.ts](/D:/Data/DEV/ultra_simple_panel/src/renderer/stores/git.ts), [search.ts](/D:/Data/DEV/ultra_simple_panel/src/renderer/stores/search.ts), [update.ts](/D:/Data/DEV/ultra_simple_panel/src/renderer/stores/update.ts), [useFileTree.ts](/D:/Data/DEV/ultra_simple_panel/src/renderer/composables/useFileTree.ts), [useFileOperations.ts](/D:/Data/DEV/ultra_simple_panel/src/renderer/composables/useFileOperations.ts)，以及对应测试。
+
+实现结果是：
+`App.vue` 不再硬编码依赖 Electron preload 来源，只依赖 `RendererApi` 形状的 `window.stoa` bridge，所以 web 模式下现有 `StoaClientPreloadAdapter` 也能完成 bootstrap、session graph 订阅、update/memory/title notifications、observability hydrate。`main.ts` 现在只在 `isStoaClientMode()` 下执行 web bootstrap，并注册 Pinia 的 `stoaClientPlugin()`。`git.ts`、`search.ts`、`update.ts`、`useFileTree.ts`、`useFileOperations.ts` 都改成了和 `settings.ts` / `workspaces.ts` 一致的 dual-path，优先 `isStoaClientMode()+getStoaClient()`，否则走 legacy bridge。`update.ts` 在 web 下仍沿用现有 adapter/stub 行为，没有去假定 server 已经有 update 路由。
+
+验证我跑了：
+`rtk npx vue-tsc --noEmit -p tsconfig.web.json`
+`rtk npx vitest run src/renderer/app/App.test.ts src/renderer/bootstrap-web.test.ts src/renderer/stores/update.test.ts src/renderer/stores/git.test.ts src/renderer/stores/search.test.ts src/renderer/composables/useFileTree.test.ts src/renderer/composables/useFileOperations.test.ts`
+
+结果是 renderer 定向检查通过，`89` 个相关测试全过。另跑了 `rtk npm run typecheck`，但仓库当前还有未解决的非本次改动问题，失败点在 `src/core/memory/runtime-host.ts`、`src/main/session-title-controller.test.ts`、`src/main/stoa-runtime-client.test.ts`、`src/main/stoa-server-spawner.test.ts`。这些是现存阻塞，不是这次 renderer migration 引入的。我没有继续跑全仓 `test:generate` / 全量 `vitest` / `test:e2e` / `test:behavior-coverage`。

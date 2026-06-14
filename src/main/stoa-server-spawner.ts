@@ -14,8 +14,7 @@
  *   - Crash recovery (restart SR)
  *   - Graceful shutdown (SIGTERM → SIGKILL)
  *
- * This module is conditionally activated via STOA_USE_SERVER env var
- * so existing behaviour is preserved when SR is not available.
+ * SR is a required child service for the Electron shell.
  */
 import { ChildProcess, fork } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -49,6 +48,8 @@ export interface SpawnerDeps {
   isPackaged: boolean
   /** App root path for development mode resolution. */
   getAppRootPath: () => string
+  /** Node executable for development mode SR, which must not use Electron's Node ABI. */
+  getNodeExecPath: () => string
   /** Called when SR needs a runtime client connected. */
   createRuntimeClient: (port: number, authToken: string) => StoaRuntimeClient | null
 }
@@ -187,9 +188,10 @@ export class StoaServerSpawner {
     const entryPoint = this.resolveEntryPoint()
     console.log(`[stoa-server-spawner] Spawning SR from ${entryPoint} on port ${this.port}`)
 
-    this.process = fork(entryPoint, ['--port', String(this.port)], {
+    this.process = fork(entryPoint, ['--port', String(this.port), '--web'], {
       stdio: 'pipe',
-      env: { ...process.env }
+      env: this.createChildEnv(),
+      ...this.createForkExecOptions()
     })
 
     this.process.stdout?.on('data', (data: Buffer) => {
@@ -243,8 +245,7 @@ export class StoaServerSpawner {
   async connectRuntime(): Promise<void> {
     const client = this.deps.createRuntimeClient(this.port, this.authToken)
     if (!client) {
-      console.warn('[stoa-server-spawner] No runtime client provided, skipping runtime connection')
-      return
+      throw new Error('No runtime client provided for Stoa Server runtime bridge')
     }
     this.runtimeClient = client
     await client.connect()
@@ -315,6 +316,24 @@ export class StoaServerSpawner {
     return join(this.deps.getAppRootPath(), 'stoa-server', 'dist', 'index.cjs')
   }
 
+  private createChildEnv(): NodeJS.ProcessEnv {
+    return {
+      ...process.env,
+      STOA_AUTH_TOKEN: this.authToken,
+      STOA_DIR: this.config.stoaDir
+    }
+  }
+
+  private createForkExecOptions(): { execPath?: string } {
+    if (this.deps.isPackaged) {
+      return {}
+    }
+
+    return {
+      execPath: this.deps.getNodeExecPath()
+    }
+  }
+
   private handleCrash(): void {
     if (this.disposed) {
       return
@@ -344,9 +363,10 @@ export class StoaServerSpawner {
     this.port = await findAvailablePortInRange(this.config.portRange)
 
     const entryPoint = this.resolveEntryPoint()
-    this.process = fork(entryPoint, ['--port', String(this.port)], {
+    this.process = fork(entryPoint, ['--port', String(this.port), '--web'], {
       stdio: 'pipe',
-      env: { ...process.env }
+      env: this.createChildEnv(),
+      ...this.createForkExecOptions()
     })
 
     this.process.stdout?.on('data', (data: Buffer) => {
@@ -360,8 +380,6 @@ export class StoaServerSpawner {
       console.log(`[stoa-server-spawner] SR exited after restart (code=${code}, signal=${signal})`)
       this.process = null
       if (!this.disposed && code !== 0) {
-        // Allow one more restart cycle
-        this.crashed = false
         this.handleCrash()
       }
     })
@@ -369,8 +387,5 @@ export class StoaServerSpawner {
     await this.waitForHealth()
     await this.connectRuntime()
     console.log('[stoa-server-spawner] SR restarted successfully')
-
-    // Reset crash flag after successful restart
-    this.crashed = false
   }
 }

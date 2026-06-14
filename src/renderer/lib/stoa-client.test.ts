@@ -474,6 +474,21 @@ describe('WebSocket subscription', () => {
     )
   })
 
+  it('replays subscriptions when WS opens after subscribe was registered', () => {
+    mockWs.readyState = WebSocket.CONNECTING
+    client.connectWs()
+
+    client.subscribe('session:graph', () => {})
+    expect(mockWs.send).not.toHaveBeenCalled()
+
+    mockWs.readyState = WebSocket.OPEN
+    mockWs.onopen?.()
+
+    expect(mockWs.send).toHaveBeenCalledWith(
+      JSON.stringify({ type: 'subscribe', payload: { eventTypes: ['session:graph'] } }),
+    )
+  })
+
   it('unsubscribe removes handlers and sends unsubscribe message', () => {
     client.connectWs()
     client.subscribe('test-event', () => {})

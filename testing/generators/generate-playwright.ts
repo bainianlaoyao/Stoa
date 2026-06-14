@@ -226,6 +226,7 @@ test('journey.session.telemetry.claude-lifecycle', async () => {
     await expect((await postWebhookEvent({
       port: debugState!.webhookPort!,
       secret: secret!,
+      electronApp: app.electronApp,
       event: {
         event_version: 1,
         event_id: \`evt_\${randomUUID()}\`,

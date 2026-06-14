@@ -8,16 +8,26 @@ import { homedir } from 'node:os';
 import { mkdirSync } from 'node:fs';
 import { createApp, type AppDeps } from './app';
 import { createDb } from './db/connection';
+import type { StoaDb } from './db/connection';
 import { SqliteBackend, JsonFileBackend } from './services/persistence-backend';
 import { ProjectSessionManager } from './services/project-session-manager';
 import { WsHub } from './ws/hub';
-import { createStubRuntimeBridge } from './routes/runtime-bridge';
+import { RuntimeBridgeHandler } from './ws/runtime-bridge-handler';
+import { createLiveRuntimeBridge } from './routes/runtime-bridge';
+import { attachWebSocketServer } from './ws/transport';
+import {
+  routeConnection,
+  invokeOnMessage,
+  type RoleRouterHandlers,
+} from './ws/role-router';
 import { MetaSessionManager } from './services/meta-session-manager';
 import { MetaSessionProposalStore } from './services/meta-session-proposal';
+import { SessionEventProcessor } from './services/session-event-processor';
 import { DEFAULT_PORT } from './shared/constants';
-import { isWebClientAvailable } from './routes/discovery';
+import { isWebClientAvailable } from './shared/web-client-path';
 import type { SidebarState } from 'stoa-shared';
 import type {
+  MemoryNotificationEvent,
   SessionPresenceSnapshot,
   ProjectObservabilitySnapshot,
   AppObservabilitySnapshot,
@@ -47,21 +57,22 @@ function parseArgs(): { port: number; web: boolean; lanMode: boolean } {
 }
 
 const { port, web, lanMode } = parseArgs();
+const authToken = process.env.STOA_AUTH_TOKEN ?? 'stoa-dev-token';
 
 // ---------------------------------------------------------------------------
 // Bootstrap
 // ---------------------------------------------------------------------------
 
 async function start(): Promise<void> {
-  const STOA_DIR = join(homedir(), '.stoa');
+  const STOA_DIR = process.env.STOA_DIR ?? join(homedir(), '.stoa');
   const DB_PATH = join(STOA_DIR, 'server.db');
 
   // Ensure ~/.stoa exists
   mkdirSync(STOA_DIR, { recursive: true });
 
   // 1. Persistence backend — try SQLite, fall back to JSON files
+  let db: StoaDb | null = null;
   let backend;
-  let db;
   try {
     db = createDb(DB_PATH);
     backend = new SqliteBackend(db);
@@ -81,8 +92,9 @@ async function start(): Promise<void> {
     wsHub,
   });
 
-  // 4. Runtime bridge stub (503 until a real runtime connects)
-  const runtimeBridge = createStubRuntimeBridge();
+  // 4. Runtime bridge — live handler (accepts provider connections over WS)
+  const runtimeBridgeHandler = new RuntimeBridgeHandler();
+  const runtimeBridge = createLiveRuntimeBridge(runtimeBridgeHandler);
 
   // 5. Sidebar state — in-memory
   let sidebarData: SidebarState = {
@@ -131,10 +143,25 @@ async function start(): Promise<void> {
     }
   }
 
-  if (!metaSessionManager || !proposalStore) {
+  if (!db || !metaSessionManager || !proposalStore) {
     console.error('Cannot start: meta-session services require SQLite. Ensure better-sqlite3 is installed.');
     process.exit(1);
   }
+
+  const sessionEventProcessor = new SessionEventProcessor({
+    manager,
+    db,
+    wsHub,
+    runtimeBridge: runtimeBridgeHandler,
+  });
+
+  const handleMemoryNotification = (notification: Omit<MemoryNotificationEvent, 'id' | 'createdAt'>): void => {
+    wsHub.broadcast('notification:memory', {
+      id: `memory_${Date.now()}`,
+      ...notification,
+      createdAt: new Date().toISOString(),
+    });
+  };
 
   // ---------------------------------------------------------------------------
   // Assemble deps and create app
@@ -156,6 +183,22 @@ async function start(): Promise<void> {
       getSidebarState: () => sidebarData,
       setSidebarState: (s: SidebarState) => { sidebarData = s; },
     },
+    fs: { wsHub },
+    webhooks: {
+      onEvent: async (event) => {
+        await sessionEventProcessor.processEvent(event);
+        return null;
+      },
+      onMemoryNotification: async (notification) => {
+        handleMemoryNotification(notification);
+        return null;
+      },
+      getSessionSecret: (sessionId) => (
+        manager.snapshot().sessions.some((session) => session.id === sessionId)
+          ? authToken
+          : null
+      ),
+    },
   };
 
   const webClientAvailable = isWebClientAvailable();
@@ -176,11 +219,46 @@ async function start(): Promise<void> {
     port,
   });
 
+  // ---------------------------------------------------------------------------
+  // WebSocket upgrade handler — /ws?token=...&role=runtime|web
+  // ---------------------------------------------------------------------------
+
+  const roleRouterHandlers: RoleRouterHandlers = {
+    hub: wsHub,
+    runtimeBridge: runtimeBridgeHandler,
+    expectedToken: authToken,
+    dispatchBinaryInput: (sessionId, base64Data) => {
+      const decoded = Buffer.from(base64Data, 'base64').toString('latin1');
+      void runtimeBridge.input(sessionId, decoded).catch((error) => {
+        console.warn('[stoa-server] Failed to dispatch binary input', {
+          sessionId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+    },
+  };
+
+  attachWebSocketServer(server as Parameters<typeof attachWebSocketServer>[0], {
+    onConnection: (req, conn) => {
+      const result = routeConnection(req, conn, roleRouterHandlers);
+      if (result.kind === 'accepted') {
+        conn.on('message', (raw: string) => {
+          invokeOnMessage(conn, raw);
+        });
+        conn.on('close', () => {
+          result.dispose();
+        });
+      } else {
+        conn.close(result.statusCode, result.reason);
+      }
+    },
+  });
+
   console.log(`Stoa Server listening on port ${port}`);
   if (serveWeb) {
-    console.log('Web client: enabled (serving from dist/web/)');
+    console.log('Web client: enabled (serving from stoa-server/dist/web/)');
   } else if (web && !webClientAvailable) {
-    console.log('Web client: requested but dist/web/ not found — run the web build first');
+    console.log('Web client: requested but stoa-server/dist/web/ not found — run the web build first');
   } else {
     console.log('Web client: disabled (start with --web to enable)');
   }

@@ -195,6 +195,7 @@ describe('RuntimeBridgeHandler', () => {
 
       // Respond to resolve the promise
       handler.handleMessage(provider.id, JSON.stringify({
+        type: 'runtime:response',
         replyTo: sentData.replyTo,
         ok: true,
         data: { echoed: true },
@@ -202,6 +203,28 @@ describe('RuntimeBridgeHandler', () => {
 
       const result = await promise
       expect(result).toEqual({ echoed: true })
+    })
+
+    it('routes the initial runtime:launch to a connected provider before assignment', async () => {
+      const promise = handler.sendCommand('sess-fresh', {
+        type: 'runtime:launch',
+        payload: { cmd: 'bash' },
+      })
+
+      expect(ws.send).toHaveBeenCalledTimes(1)
+      const sentData = JSON.parse(ws.send.mock.calls[0][0] as string)
+      expect(sentData.type).toBe('runtime:launch')
+      expect(sentData.sessionId).toBe('sess-fresh')
+
+      handler.handleMessage(provider.id, JSON.stringify({
+        type: 'runtime:response',
+        replyTo: sentData.replyTo,
+        ok: true,
+        data: { status: 'launched' },
+      }))
+
+      await expect(promise).resolves.toEqual({ status: 'launched' })
+      expect(handler.getProviderForSession('sess-fresh')).toBe(provider)
     })
 
     it('auto-assigns session on successful runtime:launch response', async () => {
@@ -218,6 +241,7 @@ describe('RuntimeBridgeHandler', () => {
 
       const sentData = JSON.parse(ws.send.mock.calls[0][0] as string)
       handler.handleMessage(provider.id, JSON.stringify({
+        type: 'runtime:response',
         replyTo: sentData.replyTo,
         ok: true,
         data: { pid: 1234 },
@@ -229,24 +253,26 @@ describe('RuntimeBridgeHandler', () => {
       expect(provider.managedSessions.has('sess-launch')).toBe(true)
     })
 
-    it('auto-assigns session on successful runtime:create-child-session response', async () => {
-      handler.assignSession(provider.id, 'sess-child')
-      expect(provider.managedSessions.has('sess-child')).toBe(true)
+    it('auto-assigns childSessionId on successful runtime:create-child-session response', async () => {
+      handler.assignSession(provider.id, 'sess-parent')
+      expect(provider.managedSessions.has('sess-parent')).toBe(true)
 
-      const promise = handler.sendCommand('sess-child', {
+      const promise = handler.sendCommand('sess-parent', {
         type: 'runtime:create-child-session',
-        payload: { parent: 'sess-parent' },
+        payload: { parentId: 'sess-parent' },
       })
 
       const sentData = JSON.parse(ws.send.mock.calls[0][0] as string)
       handler.handleMessage(provider.id, JSON.stringify({
+        type: 'runtime:response',
         replyTo: sentData.replyTo,
         ok: true,
-        data: { childId: 'sess-child' },
+        data: { childSessionId: 'sess-child' },
       }))
 
       await promise
 
+      expect(provider.managedSessions.has('sess-parent')).toBe(true)
       expect(provider.managedSessions.has('sess-child')).toBe(true)
     })
 
@@ -280,6 +306,7 @@ describe('RuntimeBridgeHandler', () => {
 
       const sentData = JSON.parse(ws.send.mock.calls[0][0] as string)
       handler.handleMessage(provider.id, JSON.stringify({
+        type: 'runtime:response',
         replyTo: sentData.replyTo,
         ok: true,
         data: { ok: true },
@@ -302,6 +329,7 @@ describe('RuntimeBridgeHandler', () => {
 
       const sentData = JSON.parse(ws.send.mock.calls[0][0] as string)
       handler.handleMessage(provider.id, JSON.stringify({
+        type: 'runtime:response',
         replyTo: sentData.replyTo,
         ok: false,
         error: 'Invalid input',
@@ -499,6 +527,7 @@ describe('RuntimeBridgeHandler', () => {
 
       // Simulate provider response
       handler.handleMessage(provider.id, JSON.stringify({
+        type: 'runtime:response',
         replyTo: sentData.replyTo,
         ok: true,
         data: { result: 'ok' },
@@ -615,6 +644,7 @@ describe('RuntimeBridgeHandler', () => {
     it('drops unsolicited responses with unknown replyTo', () => {
       // No pending commands
       expect(() => handler.handleMessage(provider.id, JSON.stringify({
+        type: 'runtime:response',
         replyTo: 'cmd_unknown',
         ok: true,
         data: { x: 1 },
@@ -622,6 +652,32 @@ describe('RuntimeBridgeHandler', () => {
 
       // No state should have changed
       expect(handler.pendingCount).toBe(0)
+    })
+
+    it('ignores response-shaped frames without the runtime:response type', async () => {
+      handler.assignSession(provider.id, 'sess-1')
+
+      const promise = handler.sendCommand('sess-1', {
+        type: 'runtime:input',
+        payload: { data: 'x' },
+      })
+
+      const sentData = JSON.parse(ws.send.mock.calls[0][0] as string)
+      handler.handleMessage(provider.id, JSON.stringify({
+        replyTo: sentData.replyTo,
+        ok: true,
+        data: { result: 'legacy-flat' },
+      }))
+
+      expect(handler.pendingCount).toBe(1)
+      handler.handleMessage(provider.id, JSON.stringify({
+        type: 'runtime:response',
+        replyTo: sentData.replyTo,
+        ok: true,
+        data: { result: 'ok' },
+      }))
+
+      await expect(promise).resolves.toEqual({ result: 'ok' })
     })
 
     it('ignores pty-state with non-object state', () => {
@@ -787,6 +843,7 @@ describe('RuntimeBridgeHandler', () => {
       // Respond to the first
       const sent1 = JSON.parse(ws.send.mock.calls[0][0] as string)
       handler.handleMessage(provider.id, JSON.stringify({
+        type: 'runtime:response',
         replyTo: sent1.replyTo,
         ok: true,
         data: null,
@@ -798,6 +855,7 @@ describe('RuntimeBridgeHandler', () => {
       // Respond to the second
       const sent2 = JSON.parse(ws.send.mock.calls[1][0] as string)
       handler.handleMessage(provider.id, JSON.stringify({
+        type: 'runtime:response',
         replyTo: sent2.replyTo,
         ok: true,
         data: null,
@@ -819,6 +877,7 @@ describe('RuntimeBridgeHandler', () => {
 
       const sentData = JSON.parse(ws.send.mock.calls[0][0] as string)
       handler.handleMessage(provider.id, JSON.stringify({
+        type: 'runtime:response',
         replyTo: sentData.replyTo,
         ok: false,
         error: 'no',
@@ -869,6 +928,7 @@ describe('RuntimeBridgeHandler', () => {
 
       // Respond on provider 1 — should resolve p1, not p2
       handler.handleMessage(provider.id, JSON.stringify({
+        type: 'runtime:response',
         replyTo: sent1.replyTo,
         ok: true,
         data: { v: 1 },
@@ -882,6 +942,7 @@ describe('RuntimeBridgeHandler', () => {
 
       // Respond on provider 2
       handler.handleMessage(provider2.id, JSON.stringify({
+        type: 'runtime:response',
         replyTo: sent2.replyTo,
         ok: true,
         data: { v: 2 },
@@ -959,6 +1020,7 @@ describe('RuntimeBridgeHandler', () => {
 
       const sentData = JSON.parse(ws.send.mock.calls[0][0] as string)
       handler.handleMessage(provider.id, JSON.stringify({
+        type: 'runtime:response',
         replyTo: sentData.replyTo,
         ok: false,
         error: 'whatever',

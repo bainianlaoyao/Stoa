@@ -25,6 +25,9 @@ import { createSettingsRoutes } from './routes/settings';
 import { createObservabilityRoutes } from './routes/observability';
 import { createMetaSessionsRoutes } from './routes/meta-sessions';
 import { createSidebarRoutes } from './routes/sidebar';
+import { createFsRoutes, type FsRouteDeps } from './routes/fs';
+import { createGitRoutes } from './routes/git';
+import { createWebhookRoutes, type WebhookRouteDeps } from './routes/webhooks';
 
 export interface AppDeps {
   projects: ProjectsRouteDeps;
@@ -33,6 +36,8 @@ export interface AppDeps {
   observability: ObservabilityRouteDeps;
   metaSessions: MetaSessionsRouteDeps;
   sidebar: SidebarRouteDeps;
+  fs: FsRouteDeps;
+  webhooks: WebhookRouteDeps;
 }
 
 export interface CreateAppOptions {
@@ -60,6 +65,7 @@ export function createApp(deps: AppDeps, options: CreateAppOptions = {}): Hono {
   // Unauthenticated routes
   app.route('/api/v1/discovery', createDiscoveryRoutes(options.discovery));
   app.route('/ctl', healthRoutes);
+  app.route('/', createWebhookRoutes(deps.webhooks));
 
   // Authenticated /api/v1 route groups
   app.route('/api/v1', createProjectsRoutes(deps.projects));
@@ -68,6 +74,8 @@ export function createApp(deps: AppDeps, options: CreateAppOptions = {}): Hono {
   app.route('/api/v1', createObservabilityRoutes(deps.observability));
   app.route('/api/v1', createMetaSessionsRoutes(deps.metaSessions));
   app.route('/api/v1', createSidebarRoutes(deps.sidebar));
+  app.route('/api/v1', createFsRoutes(deps.fs));
+  app.route('/api/v1', createGitRoutes());
 
   // Static file serving for the Vue web client — mounted LAST so API routes
   // (/api/v1, /ctl, /hooks) and WebSocket upgrades take priority.

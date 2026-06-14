@@ -19,6 +19,7 @@ import { useSettingsStore } from '@renderer/stores/settings'
 import { useUpdateStore } from '@renderer/stores/update'
 import { useSidebarStore } from '@renderer/stores/sidebar'
 import { useSidebarShortcuts } from '@renderer/composables/useSidebarShortcuts'
+import { requireRendererApi } from '@renderer/stores/stoa-store-plugin'
 
 const { t } = useI18n()
 const workspaceStore = useWorkspaceStore()
@@ -48,25 +49,29 @@ const sessionTitleById = computed(() => {
 
 function handleProjectSelect(projectId: string): void {
   workspaceStore.setActiveProject(projectId)
-  void window.stoa.setActiveProject(projectId)
+  void requireRendererApi().setActiveProject(projectId)
 }
 
 function handleSessionSelect(sessionId: string): void {
   workspaceStore.setActiveSession(sessionId)
-  void window.stoa.setActiveSession(sessionId)
+  void requireRendererApi()
+    .setActiveSession(sessionId)
+    .then(() => workspaceStore.hydrateFromStoaClient())
+    .then(() => workspaceStore.hydrateObservability())
 }
 
 async function handleProjectCreate(payload: { name: string; path: string }): Promise<void> {
   workspaceStore.clearError()
   try {
-    const created = await window.stoa.createProject({ name: payload.name, path: payload.path })
+    const stoa = requireRendererApi()
+    const created = await stoa.createProject({ name: payload.name, path: payload.path })
     if (!created) {
       workspaceStore.lastError = 'Failed to create project: no response from main process'
       return
     }
     workspaceStore.addProject(created)
     workspaceStore.setActiveProject(created.id)
-    void window.stoa.setActiveProject(created.id)
+    void stoa.setActiveProject(created.id)
   } catch (err) {
     workspaceStore.lastError = err instanceof Error ? err.message : String(err)
   }
@@ -75,7 +80,8 @@ async function handleProjectCreate(payload: { name: string; path: string }): Pro
 async function handleSessionCreate(payload: { projectId: string; type: string; title: string }): Promise<void> {
   workspaceStore.clearError()
   try {
-    const created = await window.stoa.createSession({
+    const stoa = requireRendererApi()
+    const created = await stoa.createSession({
       projectId: payload.projectId,
       type: payload.type as SessionType,
       title: payload.title
@@ -86,7 +92,7 @@ async function handleSessionCreate(payload: { projectId: string; type: string; t
     }
     workspaceStore.addSession(created)
     workspaceStore.setActiveSession(created.id)
-    void window.stoa.setActiveSession(created.id)
+    void stoa.setActiveSession(created.id)
   } catch (err) {
     workspaceStore.lastError = err instanceof Error ? err.message : String(err)
   }
@@ -97,7 +103,7 @@ async function handleProjectDelete(projectId: string): Promise<void> {
   const project = workspaceStore.projects.find(p => p.id === projectId)
   if (!project) return
   try {
-    await window.stoa.deleteProject(projectId)
+    await requireRendererApi().deleteProject(projectId)
     workspaceStore.removeProject(projectId)
   } catch (err) {
     workspaceStore.lastError = err instanceof Error ? err.message : String(err)
@@ -107,7 +113,7 @@ async function handleProjectDelete(projectId: string): Promise<void> {
 async function handleArchiveSession(sessionId: string): Promise<void> {
   workspaceStore.clearError()
   try {
-    await window.stoa.archiveSession(sessionId)
+    await requireRendererApi().archiveSession(sessionId)
     workspaceStore.archiveSession(sessionId)
   } catch (err) {
     workspaceStore.lastError = err instanceof Error ? err.message : String(err)
@@ -117,7 +123,7 @@ async function handleArchiveSession(sessionId: string): Promise<void> {
 async function handleRegenerateSessionTitle(sessionId: string): Promise<void> {
   workspaceStore.clearError()
   try {
-    const updated = await window.stoa.regenerateSessionTitle(sessionId)
+    const updated = await requireRendererApi().regenerateSessionTitle(sessionId)
     if (!updated) {
       return
     }
@@ -130,7 +136,7 @@ async function handleRegenerateSessionTitle(sessionId: string): Promise<void> {
 async function handleRestoreSession(sessionId: string): Promise<void> {
   workspaceStore.clearError()
   try {
-    await window.stoa.restoreSession(sessionId)
+    await requireRendererApi().restoreSession(sessionId)
     workspaceStore.restoreSession(sessionId)
     workspaceStore.setActiveSession(sessionId)
   } catch (err) {
@@ -142,7 +148,7 @@ async function handleRestartSession(sessionId: string): Promise<void> {
   workspaceStore.clearError()
   workspaceStore.setActiveSession(sessionId)
   try {
-    await window.stoa.restartSession(sessionId)
+    await requireRendererApi().restartSession(sessionId)
   } catch (err) {
     workspaceStore.lastError = err instanceof Error ? err.message : String(err)
   }
@@ -151,7 +157,7 @@ async function handleRestartSession(sessionId: string): Promise<void> {
 async function handleOpenWorkspace(request: OpenWorkspaceRequest): Promise<void> {
   workspaceStore.clearError()
   try {
-    await window.stoa.openWorkspace(request)
+    await requireRendererApi().openWorkspace(request)
   } catch (err) {
     workspaceStore.lastError = err instanceof Error ? err.message : String(err)
   }
@@ -216,25 +222,27 @@ function applyTitleGenerationNotification(event: SessionTitleGenerationNotificat
 }
 
 onMounted(async () => {
-  unsubscribeUpdateState = window.stoa.onUpdateState((state) => {
+  const stoa = requireRendererApi()
+
+  unsubscribeUpdateState = stoa.onUpdateState((state) => {
     updateStore.applyState(state)
   })
-  unsubscribeMemoryNotification = window.stoa.onMemoryNotification((event) => {
+  unsubscribeMemoryNotification = stoa.onMemoryNotification((event) => {
     if (!isActiveSessionNotification(event.sessionId)) {
       return
     }
     memoryNotificationsStore.enqueue(event)
   })
-  unsubscribeTitleGenerationNotification = window.stoa.onTitleGenerationNotification((event) => {
+  unsubscribeTitleGenerationNotification = stoa.onTitleGenerationNotification((event) => {
     applyTitleGenerationNotification(event)
   })
 
-  if (window.stoa.onSessionGraphEvent) {
-    unsubscribeSessionGraphEvents = window.stoa.onSessionGraphEvent((event: SessionGraphEvent) => {
+  if (stoa.onSessionGraphEvent) {
+    unsubscribeSessionGraphEvents = stoa.onSessionGraphEvent((event: SessionGraphEvent) => {
       workspaceStore.applySessionGraphEvent(event)
     })
   } else {
-    unsubscribeSessionEvents = window.stoa.onSessionEvent((event) => {
+    unsubscribeSessionEvents = stoa.onSessionEvent((event) => {
       const existingSession = workspaceStore.sessions.find((session) => session.id === event.session.id)
       if (existingSession) {
         workspaceStore.updateSession(event.session.id, event.session)
@@ -245,7 +253,7 @@ onMounted(async () => {
     })
   }
 
-  const bootstrapState = await window.stoa.getBootstrapState()
+  const bootstrapState = await stoa.getBootstrapState()
   if (isUnmounted) {
     return
   }

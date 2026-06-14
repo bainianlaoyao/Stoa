@@ -432,6 +432,47 @@ describe('WorkspaceHierarchyPanel', () => {
       expect(dots[1]?.attributes('data-attention-reason')).toBe('turn-complete')
     })
 
+    it('does not let locally seen completion hide a later failure phase', async () => {
+      const wrapper = mountPanel({
+        activeSessionId: 'session_2',
+        sessionRowViewModels: createSessionRowViewModels({
+          session_2: {
+            phase: 'complete',
+            primaryLabel: 'Complete',
+            tone: 'warning',
+            needsAttention: true,
+            attentionReason: 'turn-complete'
+          }
+        })
+      })
+
+      const sessionRows = wrapper.findAll('[data-testid="session-row"]')
+      const statusDot = wrapper.findAll('[data-testid="session-status-dot"]')[1]!
+
+      expect(statusDot.attributes('data-session-status-testid')).toBe('session-status-complete')
+
+      await sessionRows[1]!.trigger('click')
+
+      expect(statusDot.attributes('data-session-status-testid')).toBe('session-status-ready')
+
+      await wrapper.setProps({
+        sessionRowViewModels: createSessionRowViewModels({
+          session_2: {
+            phase: 'failure',
+            primaryLabel: 'Failed',
+            tone: 'danger',
+            needsAttention: true,
+            attentionReason: 'runtime_crash'
+          }
+        })
+      })
+
+      expect(statusDot.attributes('data-tone')).toBe('danger')
+      expect(statusDot.attributes('data-phase')).toBe('failure')
+      expect(statusDot.attributes('data-session-status-testid')).toBe('session-status-failure')
+      expect(statusDot.attributes('data-attention-reason')).toBe('runtime_crash')
+    })
+
     it('uses session title for archive button aria-label to preserve restore journeys', () => {
       const wrapper = mountPanel()
       const labels = wrapper.findAll('[data-testid="workspace.archive-session"]').map((node) => node.attributes('aria-label'))

@@ -158,6 +158,7 @@ export class StoaClient {
 
     ws.onopen = () => {
       this.wsReconnectDelay = 1000
+      this.syncSubscriptions()
       // After initial state fetch, caller should call flushBuffer()
     }
 
@@ -221,7 +222,7 @@ export class StoaClient {
     set.add(handler)
 
     // Send subscribe message to server
-    this.sendWsMessage({ type: 'subscribe', payload: { eventTypes: [eventType] } })
+    this.syncSubscriptions([eventType])
 
     return () => {
       set!.delete(handler)
@@ -240,6 +241,14 @@ export class StoaClient {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(msg))
     }
+  }
+
+  private syncSubscriptions(eventTypes = Array.from(this.wsHandlers.keys())): void {
+    if (eventTypes.length === 0) {
+      return
+    }
+
+    this.sendWsMessage({ type: 'subscribe', payload: { eventTypes } })
   }
 
   private scheduleReconnect(): void {
