@@ -24,6 +24,9 @@ vi.mock('@xterm/xterm', () => {
     unicode = { activeVersion: '6' }
     dataHandlers: Array<(data: string) => void> = []
     binaryHandlers: Array<(data: string) => void> = []
+    keyEventHandler: ((event: KeyboardEvent) => boolean) | null = null
+    selectionText = ''
+    clearSelectionCalls = 0
 
     constructor(options: Record<string, unknown> = {}) {
       this.options = options
@@ -35,9 +38,17 @@ vi.mock('@xterm/xterm', () => {
         throw new Error('xterm open failed')
       }
     }
-    attachCustomKeyEventHandler() {}
+    attachCustomKeyEventHandler(handler: (event: KeyboardEvent) => boolean) {
+      this.keyEventHandler = handler
+    }
     getSelection() {
-      return ''
+      return this.selectionText
+    }
+    hasSelection() {
+      return this.selectionText.length > 0
+    }
+    clearSelection() {
+      this.clearSelectionCalls += 1
     }
     focus() {}
     write(data: string, callback?: () => void) {
@@ -329,6 +340,99 @@ describe('TerminalViewport', () => {
 
     expect(mockApi.onTerminalData).toHaveBeenCalled()
     expect(mockApi.onSessionPresenceChanged).toHaveBeenCalled()
+  })
+
+  function ctrlCEvent(code: string = 'KeyC'): KeyboardEvent {
+    return new KeyboardEvent('keydown', { ctrlKey: true, key: 'c', code })
+  }
+
+  async function mountAndGetKeyHandler() {
+    const { default: TerminalViewport } = await import('./TerminalViewport.vue')
+    mount(TerminalViewport, {
+      props: { project: baseProject, session: baseSession },
+    })
+    await flushTerminal()
+
+    const { Terminal } = await import('@xterm/xterm')
+    const instance = (Terminal as unknown as {
+      instances: Array<{ keyEventHandler: (e: KeyboardEvent) => boolean }>
+    }).instances.at(-1)
+    return instance?.keyEventHandler ?? null
+  }
+
+  test('Ctrl+C with an active selection copies to clipboard and clears the selection', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    const origClipboard = navigator.clipboard
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+      writable: true,
+    })
+
+    try {
+      const handler = await mountAndGetKeyHandler()
+      expect(handler).not.toBeNull()
+
+      const { Terminal } = await import('@xterm/xterm')
+      const instance = (Terminal as unknown as {
+        instances: Array<{ selectionText: string; clearSelectionCalls: number }>
+      }).instances.at(-1)!
+      instance.selectionText = 'selected output'
+
+      const result = handler!(ctrlCEvent())
+
+      expect(result).toBe(false)
+      expect(writeText).toHaveBeenCalledWith('selected output')
+      expect(instance.clearSelectionCalls).toBe(1)
+    } finally {
+      Object.defineProperty(navigator, 'clipboard', {
+        value: origClipboard,
+        configurable: true,
+        writable: true,
+      })
+    }
+  })
+
+  test('Ctrl+C without a selection forwards the keystroke as SIGINT', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    const origClipboard = navigator.clipboard
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+      writable: true,
+    })
+
+    try {
+      const handler = await mountAndGetKeyHandler()
+      expect(handler).not.toBeNull()
+
+      const { Terminal } = await import('@xterm/xterm')
+      const instance = (Terminal as unknown as {
+        instances: Array<{ selectionText: string; clearSelectionCalls: number }>
+      }).instances.at(-1)!
+      instance.selectionText = ''
+
+      const result = handler!(ctrlCEvent())
+
+      expect(result).toBe(true)
+      expect(writeText).not.toHaveBeenCalled()
+      expect(instance.clearSelectionCalls).toBe(0)
+    } finally {
+      Object.defineProperty(navigator, 'clipboard', {
+        value: origClipboard,
+        configurable: true,
+        writable: true,
+      })
+    }
+  })
+
+  test('synthetic Ctrl+C from a voice IME (empty code) is still blocked', async () => {
+    const handler = await mountAndGetKeyHandler()
+    expect(handler).not.toBeNull()
+
+    const result = handler!(ctrlCEvent(''))
+
+    expect(result).toBe(false)
   })
 
   test('forwards xterm binary input through sendSessionBinaryInput with byte preservation', async () => {

@@ -175,6 +175,21 @@ function setupTerminal() {
   localTerminal.open(terminalContainer.value)
 
   localTerminal.attachCustomKeyEventHandler((e: KeyboardEvent) => {
+    // Copy-on-selection: when the user has an active selection and presses
+    // Ctrl+C, intercept the keystroke, copy the selection to the clipboard,
+    // and clear the highlight — matching VS Code's terminal default. When
+    // nothing is selected, fall through so Ctrl+C still sends SIGINT (\x03).
+    if (e.type === 'keydown' && e.ctrlKey && (e.key === 'c' || e.key === 'C') && e.code) {
+      if (localTerminal.hasSelection()) {
+        copyTerminalSelection()
+        localTerminal.clearSelection()
+        return false
+      }
+      // No selection → let xterm forward Ctrl+C as SIGINT.
+      return true
+    }
+    // Voice IMEs can emit a synthetic Ctrl+C with an empty `code` (no physical
+    // key). Block those so they never reach the PTY as a spurious \x03.
     if (e.type === 'keydown' && e.ctrlKey && (e.key === 'c' || e.key === 'C') && !e.code) {
       return false
     }
