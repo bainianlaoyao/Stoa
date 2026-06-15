@@ -45,19 +45,19 @@ const MOCK_HEX_TOKEN = Buffer.from('a'.repeat(64)).toString('hex')
 // We avoid setImmediate/setTimeout inside the mock so the surrounding
 // vi.useFakeTimers() calls in tests can drive the spawner deterministically.
 let portAvailability: Map<number, boolean> = new Map()
+let mockListenCalls: Array<{ port: number; host: string | undefined }> = []
 let mockServer: {
   errorListeners: Array<() => void>
   closeListeners: Array<() => void>
-  listenCallback: (() => void) | undefined
-} = { errorListeners: [], closeListeners: [], listenCallback: undefined }
+} = { errorListeners: [], closeListeners: [] }
 
 function createMockServer(): unknown {
-  mockServer = { errorListeners: [], closeListeners: [], listenCallback: undefined }
+  mockServer = { errorListeners: [], closeListeners: [] }
   const inst: {
     port: number
     closed: boolean
     once: (event: string, cb: () => void) => unknown
-    listen: (port: number, host: string, cb?: () => void) => unknown
+    listen: (port: number, hostOrCb?: string | (() => void), cb?: () => void) => unknown
     close: () => unknown
   } = {
     port: 0,
@@ -71,23 +71,27 @@ function createMockServer(): unknown {
       }
       return inst
     },
-    listen: (port: number, _host: string, cb?: () => void) => {
+    listen: (port: number, hostOrCb?: string | (() => void), cb?: () => void) => {
       inst.port = port
-      mockServer.listenCallback = cb
-      // Synchronously fire the appropriate listener chain.
-      // Tests can opt to "use the port" by registering it as true,
-      // or "block the port" by registering it as false.
+      const host = typeof hostOrCb === 'string' ? hostOrCb : undefined
+      const onListening =
+        typeof hostOrCb === 'function'
+          ? hostOrCb
+          : cb
+      mockListenCalls.push({ port, host })
       if (portAvailability.get(port) === false) {
         for (const l of mockServer.errorListeners) l()
       } else {
-        inst.closed = true
-        for (const l of mockServer.closeListeners) l()
-        cb?.()
+        onListening?.()
       }
       return inst
     },
     close: () => {
+      if (inst.closed) {
+        return inst
+      }
       inst.closed = true
+      for (const l of mockServer.closeListeners) l()
       return inst
     }
   }
@@ -188,7 +192,8 @@ function createTempStoaDir(): string {
 
 beforeEach(() => {
   portAvailability = new Map()
-  mockServer = { errorListeners: [], closeListeners: [], listenCallback: undefined }
+  mockListenCalls = []
+  mockServer = { errorListeners: [], closeListeners: [] }
   mockFork.mockReset()
   mockRandomBytes.mockReset()
   mockRandomBytes.mockImplementation(() => Buffer.from('a'.repeat(64)))
@@ -326,6 +331,11 @@ describe('StoaServerSpawner - port range scanning', () => {
     const port = await spawner.spawn()
     expect(port).toBe(4002)
     expect(spawner.getPort()).toBe(4002)
+    expect(mockListenCalls.slice(0, 3)).toEqual([
+      { port: 4000, host: undefined },
+      { port: 4001, host: undefined },
+      { port: 4002, host: undefined }
+    ])
   })
 
   it('throws when no port in the range is available', async () => {
@@ -389,6 +399,28 @@ describe('StoaServerSpawner - spawn()', () => {
     expect(mockFork.mock.calls[0][2]).not.toHaveProperty('execPath')
   })
 
+  it('sets ELECTRON_RUN_AS_NODE in packaged mode', async () => {
+    const stoaDir = createTempStoaDir()
+    const { StoaServerSpawner } = await import('./stoa-server-spawner')
+    const spawner = new StoaServerSpawner(
+      { portRange: [5050, 5050], stoaDir, authToken: 'tok' },
+      createDeps({ isPackaged: true, getResourcesPath: () => '/usr/resources' })
+    )
+
+    portAvailability.set(5050, true)
+    const { process: childProcess } = createMockChildProcess()
+    mockFork.mockReturnValueOnce(childProcess)
+
+    await spawner.spawn()
+    expect(mockFork.mock.calls[0][2]?.env).toEqual(
+      expect.objectContaining({
+        STOA_AUTH_TOKEN: 'tok',
+        STOA_DIR: stoaDir,
+        ELECTRON_RUN_AS_NODE: '1'
+      })
+    )
+  })
+
   it('uses app root path entry point in development mode', async () => {
     const stoaDir = createTempStoaDir()
     const { StoaServerSpawner } = await import('./stoa-server-spawner')
@@ -411,9 +443,10 @@ describe('StoaServerSpawner - spawn()', () => {
         env: expect.objectContaining({ STOA_AUTH_TOKEN: 'tok', STOA_DIR: stoaDir })
       })
     )
+    expect(mockFork.mock.calls[0][2]?.env).not.toHaveProperty('ELECTRON_RUN_AS_NODE')
   })
 
-  it('forwards stdout and stderr from child process', async () => {
+  it('prefixes every line in stdout and stderr chunks', async () => {
     const stoaDir = createTempStoaDir()
     const { StoaServerSpawner } = await import('./stoa-server-spawner')
     const spawner = new StoaServerSpawner(
@@ -429,14 +462,42 @@ describe('StoaServerSpawner - spawn()', () => {
     const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
 
     await spawner.spawn()
-    stdout.emit('data', Buffer.from('hello-out'))
-    stderr.emit('data', Buffer.from('hello-err'))
+    stdout.emit('data', Buffer.from('hello'))
+    stdout.emit('data', Buffer.from('-out\nline-2\n'))
+    stderr.emit('data', Buffer.from('hello-err\nerr'))
+    stderr.emit('data', Buffer.from('-2\n'))
 
-    expect(stdoutSpy).toHaveBeenCalledWith(expect.stringContaining('hello-out'))
-    expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('hello-err'))
+    expect(stdoutSpy).toHaveBeenCalledWith('[sr:stdout] hello-out\n')
+    expect(stdoutSpy).toHaveBeenCalledWith('[sr:stdout] line-2\n')
+    expect(stderrSpy).toHaveBeenCalledWith('[sr:stderr] hello-err\n')
+    expect(stderrSpy).toHaveBeenCalledWith('[sr:stderr] err-2\n')
 
     stdoutSpy.mockRestore()
     stderrSpy.mockRestore()
+  })
+
+  it('flushes an unterminated stdout line when the child exits', async () => {
+    const stoaDir = createTempStoaDir()
+    const { StoaServerSpawner } = await import('./stoa-server-spawner')
+    const spawner = new StoaServerSpawner(
+      { portRange: [5201, 5201], stoaDir, authToken: 'tok' },
+      createDeps()
+    )
+
+    portAvailability.set(5201, true)
+    const { process: childProcess, stdout } = createMockChildProcess()
+    mockFork.mockReturnValueOnce(childProcess)
+
+    const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+
+    await spawner.spawn()
+    stdout.emit('data', Buffer.from('partial-line'))
+    expect(stdoutSpy).not.toHaveBeenCalledWith('[sr:stdout] partial-line')
+
+    childProcess.emit('exit', 0, null)
+    expect(stdoutSpy).toHaveBeenCalledWith('[sr:stdout] partial-line')
+
+    stdoutSpy.mockRestore()
   })
 })
 

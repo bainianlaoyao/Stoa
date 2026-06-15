@@ -32,6 +32,7 @@ interface LaunchTrackedSessionRuntimeOptions {
   launchToken?: number
   isLaunchTokenCurrent?: (launchToken: number) => boolean
   requireExternalSessionIdForResume?: boolean
+  allowRecoveryTakeover?: boolean
 }
 
 export async function launchTrackedSessionRuntime(options: LaunchTrackedSessionRuntimeOptions): Promise<boolean> {
@@ -49,11 +50,13 @@ export async function launchTrackedSessionRuntime(options: LaunchTrackedSessionR
   const descriptor = getProviderDescriptorBySessionType(session.type)
   const provider = (options.getProvider ?? getProvider)(descriptor.providerId)
   const { shellPath, providerPath, claudeDangerouslySkipPermissions } = await options.resolveRuntimePaths(session.type)
+
   const hookLease = await options.hookLeaseManager.ensureLease({
     sessionId: session.id,
     projectId: session.projectId,
     sessionType: session.type,
-    webhookBaseUrl: `http://127.0.0.1:${options.webhookPort}`
+    webhookBaseUrl: `http://127.0.0.1:${options.webhookPort}`,
+    allowRecoveryTakeover: options.allowRecoveryTakeover === true
   })
 
   if (hookLease?.lease.sessionSecret) {

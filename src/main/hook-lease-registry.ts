@@ -67,6 +67,12 @@ interface LeaseReclaimInput {
   nowIso?: string
 }
 
+interface LeaseTakeoverInput {
+  sessionId: string
+  webhookBaseUrl: string
+  nowIso?: string
+}
+
 interface LeaseReleaseInput {
   sessionId: string
   ownerInstanceId: string
@@ -82,6 +88,7 @@ export interface HookLeaseRegistry {
   acquire(input: LeaseAcquireInput): Promise<{ path: string; lease: SessionHookLease }>
   heartbeat(input: LeaseHeartbeatInput): Promise<SessionHookLease | null>
   reclaim(input: LeaseReclaimInput): Promise<SessionHookLease | null>
+  takeover(input: LeaseTakeoverInput): Promise<SessionHookLease | null>
   release(input: LeaseReleaseInput): Promise<SessionHookLease | null>
   isExpired(lease: SessionHookLease, nowIso?: string): boolean
 }
@@ -222,6 +229,41 @@ export function createHookLeaseRegistry(options: HookLeaseRegistryOptions): Hook
 
       await commit.commitLease(reclaimed)
       return reclaimed
+    })
+  }
+
+  async function takeover(input: LeaseTakeoverInput): Promise<SessionHookLease | null> {
+    const path = leasePathFor(input.sessionId)
+
+    return await withSessionMutationLock(input.sessionId, async (commit) => {
+      const existing = await readLease(path)
+      if (!existing || existing.leaseState !== 'active') {
+        return null
+      }
+
+      if (existing.ownerInstanceId === options.instanceId || isExpired(existing, input.nowIso)) {
+        return null
+      }
+
+      const nowIso = currentNowIso(input.nowIso)
+      const lock = await commit.setCommitToken(randomUUID())
+      const takenOver = createActiveLease({
+        sessionId: existing.sessionId,
+        projectId: existing.projectId,
+        provider: existing.provider,
+        ownerInstanceId: options.instanceId,
+        generation: existing.generation + 1,
+        webhookBaseUrl: input.webhookBaseUrl,
+        commitLockNonce: lock.lockNonce,
+        commitToken: lock.commitToken ?? failMissingCommitToken(),
+        createdAt: existing.createdAt,
+        updatedAt: nowIso,
+        heartbeatAt: nowIso,
+        expiresAt: addMsToIso(nowIso, leaseDurationMs)
+      })
+
+      await commit.commitLease(takenOver)
+      return takenOver
     })
   }
 
@@ -410,6 +452,7 @@ export function createHookLeaseRegistry(options: HookLeaseRegistryOptions): Hook
     acquire,
     heartbeat,
     reclaim,
+    takeover,
     release,
     isExpired
   }

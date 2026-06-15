@@ -229,6 +229,14 @@ describe('E2E: Main Process Config Guard', () => {
       expect(srDeps!).toMatch(/getNodeExecPath\s*:\s*\(\)\s*=>\s*process\.env\.npm_node_execpath\s*\?\?\s*'node'/)
     })
 
+    it('main process isolates Electron userData for packaged smoke and E2E runs', () => {
+      expect(mainSource).toContain("const isolatedUserDataDir = isPackagedSmokeMode")
+      expect(mainSource).toContain("? process.env.VIBECODING_STATE_DIR ?? packagedSmokeRequest.stateDir")
+      expect(mainSource).toContain(": isE2EMode")
+      expect(mainSource).toContain("? process.env.VIBECODING_STATE_DIR ?? null")
+      expect(mainSource).toMatch(/if \(isolatedUserDataDir\) \{\s*app\.setPath\('userData', isolatedUserDataDir\)\s*\}/s)
+    })
+
     it('standalone Stoa Server e2e uses an isolated runtime STOA_DIR', () => {
       expect(stoaServerE2eSource).toContain('STOA_DIR')
       expect(stoaServerE2eSource).toContain('TEST_STOA_DIR')

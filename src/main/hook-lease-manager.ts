@@ -59,6 +59,7 @@ export function createHookLeaseManager(options: HookLeaseManagerOptions) {
     projectId: string
     sessionType: SessionType
     webhookBaseUrl: string
+    allowRecoveryTakeover?: boolean
   }): Promise<HookLeaseBinding | null> {
     const provider = toHookLeaseProvider(input.sessionType)
     if (!provider) {
@@ -100,6 +101,18 @@ export function createHookLeaseManager(options: HookLeaseManagerOptions) {
       binding = {
         path: existing.path,
         lease: reclaimed
+      }
+    } else if (input.allowRecoveryTakeover === true) {
+      const takenOver = await registry.takeover({
+        sessionId: input.sessionId,
+        webhookBaseUrl: input.webhookBaseUrl
+      })
+      if (!takenOver) {
+        throw new Error(`Failed to take over hook lease for session ${input.sessionId}`)
+      }
+      binding = {
+        path: existing.path,
+        lease: takenOver
       }
     } else {
       throw new Error(`Session ${input.sessionId} is owned by another STOA instance`)

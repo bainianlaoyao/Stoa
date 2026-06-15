@@ -118,4 +118,47 @@ describe('hook lease manager', () => {
       reason: 'invalid_secret'
     })
   })
+
+  test('ensureLease takes over an active foreign lease only when recovery takeover is enabled', async () => {
+    const runtimeRoot = await createTempRuntimeRoot('stoa-hook-lease-manager-takeover-')
+    const owner = createHookLeaseManager({
+      runtimeRoot,
+      instanceId: 'instance-a',
+      nowIso: () => '2026-05-10T12:00:00.000Z'
+    })
+
+    const acquired = await owner.ensureLease({
+      sessionId: 'session-foreign',
+      projectId: 'project-foreign',
+      sessionType: 'codex',
+      webhookBaseUrl: 'http://127.0.0.1:43127'
+    })
+
+    expect(acquired).not.toBeNull()
+
+    const recovery = createHookLeaseManager({
+      runtimeRoot,
+      instanceId: 'instance-b',
+      nowIso: () => '2026-05-10T12:00:05.000Z'
+    })
+
+    await expect(recovery.ensureLease({
+      sessionId: 'session-foreign',
+      projectId: 'project-foreign',
+      sessionType: 'codex',
+      webhookBaseUrl: 'http://127.0.0.1:43199'
+    })).rejects.toThrow('Session session-foreign is owned by another STOA instance')
+
+    const takenOver = await recovery.ensureLease({
+      sessionId: 'session-foreign',
+      projectId: 'project-foreign',
+      sessionType: 'codex',
+      webhookBaseUrl: 'http://127.0.0.1:43199',
+      allowRecoveryTakeover: true
+    })
+
+    expect(takenOver).not.toBeNull()
+    expect(takenOver?.lease.ownerInstanceId).toBe('instance-b')
+    expect(takenOver?.lease.generation).toBe(acquired!.lease.generation + 1)
+  })
 })

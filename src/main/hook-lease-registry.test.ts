@@ -117,6 +117,41 @@ describe('hook lease registry', () => {
     expect(reclaimed?.webhookBaseUrl).toBe('http://127.0.0.1:43199')
   })
 
+  test('takeover reclaims an active foreign lease before expiry', async () => {
+    const runtimeRoot = await createTempRuntimeRoot('stoa-hook-lease-takeover-')
+    const instanceA = createHookLeaseRegistry({
+      runtimeRoot,
+      instanceId: 'instance-a',
+      nowIso: () => '2026-05-10T12:00:00.000Z'
+    })
+    const acquired = await instanceA.acquire({
+      sessionId: 'session-takeover',
+      projectId: 'project-takeover',
+      provider: 'codex',
+      webhookBaseUrl: 'http://127.0.0.1:43127'
+    })
+
+    const instanceB = createHookLeaseRegistry({
+      runtimeRoot,
+      instanceId: 'instance-b',
+      nowIso: () => '2026-05-10T12:00:05.000Z'
+    })
+
+    const takenOver = await instanceB.takeover({
+      sessionId: 'session-takeover',
+      webhookBaseUrl: 'http://127.0.0.1:43199',
+      nowIso: '2026-05-10T12:00:05.000Z'
+    })
+
+    expect(takenOver).toMatchObject({
+      ownerInstanceId: 'instance-b',
+      generation: acquired.lease.generation + 1,
+      webhookBaseUrl: 'http://127.0.0.1:43199',
+      leaseState: 'active'
+    })
+    expect(takenOver?.sessionSecret).not.toBe(acquired.lease.sessionSecret)
+  })
+
   test('release writes a released tombstone instead of deleting the lease', async () => {
     const runtimeRoot = await createTempRuntimeRoot('stoa-hook-lease-release-')
     const registry = createHookLeaseRegistry({
@@ -200,6 +235,53 @@ describe('hook lease registry', () => {
       ownerInstanceId: 'instance-b',
       generation: 3,
       webhookBaseUrl: 'http://127.0.0.1:43199'
+    })
+  })
+
+  test('takeover does not change released lease handling', async () => {
+    const runtimeRoot = await createTempRuntimeRoot('stoa-hook-lease-takeover-release-')
+    const instanceA = createHookLeaseRegistry({
+      runtimeRoot,
+      instanceId: 'instance-a',
+      nowIso: () => '2026-05-10T12:00:00.000Z'
+    })
+    const acquired = await instanceA.acquire({
+      sessionId: 'session-release-unchanged',
+      projectId: 'project-release-unchanged',
+      provider: 'claude-code',
+      webhookBaseUrl: 'http://127.0.0.1:43127'
+    })
+
+    const released = await instanceA.release({
+      sessionId: 'session-release-unchanged',
+      ownerInstanceId: 'instance-a',
+      generation: acquired.lease.generation,
+      nowIso: '2026-05-10T12:00:10.000Z'
+    })
+    expect(released?.leaseState).toBe('released')
+
+    const instanceB = createHookLeaseRegistry({
+      runtimeRoot,
+      instanceId: 'instance-b',
+      nowIso: () => '2026-05-10T12:00:11.000Z'
+    })
+
+    await expect(instanceB.takeover({
+      sessionId: 'session-release-unchanged',
+      webhookBaseUrl: 'http://127.0.0.1:43199',
+      nowIso: '2026-05-10T12:00:11.000Z'
+    })).resolves.toBeNull()
+
+    const reclaimed = await instanceB.reclaim({
+      sessionId: 'session-release-unchanged',
+      webhookBaseUrl: 'http://127.0.0.1:43199',
+      nowIso: '2026-05-10T12:00:11.000Z'
+    })
+
+    expect(reclaimed).toMatchObject({
+      ownerInstanceId: 'instance-b',
+      generation: acquired.lease.generation + 1,
+      leaseState: 'active'
     })
   })
 })

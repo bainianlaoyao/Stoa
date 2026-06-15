@@ -82,7 +82,8 @@ describe('launchTrackedSessionRuntime', () => {
       sessionId: session.id,
       projectId: project.id,
       sessionType: 'shell',
-      webhookBaseUrl: 'http://127.0.0.1:43127'
+      webhookBaseUrl: 'http://127.0.0.1:43127',
+      allowRecoveryTakeover: false
     })
     expect(registerSessionSecret).toHaveBeenCalledWith(session.id, 'secret-1')
     expect(startRuntime).toHaveBeenCalledWith(
@@ -274,7 +275,8 @@ describe('launchTrackedSessionRuntime', () => {
       sessionId: 'session_codex_1',
       projectId: 'stoa-codex',
       sessionType: 'codex',
-      webhookBaseUrl: 'http://127.0.0.1:43127'
+      webhookBaseUrl: 'http://127.0.0.1:43127',
+      allowRecoveryTakeover: false
     })
     expect(registerCodexLaunchIntent).toHaveBeenCalledWith('session_codex_1', 'startup')
     expect(startRuntime).toHaveBeenCalledWith(
@@ -389,7 +391,8 @@ describe('launchTrackedSessionRuntime', () => {
       sessionId: 'meta_session_1',
       projectId: 'stoa-meta-session',
       sessionType: 'claude-code',
-      webhookBaseUrl: 'http://127.0.0.1:43127'
+      webhookBaseUrl: 'http://127.0.0.1:43127',
+      allowRecoveryTakeover: false
     })
     expect(registerSessionSecret).toHaveBeenCalledWith('meta_session_1', 'lease-secret-1')
     expect(startRuntime).toHaveBeenCalledWith(
@@ -651,5 +654,158 @@ describe('launchTrackedSessionRuntime', () => {
         })
       })
     )
+  })
+
+  test('enables recovery takeover for resumed sessions', async () => {
+    const ensureLease = vi.fn(async () => null)
+    const startRuntime = vi.fn(async () => {})
+
+    const launched = await launchTrackedSessionRuntime({
+      sessionId: 'session_resume_1',
+      manager: {
+        snapshot() {
+          return {
+            activeProjectId: null,
+            activeSessionId: null,
+            terminalWebhookPort: null,
+            projects: [{
+              id: 'project-resume',
+              name: 'Resume',
+              path: 'D:/Data/DEV/ultra_simple_panel',
+              createdAt: '2026-05-07T08:00:00.000Z',
+              updatedAt: '2026-05-07T08:00:00.000Z'
+            }],
+            sessions: [{
+              id: 'session_resume_1',
+              projectId: 'project-resume',
+              type: 'codex',
+              runtimeState: 'alive',
+              turnState: 'idle',
+              turnEpoch: 0,
+              lastTurnOutcome: 'none',
+              hasUnseenCompletion: false,
+              runtimeExitCode: null,
+              runtimeExitReason: null,
+              lastStateSequence: 0,
+              blockingReason: null,
+              failureReason: null,
+              title: 'Resumed Session',
+              summary: 'Resuming',
+              recoveryMode: 'resume-external',
+              externalSessionId: 'resume-codex-2',
+              createdAt: '2026-05-07T08:00:00.000Z',
+              updatedAt: '2026-05-07T08:00:00.000Z',
+              lastActivatedAt: null,
+              archived: false
+            }]
+          }
+        }
+      } as never,
+      webhookPort: 43127,
+      ptyHost: { start: vi.fn(() => ({ runtimeId: 'session_resume_1' })) } as never,
+      runtimeController: {
+        markRuntimeStarting: vi.fn(async () => {}),
+        markRuntimeAlive: vi.fn(async () => {}),
+        markRuntimeExited: vi.fn(async () => {}),
+        markRuntimeFailedToStart: vi.fn(async () => {}),
+        appendTerminalData: vi.fn(async () => {})
+      },
+      sessionEventBridge: {} as never,
+      hookLeaseManager: {
+        ensureLease
+      } as never,
+      resolveRuntimePaths: vi.fn(async () => ({
+        shellPath: null,
+        providerPath: 'codex',
+        claudeDangerouslySkipPermissions: false
+      })),
+      startRuntime
+    })
+
+    expect(launched).toBe(true)
+    expect(ensureLease).toHaveBeenCalledWith({
+      sessionId: 'session_resume_1',
+      projectId: 'project-resume',
+      sessionType: 'codex',
+      webhookBaseUrl: 'http://127.0.0.1:43127',
+      allowRecoveryTakeover: false
+    })
+  })
+
+  test('passes through explicit recovery takeover when requested by the caller', async () => {
+    const ensureLease = vi.fn(async () => null)
+    const startRuntime = vi.fn(async () => {})
+
+    const launched = await launchTrackedSessionRuntime({
+      sessionId: 'session_bootstrap_1',
+      manager: {
+        snapshot() {
+          return {
+            activeProjectId: null,
+            activeSessionId: null,
+            terminalWebhookPort: null,
+            projects: [{
+              id: 'project-bootstrap',
+              name: 'Bootstrap',
+              path: 'D:/Data/DEV/ultra_simple_panel',
+              createdAt: '2026-05-07T08:00:00.000Z',
+              updatedAt: '2026-05-07T08:00:00.000Z'
+            }],
+            sessions: [{
+              id: 'session_bootstrap_1',
+              projectId: 'project-bootstrap',
+              type: 'codex',
+              runtimeState: 'alive',
+              turnState: 'idle',
+              turnEpoch: 0,
+              lastTurnOutcome: 'none',
+              hasUnseenCompletion: false,
+              runtimeExitCode: null,
+              runtimeExitReason: null,
+              lastStateSequence: 0,
+              blockingReason: null,
+              failureReason: null,
+              title: 'Bootstrap Session',
+              summary: 'Recovering',
+              recoveryMode: 'resume-external',
+              externalSessionId: 'resume-codex-3',
+              createdAt: '2026-05-07T08:00:00.000Z',
+              updatedAt: '2026-05-07T08:00:00.000Z',
+              lastActivatedAt: null,
+              archived: false
+            }]
+          }
+        }
+      } as never,
+      webhookPort: 43127,
+      ptyHost: { start: vi.fn(() => ({ runtimeId: 'session_bootstrap_1' })) } as never,
+      runtimeController: {
+        markRuntimeStarting: vi.fn(async () => {}),
+        markRuntimeAlive: vi.fn(async () => {}),
+        markRuntimeExited: vi.fn(async () => {}),
+        markRuntimeFailedToStart: vi.fn(async () => {}),
+        appendTerminalData: vi.fn(async () => {})
+      },
+      sessionEventBridge: {} as never,
+      hookLeaseManager: {
+        ensureLease
+      } as never,
+      resolveRuntimePaths: vi.fn(async () => ({
+        shellPath: null,
+        providerPath: 'codex',
+        claudeDangerouslySkipPermissions: false
+      })),
+      startRuntime,
+      allowRecoveryTakeover: true
+    })
+
+    expect(launched).toBe(true)
+    expect(ensureLease).toHaveBeenCalledWith({
+      sessionId: 'session_bootstrap_1',
+      projectId: 'project-bootstrap',
+      sessionType: 'codex',
+      webhookBaseUrl: 'http://127.0.0.1:43127',
+      allowRecoveryTakeover: true
+    })
   })
 })

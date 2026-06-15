@@ -182,11 +182,14 @@ const packagedSmokeProbePath = existsSync(packagedSmokeRequestPath)
   ? join(dirname(process.execPath), 'stoa-packaged-smoke-probe.log')
   : null
 
-if (isPackagedSmokeMode) {
-  const smokeStateDir = process.env.VIBECODING_STATE_DIR ?? packagedSmokeRequest.stateDir
-  if (smokeStateDir) {
-    app.setPath('userData', smokeStateDir)
-  }
+const isolatedUserDataDir = isPackagedSmokeMode
+  ? process.env.VIBECODING_STATE_DIR ?? packagedSmokeRequest.stateDir
+  : isE2EMode
+    ? process.env.VIBECODING_STATE_DIR ?? null
+    : null
+
+if (isolatedUserDataDir) {
+  app.setPath('userData', isolatedUserDataDir)
 }
 
 interface MainE2EDebugState {
@@ -1167,7 +1170,8 @@ app.whenReady().then(async () => {
         }),
         launchToken,
         isLaunchTokenCurrent: (candidateLaunchToken) => isSessionLaunchTokenCurrent(sessionId, candidateLaunchToken),
-        requireExternalSessionIdForResume: options?.requireExternalSessionIdForResume
+        requireExternalSessionIdForResume: options?.requireExternalSessionIdForResume,
+        allowRecoveryTakeover: source === 'bootstrap-recovery'
       })
 
       if (launched) {

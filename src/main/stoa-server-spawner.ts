@@ -19,7 +19,6 @@
 import { ChildProcess, fork } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { homedir } from 'node:os'
 import { randomBytes } from 'node:crypto'
 import { createServer } from 'node:net'
 import type { StoaRuntimeClient } from './stoa-runtime-client'
@@ -93,7 +92,9 @@ async function isPortAvailable(port: number): Promise<boolean> {
     const server = createServer()
     server.once('error', () => resolve(false))
     server.once('close', () => resolve(true))
-    server.listen(port, '127.0.0.1', () => {
+    // Probe with the same unspecified-host semantics the SR child uses so
+    // IPv6/dual-stack listeners are not misclassified as available.
+    server.listen(port, () => {
       server.close()
     })
   })
@@ -162,6 +163,8 @@ export class StoaServerSpawner {
   private runtimeClient: StoaRuntimeClient | null = null
   private crashed = false
   private disposed = false
+  private stdoutRemainder = ''
+  private stderrRemainder = ''
 
   constructor(
     private readonly config: StoaServerConfig,
@@ -187,26 +190,8 @@ export class StoaServerSpawner {
 
     const entryPoint = this.resolveEntryPoint()
     console.log(`[stoa-server-spawner] Spawning SR from ${entryPoint} on port ${this.port}`)
-
-    this.process = fork(entryPoint, ['--port', String(this.port), '--web'], {
-      stdio: 'pipe',
-      env: this.createChildEnv(),
-      ...this.createForkExecOptions()
-    })
-
-    this.process.stdout?.on('data', (data: Buffer) => {
-      process.stdout.write(`[sr:stdout] ${data}`)
-    })
-    this.process.stderr?.on('data', (data: Buffer) => {
-      process.stderr.write(`[sr:stderr] ${data}`)
-    })
-
-    this.process.on('exit', (code, signal) => {
+    this.process = this.startChildProcess(entryPoint, (code, signal) => {
       console.log(`[stoa-server-spawner] SR exited (code=${code}, signal=${signal})`)
-      this.process = null
-      if (!this.disposed && code !== 0) {
-        this.handleCrash()
-      }
     })
 
     return this.port
@@ -317,21 +302,94 @@ export class StoaServerSpawner {
   }
 
   private createChildEnv(): NodeJS.ProcessEnv {
-    return {
+    const env: NodeJS.ProcessEnv = {
       ...process.env,
       STOA_AUTH_TOKEN: this.authToken,
       STOA_DIR: this.config.stoaDir
     }
+
+    if (this.deps.isPackaged) {
+      env.ELECTRON_RUN_AS_NODE = '1'
+    }
+
+    return env
   }
 
   private createForkExecOptions(): { execPath?: string } {
-    if (this.deps.isPackaged) {
-      return {}
+    return this.deps.isPackaged
+      ? {}
+      : {
+          execPath: this.deps.getNodeExecPath()
+        }
+  }
+
+  private startChildProcess(
+    entryPoint: string,
+    onExitLog: (code: number | null, signal: NodeJS.Signals | null) => void
+  ): ChildProcess {
+    const child = fork(entryPoint, ['--port', String(this.port), '--web'], {
+      stdio: 'pipe',
+      env: this.createChildEnv(),
+      ...this.createForkExecOptions()
+    })
+
+    this.attachChildOutput(child)
+    child.on('exit', (code, signal) => {
+      onExitLog(code, signal)
+      this.process = null
+      if (!this.disposed && code !== 0) {
+        this.handleCrash()
+      }
+    })
+
+    return child
+  }
+
+  private attachChildOutput(child: ChildProcess): void {
+    child.stdout?.on('data', (data: Buffer | string) => {
+      this.stdoutRemainder = this.writePrefixedOutput(process.stdout, '[sr:stdout]', data, this.stdoutRemainder)
+    })
+    child.stderr?.on('data', (data: Buffer | string) => {
+      this.stderrRemainder = this.writePrefixedOutput(process.stderr, '[sr:stderr]', data, this.stderrRemainder)
+    })
+    child.once('exit', () => {
+      this.stdoutRemainder = this.flushPrefixedOutput(process.stdout, '[sr:stdout]', this.stdoutRemainder)
+      this.stderrRemainder = this.flushPrefixedOutput(process.stderr, '[sr:stderr]', this.stderrRemainder)
+    })
+  }
+
+  private writePrefixedOutput(
+    stream: NodeJS.WritableStream,
+    prefix: string,
+    data: Buffer | string,
+    remainder: string
+  ): string {
+    const text = typeof data === 'string' ? data : data.toString('utf8')
+    if (text.length === 0) {
+      return remainder
     }
 
-    return {
-      execPath: this.deps.getNodeExecPath()
+    const normalized = `${remainder}${text.replace(/\r\n/g, '\n')}`
+    const lines = normalized.split('\n')
+    const nextRemainder = lines.pop() ?? ''
+
+    for (const line of lines) {
+      stream.write(`${prefix} ${line}\n`)
     }
+
+    return nextRemainder
+  }
+
+  private flushPrefixedOutput(
+    stream: NodeJS.WritableStream,
+    prefix: string,
+    remainder: string
+  ): string {
+    if (remainder.length > 0) {
+      stream.write(`${prefix} ${remainder}`)
+    }
+
+    return ''
   }
 
   private handleCrash(): void {
@@ -363,25 +421,8 @@ export class StoaServerSpawner {
     this.port = await findAvailablePortInRange(this.config.portRange)
 
     const entryPoint = this.resolveEntryPoint()
-    this.process = fork(entryPoint, ['--port', String(this.port), '--web'], {
-      stdio: 'pipe',
-      env: this.createChildEnv(),
-      ...this.createForkExecOptions()
-    })
-
-    this.process.stdout?.on('data', (data: Buffer) => {
-      process.stdout.write(`[sr:stdout] ${data}`)
-    })
-    this.process.stderr?.on('data', (data: Buffer) => {
-      process.stderr.write(`[sr:stderr] ${data}`)
-    })
-
-    this.process.on('exit', (code, signal) => {
+    this.process = this.startChildProcess(entryPoint, (code, signal) => {
       console.log(`[stoa-server-spawner] SR exited after restart (code=${code}, signal=${signal})`)
-      this.process = null
-      if (!this.disposed && code !== 0) {
-        this.handleCrash()
-      }
     })
 
     await this.waitForHealth()
