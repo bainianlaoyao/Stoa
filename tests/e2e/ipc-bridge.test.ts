@@ -12,7 +12,8 @@ import type {
   OpenWorkspaceRequest,
   ProjectSummary,
   RendererApi,
-  SessionSummary
+  SessionSummary,
+  BackendHealthCheckResult
 } from '@shared/project-session'
 import type {
   AppObservabilitySnapshot,
@@ -80,6 +81,7 @@ const RENDERER_API_INVOKE_CHANNELS = [
   IPC_CHANNELS.sessionTerminalReplay,
   IPC_CHANNELS.sessionResize,
   IPC_CHANNELS.sessionRestart,
+  IPC_CHANNELS.serverCheckHealth,
   IPC_CHANNELS.titleGenerationFetchModels
 ] as const
 
@@ -158,6 +160,18 @@ const defaultObservationEvent: ObservationEvent = {
   payload: {}
 }
 
+const defaultBackendHealth: BackendHealthCheckResult = {
+  healthy: true,
+  checkedAt: '2026-01-01T00:00:00.000Z',
+  backend: {
+    available: true,
+    status: 'healthy'
+  },
+  coreSessionService: {
+    available: true
+  }
+}
+
 function createPreloadApi(bus: FakeIpcBus): RendererApi {
   return {
     windowsBuildNumber: undefined,
@@ -178,6 +192,7 @@ function createPreloadApi(bus: FakeIpcBus): RendererApi {
     sendSessionInput: (sessionId: string, data: string) => { bus.send(IPC_CHANNELS.sessionInput, sessionId, data) },
     sendSessionBinaryInput: (sessionId: string, data: Uint8Array) => { bus.send(IPC_CHANNELS.sessionBinaryInput, sessionId, data) },
     sendSessionResize: (sessionId: string, cols: number, rows: number) => bus.invoke(IPC_CHANNELS.sessionResize, sessionId, cols, rows),
+    checkBackendHealth: () => bus.invoke(IPC_CHANNELS.serverCheckHealth),
     titleGenerationFetchModels: (baseUrl: string, apiKey: string) => bus.invoke(IPC_CHANNELS.titleGenerationFetchModels, baseUrl, apiKey),
     onTerminalData: () => () => {},
     onMemoryNotification: () => () => {},
@@ -279,6 +294,8 @@ async function registerMainHandlers(
     await manager.setActiveSession(sessionId)
   })
 
+  bus.handle(IPC_CHANNELS.serverCheckHealth, async () => defaultBackendHealth)
+
   bus.handle(IPC_CHANNELS.sessionRegenerateTitle, async (_event, sessionId: string) => {
     const session = manager.snapshot().sessions.find((candidate) => candidate.id === sessionId)
     if (!session) {
@@ -351,6 +368,7 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
       expect(IPC_CHANNELS.sessionBinaryInput).toBe('session:binary-input')
       expect(IPC_CHANNELS.sessionResize).toBe('session:resize')
       expect(IPC_CHANNELS.sessionRestart).toBe('session:restart')
+      expect(IPC_CHANNELS.serverCheckHealth).toBe('server:check-health')
       expect(IPC_CHANNELS.terminalData).toBe('terminal:data')
     })
   })
@@ -525,6 +543,10 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
       expect(models).toEqual(['mock-fetched-model-1', 'mock-fetched-model-2'])
     })
 
+    test('checkBackendHealth round-trip returns one-shot backend health result', async () => {
+      await expect(api.checkBackendHealth()).resolves.toEqual(defaultBackendHealth)
+    })
+
     test('observability query round-trip returns presence, project, app, and events payloads', async () => {
       await expect(api.getSessionPresence('session-observe-1')).resolves.toEqual(defaultPresenceSnapshot)
       await expect(api.getProjectObservability('project-observe-1')).resolves.toEqual(defaultProjectObservability)
@@ -577,6 +599,14 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
       bus.on(IPC_CHANNELS.sessionInput, () => { return })
       bus.on(IPC_CHANNELS.sessionBinaryInput, () => { return })
       bus.handle(IPC_CHANNELS.sessionResize, async () => { return })
+      bus.handle(IPC_CHANNELS.serverCheckHealth, async () => ({
+        healthy: false,
+        checkedAt: '2026-01-01T00:00:00.000Z',
+        backend: { available: false },
+        coreSessionService: { available: false },
+        reason: 'backend_unavailable',
+        message: 'Backend service is not initialized.'
+      } satisfies BackendHealthCheckResult))
 
       api = createPreloadApi(bus)
     })
@@ -684,6 +714,7 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
         sendSessionInput: IPC_CHANNELS.sessionInput,
         sendSessionBinaryInput: IPC_CHANNELS.sessionBinaryInput,
         sendSessionResize: IPC_CHANNELS.sessionResize,
+        checkBackendHealth: IPC_CHANNELS.serverCheckHealth,
         titleGenerationFetchModels: IPC_CHANNELS.titleGenerationFetchModels,
         onTerminalData: IPC_CHANNELS.terminalData,
         onMemoryNotification: IPC_CHANNELS.memoryNotification,
@@ -694,7 +725,7 @@ describe('E2E: IPC Bridge (Real Round-Trip)', () => {
       }
 
       const methods = Object.keys(apiMethodToChannel)
-      expect(methods).toHaveLength(21)
+      expect(methods).toHaveLength(22)
 
       const channelValues = Object.values(apiMethodToChannel)
       const uniqueChannels = new Set(channelValues)

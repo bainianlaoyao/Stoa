@@ -205,7 +205,15 @@ export function createRendererApiMock(overrides: Partial<RendererApi> = {}): Ren
     gitDiff: vi.fn().mockResolvedValue(''),
     gitCheckout: vi.fn().mockResolvedValue(undefined),
     gitCreateBranch: vi.fn().mockResolvedValue(undefined),
-    getServerInfo: vi.fn().mockResolvedValue({ available: false, port: 0, url: '', token: '' })
+    getServerInfo: vi.fn().mockResolvedValue({ available: false, port: 0, url: '', token: '' }),
+    checkBackendHealth: vi.fn().mockResolvedValue({
+      healthy: false,
+      checkedAt: '2026-01-01T00:00:00.000Z',
+      backend: { available: false },
+      coreSessionService: { available: false },
+      reason: 'backend_unavailable',
+      message: 'Backend service is not initialized.'
+    })
   }
 
   return Object.assign(mock, overrides)

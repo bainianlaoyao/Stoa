@@ -4,6 +4,7 @@ import { sessionRestoreJourney } from '../journeys/session-restore.journey'
 import { archiveTopology } from '../topology/archive.topology'
 import {
   generateClaudeLifecyclePlaywrightSkeleton,
+  generateMobileUiV1PlaywrightSkeleton,
   generatePlaywrightSkeleton,
   generateStoactlLifecyclePlaywrightSkeleton,
   generateWorkspaceQuickAccessPlaywrightSkeleton
@@ -112,5 +113,30 @@ describe('playwright skeleton generator', () => {
     expect(generated).toContain("const projectRow = await createProject(app,")
     expect(generated).toContain('await app.close()')
     expect(generated).toContain('await cleanupStateDir(stateDir)')
+  })
+
+  it('generates a deterministic mobile UI V1 skeleton', () => {
+    const generated = generateMobileUiV1PlaywrightSkeleton()
+
+    expect(generated).toContain('AUTO-GENERATED FILE. DO NOT EDIT.')
+    expect(generated).toContain("id: 'journey.mobile.ui-v1'")
+    expect(generated).toContain("'mobile.drilldown'")
+    expect(generated).toContain("'mobile.health'")
+    expect(generated).toContain("await app.page.setViewportSize({ width: 1280, height: 800 })")
+    expect(generated).toContain("await app.page.setViewportSize({ width: 390, height: 844 })")
+    expect(generated).toContain("app.page.getByTestId('mobile-workspace-home')")
+    expect(generated).toContain("app.page.getByTestId('mobile-recent-session').first()")
+    expect(generated).toContain("app.page.getByTestId('mobile-global-search-trigger').click()")
+    expect(generated).toContain("searchText.indexOf('Sessions')")
+    expect(generated).toContain("searchText.indexOf('Workspaces')")
+    expect(generated).toContain("app.page.getByTestId('mobile-session-list')")
+    expect(generated).toContain("app.page.getByTestId('mobile-session-view')")
+    expect(generated).toContain("app.page.locator('[data-testid=\"mobile-session-type-option\"][data-provider-type=\"shell\"]').click()")
+    expect(generated).toContain("app.page.locator('.mobile-sheet-layer').click")
+    expect(generated).toContain("app.page.getByTestId('mobile-keys-rail')")
+    expect(generated).toContain("app.page.getByTestId('mobile-keys-dismiss')")
+    expect(generated).toContain("app.page.getByTestId('mobile-terminal-display-sheet')")
+    expect(generated).toContain("app.page.getByTestId('right-sidebar')).toHaveCount(0)")
+    expect(generated).toContain("app.page.getByTestId('activity-bar')).toBeVisible()")
   })
 })

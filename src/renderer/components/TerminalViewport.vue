@@ -15,21 +15,32 @@ const props = withDefaults(defineProps<{
   session: SessionSummary | null
   activeViewModel?: ActiveSessionViewModel | null
   visible?: boolean
+  showQuickActions?: boolean
+  fontSizeDelta?: number
+  inputEnabled?: boolean
+  minViewportWidth?: number | null
 }>(), {
   activeViewModel: null,
-  visible: true
+  visible: true,
+  showQuickActions: true,
+  fontSizeDelta: 0,
+  inputEnabled: true,
+  minViewportWidth: null
 })
 
 const emit = defineEmits<{
   openWorkspace: [request: OpenWorkspaceRequest]
 }>()
 
-function copyTerminalSelection(): void {
-  if (!terminal) return
+function copyTerminalSelection(): string | null {
+  if (!terminal) return null
   const selection = terminal.getSelection()
-  if (!selection) return
+  if (!selection) return null
   navigator.clipboard.writeText(selection)
+  return selection
 }
+
+defineExpose({ copyTerminalSelection })
 
 const terminalContainer = useTemplateRef<HTMLDivElement>('terminalContainer')
 const settingsStore = useSettingsStore()
@@ -166,7 +177,10 @@ function setupTerminal() {
   pendingFitResolve = localFitResolve
 
   const { terminal: localTerminal, fitAddon: localFitAddon, serializeAddon: localSerializeAddon, shellIntegrationAddon: localShellIntegration } = createTerminalRuntime({
-    settings: settingsStore.terminal,
+    settings: {
+      ...settingsStore.terminal,
+      fontSize: settingsStore.resolvedTerminalSettings().fontSize + props.fontSizeDelta
+    },
     openExternal: undefined,
     windowsBuildNumber: stoa.windowsBuildNumber
   })
@@ -298,9 +312,17 @@ function setupTerminal() {
   })
 
   dataDisposable = localTerminal.onData((data) => {
+    if (!props.inputEnabled) {
+      return
+    }
+
     stoa.sendSessionInput(sessionId, data)
   })
   binaryDisposable = localTerminal.onBinary((data) => {
+    if (!props.inputEnabled) {
+      return
+    }
+
     stoa.sendSessionBinaryInput(sessionId, Uint8Array.from(data, (char) => char.charCodeAt(0) & 0xff))
   })
 
@@ -372,7 +394,7 @@ function setupTerminal() {
 }
 
 watch(
-  [() => props.session?.id ?? null, () => settingsStore.terminal],
+  [() => props.session?.id ?? null, () => settingsStore.terminal, () => props.fontSizeDelta],
   ([sessionId]) => {
     disposeTerminal()
     if (sessionId) {
@@ -404,12 +426,17 @@ onBeforeUnmount(disposeTerminal)
     <template v-if="project && session">
       <div class="terminal-viewport__xterm" data-testid="terminal-xterm">
         <WorkspaceQuickActions
+          v-if="showQuickActions"
           :project="project"
           :session="session"
           @open-workspace="emit('openWorkspace', $event)"
           @copy-selection="copyTerminalSelection"
         />
-        <div class="terminal-viewport__shell" data-testid="terminal-shell">
+        <div
+          class="terminal-viewport__shell"
+          data-testid="terminal-shell"
+          :style="{ minWidth: minViewportWidth ? `${minViewportWidth}px` : undefined }"
+        >
           <div class="terminal-viewport__xterm-mount" ref="terminalContainer" data-testid="terminal-xterm-mount" />
         </div>
       </div>

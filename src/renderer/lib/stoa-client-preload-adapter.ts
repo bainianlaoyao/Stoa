@@ -12,6 +12,7 @@
 import { StoaClient } from './stoa-client'
 import type {
   AppSettings,
+  BackendHealthCheckResult,
   BootstrapState,
   CreateProjectRequest,
   CreateSessionRequest,
@@ -648,6 +649,46 @@ export class StoaClientPreloadAdapter implements RendererApi {
       port: data.port,
       url: available ? buildStoaWebLaunchUrl(this.client.getBaseUrl(), token) : '',
       token
+    }
+  }
+
+  async checkBackendHealth(): Promise<BackendHealthCheckResult> {
+    const checkedAt = new Date().toISOString()
+
+    try {
+      const res = await this.client.get<{ status: 'healthy' }>('/ctl/health')
+      const healthy = res.data?.status === 'healthy'
+
+      return {
+        healthy,
+        checkedAt,
+        backend: {
+          available: healthy,
+          ...(healthy ? { status: 'healthy' as const } : {})
+        },
+        coreSessionService: {
+          available: healthy
+        },
+        ...(!healthy
+          ? {
+              reason: 'backend_unavailable' as const,
+              message: 'Backend health check did not report healthy status.'
+            }
+          : {})
+      }
+    } catch (error) {
+      return {
+        healthy: false,
+        checkedAt,
+        backend: {
+          available: false
+        },
+        coreSessionService: {
+          available: false
+        },
+        reason: 'backend_unavailable',
+        message: error instanceof Error ? error.message : 'Backend health check failed.'
+      }
     }
   }
 }

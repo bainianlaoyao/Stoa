@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { release } from 'os'
 import { IPC_CHANNELS } from '@core/ipc-channels'
-import type { ElectronRendererNativeApi, OpenWorkspaceRequest } from '@shared/project-session'
+import type { BackendHealthCheckResult, ElectronRendererNativeApi, OpenWorkspaceRequest } from '@shared/project-session'
 import type { UpdateState } from '@shared/update-state'
 
 interface PreloadKeyboardEvent {
@@ -22,6 +22,9 @@ const electronApi = {
   windowsBuildNumber,
   async getServerInfo() {
     return ipcRenderer.invoke(IPC_CHANNELS.serverGetInfo) as Promise<{ available: boolean; port: number; url: string; token: string }>
+  },
+  async checkBackendHealth() {
+    return ipcRenderer.invoke(IPC_CHANNELS.serverCheckHealth) as Promise<BackendHealthCheckResult>
   },
   async openWorkspace(request: OpenWorkspaceRequest) {
     return ipcRenderer.invoke(IPC_CHANNELS.workspaceOpen, request)

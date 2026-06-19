@@ -16,6 +16,13 @@ import {
   stoactlEnvStrippedWhenDisabled,
   stoactlHttp503WhenDisabled
 } from '../behavior/stoactl-lifecycle'
+import {
+  mobileDrilldownBehavior,
+  mobileHealthBehavior,
+  mobileSearchBehavior,
+  mobileSessionCreationBehavior,
+  mobileTerminalControlsBehavior
+} from '../behavior/mobile.behavior'
 import { defineGeneratedTestMeta } from '../contracts/testing-contracts'
 import {
   metaSessionReadFullContextAndGatePromptJourney
@@ -26,6 +33,13 @@ import {
   stoactlEnvStrippedJourney
 } from '../journeys/stoactl-lifecycle.journey'
 import { workspaceQuickAccessJourney } from '../journeys/workspace-quick-access.journey'
+import {
+  mobileHealthJourney,
+  mobileSearchJourney,
+  mobileSessionCreationJourney,
+  mobileTerminalControlsJourney,
+  mobileUiV1Journey
+} from '../journeys/mobile-ui-v1.journey'
 import {
   sessionPresenceBlockedJourney,
   sessionPresenceFailureJourney,
@@ -370,5 +384,60 @@ describe('behavior coverage report', () => {
     })
 
     expect(report.behaviors['stoactl.http503WhenDisabled']?.maturity).toBe('Declared')
+  })
+
+  it('marks mobile UI V1 critical behavior as covered by generated mobile metadata', () => {
+    const report = buildBehaviorCoverageReport({
+      behaviors: [
+        mobileDrilldownBehavior,
+        mobileSearchBehavior,
+        mobileSessionCreationBehavior,
+        mobileTerminalControlsBehavior,
+        mobileHealthBehavior
+      ],
+      journeys: [
+        mobileUiV1Journey,
+        mobileSearchJourney,
+        mobileSessionCreationJourney,
+        mobileTerminalControlsJourney,
+        mobileHealthJourney
+      ],
+      generatedTests: [
+        defineGeneratedTestMeta({
+          id: 'journey.mobile.ui-v1',
+          behaviorIds: [
+            'mobile.drilldown',
+            'mobile.search',
+            'mobile.session.create',
+            'mobile.terminal.controls',
+            'mobile.health'
+          ],
+          entities: ['mobile-shell', 'workspace', 'session', 'xterm', 'backend-health'],
+          statesCovered: [
+            'mobile.workspace-home',
+            'mobile.session-list',
+            'mobile.session-view',
+            'mobile.keys-rail',
+            'mobile.display-prefs',
+            'mobile.health-connected'
+          ],
+          interruptionsCovered: [
+            'viewport.rotates.landscape',
+            'sheet.dismissedBeforeSelection',
+            'tapOutsideKeyRail',
+            'backend.failureLongerThan15s'
+          ],
+          observationLayers: ['ui', 'renderer-store', 'main-debug-state'],
+          riskBudget: 'critical',
+          regressionSources: ['mobile-ui-v1-design-spec', 'backend-health-ipc']
+        })
+      ]
+    })
+
+    expect(report.behaviors['mobile.drilldown']?.maturity).toBe('Hardened')
+    expect(report.behaviors['mobile.session.create']?.maturity).toBe('Hardened')
+    expect(report.behaviors['mobile.terminal.controls']?.maturity).toBe('Hardened')
+    expect(report.behaviors['mobile.health']?.maturity).toBe('Hardened')
+    expect(report.behaviors['mobile.search']?.maturity).toBe('Verified')
   })
 })

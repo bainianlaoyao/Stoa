@@ -83,6 +83,7 @@ export const IPC_CHANNELS = {
   gitCreateBranch: 'git:create-branch',
 
   serverGetInfo: 'server:get-info',
+  serverCheckHealth: 'server:check-health',
 
   shellShowItemInFolder: 'shell:show-item-in-folder',
 } as const

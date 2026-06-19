@@ -455,6 +455,32 @@ describe('TerminalViewport', () => {
     )
   })
 
+  test('blocks xterm data and binary input when input is disabled', async () => {
+    const { default: TerminalViewport } = await import('./TerminalViewport.vue')
+    mount(TerminalViewport, {
+      props: {
+        project: baseProject,
+        session: baseSession,
+        inputEnabled: false
+      },
+    })
+    await flushTerminal()
+
+    const { Terminal } = await import('@xterm/xterm')
+    const instance = (Terminal as unknown as {
+      instances: Array<{
+        dataHandlers: Array<(data: string) => void>
+        binaryHandlers: Array<(data: string) => void>
+      }>
+    }).instances.at(-1)
+
+    instance?.dataHandlers[0]?.('blocked')
+    instance?.binaryHandlers[0]?.('\u001b[M')
+
+    expect(mockApi.sendSessionInput).not.toHaveBeenCalled()
+    expect(mockApi.sendSessionBinaryInput).not.toHaveBeenCalled()
+  })
+
   test('replays the latest terminal backlog before consuming live chunks', async () => {
     mockApi.getTerminalReplay.mockResolvedValue('restored frame')
 
@@ -903,6 +929,20 @@ describe('TerminalViewport', () => {
     const { Terminal } = await import('@xterm/xterm')
     const instance = (Terminal as unknown as { instances: Array<{ options: Record<string, unknown> }> }).instances.at(-1)
     expect(instance?.options.fontSize).toBe(18)
+  })
+
+  test('applies a minimum viewport width for horizontal-scroll mobile terminal mode', async () => {
+    const { default: TerminalViewport } = await import('./TerminalViewport.vue')
+    const wrapper = mount(TerminalViewport, {
+      props: {
+        project: baseProject,
+        session: baseSession,
+        minViewportWidth: 960
+      },
+    })
+    await flushTerminal()
+
+    expect(wrapper.get('[data-testid="terminal-shell"]').attributes('style')).toContain('min-width: 960px')
   })
 
   test('swallows xterm setup failures without leaving an unhandled rejection', async () => {

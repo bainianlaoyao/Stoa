@@ -702,6 +702,45 @@ describe('Server Info', () => {
   })
 })
 
+describe('Backend Health', () => {
+  it('checkBackendHealth calls GET /ctl/health and returns a one-shot healthy result', async () => {
+    client.get.mockResolvedValueOnce(ok({
+      status: 'healthy',
+      uptime: 12,
+      db: 'connected',
+      timestamp: '2026-01-01T00:00:00.000Z'
+    }))
+
+    await expect(adapter.checkBackendHealth()).resolves.toMatchObject({
+      healthy: true,
+      backend: {
+        available: true,
+        status: 'healthy'
+      },
+      coreSessionService: {
+        available: true
+      }
+    })
+    expect(client.get).toHaveBeenCalledWith('/ctl/health')
+  })
+
+  it('checkBackendHealth folds REST failures into an unhealthy result', async () => {
+    client.get.mockRejectedValueOnce(new Error('network down'))
+
+    await expect(adapter.checkBackendHealth()).resolves.toMatchObject({
+      healthy: false,
+      backend: {
+        available: false
+      },
+      coreSessionService: {
+        available: false
+      },
+      reason: 'backend_unavailable',
+      message: 'network down'
+    })
+  })
+})
+
 // ── WebSocket subscriptions ──────────────────────────────────────────
 
 describe('WebSocket subscriptions', () => {

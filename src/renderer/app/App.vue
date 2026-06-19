@@ -10,6 +10,7 @@ import type {
   SessionType
 } from '@shared/project-session'
 import AppShell from '@renderer/components/AppShell.vue'
+import MobileAppShell from '@renderer/components/mobile/MobileAppShell.vue'
 import MemoryToastHost from '@renderer/components/memory/MemoryToastHost.vue'
 import UpdatePrompt from '@renderer/components/update/UpdatePrompt.vue'
 import { useMemoryNotificationsStore } from '@renderer/stores/memory-notifications'
@@ -19,6 +20,8 @@ import { useSettingsStore } from '@renderer/stores/settings'
 import { useUpdateStore } from '@renderer/stores/update'
 import { useSidebarStore } from '@renderer/stores/sidebar'
 import { useSidebarShortcuts } from '@renderer/composables/useSidebarShortcuts'
+import { useMediaQuery } from '@renderer/composables/useMediaQuery'
+import { useBackendHealth } from '@renderer/composables/useBackendHealth'
 import { requireRendererApi } from '@renderer/stores/stoa-store-plugin'
 
 const { t } = useI18n()
@@ -30,6 +33,12 @@ const sidebarStore = useSidebarStore()
 
 // Register global keyboard shortcuts (Ctrl+B toggle, Ctrl+Shift+E/F/G tab jumps)
 useSidebarShortcuts()
+const { matches: isMobileViewport } = useMediaQuery('(max-width: 768px)')
+const {
+  status: backendHealthStatus,
+  message: backendHealthMessage,
+  retry: retryBackendHealth
+} = useBackendHealth({ enabled: isMobileViewport })
 
 const {
   projectHierarchy,
@@ -77,7 +86,10 @@ async function handleProjectCreate(payload: { name: string; path: string }): Pro
   }
 }
 
-async function handleSessionCreate(payload: { projectId: string; type: string; title: string }): Promise<void> {
+async function handleSessionCreate(
+  payload: { projectId: string; type: string; title: string },
+  done?: (sessionId: string | null) => void
+): Promise<void> {
   workspaceStore.clearError()
   try {
     const stoa = requireRendererApi()
@@ -88,13 +100,16 @@ async function handleSessionCreate(payload: { projectId: string; type: string; t
     })
     if (!created) {
       workspaceStore.lastError = 'Failed to create session: no response from main process'
+      done?.(null)
       return
     }
     workspaceStore.addSession(created)
     workspaceStore.setActiveSession(created.id)
     void stoa.setActiveSession(created.id)
+    done?.(created.id)
   } catch (err) {
     workspaceStore.lastError = err instanceof Error ? err.message : String(err)
+    done?.(null)
   }
 }
 
@@ -295,6 +310,7 @@ onBeforeUnmount(() => {
 <template>
   <div class="app-root h-full flex flex-col overflow-hidden">
     <AppShell
+      v-if="!isMobileViewport"
       class="flex-1 min-h-0"
       :hierarchy="projectHierarchy"
       :active-project-id="activeProjectId"
@@ -312,6 +328,29 @@ onBeforeUnmount(() => {
       @restore-session="handleRestoreSession"
       @open-workspace="handleOpenWorkspace"
     />
+    <MobileAppShell
+      v-else
+      class="flex-1 min-h-0"
+      :hierarchy="projectHierarchy"
+      :active-project-id="activeProjectId"
+      :active-session-id="activeSessionId"
+      :active-project="activeProject"
+      :active-session="activeSession"
+      :health-status="backendHealthStatus"
+      :health-message="backendHealthMessage"
+      :memory-notifications="memoryNotifications"
+      @select-project="handleProjectSelect"
+      @select-session="handleSessionSelect"
+      @create-project="handleProjectCreate"
+      @create-session="handleSessionCreate"
+      @delete-project="handleProjectDelete"
+      @archive-session="handleArchiveSession"
+      @regenerate-session-title="handleRegenerateSessionTitle"
+      @restart-session="handleRestartSession"
+      @restore-session="handleRestoreSession"
+      @open-workspace="handleOpenWorkspace"
+      @retry-health="retryBackendHealth"
+    />
     <UpdatePrompt
       :visible="shouldShowPrompt"
       :state="updateState"
@@ -319,6 +358,6 @@ onBeforeUnmount(() => {
       @download="void updateStore.downloadUpdate()"
       @install="void updateStore.quitAndInstallUpdate()"
     />
-    <MemoryToastHost :notifications="memoryNotifications" />
+    <MemoryToastHost v-if="!isMobileViewport" :notifications="memoryNotifications" />
   </div>
 </template>

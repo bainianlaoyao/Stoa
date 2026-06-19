@@ -251,6 +251,7 @@ describe('E2E: Main Process Config Guard', () => {
     it('every Electron native invoke method has a corresponding ipcMain.handle registration', () => {
       const rendererApiMethods = [
         'getServerInfo',
+        'checkBackendHealth',
         'openWorkspace',
         'titleGenerationFetchModels',
         'pickFolder',
@@ -272,6 +273,7 @@ describe('E2E: Main Process Config Guard', () => {
       ]
       const channelToConstant = new Map<string, string>([
         ['getServerInfo', 'serverGetInfo'],
+        ['checkBackendHealth', 'serverCheckHealth'],
         ['openWorkspace', 'workspaceOpen'],
         ['titleGenerationFetchModels', 'titleGenerationFetchModels'],
         ['pickFolder', 'dialogPickFolder'],
@@ -389,6 +391,7 @@ describe('E2E: Main Process Config Guard', () => {
     it('preload api object implements all Electron native invoke methods', () => {
       const knownInvokeMethods = [
         'getServerInfo',
+        'checkBackendHealth',
         'openWorkspace',
         'titleGenerationFetchModels',
         'pickFolder',
@@ -446,6 +449,7 @@ describe('E2E: Main Process Config Guard', () => {
       )
 
       expect(invMap.get('getServerInfo')).toBe('server:get-info')
+      expect(invMap.get('checkBackendHealth')).toBe('server:check-health')
       expect(invMap.get('openWorkspace')).toBe('workspace:open')
       expect(invMap.get('titleGenerationFetchModels')).toBe('settings:title-generation-fetch-models')
       expect(invMap.get('pickFolder')).toBe('dialog:pick-folder')
@@ -483,6 +487,7 @@ describe('E2E: Main Process Config Guard', () => {
       expect(constants.get('updateDismiss')).toBe('update:dismiss')
       expect(constants.get('updateState')).toBe('update:state')
       expect(constants.get('workspaceOpen')).toBe('workspace:open')
+      expect(constants.get('serverCheckHealth')).toBe('server:check-health')
       expect(constants.get('memoryNotification')).toBe('memory:notification')
       expect(constants.get('sessionBinaryInput')).toBe('session:binary-input')
       expect(constants.get('titleGenerationNotification')).toBe('title-generation:notification')

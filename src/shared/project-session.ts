@@ -290,6 +290,22 @@ export interface BootstrapState {
   terminalWebhookPort: number | null
 }
 
+export type BackendHealthCheckFailureReason = 'backend_unavailable' | 'core_session_service_unavailable'
+
+export interface BackendHealthCheckResult {
+  healthy: boolean
+  checkedAt: string
+  backend: {
+    available: boolean
+    status?: 'healthy'
+  }
+  coreSessionService: {
+    available: boolean
+  }
+  reason?: BackendHealthCheckFailureReason
+  message?: string
+}
+
 export interface CreateProjectRequest {
   path: string
   name: string
@@ -704,11 +720,13 @@ export interface RendererApi {
   gitCreateBranch: (projectPath: string, branch: string) => Promise<void>
 
   getServerInfo: () => Promise<{ available: boolean; port: number; url: string; token: string }>
+  checkBackendHealth: () => Promise<BackendHealthCheckResult>
 }
 
 export interface ElectronRendererNativeApi {
   windowsBuildNumber: number | undefined
   getServerInfo: () => Promise<{ available: boolean; port: number; url: string; token: string }>
+  checkBackendHealth: () => Promise<BackendHealthCheckResult>
   openWorkspace: (request: OpenWorkspaceRequest) => Promise<void>
   titleGenerationFetchModels: (baseUrl: string, apiKey: string) => Promise<string[]>
   pickFolder: (options?: { title?: string }) => Promise<string | null>

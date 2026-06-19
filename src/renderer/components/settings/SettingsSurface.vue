@@ -119,7 +119,12 @@ watch(filteredTabMeta, (tabs) => {
           <span class="settings-surface__nav-label">{{ t('settings.navLabel') }}</span>
         </div>
 
-        <SettingsTabBar :tabs="filteredTabMeta" :active-tab="activeTab" @select="onTabSelect" />
+        <SettingsTabBar
+          data-testid="mobile-settings-tabs"
+          :tabs="filteredTabMeta"
+          :active-tab="activeTab"
+          @select="onTabSelect"
+        />
 
         <div class="settings-surface__hero-meta mt-auto">
           <template v-if="activeTabMeta">
@@ -338,6 +343,60 @@ watch(filteredTabMeta, (tabs) => {
   }
 
   .settings-surface__hero-meta {
+    display: none;
+  }
+}
+
+@media (max-width: 768px) {
+  .settings-surface {
+    padding: 0;
+  }
+
+  .settings-surface__shell {
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .settings-surface__nav-panel {
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .settings-surface__sidebar-header,
+  .settings-surface__nav-copy {
+    display: none;
+  }
+
+  .settings-surface__content-panel {
+    padding: 12px;
+  }
+
+  .settings-surface__nav-panel :deep(.settings-tab-bar) {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(96px, max-content);
+    gap: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .settings-surface__nav-panel :deep(.settings-tab-bar::-webkit-scrollbar) {
+    display: none;
+  }
+
+  .settings-surface__nav-panel :deep(.settings-tab-bar__item) {
+    grid-template-columns: 24px minmax(0, 1fr);
+    min-height: 44px;
+    padding: 8px 10px;
+  }
+
+  .settings-surface__nav-panel :deep(.settings-tab-bar__icon) {
+    width: 24px;
+    height: 24px;
+  }
+
+  .settings-surface__nav-panel :deep(.settings-tab-bar__summary) {
     display: none;
   }
 }

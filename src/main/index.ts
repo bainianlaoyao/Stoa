@@ -47,6 +47,7 @@ import { registerGitHandlers } from './sidebar-git-handlers'
 import { DEFAULT_SETTINGS } from '@shared/project-session'
 import {
   type AppSettings,
+  type BackendHealthCheckResult,
   type BootstrapState,
   type CanonicalSessionEvent,
   type CreateProjectRequest,
@@ -210,6 +211,35 @@ interface MainE2EDebugApi {
 
 declare global {
   var __VIBECODING_MAIN_E2E__: MainE2EDebugApi | undefined
+}
+
+function checkBackendHealth(): BackendHealthCheckResult {
+  const checkedAt = new Date().toISOString()
+  const backendAvailable = srSpawner !== null
+  const coreSessionServiceAvailable = projectSessionManager !== null
+  const healthy = backendAvailable && coreSessionServiceAvailable
+
+  return {
+    healthy,
+    checkedAt,
+    backend: {
+      available: backendAvailable,
+      ...(backendAvailable ? { status: 'healthy' as const } : {})
+    },
+    coreSessionService: {
+      available: coreSessionServiceAvailable
+    },
+    ...(!healthy
+      ? {
+          reason: backendAvailable
+            ? ('core_session_service_unavailable' as const)
+            : ('backend_unavailable' as const),
+          message: backendAvailable
+            ? 'Core session service is not initialized.'
+            : 'Backend service is not initialized.'
+        }
+      : {})
+  }
 }
 
 function installMainE2EDebugApi(): void {
@@ -1982,6 +2012,10 @@ app.whenReady().then(async () => {
 
   ipcMain.handle(IPC_CHANNELS.serverGetInfo, async () => {
     return await getStoaServerWebInfo(srSpawner)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.serverCheckHealth, async () => {
+    return checkBackendHealth()
   })
 
   ipcMain.handle(IPC_CHANNELS.evidenceListSessionSnapshots, async (_event, sessionId: string) => {
