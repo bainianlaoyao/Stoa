@@ -418,7 +418,7 @@ describe('behavior coverage report', () => {
             'mobile.session-list',
             'mobile.session-view',
             'mobile.keys-rail',
-            'mobile.display-prefs',
+            'mobile.fixed-wide-terminal',
             'mobile.health-connected'
           ],
           interruptionsCovered: [

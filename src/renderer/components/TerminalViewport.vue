@@ -53,6 +53,7 @@ let unsubscribeData: (() => void) | null = null
 let unsubscribeEvents: (() => void) | null = null
 let dataDisposable: { dispose(): void } | null = null
 let binaryDisposable: { dispose(): void } | null = null
+let unregisterTerminalProbe: (() => void) | null = null
 let pendingFitResolve: (() => void) | null = null
 let resizeDebounceTimer: ReturnType<typeof setTimeout> | null = null
 let mountVersion = 0
@@ -70,6 +71,8 @@ function disposeTerminal() {
   dataDisposable = null
   binaryDisposable?.dispose()
   binaryDisposable = null
+  unregisterTerminalProbe?.()
+  unregisterTerminalProbe = null
   unsubscribeData?.()
   unsubscribeData = null
   unsubscribeEvents?.()
@@ -187,6 +190,7 @@ function setupTerminal() {
   terminal = localTerminal
   fitAddon = localFitAddon
   localTerminal.open(terminalContainer.value)
+  unregisterTerminalProbe = registerTerminalProbe(sessionId, localSerializeAddon)
 
   localTerminal.attachCustomKeyEventHandler((e: KeyboardEvent) => {
     // Copy-on-selection: when the user has an active selection and presses
@@ -391,6 +395,23 @@ function setupTerminal() {
 
       resolveReplayGate()
     })
+}
+
+function registerTerminalProbe(sessionId: string, serializeAddon: { serialize: () => string }): (() => void) | null {
+  const registry = (window as Window & {
+    __STOA_E2E_TERMINAL_PROBES__?: Map<string, () => string>
+  }).__STOA_E2E_TERMINAL_PROBES__
+  if (!registry) {
+    return null
+  }
+
+  const readBuffer = () => serializeAddon.serialize()
+  registry.set(sessionId, readBuffer)
+  return () => {
+    if (registry.get(sessionId) === readBuffer) {
+      registry.delete(sessionId)
+    }
+  }
 }
 
 watch(

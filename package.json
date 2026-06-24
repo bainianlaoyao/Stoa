@@ -1,11 +1,14 @@
 {
   "name": "stoa",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "private": true,
   "license": "Apache-2.0",
   "type": "module",
   "packageManager": "pnpm@10.33.0",
-  "workspaces": ["stoa-shared", "stoa-server"],
+  "workspaces": [
+    "stoa-shared",
+    "stoa-server"
+  ],
   "main": "out/main/index.cjs",
   "scripts": {
     "dev": "electron-vite dev",
@@ -18,13 +21,13 @@
     "verify:entire-bridge": "node scripts/build-entire-bridge.mjs",
     "experiment:first-round": "tsc -p tsconfig.experiment-runner.json --outDir .tmp/experiment-runner-build && node scripts/prepare-experiment-runner.mjs && node --experimental-specifier-resolution=node .tmp/experiment-runner-build/scripts/run-real-first-round-experiment-entry.js",
     "preview": "electron-vite preview",
-    "package": "node scripts/run-electron-builder.mjs",
-    "package:win": "pnpm run build && node scripts/run-electron-builder.mjs --win",
-    "package:mac": "pnpm run build && node scripts/run-electron-builder.mjs --mac",
-    "package:linux": "pnpm run build && node scripts/run-electron-builder.mjs --linux",
-    "package:local": "pnpm run build && pnpm run package",
-    "package:release": "pnpm run build && node scripts/run-electron-builder.mjs --publish always",
-    "rebuild:native": "node scripts/rebuild-node-pty.mjs",
+    "package": "node scripts/package-electron-release.mjs",
+    "package:win": "pnpm run build && pnpm run build:stoa-server && node scripts/package-electron-release.mjs --win",
+    "package:mac": "pnpm run build && pnpm run build:stoa-server && node scripts/package-electron-release.mjs --mac",
+    "package:linux": "pnpm run build && pnpm run build:stoa-server && node scripts/package-electron-release.mjs --linux",
+    "package:local": "pnpm run build && pnpm run build:stoa-server && pnpm run package",
+    "package:release": "pnpm run build && pnpm run build:stoa-server && node scripts/package-electron-release.mjs --publish always",
+    "rebuild:native": "node scripts/rebuild-native-modules.mjs",
     "generate:icons": "node scripts/generate-icons.mjs",
     "stoa-ctl": "tsx --tsconfig tsconfig.node.json tools/stoa-ctl/index.ts",
     "verify:icons": "node scripts/validate-ico.mjs build/icons/icon.ico",
@@ -38,10 +41,10 @@
     "test:e2e:electron": "npm run build && playwright test --project=electron",
     "test:e2e:web": "npm run build && npm run build:stoa-server && playwright test --project=web",
     "test:behavior-coverage": "vitest run testing/generators/behavior-coverage.test.ts",
-    "test:all": "npm run test:generate && npm run test && npm run test:e2e && npm run test:behavior-coverage",
+    "test:all": "npm run test:generate && npm run typecheck && npm run test && npm run test:e2e && npm run test:behavior-coverage",
     "test:watch": "vitest",
     "playwright:install": "playwright install chromium",
-    "ci:local": "pnpm run test:generate && pnpm run typecheck && pnpm vitest run && pnpm run test:e2e && pnpm run test:behavior-coverage && pnpm run build && pnpm run package && pnpm run verify:packaging && pnpm run verify:release-smoke"
+    "ci:local": "pnpm run test:generate && pnpm run typecheck && pnpm vitest run && pnpm run test:e2e && pnpm run test:behavior-coverage && pnpm run build && pnpm run build:stoa-server && pnpm run package && pnpm run verify:packaging && pnpm run verify:release-smoke"
   },
   "dependencies": {
     "@headlessui/vue": "^1.7.23",
@@ -63,6 +66,7 @@
     "vue-i18n": "^11.3.2"
   },
   "devDependencies": {
+    "@electron/rebuild": "4.0.4",
     "@intlify/unplugin-vue-i18n": "^11.0.7",
     "@playwright/test": "^1.57.0",
     "@tailwindcss/vite": "^4.2.4",

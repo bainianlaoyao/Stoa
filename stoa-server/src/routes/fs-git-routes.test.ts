@@ -10,6 +10,9 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { Hono } from 'hono'
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import { createErrorHandler } from '../middleware/error-handler'
 import { createAuthMiddleware } from '../middleware/auth'
 import { createFsRoutes } from './fs'
@@ -85,6 +88,32 @@ describe('FS routes', () => {
       const { app } = createFsApp()
       const res = await app.request('/api/v1/fs/dir?projectPath=', { headers: AUTH })
       expect(res.status).toBe(422)
+    })
+
+    it('hides repository and app-owned state directories', async () => {
+      const projectPath = await mkdtemp(path.join(tmpdir(), 'stoa-fs-dir-'))
+      try {
+        await mkdir(path.join(projectPath, '.git'))
+        await mkdir(path.join(projectPath, '.stoa'))
+        await mkdir(path.join(projectPath, 'src'))
+        await writeFile(path.join(projectPath, 'README.md'), 'test', 'utf-8')
+
+        const { app } = createFsApp()
+        const res = await app.request(
+          `/api/v1/fs/dir?projectPath=${encodeURIComponent(projectPath)}`,
+          { headers: AUTH },
+        )
+
+        expect(res.status).toBe(200)
+        const body = await res.json() as {
+          ok: boolean
+          data: Array<{ name: string }>
+        }
+        expect(body.ok).toBe(true)
+        expect(body.data.map((entry) => entry.name)).toEqual(['src', 'README.md'])
+      } finally {
+        await rm(projectPath, { recursive: true, force: true })
+      }
     })
   })
 

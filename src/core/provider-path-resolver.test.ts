@@ -62,4 +62,26 @@ describe('provider-path-resolver', () => {
     expect(detectShell).toHaveBeenCalledOnce()
     expect(detectProvider).not.toHaveBeenCalled()
   })
+
+  it('preserves shell wrapping for configured Claude Code runtime providers', async () => {
+    const detectShell = vi.fn().mockResolvedValue('C:/Windows/System32/cmd.exe')
+    const detectProvider = vi.fn().mockResolvedValue('ignored')
+
+    const result = await resolveRuntimePaths('claude-code', {
+      ...DEFAULT_SETTINGS,
+      providers: {
+        'claude-code': 'C:/Users/example/.local/bin/claude.exe'
+      }
+    }, {
+      detectShell,
+      detectProvider
+    })
+
+    expect(result).toEqual({
+      shellPath: 'C:/Windows/System32/cmd.exe',
+      providerPath: 'C:/Users/example/.local/bin/claude.exe'
+    })
+    expect(detectShell).toHaveBeenCalledOnce()
+    expect(detectProvider).not.toHaveBeenCalled()
+  })
 })

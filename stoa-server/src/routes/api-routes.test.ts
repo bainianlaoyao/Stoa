@@ -69,8 +69,10 @@ function createMockAppObservability() {
 function createMockRuntimeBridge(overrides: Partial<RuntimeBridgeClient> = {}): RuntimeBridgeClient {
   return {
     launch: vi.fn(async () => {}),
+    isSessionManaged: vi.fn(() => true),
     kill: vi.fn(async () => {}),
     input: vi.fn(async () => {}),
+    binaryInput: vi.fn(async () => {}),
     resize: vi.fn(async () => {}),
     interrupt: vi.fn(async () => {}),
     getTerminalReplay: vi.fn(async () => 'terminal output'),
@@ -460,8 +462,18 @@ describe('API routes — /api/v1/', () => {
       const body = (await res.json()) as { data: { id: string; restored: boolean } };
       expect(body.data.id).toBe(session.id);
       expect(body.data.restored).toBe(true);
-      expect(runtimeBridge.launch).toHaveBeenCalledWith(session.id, {});
-      expect(manager.snapshot().sessions.find((candidate) => candidate.id === session.id)?.archived).toBe(false);
+      expect(runtimeBridge.launch).toHaveBeenCalledWith(session.id, expect.objectContaining({
+        cwd: '/tmp/test-project',
+        projectId: project.id,
+        title: 'shell-1',
+        type: 'shell',
+      }));
+      expect(manager.snapshot().sessions.find((candidate) => candidate.id === session.id)).toMatchObject({
+        archived: false,
+        runtimeState: 'alive',
+        runtimeExitCode: null,
+        runtimeExitReason: null,
+      });
     });
 
     it('returns the runtime error when restore launch fails after restoring the record', async () => {
@@ -480,7 +492,11 @@ describe('API routes — /api/v1/', () => {
         headers: AUTH,
       });
       expect(res.status).toBe(503);
-      expect(manager.snapshot().sessions.find((candidate) => candidate.id === session.id)?.archived).toBe(false);
+      expect(manager.snapshot().sessions.find((candidate) => candidate.id === session.id)).toMatchObject({
+        archived: false,
+        runtimeState: 'failed_to_start',
+        failureReason: 'failed_to_start',
+      });
     });
   });
 
@@ -679,6 +695,11 @@ describe('API routes — /api/v1/', () => {
         title: 'shell-1',
         type: 'shell',
       }));
+      expect(manager.snapshot().sessions.find((candidate) => candidate.id === session.id)).toMatchObject({
+        runtimeState: 'alive',
+        runtimeExitCode: null,
+        runtimeExitReason: null,
+      });
     });
 
     it('POST /sessions/:id/restart does not launch when runtime kill fails', async () => {

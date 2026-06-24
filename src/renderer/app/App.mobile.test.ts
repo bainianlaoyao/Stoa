@@ -94,7 +94,7 @@ describe('App mobile shell breakpoint', () => {
     })
   })
 
-  it('uses the mobile shell at <=768px', async () => {
+  it('uses the mobile shell for phone portrait and landscape viewports', async () => {
     installMatchMedia(true)
 
     const wrapper = mount(App, {
@@ -106,6 +106,7 @@ describe('App mobile shell breakpoint', () => {
 
     expect(wrapper.find('[data-testid="mobile-shell"]').exists()).toBe(true)
     await flush()
+    expect(window.matchMedia).toHaveBeenCalledWith('(max-width: 768px), ((max-width: 932px) and (max-height: 480px))')
     expect(wrapper.find('[data-testid="mobile-shell"]').attributes('data-health-status')).toBe('reconnecting')
     expect(wrapper.find('[data-testid="desktop-shell"]').exists()).toBe(false)
   })

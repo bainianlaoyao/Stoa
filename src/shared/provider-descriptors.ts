@@ -55,7 +55,7 @@ const PROVIDER_DESCRIPTORS: Record<SessionType, ProviderDescriptor> = {
     supportsResume: true,
     supportsStructuredEvents: true,
     seedsExternalSessionId: true,
-    prefersShellWrap: false
+    prefersShellWrap: true
   }
 }
 

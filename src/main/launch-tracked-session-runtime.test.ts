@@ -48,7 +48,7 @@ describe('launchTrackedSessionRuntime', () => {
       }
     }))
     const registerSessionSecret = vi.fn()
-    const startRuntime = vi.fn(async () => {})
+    const startRuntime = vi.fn(async () => true)
 
     const launched = await launchTrackedSessionRuntime({
       sessionId: session.id,
@@ -117,7 +117,7 @@ describe('launchTrackedSessionRuntime', () => {
       webhookPort: null,
       globalStatePath
     })
-    const startRuntime = vi.fn(async () => {})
+    const startRuntime = vi.fn(async () => true)
 
     const launched = await launchTrackedSessionRuntime({
       sessionId: 'missing-session',
@@ -150,6 +150,53 @@ describe('launchTrackedSessionRuntime', () => {
     expect(startRuntime).not.toHaveBeenCalled()
   })
 
+  test('returns false when startRuntime observes a synchronous process exit', async () => {
+    const globalStatePath = await createTestGlobalStatePath()
+    const manager = await ProjectSessionManager.create({
+      webhookPort: null,
+      globalStatePath
+    })
+    const project = await manager.createProject({
+      path: await createTestWorkspace('launch-fast-exit-'),
+      name: 'fast-exit-project'
+    })
+    const session = await manager.createSession({
+      projectId: project.id,
+      type: 'opencode',
+      title: 'Fast exit'
+    })
+    const startRuntime = vi.fn(async () => false)
+
+    const launched = await launchTrackedSessionRuntime({
+      sessionId: session.id,
+      manager,
+      webhookPort: 43127,
+      ptyHost: { start: vi.fn(() => ({ runtimeId: session.id })) } as never,
+      runtimeController: {
+        markRuntimeStarting: vi.fn(async () => {}),
+        markRuntimeAlive: vi.fn(async () => {}),
+        markRuntimeExited: vi.fn(async () => {}),
+        markRuntimeFailedToStart: vi.fn(async () => {}),
+        appendTerminalData: vi.fn(async () => {})
+      },
+      sessionEventBridge: {
+        registerSessionSecret: vi.fn()
+      } as never,
+      hookLeaseManager: {
+        ensureLease: vi.fn(async () => null)
+      } as never,
+      resolveRuntimePaths: vi.fn(async () => ({
+        shellPath: null,
+        providerPath: null,
+        claudeDangerouslySkipPermissions: false
+      })),
+      startRuntime
+    })
+
+    expect(launched).toBe(false)
+    expect(startRuntime).toHaveBeenCalledOnce()
+  })
+
   test('launches Claude sessions without a pre-start injector step', async () => {
     const globalStatePath = await createTestGlobalStatePath()
     const manager = await ProjectSessionManager.create({
@@ -166,7 +213,7 @@ describe('launchTrackedSessionRuntime', () => {
       title: 'Claude Session'
     })
 
-    const startRuntime = vi.fn(async () => {})
+    const startRuntime = vi.fn(async () => true)
     const launched = await launchTrackedSessionRuntime({
       sessionId: session.id,
       manager,
@@ -205,7 +252,7 @@ describe('launchTrackedSessionRuntime', () => {
       claudeDangerouslySkipPermissions: false
     }))
     const ensureLease = vi.fn(async () => null)
-    const startRuntime = vi.fn(async () => {})
+    const startRuntime = vi.fn(async () => true)
 
     const launched = await launchTrackedSessionRuntime({
       sessionId: 'session_codex_1',
@@ -322,7 +369,7 @@ describe('launchTrackedSessionRuntime', () => {
       }
     }))
     const registerSessionSecret = vi.fn()
-    const startRuntime = vi.fn(async () => {})
+    const startRuntime = vi.fn(async () => true)
 
     const launched = await launchTrackedSessionRuntime({
       sessionId: 'meta_session_1',
@@ -448,7 +495,7 @@ describe('launchTrackedSessionRuntime', () => {
       }
     }))
     const registerSessionSecret = vi.fn()
-    const startRuntime = vi.fn(async () => {})
+    const startRuntime = vi.fn(async () => true)
 
     await launchTrackedSessionRuntime({
       sessionId: session.id,
@@ -501,7 +548,7 @@ describe('launchTrackedSessionRuntime', () => {
     })
 
     const registerSessionToken = vi.fn()
-    const startRuntime = vi.fn(async () => {})
+    const startRuntime = vi.fn(async () => true)
 
     await launchTrackedSessionRuntime({
       sessionId: session.id,
@@ -569,7 +616,7 @@ describe('launchTrackedSessionRuntime', () => {
     })
 
     const registerSessionToken = vi.fn()
-    const startRuntime = vi.fn(async () => {})
+    const startRuntime = vi.fn(async () => true)
 
     await launchTrackedSessionRuntime({
       sessionId: session.id,
@@ -617,7 +664,7 @@ describe('launchTrackedSessionRuntime', () => {
       title: 'No Secret'
     })
 
-    const startRuntime = vi.fn(async () => {})
+    const startRuntime = vi.fn(async () => true)
 
     await launchTrackedSessionRuntime({
       sessionId: session.id,
@@ -658,7 +705,7 @@ describe('launchTrackedSessionRuntime', () => {
 
   test('enables recovery takeover for resumed sessions', async () => {
     const ensureLease = vi.fn(async () => null)
-    const startRuntime = vi.fn(async () => {})
+    const startRuntime = vi.fn(async () => true)
 
     const launched = await launchTrackedSessionRuntime({
       sessionId: 'session_resume_1',
@@ -734,7 +781,7 @@ describe('launchTrackedSessionRuntime', () => {
 
   test('passes through explicit recovery takeover when requested by the caller', async () => {
     const ensureLease = vi.fn(async () => null)
-    const startRuntime = vi.fn(async () => {})
+    const startRuntime = vi.fn(async () => true)
 
     const launched = await launchTrackedSessionRuntime({
       sessionId: 'session_bootstrap_1',

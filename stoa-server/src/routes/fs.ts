@@ -29,6 +29,7 @@ import type {
 } from 'stoa-shared'
 
 const execFileAsync = promisify(execFile)
+const HIDDEN_WORKSPACE_DIR_NAMES = new Set(['.git', '.stoa'])
 
 export interface FsRouteDeps {
   /** WebSocket hub for broadcasting `fs:changed` events. */
@@ -314,7 +315,7 @@ async function listDirectory(
   const entries = await readdir(fullPath, { withFileTypes: true })
   const directoryEntries = await Promise.all(
     entries
-      .filter((entry) => entry.name !== '.git')
+      .filter((entry) => !HIDDEN_WORKSPACE_DIR_NAMES.has(entry.name))
       .map(async (entry) => {
         const entryPath = path.join(fullPath, entry.name)
         const stats = await stat(entryPath)

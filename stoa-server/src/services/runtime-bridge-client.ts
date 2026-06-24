@@ -33,24 +33,31 @@ export class LiveRuntimeBridgeClient implements RuntimeBridgeClient {
 
   async launch(sessionId: string, options: LaunchOptions): Promise<void> {
     await this.dispatch(sessionId, 'runtime:launch', {
-      command: options.command ?? null,
       cwd: options.cwd ?? null,
       projectId: options.projectId ?? null,
       title: options.title ?? null,
       type: options.type ?? null,
       externalSessionId: options.externalSessionId ?? null,
       cols: options.cols ?? null,
-      rows: options.rows ?? null,
-      env: options.env ?? null
+      rows: options.rows ?? null
     })
+  }
+
+  isSessionManaged(sessionId: string): boolean {
+    return this.handler.getProviderForSession(sessionId) !== null
   }
 
   async kill(sessionId: string): Promise<void> {
     await this.dispatch(sessionId, 'runtime:kill', { killedAt: this.nowIso() })
+    this.handler.unassignSession(sessionId)
   }
 
   async input(sessionId: string, data: string): Promise<void> {
     await this.dispatch(sessionId, 'runtime:input', { data })
+  }
+
+  async binaryInput(sessionId: string, base64Data: string): Promise<void> {
+    await this.dispatch(sessionId, 'runtime:input', { base64Data })
   }
 
   async resize(sessionId: string, cols: number, rows: number): Promise<void> {
@@ -74,8 +81,12 @@ export class LiveRuntimeBridgeClient implements RuntimeBridgeClient {
   async createChildSession(parentId: string, options: ChildSessionOptions): Promise<string> {
     const result = await this.dispatch(parentId, 'runtime:create-child-session', {
       type: options.type,
-      command: options.command ?? null,
-      cwd: options.cwd ?? null
+      projectId: options.projectId ?? null,
+      title: options.title ?? null,
+      subagentName: options.subagentName ?? null,
+      externalSessionId: options.externalSessionId ?? null,
+      initialCols: options.initialCols ?? null,
+      initialRows: options.initialRows ?? null
     })
 
     if (typeof result === 'string') return result

@@ -1,10 +1,14 @@
 // @vitest-environment happy-dom
+import { readFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import GlobalActivityBar from './GlobalActivityBar.vue'
 
 type AppSurface = 'command' | 'archive' | 'settings'
+const globalActivityBarPath = resolve(dirname(fileURLToPath(import.meta.url)), 'GlobalActivityBar.vue')
 
 function mountBar(props: { activeSurface?: AppSurface } = {}) {
   return mount(GlobalActivityBar, {
@@ -89,5 +93,21 @@ describe('GlobalActivityBar', () => {
     expect(bottomCluster.find('[data-activity-item="settings"]').exists()).toBe(true)
     expect(bottomCluster.find('[data-activity-item="sidebar-toggle"]').exists()).toBe(false)
     expect(bottomCluster.findAll('[data-activity-item]').map((node) => node.attributes('data-activity-item'))).toEqual(['archive', 'settings'])
+  })
+
+  it('keeps Fluent tokenized rail styling with a stable active indicator', () => {
+    const source = readFileSync(globalActivityBarPath, 'utf8')
+
+    expect(source).toContain('class="activity-bar"')
+    expect(source).toContain('class="activity-item__indicator"')
+    expect(source).toContain('.activity-item--active .activity-item__indicator')
+    expect(source).toContain('width: 56px;')
+    expect(source).toContain('background: var(--mica-alt);')
+    expect(source).toContain('background: var(--active-fill);')
+    expect(source).toContain('background: var(--accent);')
+    expect(source).toContain('box-shadow: var(--shadow-focus-ring);')
+    expect(source).toContain('var(--duration-rest) var(--curve-standard)')
+    expect(source).not.toContain('bg-black-soft')
+    expect(source).not.toContain('duration-200')
   })
 })

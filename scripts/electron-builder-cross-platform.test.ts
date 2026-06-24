@@ -32,10 +32,10 @@ describe('electron-builder cross-platform contract', () => {
       scripts: Record<string, string>
     }
 
-    expect(packageJson.scripts.package).toContain('scripts/run-electron-builder.mjs')
-    expect(packageJson.scripts['package:win']).toContain('scripts/run-electron-builder.mjs --win')
-    expect(packageJson.scripts['package:mac']).toContain('scripts/run-electron-builder.mjs --mac')
-    expect(packageJson.scripts['package:linux']).toContain('scripts/run-electron-builder.mjs --linux')
+    expect(packageJson.scripts.package).toContain('scripts/package-electron-release.mjs')
+    expect(packageJson.scripts['package:win']).toContain('scripts/package-electron-release.mjs --win')
+    expect(packageJson.scripts['package:mac']).toContain('scripts/package-electron-release.mjs --mac')
+    expect(packageJson.scripts['package:linux']).toContain('scripts/package-electron-release.mjs --linux')
   })
 
   test('routes package:release through the build pipeline before publishing', () => {
@@ -44,7 +44,8 @@ describe('electron-builder cross-platform contract', () => {
     }
 
     expect(packageJson.scripts['package:release']).toContain('pnpm run build')
-    expect(packageJson.scripts['package:release']).toContain('scripts/run-electron-builder.mjs')
+    expect(packageJson.scripts['package:release']).toContain('pnpm run build:stoa-server')
+    expect(packageJson.scripts['package:release']).toContain('scripts/package-electron-release.mjs')
     expect(packageJson.scripts['package:release']).toContain('--publish always')
   })
 })

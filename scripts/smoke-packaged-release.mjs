@@ -3,10 +3,10 @@ import { randomUUID } from 'node:crypto'
 import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { executableDirectory, resolvePackagedExecutable as findPackagedExecutable } from './packaging-artifacts.mjs'
+import { executableDirectory, resolveDefaultReleaseDir, resolvePackagedExecutable as findPackagedExecutable } from './packaging-artifacts.mjs'
 
 const root = process.cwd()
-const releaseDir = join(root, 'release')
+const releaseDir = await resolveDefaultReleaseDir(root)
 const platform = process.env.STOA_PACKAGE_PLATFORM ?? process.argv.find((arg) => arg.startsWith('--platform='))?.slice('--platform='.length) ?? process.platform
 const packagedEvolverDir = join(releaseDir, 'win-unpacked', 'resources', 'evolver')
 const stateDir = join(tmpdir(), `stoa-packaged-smoke-${randomUUID()}`)

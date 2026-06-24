@@ -18,6 +18,7 @@ const projectSessionSource = readSrc('src/shared/project-session.ts')
 const controllerSource = readSrc('src/main/session-runtime-controller.ts')
 const desktopBootstrapSource = readSrc('src/renderer/bootstrap-electron.ts')
 const stoaServerE2eSource = readSrc('stoa-server/e2e-test.mjs')
+const playwrightElectronFixtureSource = readSrc('tests/e2e-playwright/fixtures/electron-app.ts')
 
 function extractObjectBlock(source: string, keyword: string): string | null {
   const idx = source.indexOf(keyword)
@@ -244,6 +245,12 @@ describe('E2E: Main Process Config Guard', () => {
       expect(stoaServerE2eSource).not.toContain('STOA_DB_PATH')
       expect(stoaServerE2eSource).not.toMatch(/homedir\s*\(\s*\)/)
       expect(stoaServerE2eSource).not.toMatch(/join\([^)]*['"]\.stoa['"]/)
+    })
+
+    it('Electron Playwright fixture isolates Stoa Server runtime storage', () => {
+      expect(playwrightElectronFixtureSource).toContain('STOA_DIR')
+      expect(playwrightElectronFixtureSource).toContain("join(stateDir, '.stoa-server')")
+      expect(playwrightElectronFixtureSource).not.toMatch(/STOA_DIR:\s*join\([^)]*homedir\s*\(/)
     })
   })
 

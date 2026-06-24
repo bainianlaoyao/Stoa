@@ -477,7 +477,16 @@ export class RuntimeBridgeHandler {
   ): void {
     const state = normalizePtyState(rawState)
     if (!state) return
-    this.lastKnownPtyState.set(sessionId, { providerId: provider.id, state })
+    if (state.alive) {
+      provider.managedSessions.add(sessionId)
+      this.lastKnownPtyState.set(sessionId, { providerId: provider.id, state })
+    } else {
+      provider.managedSessions.delete(sessionId)
+      const last = this.lastKnownPtyState.get(sessionId)
+      if (last && last.providerId === provider.id) {
+        this.lastKnownPtyState.delete(sessionId)
+      }
+    }
     try {
       this.hooks.onPtyState?.({ sessionId, providerId: provider.id, state })
     } catch (error) {
@@ -493,8 +502,16 @@ export class RuntimeBridgeHandler {
       if (typeof record.sessionId !== 'string') continue
       const state = normalizePtyState(record.state)
       if (!state) continue
-      provider.managedSessions.add(record.sessionId)
-      this.lastKnownPtyState.set(record.sessionId, { providerId: provider.id, state })
+      if (state.alive) {
+        provider.managedSessions.add(record.sessionId)
+        this.lastKnownPtyState.set(record.sessionId, { providerId: provider.id, state })
+      } else {
+        provider.managedSessions.delete(record.sessionId)
+        const last = this.lastKnownPtyState.get(record.sessionId)
+        if (last && last.providerId === provider.id) {
+          this.lastKnownPtyState.delete(record.sessionId)
+        }
+      }
       ptyStates.push({ sessionId: record.sessionId, state })
     }
     try {

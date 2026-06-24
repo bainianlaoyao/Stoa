@@ -10,16 +10,8 @@ import type { ProjectHierarchyNode } from '@renderer/stores/workspaces'
 vi.mock('./MobileSessionTerminal.vue', () => ({
   default: defineComponent({
     name: 'MobileSessionTerminal',
-    props: {
-      openDisplaySheet: { type: Boolean, default: false }
-    },
-    setup(props) {
-      return () => h('section', { 'data-testid': 'mobile-session-terminal-stub' }, [
-        'terminal',
-        props.openDisplaySheet
-          ? h('div', { 'data-testid': 'mobile-terminal-display-sheet' }, 'display')
-          : null
-      ])
+    setup() {
+      return () => h('section', { 'data-testid': 'mobile-session-terminal-stub' }, 'terminal')
     }
   })
 }))
@@ -189,17 +181,19 @@ describe('MobileAppShell', () => {
     expect(wrapper.find('[data-testid="mobile-session-view"]').exists()).toBe(false)
   })
 
-  it('opens display preferences from session More rather than a persistent terminal bar', async () => {
+  it('does not expose display modes from session More', async () => {
     const wrapper = mountShell()
 
     await wrapper.get('[data-testid="mobile-workspace-row"]').trigger('click')
     await wrapper.get('[data-testid="mobile-session-row"]').trigger('click')
-    expect(wrapper.find('[data-testid="mobile-terminal-display-sheet"]').exists()).toBe(false)
 
     await wrapper.get('[data-testid="mobile-session-more"]').trigger('click')
-    await wrapper.get('[data-testid="mobile-session-actions-sheet"]').find('button').trigger('click')
 
-    expect(wrapper.find('[data-testid="mobile-terminal-display-sheet"]').exists()).toBe(true)
+    const actionsText = wrapper.get('[data-testid="mobile-session-actions-sheet"]').text()
+    expect(actionsText).not.toContain('Display')
+    expect(actionsText).not.toContain('Wrap lines')
+    expect(actionsText).toContain('Restart')
+    expect(actionsText).toContain('Archive')
   })
 
   it('uses a native mobile archive list and restores directly into the session', async () => {

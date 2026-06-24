@@ -6,9 +6,9 @@
 
 [中文版](README.zh-CN.md)
 
-Stoa is a fully open-source local workspace for AI-powered development, built to make managing ten agents at once feel as effortless as taking a sip of water.
+Stoa is a fully open-source, local-first workspace for AI-powered development, built to make managing ten agents at once feel as effortless as taking a sip of water.
 
-It gives developers a clean, focused desktop console for managing multiple projects, multiple agents, and multiple CLI sessions. Its core paths are maintained by nearly one thousand tests, with the goal of turning AI CLI workflows from temporary terminal sessions into a stable, recoverable, production-grade experience.
+It gives developers a clean, focused console for managing multiple projects, multiple agents, and multiple CLI sessions. Its core paths are guarded by more than 200 test files across unit, integration, Electron, web, generated Playwright, and behavior-coverage layers, with the goal of turning AI CLI workflows from temporary terminal sessions into a stable, recoverable, production-grade experience.
 
 ## Screenshots
 
@@ -22,9 +22,9 @@ _OpenCode sessions connect through the same provider model and can be managed al
 
 ## Why Stoa
 
-### Stability Guarded by Nearly One Thousand Tests
+### Stability Guarded by 200+ Test Files
 
-Stoa is not a concept-only demo. The project uses unit tests, integration tests, Electron E2E tests, generated Playwright journeys, and behavior coverage checks to protect the core workflow and push multi-session AI development toward a production-grade desktop experience.
+Stoa is not a concept-only demo. The project uses unit tests, integration tests, Stoa Server route tests, Electron E2E tests, web Playwright tests, generated Playwright journeys, and behavior coverage checks to protect the core workflow and push multi-session AI development toward a production-grade desktop experience.
 
 ### Clean, Focused UI
 
@@ -42,12 +42,17 @@ The desktop shell, state management, provider integration model, behavior assets
 
 Stoa is a local desktop application, not a cloud platform. It organizes projects, hosts terminals, manages session state, and coordinates recovery on your machine. Network access, authentication, and model usage still belong to the individual CLI tools you choose to run.
 
+### Desktop Runtime, Server API, Web and Mobile Pickup
+
+Electron owns the native PTY runtime and desktop integration. The embedded Stoa Server exposes token-protected REST and WebSocket APIs, serves the web renderer, and keeps browser or mobile clients aligned with the desktop runtime through a runtime bridge. Phone-sized viewports use a dedicated mobile shell for workspace/session pickup, a fixed wide xterm surface, a key rail, and backend health feedback.
+
 ## Problems Stoa Solves
 
 - Manage multiple projects, workspaces, and AI CLI sessions in one local console.
 - Keep terminal sessions alive while switching workspaces.
 - Reduce the risk of losing context during long-running AI development work.
 - Use structured status channels for agent state instead of guessing from terminal text.
+- Pick sessions back up from browser or phone-sized layouts without changing the desktop workflow.
 - Bring scattered AI terminal windows into a stable, recoverable desktop workflow.
 - Provide a verifiable foundation for long-running, multi-task, concurrent AI development.
 
@@ -56,9 +61,12 @@ Stoa is a local desktop application, not a cloud platform. It organizes projects
 - Create, switch, and manage workspaces.
 - Host real CLI terminal sessions inside the desktop app.
 - Keep background sessions running to reduce interruption during context switches.
+- Run an embedded Stoa Server with REST, WebSocket, static web client, and runtime-bridge paths.
+- Use a mobile shell for phone portrait and phone landscape viewports, including workspace drilldown, session search, fixed wide terminal display, key rail, and health lockout.
 - Display states such as running, waiting for input, error, and recoverable through a side-channel status model.
+- Reconcile runtime alive/exited state across startup, restore, restart, provider disconnect, and runtime reconnect paths.
 - Connect different AI CLI tools through a provider model.
-- Verify key journeys with generated Playwright paths, behavior coverage, and Electron E2E tests.
+- Verify key journeys with generated Playwright paths, behavior coverage, Electron E2E tests, and web E2E tests.
 
 ## Coming Soon: Project-Level Auto Evolution
 
@@ -115,13 +123,15 @@ Stoa does not provide cloud sync and does not proxy model requests. Sign-in, net
 
 Stoa stores application state, workspace indexes, session metadata, and recovery information locally. Provider sidecar configuration is written into the relevant project directory, such as `.claude/` or `.opencode/`.
 
+The embedded Stoa Server also uses local token and port metadata under `~/.stoa` so the desktop runtime, web renderer, and `stoa-ctl` can discover and authenticate against the same local control plane.
+
 See [State Storage and Recovery](docs/operations/state-storage-and-recovery.md) for the recovery design.
 
 ## Supported Platforms
 
 Stoa is built with Electron and targets Windows, macOS, and Linux.
 
-The 0.2.1 release prioritizes Windows artifacts. macOS and Linux packaging targets are configured, but those artifacts should be built, signed, and smoke-tested on the appropriate platforms before being published as official downloads.
+Current published releases prioritize Windows artifacts: NSIS installer, portable executable, update blockmap, and `latest.yml` metadata. macOS and Linux packaging targets are configured, but those artifacts should be built, signed, and smoke-tested on the appropriate platforms before being published as official downloads.
 
 ## What Stoa Is Not
 
@@ -133,8 +143,10 @@ The 0.2.1 release prioritizes Windows artifacts. macOS and Linux packaging targe
 
 ## Roadmap
 
+- Cut and smoke-test the next Windows release from the current Stoa Server, web runtime, and mobile-shell code line.
 - Stabilize the Windows, macOS, and Linux installer release pipeline.
 - Continue hardening provider status feedback and recovery for Claude Code, OpenCode, Codex, and future providers.
+- Continue the Stoa Server/client separation so desktop, web, and future mobile clients share one state and runtime-control model.
 - Advance project-level auto evolution: context understanding, plan generation, execution, test verification, and behavior asset updates.
 - Improve workspace templates, provider configuration, and long-running session management.
 
@@ -146,6 +158,7 @@ The 0.2.1 release prioritizes Windows artifacts. macOS and Linux packaging targe
 4. Work with the CLI agent in the terminal on the right.
 5. Switch projects and sessions from the workspace list on the left.
 6. Use the session status indicators to understand whether a session is running, waiting for input, failed, or recoverable.
+7. On phone-sized viewports, use the mobile shell to find a workspace/session, open the wide xterm view, and send terminal keys through the key rail.
 
 ## Project Status
 
@@ -203,6 +216,9 @@ pnpm run dev
 
 ```bash
 pnpm run build
+pnpm run build:stoa-server
+pnpm run package
+pnpm run verify:release-smoke
 ```
 
 Generated test assets are part of the project behavior contract. Do not manually edit files under `tests/generated/`.
@@ -239,16 +255,17 @@ Then run `npm run test:generate` to regenerate Playwright journeys.
 
 ## Technical Architecture
 
-Stoa uses Electron as the local desktop shell. The main process owns real state and process coordination, while the Vue renderer maps state to UI and forwards user intent.
+Stoa uses Electron as the local desktop shell and embeds Stoa Server as the shared API and state boundary. Electron owns native desktop capabilities and PTY processes, Stoa Server exposes REST/WebSocket surfaces and server-side services, and the Vue renderer maps state to UI through the preload adapter or HTTP/WebSocket client.
 
 Core stack:
 
 - Electron
+- Stoa Server
+- Hono REST and WebSocket routes
 - Vue 3
 - Pinia
 - xterm.js
 - node-pty
-- Express webhook server
 - TypeScript
 - Vitest
 - Playwright
@@ -256,7 +273,8 @@ Core stack:
 Core architecture boundaries:
 
 - The renderer does not own real session control.
-- `node-pty` only lives in the main process or controlled backend modules.
+- `node-pty` only lives in the Electron runtime process or controlled backend modules.
+- Stoa Server sends launch, input, resize, interrupt, replay, and child-session requests through an explicit runtime bridge.
 - Terminal character streams are for humans to read, not for the system to infer state from.
 - Agent lifecycle, tool calls, error signals, and session pointers should flow through structured side channels.
 - Providers integrate through explicit capability contracts, instead of hardcoding one CLI's behavior into the UI.

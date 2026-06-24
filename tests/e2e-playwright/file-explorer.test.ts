@@ -39,8 +39,8 @@ test.describe('FileExplorer E2E', () => {
     await openSidebar(app.page)
     await expect(app.page.getByTestId('file-explorer')).toBeVisible()
 
-    // Root entries: dirs first (.stoa, src, tests), then files alphabetically
-    // .stoa is created by the app for session state
+    // Root entries: dirs first (src, tests), then files alphabetically.
+    // App-owned state directories are intentionally hidden from the tree.
     const names = await getVisibleExplorerEntryNames(app.page)
     expect(names).toContain('src')
     expect(names).toContain('tests')

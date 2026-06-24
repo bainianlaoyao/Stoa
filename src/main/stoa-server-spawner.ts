@@ -302,6 +302,12 @@ export class StoaServerSpawner {
   }
 
   private createChildEnv(): NodeJS.ProcessEnv {
+    const packagedServerRoot = this.deps.isPackaged
+      ? join(this.deps.getResourcesPath(), 'stoa-server')
+      : undefined
+    const packagedNativeModules = this.deps.isPackaged
+      ? join(this.deps.getResourcesPath(), 'app.asar.unpacked', 'node_modules')
+      : undefined
     const env: NodeJS.ProcessEnv = {
       ...process.env,
       STOA_AUTH_TOKEN: this.authToken,
@@ -310,6 +316,11 @@ export class StoaServerSpawner {
 
     if (this.deps.isPackaged) {
       env.ELECTRON_RUN_AS_NODE = '1'
+      env.STOA_SERVER_ROOT = packagedServerRoot
+      env.NODE_PATH = [
+        packagedNativeModules,
+        process.env.NODE_PATH
+      ].filter(Boolean).join(process.platform === 'win32' ? ';' : ':')
     }
 
     return env

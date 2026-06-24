@@ -28,11 +28,9 @@ describe('LiveRuntimeBridgeClient', () => {
     const client = new LiveRuntimeBridgeClient(handler)
 
     const launch = client.launch('sess-fresh', {
-      command: 'bash',
       cwd: '/workspace',
       cols: 100,
       rows: 30,
-      env: { TERM: 'xterm-256color' },
     })
 
     expect(ws.send).toHaveBeenCalledTimes(1)
@@ -41,11 +39,9 @@ describe('LiveRuntimeBridgeClient', () => {
       type: 'runtime:launch',
       sessionId: 'sess-fresh',
       payload: {
-        command: 'bash',
         cwd: '/workspace',
         cols: 100,
         rows: 30,
-        env: { TERM: 'xterm-256color' },
       },
     })
 
@@ -53,6 +49,8 @@ describe('LiveRuntimeBridgeClient', () => {
 
     await expect(launch).resolves.toBeUndefined()
     expect(handler.getProviderForSession('sess-fresh')).toBe(provider)
+    expect(client.isSessionManaged('sess-fresh')).toBe(true)
+    expect(client.isSessionManaged('missing-session')).toBe(false)
   })
 
   it('getTerminalReplay reads the canonical text field', async () => {
@@ -77,6 +75,49 @@ describe('LiveRuntimeBridgeClient', () => {
     await expect(replay).resolves.toBe('terminal buffer')
   })
 
+  it('binaryInput forwards base64 data without decoding to text', async () => {
+    const handler = new RuntimeBridgeHandler()
+    const ws = createMockWs()
+    const provider = handler.registerProvider(ws, { token: 'test-token' })
+    handler.assignSession(provider.id, 'sess-binary')
+    const client = new LiveRuntimeBridgeClient(handler)
+
+    const send = client.binaryInput('sess-binary', 'G+k=')
+
+    expect(ws.send).toHaveBeenCalledTimes(1)
+    const sent = JSON.parse(ws.send.mock.calls[0][0] as string)
+    expect(sent).toMatchObject({
+      type: 'runtime:input',
+      sessionId: 'sess-binary',
+      payload: { base64Data: 'G+k=' },
+    })
+
+    resolveLatestCommand(ws, handler, provider.id, null)
+    await expect(send).resolves.toBeUndefined()
+  })
+
+  it('kill unassigns the session after the provider acknowledges it', async () => {
+    const handler = new RuntimeBridgeHandler()
+    const ws = createMockWs()
+    const provider = handler.registerProvider(ws, { token: 'test-token' })
+    handler.assignSession(provider.id, 'sess-kill')
+    const client = new LiveRuntimeBridgeClient(handler)
+
+    const kill = client.kill('sess-kill')
+
+    expect(handler.getProviderForSession('sess-kill')).toBe(provider)
+    expect(ws.send).toHaveBeenCalledTimes(1)
+    const sent = JSON.parse(ws.send.mock.calls[0][0] as string)
+    expect(sent).toMatchObject({
+      type: 'runtime:kill',
+      sessionId: 'sess-kill'
+    })
+
+    resolveLatestCommand(ws, handler, provider.id, null)
+    await expect(kill).resolves.toBeUndefined()
+    expect(handler.getProviderForSession('sess-kill')).toBeNull()
+  })
+
   it('createChildSession uses top-level sessionId as parent and reads childSessionId', async () => {
     const handler = new RuntimeBridgeHandler()
     const ws = createMockWs()
@@ -86,8 +127,12 @@ describe('LiveRuntimeBridgeClient', () => {
 
     const child = client.createChildSession('sess-parent', {
       type: 'shell',
-      command: 'npm test',
-      cwd: '/workspace',
+      projectId: 'project-1',
+      title: 'Child shell',
+      subagentName: 'worker',
+      externalSessionId: 'external-child',
+      initialCols: 120,
+      initialRows: 40,
     })
 
     expect(ws.send).toHaveBeenCalledTimes(1)
@@ -97,8 +142,12 @@ describe('LiveRuntimeBridgeClient', () => {
       sessionId: 'sess-parent',
       payload: {
         type: 'shell',
-        command: 'npm test',
-        cwd: '/workspace',
+        projectId: 'project-1',
+        title: 'Child shell',
+        subagentName: 'worker',
+        externalSessionId: 'external-child',
+        initialCols: 120,
+        initialRows: 40,
       },
     })
 

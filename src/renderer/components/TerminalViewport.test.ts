@@ -117,7 +117,11 @@ vi.mock('@xterm/addon-search', () => {
 
 vi.mock('@xterm/addon-serialize', () => {
   return {
-    SerializeAddon: class {},
+    SerializeAddon: class {
+      serialize() {
+        return 'serialized terminal buffer'
+      }
+    },
   }
 })
 
@@ -635,6 +639,28 @@ describe('TerminalViewport', () => {
     await flushTerminal()
 
     expect(instance?.writes).toContain('live after failure')
+  })
+
+  test('registers a terminal serialize probe only when the E2E registry is present', async () => {
+    const probeWindow = window as Window & {
+      __STOA_E2E_TERMINAL_PROBES__?: Map<string, () => string>
+    }
+    probeWindow.__STOA_E2E_TERMINAL_PROBES__ = new Map()
+
+    try {
+      const { default: TerminalViewport } = await import('./TerminalViewport.vue')
+      const wrapper = mount(TerminalViewport, {
+        props: { project: baseProject, session: baseSession },
+      })
+      await flushTerminal()
+
+      expect(probeWindow.__STOA_E2E_TERMINAL_PROBES__.get('session_op_1')?.()).toBe('serialized terminal buffer')
+
+      wrapper.unmount()
+      expect(probeWindow.__STOA_E2E_TERMINAL_PROBES__.has('session_op_1')).toBe(false)
+    } finally {
+      delete probeWindow.__STOA_E2E_TERMINAL_PROBES__
+    }
   })
 
   test('calls sendSessionResize after fit even when the Font Loading API is unavailable', async () => {

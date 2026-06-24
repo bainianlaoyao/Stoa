@@ -228,8 +228,7 @@ async function start(): Promise<void> {
     runtimeBridge: runtimeBridgeHandler,
     expectedToken: authToken,
     dispatchBinaryInput: (sessionId, base64Data) => {
-      const decoded = Buffer.from(base64Data, 'base64').toString('latin1');
-      void runtimeBridge.input(sessionId, decoded).catch((error) => {
+      void runtimeBridge.binaryInput(sessionId, base64Data).catch((error) => {
         console.warn('[stoa-server] Failed to dispatch binary input', {
           sessionId,
           error: error instanceof Error ? error.message : String(error),

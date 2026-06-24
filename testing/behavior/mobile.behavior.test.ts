@@ -27,10 +27,11 @@ describe('mobile behavior assets', () => {
     expect(mobileSessionCreationBehavior.recovery).toContain('noSessionCreatedUntilTypeSelected')
   })
 
-  it('declares key rail and display preferences as terminal controls', () => {
+  it('declares key rail and fixed wide terminal as terminal controls', () => {
     expect(mobileTerminalControlsBehavior.id).toBe('mobile.terminal.controls')
     expect(mobileTerminalControlsBehavior.expects).toContain('mobile.keysRailOverlayNoResize')
-    expect(mobileTerminalControlsBehavior.expects).toContain('mobile.displayPrefsPersistPerSession')
+    expect(mobileTerminalControlsBehavior.expects).toContain('mobile.wideTerminalOnlyModeForCodingSession')
+    expect(mobileTerminalControlsBehavior.expects).toContain('mobile.displayModesAbsent')
   })
 
   it('declares backend health as a critical mobile input gate', () => {

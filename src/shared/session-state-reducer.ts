@@ -88,6 +88,11 @@ export function reduceSessionState(
       break
     case 'runtime.alive':
       next.runtimeState = 'alive'
+      next.runtimeExitCode = null
+      next.runtimeExitReason = null
+      if (next.failureReason === 'runtime_crash' || next.failureReason === 'failed_to_start') {
+        next.failureReason = null
+      }
       applyExternalSessionId(next, patch)
       break
     case 'runtime.exited_clean':

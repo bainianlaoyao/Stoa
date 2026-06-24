@@ -6,13 +6,14 @@ export const mobileDrilldownBehavior = defineBehavior({
   goal: 'enter the phone UI through Workspace Home, pick a workspace, then open one full-screen xterm session',
   entities: ['mobile-shell', 'workspace', 'session', 'xterm'],
   usageModes: ['phone_pickup'],
-  preconditions: ['viewport.width<=768', 'workspace.exists', 'session.exists'],
+  preconditions: ['viewport.phoneGeometry', 'workspace.exists', 'session.exists'],
   action: 'mobile.navigateWorkspaceSession',
   expects: [
     'mobile.workspaceHomeVisibleAtStartup',
     'mobile.sessionListVisibleAfterWorkspaceTap',
     'mobile.sessionViewVisibleAfterSessionTap',
     'terminal.xtermVisible',
+    'mobile.landscapeKeepsMobileShell',
     'desktop.quickActionsAbsent',
     'desktop.rightSidebarAbsent'
   ],
@@ -30,7 +31,7 @@ export const mobileSearchBehavior = defineBehavior({
   goal: 'find workspaces and sessions through a lightweight transient mobile search layer',
   entities: ['mobile-search', 'workspace', 'session'],
   usageModes: ['phone_pickup'],
-  preconditions: ['viewport.width<=768', 'workspace.exists', 'session.exists'],
+  preconditions: ['viewport.phoneGeometry', 'workspace.exists', 'session.exists'],
   action: 'mobile.searchWorkspaceAndSession',
   expects: [
     'mobile.searchLayerVisible',
@@ -53,7 +54,7 @@ export const mobileSessionCreationBehavior = defineBehavior({
   goal: 'create a session on mobile only from a workspace session list after choosing a desktop-backed session type icon',
   entities: ['workspace', 'session', 'provider-selection'],
   usageModes: ['phone_pickup'],
-  preconditions: ['viewport.width<=768', 'workspace.selected'],
+  preconditions: ['viewport.phoneGeometry', 'workspace.selected'],
   action: 'mobile.createSessionFromTypeGrid',
   expects: [
     'mobile.newSessionAbsentOnWorkspaceHome',
@@ -73,10 +74,10 @@ export const mobileSessionCreationBehavior = defineBehavior({
 export const mobileTerminalControlsBehavior = defineBehavior({
   id: 'mobile.terminal.controls',
   actor: 'user',
-  goal: 'interact with the mobile xterm through an explicit right-side key rail and per-session display preferences',
-  entities: ['session', 'xterm', 'key-rail', 'display-preferences'],
+  goal: 'interact with the mobile xterm through a fixed wide terminal surface and explicit right-side key rail',
+  entities: ['session', 'xterm', 'key-rail', 'fixed-wide-terminal'],
   usageModes: ['phone_pickup'],
-  preconditions: ['viewport.width<=768', 'session.open', 'backend.health=connected'],
+  preconditions: ['viewport.phoneGeometry', 'session.open', 'backend.health=connected'],
   action: 'mobile.terminalAuxiliaryControls',
   expects: [
     'mobile.keysHandleVisible',
@@ -84,10 +85,11 @@ export const mobileTerminalControlsBehavior = defineBehavior({
     'mobile.keysOrderEscTabUpDownSlashDashCopyPasteEnter',
     'mobile.copyUsesSelection',
     'mobile.pasteReadsClipboard',
-    'mobile.displayPrefsPersistPerSession'
+    'mobile.wideTerminalOnlyModeForCodingSession',
+    'mobile.displayModesAbsent'
   ],
   invalidPreconditions: ['backend.health!=connected'],
-  interruptions: ['tapOutsideKeyRail', 'switchDisplayModeDuringSession'],
+  interruptions: ['tapOutsideKeyRail', 'viewport.rotates.landscape'],
   recovery: ['terminalRemainsMounted', 'xtermColumnsNotRecalculatedByRail'],
   observationLayers: ['ui', 'renderer-store'],
   risk: 'high',
@@ -100,7 +102,7 @@ export const mobileHealthBehavior = defineBehavior({
   goal: 'show backend health on mobile and freeze xterm input while reconnecting or offline without mutating sessions',
   entities: ['backend-health', 'mobile-shell', 'xterm', 'session'],
   usageModes: ['phone_pickup'],
-  preconditions: ['viewport.width<=768', 'backend.healthApi.available'],
+  preconditions: ['viewport.phoneGeometry', 'backend.healthApi.available'],
   action: 'mobile.pollBackendHealth',
   expects: [
     'mobile.healthDotVisible',

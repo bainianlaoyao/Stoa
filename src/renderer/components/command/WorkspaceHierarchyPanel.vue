@@ -428,15 +428,15 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <aside class="h-full min-h-0 flex flex-col rounded-none border-r border-line bg-mica" data-testid="workspace-hierarchy-panel" aria-label="Workspace hierarchy">
+  <aside class="workspace-hierarchy-panel" data-testid="workspace-hierarchy-panel" aria-label="Workspace hierarchy">
     
     <!-- Sleek Fluent Sidebar Header Toolbar -->
-    <div class="flex items-center justify-between px-3.5 py-3 border-b border-line bg-surface-soft select-none" data-testid="sidebar-header">
-      <span class="text-[10px] tracking-[0.12em] font-bold text-muted uppercase">{{ t('workspace.eyebrow') }}</span>
+    <div class="sidebar-header" data-testid="sidebar-header">
+      <span class="sidebar-header__eyebrow">{{ t('workspace.eyebrow') }}</span>
       <div class="flex items-center gap-1" data-testid="route-actions">
         <!-- New Project Action -->
         <button
-          class="route-action flex items-center justify-center w-6 h-6 rounded-[var(--radius-sm)] hover:bg-black-soft text-muted hover:text-text-strong transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:bg-black-soft"
+          class="route-action route-header-button"
           type="button"
           data-testid="workspace.new-project"
           :aria-label="t('workspace.newProject')"
@@ -451,7 +451,7 @@ onBeforeUnmount(() => {
         </button>
         <!-- Collapse/Expand All Action -->
         <button
-          class="flex items-center justify-center w-6 h-6 rounded-[var(--radius-sm)] hover:bg-black-soft text-muted hover:text-text-strong transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:bg-black-soft"
+          class="route-header-button"
           type="button"
           :title="collapsedProjectIds.size === hierarchy.length && hierarchy.length > 0 ? 'Expand All' : 'Collapse All'"
           @click="toggleAllCollapsed"
@@ -465,8 +465,8 @@ onBeforeUnmount(() => {
     </div>
 
     <!-- Scrollable Content Body -->
-    <div class="flex-1 overflow-y-auto px-2.5 py-3 grid gap-3 align-content-start route-body-scroll" data-testid="route-body">
-      <div class="grid gap-1">
+    <div class="route-body route-body-scroll" data-testid="route-body">
+      <div class="route-body__content">
         <button class="group-label" type="button" @click="toggleAllCollapsed">
           <span class="group-label__chevron" :class="{ 'group-label__chevron--collapsed': collapsedProjectIds.size === hierarchy.length && hierarchy.length > 0 }">▾</span>
           {{ t('workspace.eyebrow') }}
@@ -652,6 +652,85 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.workspace-hierarchy-panel {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+  background: var(--mica);
+  border-right: 1px solid var(--stroke-divider);
+  color: var(--text);
+  font-family: var(--font-ui);
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 48px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--stroke-divider);
+  background: var(--mica-alt);
+  user-select: none;
+}
+
+.sidebar-header__eyebrow {
+  color: var(--muted);
+  font-size: var(--text-caption);
+  font-weight: 600;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.route-header-button {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    background-color var(--duration-rest) var(--curve-standard),
+    border-color var(--duration-rest) var(--curve-standard),
+    color var(--duration-rest) var(--curve-standard),
+    box-shadow var(--duration-rest) var(--curve-standard);
+}
+
+.route-header-button:hover {
+  background: var(--control-fill-hover);
+  color: var(--text-strong);
+}
+
+.route-header-button:active {
+  background: var(--control-fill-active);
+}
+
+.route-header-button:focus-visible {
+  background: var(--control-fill-hover);
+  color: var(--text-strong);
+  outline: none;
+  box-shadow: var(--shadow-focus-ring);
+}
+
+.route-body {
+  display: grid;
+  flex: 1;
+  min-height: 0;
+  align-content: start;
+  gap: 12px;
+  overflow-y: auto;
+  padding: 12px 10px;
+}
+
+.route-body__content {
+  display: grid;
+  gap: 6px;
+}
+
 .route-session-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -668,7 +747,7 @@ onBeforeUnmount(() => {
   top: 0;
   bottom: 0;
   width: 1px;
-  background: var(--color-line);
+  background: var(--stroke-divider);
   pointer-events: none;
 }
 
@@ -680,7 +759,7 @@ onBeforeUnmount(() => {
   top: 0;
   bottom: 0;
   width: 1px;
-  background: var(--color-line);
+  background: var(--stroke-divider);
   pointer-events: none;
 }
 
@@ -691,7 +770,7 @@ onBeforeUnmount(() => {
   top: 0;
   bottom: 0;
   width: 1px;
-  background: var(--color-line);
+  background: var(--stroke-divider);
   pointer-events: none;
 }
 
@@ -722,7 +801,7 @@ onBeforeUnmount(() => {
   gap: 6px;
   flex: none;
   opacity: 0;
-  transition: opacity 0.15s ease;
+  transition: opacity var(--duration-rest) var(--curve-standard);
 }
 
 .route-project:hover .route-project-actions,
@@ -741,7 +820,7 @@ onBeforeUnmount(() => {
   top: 50%;
   transform: translateY(-50%);
   opacity: 0;
-  transition: opacity 0.15s ease;
+  transition: opacity var(--duration-rest) var(--curve-standard);
 }
 
 .route-session-row:hover .route-row-actions,
@@ -759,12 +838,16 @@ onBeforeUnmount(() => {
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   background: transparent;
-  color: inherit;
+  color: var(--text);
   text-align: left;
   cursor: pointer;
-  transition: all 0.2s ease;
   position: relative;
   min-height: 30px;
+  transition:
+    background-color var(--duration-rest) var(--curve-standard),
+    border-color var(--duration-rest) var(--curve-standard),
+    color var(--duration-rest) var(--curve-standard),
+    box-shadow var(--duration-rest) var(--curve-standard);
 }
 
 .route-item.child {
@@ -777,14 +860,29 @@ onBeforeUnmount(() => {
 
 .route-item:hover:not(.route-item--active),
 .route-item:focus-visible {
-  background: var(--color-black-soft);
+  background: var(--control-fill-hover);
   outline: none;
 }
 
 .route-item--active {
-  background: var(--color-black-soft);
-  border-color: var(--color-line-strong);
-  box-shadow: var(--shadow-soft);
+  background: var(--active-fill);
+  border-color: var(--stroke-control);
+}
+
+.route-item--active::before {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 50%;
+  width: 3px;
+  height: 16px;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  transform: translateY(-50%);
+}
+
+.route-item:focus-visible {
+  box-shadow: var(--shadow-focus-ring);
 }
 
 /* When a child session is active, the parent project row is de-emphasized:
@@ -795,8 +893,12 @@ onBeforeUnmount(() => {
   box-shadow: none;
 }
 
+.route-item--active[data-has-active-session]::before {
+  opacity: 0;
+}
+
 .route-item--active[data-has-active-session] .route-folder-icon {
-  color: var(--color-accent);
+  color: var(--accent);
   opacity: 0.6;
 }
 
@@ -805,12 +907,12 @@ onBeforeUnmount(() => {
 }
 
 .route-item--active .route-session-label {
-  color: var(--color-text);
+  color: var(--text);
   font-weight: 500;
 }
 
 .route-item:not(.route-item--active) .route-session-label {
-  color: var(--color-subtle);
+  color: var(--subtle);
 }
 
 .route-item--parent {
@@ -824,14 +926,14 @@ onBeforeUnmount(() => {
 .route-folder-icon {
   width: 14px;
   height: 14px;
-  color: var(--color-subtle);
+  color: var(--subtle);
   flex-shrink: 0;
-  transition: color 0.2s ease;
+  transition: color var(--duration-rest) var(--curve-standard);
 }
 
 .route-item--parent:hover .route-folder-icon,
 .route-item--parent.route-item--active .route-folder-icon {
-  color: var(--color-accent);
+  color: var(--accent);
 }
 
 .route-detail-trigger {
@@ -845,13 +947,16 @@ onBeforeUnmount(() => {
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--color-subtle);
+  color: var(--subtle);
   display: grid;
   place-items: center;
   cursor: pointer;
-  transition: all 0.15s ease;
   opacity: 0;
   z-index: 1;
+  transition:
+    background-color var(--duration-rest) var(--curve-standard),
+    color var(--duration-rest) var(--curve-standard),
+    opacity var(--duration-rest) var(--curve-standard);
 }
 
 .route-item:hover .route-detail-trigger,
@@ -865,8 +970,8 @@ onBeforeUnmount(() => {
 }
 
 .route-detail-trigger:hover {
-  background: var(--color-black-soft);
-  color: var(--color-text-strong);
+  background: var(--control-fill-hover);
+  color: var(--text-strong);
 }
 
 .route-copy {
@@ -892,7 +997,7 @@ onBeforeUnmount(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--color-muted);
+  color: var(--muted);
   font: var(--text-caption) var(--font-mono);
 }
 
@@ -903,22 +1008,22 @@ onBeforeUnmount(() => {
   white-space: nowrap;
   font-size: var(--text-body-sm);
   font-weight: 400;
-  color: var(--color-muted);
+  color: var(--muted);
 }
 
 .route-item.child.route-item--active .route-session-name {
-  color: var(--color-text-strong);
+  color: var(--text-strong);
   font-weight: 600;
 }
 
 .route-item.child:not(.route-item--active) .route-session-name {
-  color: var(--color-muted);
+  color: var(--muted);
   font-weight: 400;
 }
 
 .route-name {
   overflow: hidden;
-  color: var(--color-text-strong);
+  color: var(--text-strong);
   white-space: nowrap;
   text-overflow: ellipsis;
   font-size: var(--text-body-sm);
@@ -931,12 +1036,12 @@ onBeforeUnmount(() => {
   height: 6px;
   border-radius: 50%;
   border: 1px solid transparent;
-  background: var(--color-subtle);
+  background: var(--subtle);
   opacity: 0.85;
 }
 
 .route-dot[data-tone='neutral'] {
-  background: var(--color-subtle);
+  background: var(--subtle);
 }
 
 .route-dot[data-tone='success'] {
@@ -945,7 +1050,7 @@ onBeforeUnmount(() => {
 }
 
 .route-dot[data-tone='accent'] {
-  background: var(--color-accent);
+  background: var(--accent);
 }
 
 .route-dot[data-tone='warning'] {
@@ -953,8 +1058,8 @@ onBeforeUnmount(() => {
 }
 
 .route-dot[data-phase='blocked'] {
-  border-color: var(--color-line);
-  box-shadow: inset 0 0 0 1px var(--color-surface-solid);
+  border-color: var(--stroke-divider);
+  box-shadow: inset 0 0 0 1px var(--surface-solid);
   opacity: 1;
 }
 
@@ -972,7 +1077,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 0;
-  color: var(--color-muted);
+  color: var(--muted);
   font: var(--text-caption) var(--font-mono);
 }
 
@@ -986,14 +1091,14 @@ onBeforeUnmount(() => {
 }
 
 .route-time__primary {
-  color: var(--color-subtle);
+  color: var(--subtle);
 }
 
 .detail-popover {
   position: fixed;
   z-index: 100;
-  background: var(--color-surface);
-  border: 1px solid var(--color-line);
+  background: var(--acrylic);
+  border: 1px solid var(--stroke-divider);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-card);
   padding: 8px 10px;
@@ -1006,12 +1111,12 @@ onBeforeUnmount(() => {
 .detail-popover__name {
   font-size: var(--text-body-sm);
   font-weight: 600;
-  color: var(--color-text-strong);
+  color: var(--text-strong);
 }
 
 .detail-popover__info {
   overflow: hidden;
-  color: var(--color-muted);
+  color: var(--muted);
   font: var(--text-caption) var(--font-mono);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1024,24 +1129,28 @@ onBeforeUnmount(() => {
   padding: 4px 6px;
   font-size: var(--text-caption);
   font-weight: 600;
-  color: var(--color-muted);
+  color: var(--muted);
   background: transparent;
   border: 0;
   cursor: pointer;
   width: 100%;
   text-align: left;
-  transition: color 0.15s ease;
+  border-radius: var(--radius-sm);
+  transition:
+    background-color var(--duration-rest) var(--curve-standard),
+    color var(--duration-rest) var(--curve-standard);
 }
 
 .group-label:hover {
-  color: var(--color-text-strong);
+  background: var(--control-fill-hover);
+  color: var(--text-strong);
 }
 
 .group-label__chevron {
   display: inline-block;
   font-size: var(--text-caption);
   opacity: 0.6;
-  transition: transform 0.15s ease;
+  transition: transform var(--duration-rest) var(--curve-standard);
 }
 
 .group-label__chevron--collapsed {
@@ -1055,11 +1164,13 @@ onBeforeUnmount(() => {
   transform: translateY(-50%);
   font-size: var(--text-caption);
   line-height: 1;
-  color: var(--color-muted);
+  color: var(--muted);
   opacity: 0.5;
-  transition: transform 0.15s ease, opacity 0.15s ease;
   flex: none;
   user-select: none;
+  transition:
+    transform var(--duration-rest) var(--curve-standard),
+    opacity var(--duration-rest) var(--curve-standard);
 }
 
 .route-item:hover .route-collapse-chevron {
@@ -1071,7 +1182,7 @@ onBeforeUnmount(() => {
 }
 
 .route-delete-project {
-  color: var(--color-muted);
+  color: var(--muted);
 }
 
 .route-delete-project:hover {
@@ -1084,21 +1195,33 @@ onBeforeUnmount(() => {
   padding: 0;
   border: 0;
   border-radius: var(--radius-sm);
-  background: var(--color-surface-solid);
-  color: var(--color-muted);
+  background: var(--control-fill);
+  color: var(--muted);
   display: grid;
   place-items: center;
   box-shadow: none;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition:
+    background-color var(--duration-rest) var(--curve-standard),
+    border-color var(--duration-rest) var(--curve-standard),
+    color var(--duration-rest) var(--curve-standard),
+    box-shadow var(--duration-rest) var(--curve-standard);
 }
 
 .route-icon-button:hover,
 .route-icon-button:focus-visible {
-  background: var(--color-surface);
-  color: var(--color-text-strong);
-  border-color: var(--color-accent);
+  background: var(--control-fill-hover);
+  color: var(--text-strong);
+  border-color: var(--stroke-control);
   outline: none;
+}
+
+.route-icon-button:active {
+  background: var(--control-fill-active);
+}
+
+.route-icon-button:focus-visible {
+  box-shadow: var(--shadow-focus-ring);
 }
 
 .route-icon-button__glyph {
@@ -1120,7 +1243,7 @@ onBeforeUnmount(() => {
   border: 0;
   padding: 0;
   background: transparent;
-  color: var(--color-muted);
+  color: var(--muted);
   font-size: var(--text-body);
   line-height: 1;
   font-weight: 400;
@@ -1129,8 +1252,8 @@ onBeforeUnmount(() => {
 }
 
 .route-add-session:hover {
-  background: var(--color-black-soft);
-  color: var(--color-text-strong);
+  background: var(--control-fill-hover);
+  color: var(--text-strong);
 }
 
 .route-body-scroll {
@@ -1139,7 +1262,7 @@ onBeforeUnmount(() => {
 }
 
 .route-body-scroll:hover {
-  scrollbar-color: var(--color-black-soft) transparent;
+  scrollbar-color: var(--control-fill-hover) transparent;
 }
 
 .route-body-scroll::-webkit-scrollbar {
@@ -1152,10 +1275,10 @@ onBeforeUnmount(() => {
 
 .route-body-scroll::-webkit-scrollbar-thumb {
   background: transparent;
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
 }
 
 .route-body-scroll:hover::-webkit-scrollbar-thumb {
-  background: var(--color-black-soft);
+  background: var(--control-fill-hover);
 }
 </style>

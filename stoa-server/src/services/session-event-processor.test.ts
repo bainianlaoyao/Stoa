@@ -4,6 +4,7 @@ import { createDb, type StoaDb } from '../db/connection'
 import { ProjectSessionManager, type WsHubLike } from './project-session-manager'
 import { SqliteBackend } from './persistence-backend'
 import { SessionEventProcessor } from './session-event-processor'
+import { RuntimeBridgeHandler } from '../ws/runtime-bridge-handler'
 
 function makeWsHub() {
   const events: Array<{ type: string; payload: unknown }> = []
@@ -268,5 +269,393 @@ describe('SessionEventProcessor', () => {
       summary: 'Runtime failed',
       lastStateSequence: afterUiPatch.lastStateSequence + 1
     })
+  })
+
+  it('applies provider PTY exit state from the runtime bridge', async () => {
+    db = createDb(':memory:')
+    const { wsHub } = makeWsHub()
+    const runtimeBridge = new RuntimeBridgeHandler()
+    const providerWs = {
+      send: vi.fn()
+    }
+    const provider = runtimeBridge.registerProvider(providerWs, { token: 'token' })
+    const manager = await ProjectSessionManager.create(new SqliteBackend(db), {
+      webhookPort: 43127,
+      wsHub
+    })
+    const project = await manager.createProject({
+      name: 'Runtime Project',
+      path: '/repo',
+      defaultSessionType: 'opencode'
+    })
+    const session = await manager.createSession({
+      projectId: project.id,
+      type: 'opencode',
+      title: 'OpenCode Session'
+    })
+    await manager.markRuntimeAlive(session.id, null)
+    new SessionEventProcessor({
+      manager,
+      db,
+      wsHub,
+      runtimeBridge,
+      nowIso: () => '2026-06-14T00:00:00.000Z'
+    })
+
+    runtimeBridge.handleMessage(provider.id, JSON.stringify({
+      type: 'runtime:pty-state',
+      sessionId: session.id,
+      state: {
+        alive: false,
+        exitCode: 2,
+        exitReason: 'failed'
+      }
+    }))
+
+    await new Promise((resolve) => setImmediate(resolve))
+
+    expect(manager.snapshot().sessions.find((candidate) => candidate.id === session.id)).toMatchObject({
+      runtimeState: 'exited',
+      runtimeExitCode: 2,
+      runtimeExitReason: 'failed',
+      failureReason: 'runtime_crash'
+    })
+  })
+
+  it('applies provider PTY alive state from the runtime bridge', async () => {
+    db = createDb(':memory:')
+    const { wsHub } = makeWsHub()
+    const runtimeBridge = new RuntimeBridgeHandler()
+    const provider = runtimeBridge.registerProvider({ send: vi.fn() }, { token: 'token' })
+    const manager = await ProjectSessionManager.create(new SqliteBackend(db), {
+      webhookPort: 43127,
+      wsHub
+    })
+    const project = await manager.createProject({
+      name: 'Runtime Project',
+      path: '/repo',
+      defaultSessionType: 'opencode'
+    })
+    const session = await manager.createSession({
+      projectId: project.id,
+      type: 'opencode',
+      title: 'OpenCode Session',
+      externalSessionId: 'opencode-ext-live'
+    })
+    await manager.markRuntimeExited(session.id, 1, 'previous exit')
+    new SessionEventProcessor({
+      manager,
+      db,
+      wsHub,
+      runtimeBridge,
+      nowIso: () => '2026-06-14T00:00:00.000Z'
+    })
+
+    runtimeBridge.handleMessage(provider.id, JSON.stringify({
+      type: 'runtime:pty-state',
+      sessionId: session.id,
+      state: {
+        alive: true,
+        startedAt: '2026-06-14T00:00:01.000Z'
+      }
+    }))
+
+    await new Promise((resolve) => setImmediate(resolve))
+
+    expect(manager.snapshot().sessions.find((candidate) => candidate.id === session.id)).toMatchObject({
+      runtimeState: 'alive',
+      runtimeExitCode: null,
+      runtimeExitReason: null,
+      failureReason: null,
+      externalSessionId: 'opencode-ext-live'
+    })
+  })
+
+  it('persists provider disconnect as exited state for orphaned sessions', async () => {
+    db = createDb(':memory:')
+    const { wsHub } = makeWsHub()
+    const runtimeBridge = new RuntimeBridgeHandler()
+    const providerWs = {
+      send: vi.fn()
+    }
+    const provider = runtimeBridge.registerProvider(providerWs, { token: 'token' })
+    const manager = await ProjectSessionManager.create(new SqliteBackend(db), {
+      webhookPort: 43127,
+      wsHub
+    })
+    const project = await manager.createProject({
+      name: 'Runtime Project',
+      path: '/repo',
+      defaultSessionType: 'shell'
+    })
+    const session = await manager.createSession({
+      projectId: project.id,
+      type: 'shell',
+      title: 'Shell Session'
+    })
+    await manager.markRuntimeAlive(session.id, null)
+    runtimeBridge.assignSession(provider.id, session.id)
+
+    new SessionEventProcessor({
+      manager,
+      db,
+      wsHub,
+      runtimeBridge,
+      nowIso: () => '2026-06-14T00:00:00.000Z'
+    })
+
+    runtimeBridge.removeProvider(provider.id)
+    await new Promise((resolve) => setImmediate(resolve))
+
+    expect(manager.snapshot().sessions.find((candidate) => candidate.id === session.id)).toMatchObject({
+      runtimeState: 'exited',
+      runtimeExitCode: 0,
+      runtimeExitReason: 'clean',
+      summary: 'Runtime provider disconnected'
+    })
+  })
+
+  it('restores alive state when a provider reconnects with a live PTY after disconnect', async () => {
+    db = createDb(':memory:')
+    const { wsHub } = makeWsHub()
+    const runtimeBridge = new RuntimeBridgeHandler()
+    const manager = await ProjectSessionManager.create(new SqliteBackend(db), {
+      webhookPort: 43127,
+      wsHub
+    })
+    const project = await manager.createProject({
+      name: 'Runtime Project',
+      path: '/repo',
+      defaultSessionType: 'opencode'
+    })
+    const session = await manager.createSession({
+      projectId: project.id,
+      type: 'opencode',
+      title: 'OpenCode Session',
+      externalSessionId: 'opencode-ext-1'
+    })
+    await manager.markRuntimeAlive(session.id, 'opencode-ext-1')
+
+    new SessionEventProcessor({
+      manager,
+      db,
+      wsHub,
+      runtimeBridge,
+      nowIso: () => '2026-06-14T00:00:00.000Z'
+    })
+
+    const firstProvider = runtimeBridge.registerProvider({ send: vi.fn() }, { token: 'token' })
+    runtimeBridge.assignSession(firstProvider.id, session.id)
+    runtimeBridge.removeProvider(firstProvider.id)
+    await new Promise((resolve) => setImmediate(resolve))
+
+    expect(manager.snapshot().sessions.find((candidate) => candidate.id === session.id)).toMatchObject({
+      runtimeState: 'exited',
+      runtimeExitCode: 0,
+      runtimeExitReason: 'clean',
+      externalSessionId: 'opencode-ext-1'
+    })
+
+    const reconnectedProvider = runtimeBridge.registerProvider({ send: vi.fn() }, { token: 'token' })
+    runtimeBridge.handleMessage(reconnectedProvider.id, JSON.stringify({
+      type: 'runtime:state-sync',
+      sessions: [{
+        sessionId: session.id,
+        state: {
+          alive: true,
+          startedAt: '2026-06-14T00:00:01.000Z'
+        }
+      }]
+    }))
+    await new Promise((resolve) => setImmediate(resolve))
+
+    expect(manager.snapshot().sessions.find((candidate) => candidate.id === session.id)).toMatchObject({
+      runtimeState: 'alive',
+      runtimeExitCode: null,
+      runtimeExitReason: null,
+      failureReason: null,
+      externalSessionId: 'opencode-ext-1'
+    })
+    expect(runtimeBridge.getProviderForSession(session.id)).toBe(reconnectedProvider)
+  })
+
+  it('does not revive archived sessions from provider alive state-sync', async () => {
+    db = createDb(':memory:')
+    const { wsHub } = makeWsHub()
+    const runtimeBridge = new RuntimeBridgeHandler()
+    const manager = await ProjectSessionManager.create(new SqliteBackend(db), {
+      webhookPort: 43127,
+      wsHub
+    })
+    const project = await manager.createProject({
+      name: 'Runtime Project',
+      path: '/repo',
+      defaultSessionType: 'opencode'
+    })
+    const session = await manager.createSession({
+      projectId: project.id,
+      type: 'opencode',
+      title: 'Archived OpenCode Session'
+    })
+    await manager.markRuntimeExited(session.id, 0, 'archived exit')
+    await manager.archiveSession(session.id)
+
+    new SessionEventProcessor({
+      manager,
+      db,
+      wsHub,
+      runtimeBridge,
+      nowIso: () => '2026-06-14T00:00:00.000Z'
+    })
+
+    const provider = runtimeBridge.registerProvider({ send: vi.fn() }, { token: 'token' })
+    runtimeBridge.handleMessage(provider.id, JSON.stringify({
+      type: 'runtime:state-sync',
+      sessions: [{
+        sessionId: session.id,
+        state: {
+          alive: true,
+          startedAt: '2026-06-14T00:00:01.000Z'
+        }
+      }]
+    }))
+    await new Promise((resolve) => setImmediate(resolve))
+
+    expect(manager.snapshot().sessions.find((candidate) => candidate.id === session.id)).toMatchObject({
+      archived: true,
+      runtimeState: 'exited',
+      runtimeExitCode: 0,
+      runtimeExitReason: 'clean'
+    })
+  })
+
+  it('serializes provider disconnect and reconnect state so late disconnect writes cannot overwrite live PTYs', async () => {
+    db = createDb(':memory:')
+    const { wsHub } = makeWsHub()
+    const runtimeBridge = new RuntimeBridgeHandler()
+    const manager = await ProjectSessionManager.create(new SqliteBackend(db), {
+      webhookPort: 43127,
+      wsHub
+    })
+    const project = await manager.createProject({
+      name: 'Runtime Project',
+      path: '/repo',
+      defaultSessionType: 'opencode'
+    })
+    const session = await manager.createSession({
+      projectId: project.id,
+      type: 'opencode',
+      title: 'OpenCode Session',
+      externalSessionId: 'opencode-ext-race'
+    })
+    await manager.markRuntimeAlive(session.id, 'opencode-ext-race')
+
+    const originalMarkRuntimeExited = manager.markRuntimeExited.bind(manager)
+    let releaseExit!: () => void
+    let exitStarted!: () => void
+    const exitGate = new Promise<void>((resolve) => {
+      releaseExit = resolve
+    })
+    const exitStartedPromise = new Promise<void>((resolve) => {
+      exitStarted = resolve
+    })
+    vi.spyOn(manager, 'markRuntimeExited').mockImplementation(async (...args) => {
+      exitStarted()
+      await exitGate
+      return await originalMarkRuntimeExited(...args)
+    })
+
+    new SessionEventProcessor({
+      manager,
+      db,
+      wsHub,
+      runtimeBridge,
+      nowIso: () => '2026-06-14T00:00:00.000Z'
+    })
+
+    const firstProvider = runtimeBridge.registerProvider({ send: vi.fn() }, { token: 'token' })
+    runtimeBridge.assignSession(firstProvider.id, session.id)
+    runtimeBridge.removeProvider(firstProvider.id)
+    await exitStartedPromise
+
+    const reconnectedProvider = runtimeBridge.registerProvider({ send: vi.fn() }, { token: 'token' })
+    runtimeBridge.handleMessage(reconnectedProvider.id, JSON.stringify({
+      type: 'runtime:state-sync',
+      sessions: [{
+        sessionId: session.id,
+        state: {
+          alive: true,
+          startedAt: '2026-06-14T00:00:01.000Z'
+        }
+      }]
+    }))
+
+    releaseExit()
+    await new Promise((resolve) => setImmediate(resolve))
+    await new Promise((resolve) => setImmediate(resolve))
+
+    expect(manager.snapshot().sessions.find((candidate) => candidate.id === session.id)).toMatchObject({
+      runtimeState: 'alive',
+      runtimeExitCode: null,
+      runtimeExitReason: null,
+      failureReason: null,
+      externalSessionId: 'opencode-ext-race'
+    })
+    expect(runtimeBridge.getProviderForSession(session.id)).toBe(reconnectedProvider)
+  })
+
+  it('persists dead provider state-sync entries as exited state', async () => {
+    db = createDb(':memory:')
+    const { wsHub } = makeWsHub()
+    const runtimeBridge = new RuntimeBridgeHandler()
+    const providerWs = {
+      send: vi.fn()
+    }
+    const provider = runtimeBridge.registerProvider(providerWs, { token: 'token' })
+    const manager = await ProjectSessionManager.create(new SqliteBackend(db), {
+      webhookPort: 43127,
+      wsHub
+    })
+    const project = await manager.createProject({
+      name: 'Runtime Project',
+      path: '/repo',
+      defaultSessionType: 'opencode'
+    })
+    const session = await manager.createSession({
+      projectId: project.id,
+      type: 'opencode',
+      title: 'OpenCode Session'
+    })
+    await manager.markRuntimeAlive(session.id, null)
+
+    new SessionEventProcessor({
+      manager,
+      db,
+      wsHub,
+      runtimeBridge,
+      nowIso: () => '2026-06-14T00:00:00.000Z'
+    })
+
+    runtimeBridge.handleMessage(provider.id, JSON.stringify({
+      type: 'runtime:state-sync',
+      sessions: [{
+        sessionId: session.id,
+        state: {
+          alive: false,
+          exitCode: 9,
+          exitReason: 'failed'
+        }
+      }]
+    }))
+    await new Promise((resolve) => setImmediate(resolve))
+
+    expect(manager.snapshot().sessions.find((candidate) => candidate.id === session.id)).toMatchObject({
+      runtimeState: 'exited',
+      runtimeExitCode: 9,
+      runtimeExitReason: 'failed',
+      failureReason: 'runtime_crash',
+      summary: 'Runtime provider state sync reported exit'
+    })
+    expect(runtimeBridge.getProviderForSession(session.id)).toBeNull()
   })
 })

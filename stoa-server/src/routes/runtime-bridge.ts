@@ -16,8 +16,10 @@ import { AppError } from '../shared/errors'
 
 export interface RuntimeBridgeClient {
   launch(sessionId: string, options: LaunchOptions): Promise<void>
+  isSessionManaged(sessionId: string): boolean
   kill(sessionId: string): Promise<void>
   input(sessionId: string, data: string): Promise<void>
+  binaryInput(sessionId: string, base64Data: string): Promise<void>
   resize(sessionId: string, cols: number, rows: number): Promise<void>
   interrupt(sessionId: string): Promise<void>
   getTerminalReplay(sessionId: string): Promise<string>
@@ -25,7 +27,6 @@ export interface RuntimeBridgeClient {
 }
 
 export interface LaunchOptions {
-  command?: string
   cwd?: string
   projectId?: string
   title?: string
@@ -33,13 +34,16 @@ export interface LaunchOptions {
   externalSessionId?: string | null
   cols?: number
   rows?: number
-  env?: Record<string, string>
 }
 
 export interface ChildSessionOptions {
   type: string
-  command?: string
-  cwd?: string
+  projectId?: string
+  title?: string
+  subagentName?: string | null
+  externalSessionId?: string | null
+  initialCols?: number
+  initialRows?: number
 }
 
 // ---------------------------------------------------------------------------
@@ -59,10 +63,16 @@ class StubRuntimeBridgeClient implements RuntimeBridgeClient {
   async launch(_sessionId: string, _options: LaunchOptions): Promise<void> {
     throwNotConnected()
   }
+  isSessionManaged(_sessionId: string): boolean {
+    return false
+  }
   async kill(_sessionId: string): Promise<void> {
     throwNotConnected()
   }
   async input(_sessionId: string, _data: string): Promise<void> {
+    throwNotConnected()
+  }
+  async binaryInput(_sessionId: string, _base64Data: string): Promise<void> {
     throwNotConnected()
   }
   async resize(_sessionId: string, _cols: number, _rows: number): Promise<void> {

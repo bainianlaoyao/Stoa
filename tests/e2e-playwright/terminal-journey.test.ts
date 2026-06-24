@@ -10,7 +10,7 @@ import {
   readTerminalBuffer,
   waitForTerminalBufferText
 } from './fixtures/electron-app'
-import { createProject, createSession } from './helpers/ui-actions'
+import { createProject, createSession, runTerminalCommand } from './helpers/ui-actions'
 
 async function installFakeCodex(app: Awaited<ReturnType<typeof launchElectronApp>>): Promise<void> {
   const wrapperPath = join(
@@ -94,6 +94,45 @@ async function installFakeCodex(app: Awaited<ReturnType<typeof launchElectronApp
   }, wrapperPath)
 }
 
+async function installEchoingFakeProvider(
+  app: Awaited<ReturnType<typeof launchElectronApp>>,
+  providerKey: 'claude-code' | 'opencode',
+  executableBaseName: string,
+  readyMarker: string
+): Promise<void> {
+  const wrapperPath = join(
+    app.stateDir,
+    process.platform === 'win32' ? `${executableBaseName}.cmd` : executableBaseName
+  )
+  const driverPath = join(app.stateDir, `${executableBaseName}-driver.mjs`)
+  const driverSource = [
+    "process.stdout.write(process.argv.includes('--session') ? '__FAKE_PROVIDER_RESUME__\\r\\n' : '')",
+    `process.stdout.write('${readyMarker}\\r\\n')`,
+    "process.stdin.setEncoding('utf8')",
+    "process.stdin.on('data', (chunk) => {",
+    "  process.stdout.write(`__FAKE_PROVIDER_INPUT__${String(chunk).replace(/\\r?\\n/g, '')}\\r\\n`)",
+    "})",
+    "setInterval(() => {}, 1000)"
+  ].join('\n')
+  const wrapperSource = process.platform === 'win32'
+    ? `@echo off\r\nnode "${driverPath}" %*\r\n`
+    : `#!/bin/sh\nnode "${driverPath}" "$@"\n`
+
+  await writeFile(driverPath, driverSource, 'utf8')
+  await writeFile(wrapperPath, wrapperSource, 'utf8')
+
+  if (process.platform !== 'win32') {
+    await chmod(wrapperPath, 0o755)
+  }
+
+  await app.page.evaluate(async ({ key, path }) => {
+    const api = (window as typeof window & {
+      stoa?: { setSetting?: (key: string, value: unknown) => Promise<void> }
+    }).stoa
+    await api?.setSetting?.('providers', { [key]: path })
+  }, { key: providerKey, path: wrapperPath })
+}
+
 async function waitForSessionState(
   app: Awaited<ReturnType<typeof launchElectronApp>>,
   title: string,
@@ -124,6 +163,33 @@ async function waitForSessionByTitle(
 }
 
 test.describe('Electron terminal journeys', () => {
+  test('shell input travels from xterm to PTY output', async () => {
+    const app = await launchElectronApp()
+
+    try {
+      const projectRow = await createProject(app, {
+        name: 'terminal-input-project',
+        path: join(app.stateDir, 'terminal-input-project')
+      })
+      const session = await createSession(app.page, projectRow, {
+        type: 'shell'
+      })
+
+      await waitForSessionState(app, session.title, (candidate) => candidate.runtimeState === 'alive')
+      const sessionState = await waitForSessionByTitle(app, session.title)
+
+      await runTerminalCommand(app.page, 'echo __PLAYWRIGHT_INPUT_OK__')
+      await waitForTerminalBufferText(app.electronApp, sessionState.id, '__PLAYWRIGHT_INPUT_OK__')
+
+      const buffer = await readTerminalBuffer(app.electronApp, sessionState.id)
+      expect(buffer).toContain('__PLAYWRIGHT_INPUT_OK__')
+    } finally {
+      const { stateDir } = app
+      await app.close()
+      await cleanupStateDir(stateDir)
+    }
+  })
+
   test('terminal live output propagates into replay and viewport', async () => {
     const app = await launchElectronApp()
 
@@ -159,6 +225,8 @@ test.describe('Electron terminal journeys', () => {
     const app = await launchElectronApp()
 
     try {
+      await installEchoingFakeProvider(app, 'claude-code', 'fake-claude', '__FAKE_CLAUDE_READY__')
+
       const projectRow = await createProject(app, {
         name: 'terminal-claude-running-project',
         path: join(app.stateDir, 'terminal-claude-running-project')
@@ -168,12 +236,47 @@ test.describe('Electron terminal journeys', () => {
       })
 
       await waitForSessionState(app, session.title, (candidate) => candidate.runtimeState === 'alive')
+      const sessionState = await waitForSessionByTitle(app, session.title)
+      await waitForTerminalBufferText(app.electronApp, sessionState.id, '__FAKE_CLAUDE_READY__')
+      await runTerminalCommand(app.page, 'claude-input-ok')
+      await waitForTerminalBufferText(app.electronApp, sessionState.id, '__FAKE_PROVIDER_INPUT__claude-input-ok')
 
       const statusDot = session.row.locator('[data-testid="session-status-dot"]')
       await expect(statusDot).toHaveAttribute('data-session-status-testid', 'session-status-ready')
       await expect(statusDot).toHaveAttribute('data-phase', 'ready')
       await expect(statusDot).toHaveAttribute('data-tone', 'neutral')
       await expect(session.row.locator('.route-session-label')).toContainText('Ready')
+    } finally {
+      const { stateDir } = app
+      await app.close()
+      await cleanupStateDir(stateDir)
+    }
+  })
+
+  test('opencode live session opens a real PTY and accepts keyboard input', async () => {
+    const app = await launchElectronApp()
+
+    try {
+      await installEchoingFakeProvider(app, 'opencode', 'fake-opencode', '__FAKE_OPENCODE_READY__')
+
+      const projectRow = await createProject(app, {
+        name: 'terminal-opencode-running-project',
+        path: join(app.stateDir, 'terminal-opencode-running-project')
+      })
+      const session = await createSession(app.page, projectRow, {
+        type: 'opencode'
+      })
+
+      await waitForSessionState(app, session.title, (candidate) => candidate.runtimeState === 'alive')
+      const sessionState = await waitForSessionByTitle(app, session.title)
+
+      await waitForTerminalBufferText(app.electronApp, sessionState.id, '__FAKE_OPENCODE_READY__')
+      await runTerminalCommand(app.page, 'opencode-input-ok')
+      await waitForTerminalBufferText(app.electronApp, sessionState.id, '__FAKE_PROVIDER_INPUT__opencode-input-ok')
+
+      const buffer = await readTerminalBuffer(app.electronApp, sessionState.id)
+      expect(buffer).toContain('__FAKE_OPENCODE_READY__')
+      expect(buffer).toContain('__FAKE_PROVIDER_INPUT__opencode-input-ok')
     } finally {
       const { stateDir } = app
       await app.close()

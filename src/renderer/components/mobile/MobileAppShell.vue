@@ -52,7 +52,6 @@ const newSessionOpen = shallowRef(false)
 const sessionSearchQuery = shallowRef('')
 const sessionFilter = shallowRef<'all' | 'running' | 'blocked' | 'recent'>('all')
 const sessionActionsOpen = shallowRef(false)
-const displaySheetOpen = shallowRef(false)
 
 const selectedProject = computed<ProjectHierarchyNode | null>(() => {
   return props.hierarchy.find((project) => project.id === selectedProjectId.value)
@@ -316,7 +315,6 @@ function goBack(): void {
   newSessionOpen.value = false
   if (route.value === 'session') {
     sessionActionsOpen.value = false
-    displaySheetOpen.value = false
     route.value = 'sessions'
     return
   }
@@ -375,11 +373,6 @@ function restoreArchivedSession(sessionId: string, projectId?: string): void {
   emit('restoreSession', sessionId)
   emit('selectSession', sessionId)
   route.value = 'session'
-}
-
-function openDisplayPreferences(): void {
-  sessionActionsOpen.value = false
-  displaySheetOpen.value = true
 }
 </script>
 
@@ -596,8 +589,6 @@ function openDisplayPreferences(): void {
         :project="activeProject"
         :session="activeSession"
         :health-status="healthStatus"
-        :open-display-sheet="displaySheetOpen"
-        @close-display-sheet="displaySheetOpen = false"
         @open-workspace="emit('openWorkspace', $event)"
       />
     </main>
@@ -630,12 +621,6 @@ function openDisplayPreferences(): void {
 
     <div v-if="sessionActionsOpen" class="mobile-search" data-testid="mobile-session-actions-sheet" @click.self="sessionActionsOpen = false">
       <section class="mobile-search__panel" role="dialog" aria-label="Session actions">
-        <button type="button" class="mobile-list-row" @click="openDisplayPreferences">
-          <span class="mobile-list-row__copy">
-            <strong>Display</strong>
-            <span>Wrap lines, horizontal scroll, text size</span>
-          </span>
-        </button>
         <button
           v-if="activeSession"
           type="button"

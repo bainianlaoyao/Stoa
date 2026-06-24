@@ -3,9 +3,11 @@ import { test, expect } from '@playwright/test'
 import {
   getMainE2EDebugState,
   launchElectronApp,
+  postSessionInputViaStoaServer,
+  waitForTerminalBufferText,
   type LaunchedElectronApp
 } from './fixtures/electron-app'
-import { createProject, createSession } from './helpers/ui-actions'
+import { createProject, createSession, runTerminalCommand } from './helpers/ui-actions'
 
 async function waitForSessionState(
   app: LaunchedElectronApp,
@@ -78,6 +80,17 @@ test.describe('Electron recovery journeys', () => {
       await expect(terminalViewport).toBeVisible()
       await recoveredSessionRow.click()
       await expect(recoveredSessionRow).toHaveAttribute('aria-current', 'true')
+
+      const directInput = await postSessionInputViaStoaServer(
+        app.electronApp,
+        recoveredSession.id,
+        'echo __RECOVERED_SHELL_DIRECT_INPUT_OK__\r'
+      )
+      expect(directInput.status).toBe(200)
+      await waitForTerminalBufferText(app.electronApp, recoveredSession.id, '__RECOVERED_SHELL_DIRECT_INPUT_OK__')
+
+      await runTerminalCommand(app.page, 'echo __RECOVERED_SHELL_INPUT_OK__')
+      await waitForTerminalBufferText(app.electronApp, recoveredSession.id, '__RECOVERED_SHELL_INPUT_OK__')
     } finally {
       await app.close()
     }

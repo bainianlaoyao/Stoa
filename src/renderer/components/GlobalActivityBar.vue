@@ -71,13 +71,13 @@ const bottomItems: ActivityItem[] = [
 </script>
 
 <template>
-  <nav class="flex min-h-full flex-col items-center py-5 pb-4 bg-mica-alt border-r border-line" data-testid="activity-bar" aria-label="Global activity">
-    <div data-testid="activity-cluster-top" class="grid gap-3">
+  <nav class="activity-bar" data-testid="activity-bar" aria-label="Global activity">
+    <div data-testid="activity-cluster-top" class="activity-cluster">
       <button
         v-for="item in topItems"
         :key="item.id"
-        class="relative inline-flex h-10 w-10 items-center justify-center border-0 rounded-md bg-transparent text-muted cursor-pointer transition-all duration-200 ease-in-out hover:text-text-strong hover:bg-black-soft active:opacity-85 focus-visible:text-text-strong focus-visible:bg-black-soft focus-visible:outline-none"
-        :class="{ 'text-text-strong bg-black-soft': item.id === activeSurface }"
+        class="activity-item"
+        :class="{ 'activity-item--active': item.id === activeSurface }"
         :data-activity-item="item.id"
         :data-active="String(item.id === activeSurface)"
         :aria-current="item.id === activeSurface ? 'true' : undefined"
@@ -86,10 +86,11 @@ const bottomItems: ActivityItem[] = [
         :title="item.title"
         @click="emit('select', item.id)"
       >
+        <span class="activity-item__indicator" aria-hidden="true" />
         <svg
           data-activity-icon
           :data-icon-kind="item.iconKind"
-          class="h-[26px] w-[26px] shrink-0"
+          class="activity-item__icon"
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
@@ -110,12 +111,12 @@ const bottomItems: ActivityItem[] = [
         <span class="sr-only">{{ item.title }}</span>
       </button>
     </div>
-    <div data-testid="activity-cluster-bottom" class="mt-auto grid gap-3">
+    <div data-testid="activity-cluster-bottom" class="activity-cluster activity-cluster--bottom">
       <button
         v-for="item in bottomItems"
         :key="item.id"
-        class="relative inline-flex h-10 w-10 items-center justify-center border-0 rounded-md bg-transparent text-muted cursor-pointer transition-all duration-200 ease-in-out hover:text-text-strong hover:bg-black-soft active:opacity-85 focus-visible:text-text-strong focus-visible:bg-black-soft focus-visible:outline-none"
-        :class="{ 'text-text-strong bg-black-soft': item.id === activeSurface }"
+        class="activity-item"
+        :class="{ 'activity-item--active': item.id === activeSurface }"
         :data-activity-item="item.id"
         :data-active="String(item.id === activeSurface)"
         :aria-current="item.id === activeSurface ? 'true' : undefined"
@@ -124,10 +125,11 @@ const bottomItems: ActivityItem[] = [
         :title="item.title"
         @click="emit('select', item.id)"
       >
+        <span class="activity-item__indicator" aria-hidden="true" />
         <svg
           data-activity-icon
           :data-icon-kind="item.iconKind"
-          class="h-[26px] w-[26px] shrink-0"
+          class="activity-item__icon"
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
@@ -150,3 +152,94 @@ const bottomItems: ActivityItem[] = [
     </div>
   </nav>
 </template>
+
+<style scoped>
+.activity-bar {
+  display: flex;
+  width: 56px;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px 8px 18px;
+  background: var(--mica-alt);
+  border-right: 1px solid var(--stroke-divider);
+}
+
+.activity-cluster {
+  display: grid;
+  gap: 8px;
+}
+
+.activity-cluster--bottom {
+  margin-top: auto;
+  padding-bottom: 2px;
+}
+
+.activity-item {
+  position: relative;
+  display: inline-flex;
+  width: 40px;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    background-color var(--duration-rest) var(--curve-standard),
+    border-color var(--duration-rest) var(--curve-standard),
+    color var(--duration-rest) var(--curve-standard),
+    box-shadow var(--duration-rest) var(--curve-standard);
+}
+
+.activity-item:hover {
+  background: var(--control-fill-hover);
+  color: var(--text-strong);
+}
+
+.activity-item:active {
+  background: var(--control-fill-active);
+}
+
+.activity-item:focus-visible {
+  background: var(--control-fill-hover);
+  color: var(--text-strong);
+  outline: none;
+  box-shadow: var(--shadow-focus-ring);
+}
+
+.activity-item--active {
+  background: var(--active-fill);
+  border-color: var(--stroke-control);
+  color: var(--text-strong);
+}
+
+.activity-item__indicator {
+  position: absolute;
+  left: -5px;
+  top: 50%;
+  width: 3px;
+  height: 20px;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  opacity: 0;
+  transform: translateY(-50%);
+  transition:
+    opacity var(--duration-rest) var(--curve-standard),
+    height var(--duration-rest) var(--curve-standard);
+}
+
+.activity-item--active .activity-item__indicator {
+  opacity: 1;
+}
+
+.activity-item__icon {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+}
+</style>

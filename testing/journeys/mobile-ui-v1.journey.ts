@@ -10,16 +10,16 @@ export const mobileUiV1Journey = defineJourney({
     'tap.mobile.workspaceRow',
     'tap.mobile.sessionRow',
     'tap.mobile.keysHandle',
-    'open.mobile.sessionMore',
-    'open.mobile.displayPreferences'
+    'open.mobile.sessionMore'
   ],
   assert: [
     'mobile.workspaceHomeVisibleAtStartup',
     'mobile.sessionListVisibleAfterWorkspaceTap',
     'mobile.sessionViewVisibleAfterSessionTap',
     'terminal.xtermVisible',
+    'mobile.landscapeKeepsMobileShell',
     'mobile.keysRailOverlayNoResize',
-    'mobile.displayPrefsPersistPerSession',
+    'mobile.wideTerminalOnlyModeForCodingSession',
     'desktop.quickActionsAbsent',
     'desktop.rightSidebarAbsent'
   ],
@@ -51,9 +51,14 @@ export const mobileTerminalControlsJourney = defineJourney({
   behavior: 'mobile.terminal.controls',
   usageMode: 'phone_pickup',
   setup: ['viewport.mobile390x844', 'session.open', 'backend.health.connected'],
-  act: ['tap.mobile.keysHandle', 'tap.mobile.keySlash', 'tap.mobile.sessionMore', 'tap.mobile.displayPreferences'],
-  assert: ['mobile.keysRailOverlayNoResize', 'mobile.keysOrderEscTabUpDownSlashDashCopyPasteEnter', 'mobile.displayPrefsPersistPerSession'],
-  variants: ['wrap-mode', 'horizontal-scroll-mode', 'large-text']
+  act: ['tap.mobile.keysHandle', 'tap.mobile.keySlash', 'tap.mobile.sessionMore'],
+  assert: [
+    'mobile.keysRailOverlayNoResize',
+    'mobile.keysOrderEscTabUpDownSlashDashCopyPasteEnter',
+    'mobile.wideTerminalOnlyModeForCodingSession',
+    'mobile.displayModesAbsent'
+  ],
+  variants: ['portrait-horizontal-scroll', 'landscape-wide-terminal']
 })
 
 export const mobileHealthJourney = defineJourney({

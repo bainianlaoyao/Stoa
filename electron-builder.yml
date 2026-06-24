@@ -9,12 +9,13 @@ files:
 extraResources:
   - from: research/upstreams/evolver
     to: evolver
-  - from: stoa-server/dist/**
+  - from: stoa-server/dist
     to: stoa-server
-  - from: stoa-server/node_modules/**
-    to: stoa-server/node_modules
 asarUnpack:
   - node_modules/node-pty/**
+  - node_modules/better-sqlite3/**
+  - node_modules/bindings/**
+  - node_modules/file-uri-to-path/**
   - out/tools/entire-bridge/**
   - out/tools/stoa-ctl/**
 publish:

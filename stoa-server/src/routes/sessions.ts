@@ -28,6 +28,7 @@ import type {
 import { AppError, type ApiResponse } from '../shared/errors';
 import { ProjectSessionManager } from '../services/project-session-manager';
 import type { LaunchOptions, RuntimeBridgeClient } from './runtime-bridge';
+import { RuntimeBridgeError } from '../ws/runtime-bridge-handler';
 
 export interface SessionsRouteDeps {
   manager: ProjectSessionManager;
@@ -104,6 +105,17 @@ function buildLaunchOptions(
     cols: dimensions.cols,
     rows: dimensions.rows,
   };
+}
+
+function assertRuntimeSessionManaged(runtimeBridge: RuntimeBridgeClient, sessionId: string): void {
+  if (runtimeBridge.isSessionManaged(sessionId)) {
+    return;
+  }
+  throw new RuntimeBridgeError(
+    'no_provider',
+    `No runtime provider is currently managing session ${sessionId} after launch`,
+    { command: 'runtime:launch', sessionId },
+  );
 }
 
 export function createSessionsRoutes(deps: SessionsRouteDeps): Hono {
@@ -199,6 +211,7 @@ export function createSessionsRoutes(deps: SessionsRouteDeps): Hono {
         session.id,
         buildLaunchOptions(state, session, { cols: initialCols, rows: initialRows }),
       );
+      assertRuntimeSessionManaged(runtimeBridge, session.id);
       await manager.markRuntimeStarting(session.id, `Starting ${session.type}`, session.externalSessionId);
       await manager.markRuntimeAlive(session.id, session.externalSessionId);
       const launchedSession = manager.snapshot().sessions.find((candidate) => candidate.id === session.id) ?? session;
@@ -229,9 +242,17 @@ export function createSessionsRoutes(deps: SessionsRouteDeps): Hono {
   routes.put('/sessions/:id/restore', async (c) => {
     const sessionId = c.req.param('id');
     const state = manager.snapshot();
-    ensureSessionExists(state, sessionId);
+    const session = ensureSessionExists(state, sessionId);
     await manager.restoreSession(sessionId);
-    await runtimeBridge.launch(sessionId, {});
+    try {
+      await runtimeBridge.launch(sessionId, buildLaunchOptions(state, session));
+      assertRuntimeSessionManaged(runtimeBridge, sessionId);
+      await manager.markRuntimeStarting(sessionId, `Starting ${session.type}`, session.externalSessionId);
+      await manager.markRuntimeAlive(sessionId, session.externalSessionId);
+    } catch (error) {
+      await manager.markRuntimeFailedToStart(sessionId, `Failed to restore ${session.type}: ${error instanceof Error ? error.message : String(error)}`);
+      throw error;
+    }
     return c.json(envelope({ id: sessionId, restored: true }));
   });
 
@@ -240,7 +261,15 @@ export function createSessionsRoutes(deps: SessionsRouteDeps): Hono {
     const state = manager.snapshot();
     const session = ensureSessionExists(state, sessionId);
     await runtimeBridge.kill(sessionId);
-    await runtimeBridge.launch(sessionId, buildLaunchOptions(state, session));
+    try {
+      await runtimeBridge.launch(sessionId, buildLaunchOptions(state, session));
+      assertRuntimeSessionManaged(runtimeBridge, sessionId);
+      await manager.markRuntimeStarting(sessionId, `Starting ${session.type}`, session.externalSessionId);
+      await manager.markRuntimeAlive(sessionId, session.externalSessionId);
+    } catch (error) {
+      await manager.markRuntimeFailedToStart(sessionId, `Failed to restart ${session.type}: ${error instanceof Error ? error.message : String(error)}`);
+      throw error;
+    }
     return c.json(envelope({ id: sessionId, restarted: true }));
   });
 

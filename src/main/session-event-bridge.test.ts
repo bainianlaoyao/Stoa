@@ -1186,6 +1186,81 @@ describe('SessionEventBridge', () => {
     })
   })
 
+  test('codex startup launch intent binds a newly reported external session id', async () => {
+    const stateDir = await createTestTempDir('session-event-bridge-codex-startup-state-')
+    const workspaceDir = await createTestTempDir('session-event-bridge-codex-startup-workspace-')
+    tempDirs.push(stateDir, workspaceDir)
+    const manager = await ProjectSessionManager.create({
+      webhookPort: null,
+      globalStatePath: join(stateDir, 'global.json')
+    })
+    const project = await manager.createProject({
+      name: 'P1',
+      path: workspaceDir,
+      defaultSessionType: 'codex'
+    })
+    const session = await manager.createSession({
+      projectId: project.id,
+      type: 'codex',
+      title: 'Codex Session'
+    })
+    await manager.markRuntimeAlive(session.id, null)
+
+    const controller = {
+      applyProviderStatePatch: vi.fn(async (patch: SessionStatePatchEvent) => {
+        await manager.applySessionStatePatch(patch)
+      })
+    }
+    const bridge = new SessionEventBridge(manager, controller)
+    bridge.registerCodexLaunchIntent(session.id, 'startup')
+    bridges.push(bridge)
+
+    const port = await bridge.start()
+    const secret = bridge.issueSessionSecret(session.id)
+    const sessionStart = await postCodexHook(
+      port,
+      {
+        hook_event_name: 'SessionStart',
+        session_id: 'codex-new-startup',
+        source: 'startup'
+      },
+      {
+        'x-stoa-secret': secret,
+        'x-stoa-session-id': session.id,
+        'x-stoa-project-id': project.id
+      }
+    )
+
+    expect(sessionStart.statusCode).toBe(204)
+    expect(manager.snapshot().sessions.find(candidate => candidate.id === session.id)).toMatchObject({
+      runtimeState: 'alive',
+      turnState: 'idle',
+      externalSessionId: 'codex-new-startup'
+    })
+
+    const promptSubmit = await postCodexHook(
+      port,
+      {
+        hook_event_name: 'UserPromptSubmit',
+        session_id: 'codex-new-startup',
+        turn_id: 'turn-startup-1'
+      },
+      {
+        'x-stoa-secret': secret,
+        'x-stoa-session-id': session.id,
+        'x-stoa-project-id': project.id
+      }
+    )
+
+    expect(promptSubmit.statusCode).toBe(204)
+    expect(manager.snapshot().sessions.find(candidate => candidate.id === session.id)).toMatchObject({
+      runtimeState: 'alive',
+      turnState: 'running',
+      turnEpoch: 1,
+      externalSessionId: 'codex-new-startup'
+    })
+  })
+
   test('claude UserPromptSubmit no longer routes through an adapter recall hook', async () => {
     const stateDir = await createTestTempDir('session-event-bridge-recall-state-')
     const workspaceDir = await createTestTempDir('session-event-bridge-recall-workspace-')

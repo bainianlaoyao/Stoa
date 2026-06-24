@@ -18,6 +18,7 @@ interface RuntimeCommand {
 }
 
 interface TestRuntimeProvider {
+  commands: RuntimeCommand[]
   close: () => Promise<void>
 }
 
@@ -40,6 +41,7 @@ export interface LaunchedWebApp {
   port: number
   token: string
   stateDir: string
+  runtimeCommands: RuntimeCommand[]
   close: () => Promise<void>
 }
 
@@ -118,6 +120,8 @@ async function connectTestRuntimeProvider(baseUrl: string, token: string): Promi
 
   const ws = new WebSocket(url.toString())
   let closed = false
+  const commands: RuntimeCommand[] = []
+  const inputBuffers = new Map<string, string>()
 
   ws.addEventListener('message', (event: MessageEvent) => {
     const raw = typeof event.data === 'string' ? event.data : ''
@@ -131,6 +135,7 @@ async function connectTestRuntimeProvider(baseUrl: string, token: string): Promi
     if (!isRuntimeCommand(parsed)) {
       return
     }
+    commands.push(parsed)
 
     ws.send(JSON.stringify({
       type: 'runtime:response',
@@ -138,6 +143,24 @@ async function connectTestRuntimeProvider(baseUrl: string, token: string): Promi
       ok: true,
       data: runtimeResponseData(parsed),
     }))
+    if (parsed.type === 'runtime:input') {
+      const data = typeof parsed.payload?.data === 'string'
+        ? parsed.payload.data
+        : typeof parsed.payload?.base64Data === 'string'
+          ? Buffer.from(parsed.payload.base64Data, 'base64').toString('utf8')
+          : ''
+      const buffered = `${inputBuffers.get(parsed.sessionId) ?? ''}${data}`
+      if (/[\r\n]/.test(buffered)) {
+        inputBuffers.set(parsed.sessionId, '')
+        ws.send(JSON.stringify({
+          type: 'runtime:terminal-data',
+          sessionId: parsed.sessionId,
+          data: `\r\n__WEB_RUNTIME_ECHO__${buffered.replace(/[\r\n]+/g, '')}\r\n`,
+        }))
+      } else {
+        inputBuffers.set(parsed.sessionId, buffered)
+      }
+    }
   })
 
   await new Promise<void>((resolve, reject) => {
@@ -162,6 +185,7 @@ async function connectTestRuntimeProvider(baseUrl: string, token: string): Promi
   })
 
   return {
+    commands,
     close: async () => {
       if (closed) {
         return
@@ -343,6 +367,7 @@ export async function launchWebApp(page: Page, options: LaunchWebOptions = {}): 
     port,
     token,
     stateDir,
+    runtimeCommands: runtimeProvider.commands,
     async close() {
       await runtimeProvider?.close()
       await closeServerProcess(serverProcess)

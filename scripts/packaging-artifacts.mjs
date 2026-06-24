@@ -73,6 +73,19 @@ async function pathExists(path) {
   }
 }
 
+export async function resolveDefaultReleaseDir(cwd = process.cwd()) {
+  if (process.env.STOA_RELEASE_DIR) {
+    return process.env.STOA_RELEASE_DIR
+  }
+
+  const stagingDir = join(cwd, '.tmp', 'release-staging')
+  if (await pathExists(stagingDir)) {
+    return stagingDir
+  }
+
+  return join(cwd, 'release')
+}
+
 async function findFirstExisting(paths) {
   for (const candidate of paths) {
     if (await pathExists(candidate)) {
@@ -129,7 +142,7 @@ async function findLinuxExecutable(releaseDir, productName, packageName) {
 }
 
 export async function resolvePackagedExecutable(options = {}) {
-  const releaseDir = options.releaseDir ?? join(process.cwd(), 'release')
+  const releaseDir = options.releaseDir ?? await resolveDefaultReleaseDir()
   const platform = normalizePlatform(options.platform)
   const productName = options.productName ?? 'Stoa'
   const packageName = options.packageName ?? 'stoa'
@@ -190,7 +203,7 @@ async function findArtifact(releaseDir, platform, artifactName, expectedSize) {
 }
 
 export async function verifyPackagingBaseline(options = {}) {
-  const releaseDir = options.releaseDir ?? join(process.cwd(), 'release')
+  const releaseDir = options.releaseDir ?? await resolveDefaultReleaseDir()
   const platform = normalizePlatform(options.platform)
   const metadataName = resolveReleaseMetadataName(platform)
   const metadataPath = join(releaseDir, metadataName)

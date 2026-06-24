@@ -1,25 +1,21 @@
 <script setup lang="ts">
-import { computed, shallowRef, useTemplateRef, watch } from 'vue'
+import { computed, shallowRef, useTemplateRef } from 'vue'
 import type { OpenWorkspaceRequest, ProjectSummary, SessionSummary } from '@shared/project-session'
 import TerminalViewport from '@renderer/components/TerminalViewport.vue'
-import { useMobileSessionDisplayPrefs } from '@renderer/composables/useMobileSessionDisplayPrefs'
 
 const props = defineProps<{
   project: ProjectSummary | null
   session: SessionSummary | null
   healthStatus: 'connected' | 'reconnecting' | 'offline'
-  openDisplaySheet?: boolean
 }>()
 
 const emit = defineEmits<{
   openWorkspace: [request: OpenWorkspaceRequest]
-  closeDisplaySheet: []
 }>()
 
 const keysOpen = shallowRef(false)
 const terminalViewportRef = useTemplateRef<InstanceType<typeof TerminalViewport>>('terminalViewport')
-const { prefs, fontSizeDelta, setWrapMode, setTextSize } = useMobileSessionDisplayPrefs(() => props.session?.id ?? null)
-const terminalMinViewportWidth = computed(() => prefs.value.wrapMode === 'scroll' ? 960 : null)
+const MOBILE_TERMINAL_WIDE_MIN_WIDTH = 960
 
 const keyActions = [
   { id: 'esc', label: 'Esc', data: '\u001b' },
@@ -34,17 +30,6 @@ const keyActions = [
 ] as const
 
 const inputLocked = computed(() => props.healthStatus !== 'connected')
-
-watch(
-  () => props.openDisplaySheet,
-  (open) => {
-    if (!open) {
-      return
-    }
-
-    keysOpen.value = false
-  }
-)
 
 function sendInput(data: string): void {
   if (!props.session || inputLocked.value) {
@@ -90,7 +75,6 @@ function activateKey(action: typeof keyActions[number]): void {
   <section
     class="mobile-session-terminal"
     :class="{
-      'mobile-session-terminal--hscroll': prefs.wrapMode === 'scroll',
       'mobile-session-terminal--locked': inputLocked
     }"
     data-testid="mobile-session-terminal"
@@ -103,9 +87,8 @@ function activateKey(action: typeof keyActions[number]): void {
         :session="session"
         :visible="true"
         :show-quick-actions="false"
-        :font-size-delta="fontSizeDelta"
         :input-enabled="!inputLocked"
-        :min-viewport-width="terminalMinViewportWidth"
+        :min-viewport-width="MOBILE_TERMINAL_WIDE_MIN_WIDTH"
         @open-workspace="emit('openWorkspace', $event)"
       />
       <button
@@ -148,25 +131,6 @@ function activateKey(action: typeof keyActions[number]): void {
         </div>
       </div>
     </div>
-
-    <div
-      v-if="openDisplaySheet"
-      class="mobile-session-terminal__sheet-backdrop"
-      data-testid="mobile-terminal-display-sheet"
-      @click.self="emit('closeDisplaySheet')"
-    >
-      <section class="mobile-session-terminal__sheet" aria-label="Terminal display">
-        <div class="mobile-session-terminal__segmented" role="group" aria-label="Line mode">
-          <button type="button" data-testid="mobile-display-wrap" :aria-pressed="prefs.wrapMode === 'wrap'" @click="setWrapMode('wrap')">Wrap</button>
-          <button type="button" data-testid="mobile-display-scroll" :aria-pressed="prefs.wrapMode === 'scroll'" @click="setWrapMode('scroll')">Scroll</button>
-        </div>
-        <div class="mobile-session-terminal__segmented" role="group" aria-label="Text size">
-          <button type="button" data-testid="mobile-display-small" :aria-pressed="prefs.textSize === 'small'" @click="setTextSize('small')">Small</button>
-          <button type="button" data-testid="mobile-display-normal" :aria-pressed="prefs.textSize === 'normal'" @click="setTextSize('normal')">Normal</button>
-          <button type="button" data-testid="mobile-display-large" :aria-pressed="prefs.textSize === 'large'" @click="setTextSize('large')">Large</button>
-        </div>
-      </section>
-    </div>
   </section>
 </template>
 
@@ -181,7 +145,6 @@ function activateKey(action: typeof keyActions[number]): void {
   font-family: var(--font-ui);
 }
 
-.mobile-session-terminal__segmented button,
 .mobile-session-terminal__keys-handle,
 .mobile-session-terminal__keys-rail button {
   border: 1px solid var(--stroke-control);
@@ -196,30 +159,10 @@ function activateKey(action: typeof keyActions[number]): void {
     box-shadow var(--duration-rest) var(--curve-standard);
 }
 
-.mobile-session-terminal__segmented {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: 1fr;
-  gap: 4px;
-}
-
-.mobile-session-terminal__segmented button {
-  min-height: 44px;
-}
-
-.mobile-session-terminal__segmented button[aria-pressed='true'] {
-  border-color: var(--accent);
-  background: var(--active-fill);
-  color: var(--text-strong);
-}
-
 .mobile-session-terminal__viewport {
   position: relative;
   min-height: 0;
   overflow: hidden;
-}
-
-.mobile-session-terminal--hscroll .mobile-session-terminal__viewport {
   overflow-x: auto;
 }
 
@@ -278,35 +221,15 @@ function activateKey(action: typeof keyActions[number]): void {
   cursor: default;
 }
 
-.mobile-session-terminal__segmented button:hover,
 .mobile-session-terminal__keys-handle:hover,
 .mobile-session-terminal__keys-rail button:not(:disabled):hover {
   background: var(--control-fill-hover);
   color: var(--text-strong);
 }
 
-.mobile-session-terminal__segmented button:focus-visible,
 .mobile-session-terminal__keys-handle:focus-visible,
 .mobile-session-terminal__keys-rail button:focus-visible {
   outline: none;
   box-shadow: var(--shadow-focus-ring);
-}
-
-.mobile-session-terminal__sheet-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 40;
-  display: grid;
-  align-items: end;
-  background: var(--smoke);
-}
-
-.mobile-session-terminal__sheet {
-  display: grid;
-  gap: 10px;
-  padding: 12px;
-  border-top: 1px solid var(--stroke-divider);
-  background: var(--acrylic);
-  box-shadow: var(--shadow-flyout);
 }
 </style>

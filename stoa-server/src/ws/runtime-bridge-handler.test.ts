@@ -575,6 +575,19 @@ describe('RuntimeBridgeHandler', () => {
       expect(payload.state.rows).toBe(24)
     })
 
+    it('unassigns a session when pty-state reports it is no longer alive', () => {
+      handler.assignSession(provider.id, 'sess-1')
+
+      handler.handleMessage(provider.id, JSON.stringify({
+        type: 'runtime:pty-state',
+        sessionId: 'sess-1',
+        state: { alive: false, exitCode: 0, exitReason: 'clean' },
+      }))
+
+      expect(provider.managedSessions.has('sess-1')).toBe(false)
+      expect(handler.getProviderForSession('sess-1')).toBeNull()
+    })
+
     it('handles runtime:state-sync and calls onProviderReady', () => {
       const onProviderReady = vi.fn()
       handler.setHooks({ onProviderReady })
@@ -596,9 +609,9 @@ describe('RuntimeBridgeHandler', () => {
       expect(payload.ptyStates[1].sessionId).toBe('sess-B')
       expect(payload.ptyStates[1].state.exitCode).toBe(0)
 
-      // State sync should also assign sessions to provider
+      // State sync should only assign live sessions to provider
       expect(provider.managedSessions.has('sess-A')).toBe(true)
-      expect(provider.managedSessions.has('sess-B')).toBe(true)
+      expect(provider.managedSessions.has('sess-B')).toBe(false)
     })
 
     it('drops messages from unknown providers', () => {
@@ -734,6 +747,34 @@ describe('RuntimeBridgeHandler', () => {
         sessionId: 'sess-1',
         state: { alive: true },
       }))).not.toThrow()
+    })
+
+    it('routes input after provider reports a session alive through pty-state', async () => {
+      handler.handleMessage(provider.id, JSON.stringify({
+        type: 'runtime:pty-state',
+        sessionId: 'sess-pty-alive',
+        state: { alive: true },
+      }))
+
+      const input = handler.sendCommand('sess-pty-alive', {
+        type: 'runtime:input',
+        payload: { data: 'echo ok\r' },
+      })
+
+      expect(ws.send).toHaveBeenCalledTimes(1)
+      const sent = JSON.parse(ws.send.mock.calls[0][0] as string)
+      expect(sent).toMatchObject({
+        type: 'runtime:input',
+        sessionId: 'sess-pty-alive',
+        payload: { data: 'echo ok\r' },
+      })
+
+      handler.handleMessage(provider.id, JSON.stringify({
+        type: 'runtime:response',
+        replyTo: sent.replyTo,
+        ok: true,
+      }))
+      await expect(input).resolves.toBeUndefined()
     })
   })
 

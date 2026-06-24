@@ -20,6 +20,7 @@ interface SessionRuntimePtyHost {
     onExit: (exitCode: number) => void,
     shellIntegration?: { enabled: boolean; shellPath: string }
   ) => { runtimeId: string }
+  killAndWait?: (runtimeId: string) => Promise<void>
 }
 
 export interface StartSessionRuntimeOptions {
@@ -64,7 +65,7 @@ function toProviderTarget(session: StartSessionRuntimeOptions['session']): Provi
   }
 }
 
-export async function startSessionRuntime(options: StartSessionRuntimeOptions): Promise<void> {
+export async function startSessionRuntime(options: StartSessionRuntimeOptions): Promise<boolean> {
   const { session, webhookPort, provider, ptyHost, manager } = options
   const descriptor = getProviderDescriptorBySessionType(session.type)
   const target = toProviderTarget(session)
@@ -112,6 +113,13 @@ export async function startSessionRuntime(options: StartSessionRuntimeOptions): 
   const providerCommand = canResume
     ? await provider.buildResumeCommand(target, session.externalSessionId!, context)
     : await provider.buildStartCommand(target, context)
+  const configuredShellPath = session.type === 'shell'
+    ? options.shellPath?.trim() || null
+    : null
+
+  if (configuredShellPath) {
+    providerCommand.command = configuredShellPath
+  }
 
   if (options.commandEnv) {
     providerCommand.env = {
@@ -142,8 +150,8 @@ export async function startSessionRuntime(options: StartSessionRuntimeOptions): 
   let started: { runtimeId: string }
   let exitObservedDuringStart = false
 
-  const shellIntegration = session.type === 'shell' && options.shellPath
-    ? { enabled: true, shellPath: options.shellPath }
+  const shellIntegration = configuredShellPath
+    ? { enabled: true, shellPath: configuredShellPath }
     : undefined
 
   try {
@@ -180,11 +188,28 @@ export async function startSessionRuntime(options: StartSessionRuntimeOptions): 
 
   if (exitObservedDuringStart) {
     console.log(`[session-runtime] skipped markRuntimeAlive for ${session.id}; process exited during start`)
-    return
+    return false
   }
 
   console.log(`[session-runtime] markRuntimeAlive for ${session.id} (runtimeId: ${started.runtimeId})`)
-  await manager.markRuntimeAlive(session.id, activeExternalSessionId ?? null)
+  try {
+    await manager.markRuntimeAlive(session.id, activeExternalSessionId ?? null)
+  } catch (error) {
+    console.error(`[session-runtime] Failed to mark runtime alive for ${session.id}:`, error)
+    if (ptyHost.killAndWait) {
+      try {
+        await ptyHost.killAndWait(started.runtimeId)
+      } catch (killError) {
+        console.error(`[session-runtime] Failed to cleanup PTY after alive mark failure for ${session.id}:`, killError)
+      }
+    }
+    await manager.markRuntimeFailedToStart(
+      session.id,
+      `${session.type} failed after PTY start: ${error instanceof Error ? error.message : String(error)}`
+    )
+    throw error
+  }
 
   console.log(`[session-runtime] markRuntimeAlive done for ${session.id}`)
+  return true
 }

@@ -106,6 +106,7 @@ function createDeps(overrides: Partial<RuntimeClientDeps> = {}): RuntimeClientDe
   return {
     ptyHost: {
       write: vi.fn(),
+      writeBinary: vi.fn(),
       killAndWait: vi.fn().mockResolvedValue(undefined),
       resize: vi.fn(),
       kill: vi.fn(),
@@ -287,6 +288,388 @@ describe('StoaRuntimeClient - command handling', () => {
     expect(last!.data).toEqual({ status: 'already_running' })
   })
 
+  it('rejects concurrent runtime:launch commands for the same launching session', async () => {
+    const { StoaRuntimeClient } = await import('./stoa-runtime-client')
+    let resolveLaunch!: (value: boolean) => void
+    const launchPromise = new Promise<boolean>((resolve) => {
+      resolveLaunch = resolve
+    })
+    const launchSession = vi.fn(() => launchPromise)
+    const deps = createDeps({ launchSession })
+    const client = new StoaRuntimeClient(createOptions(), deps)
+
+    const connectPromise = client.connect()
+    simulateOpen()
+    await connectPromise
+
+    simulateMessage(JSON.stringify({
+      type: 'runtime:launch',
+      sessionId: 'sess-concurrent',
+      payload: {},
+      replyTo: 'corr-concurrent-1'
+    }))
+    simulateMessage(JSON.stringify({
+      type: 'runtime:launch',
+      sessionId: 'sess-concurrent',
+      payload: {},
+      replyTo: 'corr-concurrent-2'
+    }))
+    await new Promise((r) => setImmediate(r))
+
+    expect(launchSession).toHaveBeenCalledTimes(1)
+    expect(instances[0].sentMessages).toContainEqual({
+      type: 'runtime:response',
+      replyTo: 'corr-concurrent-2',
+      ok: false,
+      error: 'runtime:launch is already in progress for session sess-concurrent'
+    })
+
+    resolveLaunch?.(true)
+    await new Promise((r) => setImmediate(r))
+
+    expect(instances[0].sentMessages).toContainEqual({
+      type: 'runtime:response',
+      replyTo: 'corr-concurrent-1',
+      ok: true,
+      data: { status: 'launched' }
+    })
+  })
+
+  it('times out hung runtime:launch commands and clears launch-time queues', async () => {
+    const { StoaRuntimeClient } = await import('./stoa-runtime-client')
+    const launchSession = vi.fn(() => new Promise<boolean>(() => {}))
+    const deps = createDeps({ launchSession })
+    const client = new StoaRuntimeClient(createOptions(), deps)
+
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const connectPromise = client.connect()
+    simulateOpen()
+    await connectPromise
+
+    simulateMessage(JSON.stringify({
+      type: 'runtime:launch',
+      sessionId: 'sess-hung',
+      payload: {},
+      replyTo: 'corr-hung-launch'
+    }))
+    await vi.advanceTimersByTimeAsync(1)
+
+    simulateMessage(JSON.stringify({
+      type: 'runtime:input',
+      sessionId: 'sess-hung',
+      payload: { data: 'queued-before-timeout\n' },
+      replyTo: 'corr-hung-input'
+    }))
+    await vi.advanceTimersByTimeAsync(29_000)
+    await new Promise((r) => setImmediate(r))
+
+    expect(instances[0].sentMessages).toContainEqual({
+      type: 'runtime:response',
+      replyTo: 'corr-hung-launch',
+      ok: false,
+      error: 'runtime:launch timed out after 29000ms for session sess-hung'
+    })
+
+    simulateMessage(JSON.stringify({
+      type: 'runtime:input',
+      sessionId: 'sess-hung',
+      payload: { data: 'after-timeout\n' },
+      replyTo: 'corr-hung-input-after'
+    }))
+    await vi.advanceTimersByTimeAsync(1)
+
+    expect(deps.ptyHost.write).not.toHaveBeenCalled()
+    expect(instances[0].sentMessages).toContainEqual({
+      type: 'runtime:response',
+      replyTo: 'corr-hung-input-after',
+      ok: false,
+      error: 'runtime:input cannot target inactive session sess-hung'
+    })
+    vi.useRealTimers()
+  })
+
+  it('queues runtime:input that arrives while launch is still in progress', async () => {
+    const { StoaRuntimeClient } = await import('./stoa-runtime-client')
+    let resolveLaunch!: (value: boolean) => void
+    const launchPromise = new Promise<boolean>((resolve) => {
+      resolveLaunch = resolve
+    })
+    const deps = createDeps({ launchSession: vi.fn(() => launchPromise) })
+    const client = new StoaRuntimeClient(createOptions(), deps)
+
+    const connectPromise = client.connect()
+    simulateOpen()
+    await connectPromise
+
+    simulateMessage(JSON.stringify({
+      type: 'runtime:launch',
+      sessionId: 'sess-queue-input',
+      payload: {},
+      replyTo: 'corr-queue-launch'
+    }))
+    await new Promise((r) => setImmediate(r))
+
+    simulateMessage(JSON.stringify({
+      type: 'runtime:input',
+      sessionId: 'sess-queue-input',
+      payload: { data: 'first\n' },
+      replyTo: 'corr-queue-input-1'
+    }))
+    simulateMessage(JSON.stringify({
+      type: 'runtime:input',
+      sessionId: 'sess-queue-input',
+      payload: { data: 'second\n' },
+      replyTo: 'corr-queue-input-2'
+    }))
+    await new Promise((r) => setImmediate(r))
+
+    expect(deps.ptyHost.write).not.toHaveBeenCalled()
+    expect(instances[0].sentMessages).toContainEqual({
+      type: 'runtime:response',
+      replyTo: 'corr-queue-input-1',
+      ok: true
+    })
+    expect(instances[0].sentMessages).toContainEqual({
+      type: 'runtime:response',
+      replyTo: 'corr-queue-input-2',
+      ok: true
+    })
+
+    resolveLaunch(true)
+    await new Promise((r) => setImmediate(r))
+
+    expect(deps.ptyHost.write).toHaveBeenNthCalledWith(1, 'sess-queue-input', 'first\n')
+    expect(deps.ptyHost.write).toHaveBeenNthCalledWith(2, 'sess-queue-input', 'second\n')
+  })
+
+  it('keeps runtime:launch successful when queued input flush fails after activation', async () => {
+    const { StoaRuntimeClient } = await import('./stoa-runtime-client')
+    let resolveLaunch!: (value: boolean) => void
+    const launchPromise = new Promise<boolean>((resolve) => {
+      resolveLaunch = resolve
+    })
+    const deps = createDeps({
+      launchSession: vi.fn(() => launchPromise),
+      ptyHost: {
+        write: vi.fn(() => {
+          throw new Error('write failed')
+        }),
+        writeBinary: vi.fn(),
+        killAndWait: vi.fn().mockResolvedValue(undefined),
+        resize: vi.fn(),
+        kill: vi.fn(),
+        dispose: vi.fn()
+      } as unknown as RuntimeClientDeps['ptyHost']
+    })
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const client = new StoaRuntimeClient(createOptions(), deps)
+
+    const connectPromise = client.connect()
+    simulateOpen()
+    await connectPromise
+
+    simulateMessage(JSON.stringify({
+      type: 'runtime:launch',
+      sessionId: 'sess-flush-fail',
+      payload: {},
+      replyTo: 'corr-flush-fail-launch'
+    }))
+    await new Promise((r) => setImmediate(r))
+
+    simulateMessage(JSON.stringify({
+      type: 'runtime:input',
+      sessionId: 'sess-flush-fail',
+      payload: { data: 'queued\n' },
+      replyTo: 'corr-flush-fail-input'
+    }))
+    await new Promise((r) => setImmediate(r))
+
+    resolveLaunch(true)
+    await new Promise((r) => setImmediate(r))
+
+    expect(instances[0].sentMessages).toContainEqual({
+      type: 'runtime:response',
+      replyTo: 'corr-flush-fail-launch',
+      ok: true,
+      data: { status: 'launched' }
+    })
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Failed to flush queued input for sess-flush-fail after launch'),
+      expect.any(Error)
+    )
+    warnSpy.mockRestore()
+  })
+
+  it('writes input directly when it arrives while queued launch input is being flushed', async () => {
+    const { StoaRuntimeClient } = await import('./stoa-runtime-client')
+    let resolveLaunch!: (value: boolean) => void
+    const launchPromise = new Promise<boolean>((resolve) => {
+      resolveLaunch = resolve
+    })
+    let releaseInterrupt!: () => void
+    const interruptGate = new Promise<void>((resolve) => {
+      releaseInterrupt = resolve
+    })
+    const markAgentTurnInterrupted = vi.fn(() => interruptGate)
+    const deps = createDeps({
+      launchSession: vi.fn(() => launchPromise),
+      getSessionType: vi.fn((): 'opencode' => 'opencode'),
+      markAgentTurnInterrupted
+    })
+    const client = new StoaRuntimeClient(createOptions(), deps)
+
+    const connectPromise = client.connect()
+    simulateOpen()
+    await connectPromise
+
+    simulateMessage(JSON.stringify({
+      type: 'runtime:launch',
+      sessionId: 'sess-reentrant-input',
+      payload: {},
+      replyTo: 'corr-reentrant-launch'
+    }))
+    await new Promise((r) => setImmediate(r))
+
+    simulateMessage(JSON.stringify({
+      type: 'runtime:input',
+      sessionId: 'sess-reentrant-input',
+      payload: { data: '\x03' },
+      replyTo: 'corr-reentrant-queued'
+    }))
+    await new Promise((r) => setImmediate(r))
+
+    resolveLaunch(true)
+    await new Promise((r) => setImmediate(r))
+
+    simulateMessage(JSON.stringify({
+      type: 'runtime:input',
+      sessionId: 'sess-reentrant-input',
+      payload: { data: 'after-active\n' },
+      replyTo: 'corr-reentrant-after-active'
+    }))
+    await new Promise((r) => setImmediate(r))
+
+    expect(deps.ptyHost.write).toHaveBeenNthCalledWith(1, 'sess-reentrant-input', '\x03')
+    expect(deps.ptyHost.write).toHaveBeenNthCalledWith(2, 'sess-reentrant-input', 'after-active\n')
+
+    releaseInterrupt()
+    await new Promise((r) => setImmediate(r))
+
+    expect(instances[0].sentMessages).toContainEqual({
+      type: 'runtime:response',
+      replyTo: 'corr-reentrant-after-active',
+      ok: true
+    })
+  })
+
+  it('writes binary runtime:input payloads without converting through text', async () => {
+    const { StoaRuntimeClient } = await import('./stoa-runtime-client')
+    const deps = createDeps()
+    const client = new StoaRuntimeClient(createOptions(), deps)
+
+    const connectPromise = client.connect()
+    simulateOpen()
+    await connectPromise
+
+    simulateMessage(JSON.stringify({
+      type: 'runtime:launch',
+      sessionId: 'sess-binary',
+      payload: {},
+      replyTo: 'corr-binary-launch'
+    }))
+    await new Promise((r) => setImmediate(r))
+
+    simulateMessage(JSON.stringify({
+      type: 'runtime:input',
+      sessionId: 'sess-binary',
+      payload: { base64Data: Buffer.from([0x1b, 0xe9]).toString('base64') },
+      replyTo: 'corr-binary-input'
+    }))
+    await new Promise((r) => setImmediate(r))
+
+    expect(deps.ptyHost.write).not.toHaveBeenCalled()
+    expect(deps.ptyHost.writeBinary).toHaveBeenCalledWith(
+      'sess-binary',
+      Buffer.from([0x1b, 0xe9])
+    )
+  })
+
+  it('marks agent turns interrupted when binary runtime:input is Ctrl+C', async () => {
+    const { StoaRuntimeClient } = await import('./stoa-runtime-client')
+    const markAgentTurnInterrupted = vi.fn(async () => {})
+    const deps = createDeps({
+      getSessionType: vi.fn((): 'claude-code' => 'claude-code'),
+      markAgentTurnInterrupted
+    })
+    const client = new StoaRuntimeClient(createOptions(), deps)
+
+    const connectPromise = client.connect()
+    simulateOpen()
+    await connectPromise
+
+    simulateMessage(JSON.stringify({
+      type: 'runtime:launch',
+      sessionId: 'sess-binary-ctrl-c',
+      payload: {},
+      replyTo: 'corr-binary-ctrl-c-launch'
+    }))
+    await new Promise((r) => setImmediate(r))
+
+    simulateMessage(JSON.stringify({
+      type: 'runtime:input',
+      sessionId: 'sess-binary-ctrl-c',
+      payload: { base64Data: Buffer.from([0x03]).toString('base64') },
+      replyTo: 'corr-binary-ctrl-c'
+    }))
+    await new Promise((r) => setImmediate(r))
+
+    expect(deps.ptyHost.writeBinary).toHaveBeenCalledWith(
+      'sess-binary-ctrl-c',
+      Buffer.from([0x03])
+    )
+    expect(markAgentTurnInterrupted).toHaveBeenCalledWith('sess-binary-ctrl-c', 'claude-code')
+  })
+
+  it('queues binary runtime:input payloads while launch is still in progress', async () => {
+    const { StoaRuntimeClient } = await import('./stoa-runtime-client')
+    let resolveLaunch!: (value: boolean) => void
+    const launchPromise = new Promise<boolean>((resolve) => {
+      resolveLaunch = resolve
+    })
+    const deps = createDeps({ launchSession: vi.fn(() => launchPromise) })
+    const client = new StoaRuntimeClient(createOptions(), deps)
+
+    const connectPromise = client.connect()
+    simulateOpen()
+    await connectPromise
+
+    simulateMessage(JSON.stringify({
+      type: 'runtime:launch',
+      sessionId: 'sess-queue-binary',
+      payload: {},
+      replyTo: 'corr-queue-binary-launch'
+    }))
+    await new Promise((r) => setImmediate(r))
+
+    simulateMessage(JSON.stringify({
+      type: 'runtime:input',
+      sessionId: 'sess-queue-binary',
+      payload: { base64Data: Buffer.from([0x80, 0xff]).toString('base64') },
+      replyTo: 'corr-queue-binary-input'
+    }))
+    await new Promise((r) => setImmediate(r))
+
+    expect(deps.ptyHost.writeBinary).not.toHaveBeenCalled()
+
+    resolveLaunch(true)
+    await new Promise((r) => setImmediate(r))
+
+    expect(deps.ptyHost.writeBinary).toHaveBeenCalledWith(
+      'sess-queue-binary',
+      Buffer.from([0x80, 0xff])
+    )
+  })
+
   it('handles runtime:launch failure and returns error response', async () => {
     const { StoaRuntimeClient } = await import('./stoa-runtime-client')
     const deps = createDeps({ launchSession: vi.fn().mockResolvedValue(false) })
@@ -332,6 +715,43 @@ describe('StoaRuntimeClient - command handling', () => {
     expect(last!.ok).toBe(true)
   })
 
+  it('removes killed sessions from reconnect state sync', async () => {
+    const { StoaRuntimeClient } = await import('./stoa-runtime-client')
+    const deps = createDeps()
+    const client = new StoaRuntimeClient(createOptions(), deps)
+
+    const connectPromise = client.connect()
+    simulateOpen()
+    await connectPromise
+
+    simulateMessage(JSON.stringify({
+      type: 'runtime:launch',
+      sessionId: 'sess-kill-sync',
+      payload: {},
+      replyTo: 'corr-launch-kill-sync'
+    }))
+    await new Promise((r) => setImmediate(r))
+
+    simulateMessage(JSON.stringify({
+      type: 'runtime:kill',
+      sessionId: 'sess-kill-sync',
+      payload: {},
+      replyTo: 'corr-kill-sync'
+    }))
+    await new Promise((r) => setImmediate(r))
+
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    simulateClose(1006, 'lost')
+    await vi.advanceTimersByTimeAsync(2_000)
+    simulateOpen()
+    await new Promise((r) => setImmediate(r))
+
+    const stateSync = instances[instances.length - 1].sentMessages.find((message) => message.type === 'runtime:state-sync')
+    expect(stateSync).toBeUndefined()
+
+    vi.useRealTimers()
+  })
+
   it('handles runtime:input by writing to ptyHost', async () => {
     const { StoaRuntimeClient } = await import('./stoa-runtime-client')
     const deps = createDeps()
@@ -342,6 +762,14 @@ describe('StoaRuntimeClient - command handling', () => {
     await connectPromise
 
     simulateMessage(JSON.stringify({
+      type: 'runtime:launch',
+      sessionId: 'sess-in',
+      payload: {},
+      replyTo: 'corr-input-launch'
+    }))
+    await new Promise((r) => setImmediate(r))
+
+    simulateMessage(JSON.stringify({
       type: 'runtime:input',
       sessionId: 'sess-in',
       payload: { data: 'ls -la\n' },
@@ -350,6 +778,33 @@ describe('StoaRuntimeClient - command handling', () => {
     await new Promise((r) => setImmediate(r))
 
     expect(deps.ptyHost.write).toHaveBeenCalledWith('sess-in', 'ls -la\n')
+  })
+
+  it('rejects runtime:input for inactive sessions instead of silently dropping data', async () => {
+    const { StoaRuntimeClient } = await import('./stoa-runtime-client')
+    const deps = createDeps()
+    const client = new StoaRuntimeClient(createOptions(), deps)
+
+    const connectPromise = client.connect()
+    simulateOpen()
+    await connectPromise
+
+    simulateMessage(JSON.stringify({
+      type: 'runtime:input',
+      sessionId: 'sess-inactive',
+      payload: { data: 'pwd\n' },
+      replyTo: 'corr-input-inactive'
+    }))
+    await new Promise((r) => setImmediate(r))
+
+    expect(deps.ptyHost.write).not.toHaveBeenCalled()
+    const last = getLastSentMessage()
+    expect(last).toEqual({
+      type: 'runtime:response',
+      replyTo: 'corr-input-inactive',
+      ok: false,
+      error: 'runtime:input cannot target inactive session sess-inactive'
+    })
   })
 
   it('handles runtime:input error when payload.data is not a string', async () => {
@@ -384,6 +839,14 @@ describe('StoaRuntimeClient - command handling', () => {
     await connectPromise
 
     simulateMessage(JSON.stringify({
+      type: 'runtime:launch',
+      sessionId: 'sess-rs',
+      payload: {},
+      replyTo: 'corr-resize-launch'
+    }))
+    await new Promise((r) => setImmediate(r))
+
+    simulateMessage(JSON.stringify({
       type: 'runtime:resize',
       sessionId: 'sess-rs',
       payload: { cols: 120, rows: 40 },
@@ -392,6 +855,76 @@ describe('StoaRuntimeClient - command handling', () => {
     await new Promise((r) => setImmediate(r))
 
     expect(deps.ptyHost.resize).toHaveBeenCalledWith('sess-rs', 120, 40)
+  })
+
+  it('rejects runtime:resize for inactive sessions instead of silently no-oping', async () => {
+    const { StoaRuntimeClient } = await import('./stoa-runtime-client')
+    const deps = createDeps()
+    const client = new StoaRuntimeClient(createOptions(), deps)
+
+    const connectPromise = client.connect()
+    simulateOpen()
+    await connectPromise
+
+    simulateMessage(JSON.stringify({
+      type: 'runtime:resize',
+      sessionId: 'sess-rs-inactive',
+      payload: { cols: 120, rows: 40 },
+      replyTo: 'corr-resize-inactive'
+    }))
+    await new Promise((r) => setImmediate(r))
+
+    expect(deps.ptyHost.resize).not.toHaveBeenCalled()
+    expect(instances[0].sentMessages).toContainEqual({
+      type: 'runtime:response',
+      replyTo: 'corr-resize-inactive',
+      ok: false,
+      error: 'runtime:resize cannot target inactive session sess-rs-inactive'
+    })
+  })
+
+  it('retains the last runtime:resize that arrives while launch is still in progress', async () => {
+    const { StoaRuntimeClient } = await import('./stoa-runtime-client')
+    let resolveLaunch!: (value: boolean) => void
+    const launchPromise = new Promise<boolean>((resolve) => {
+      resolveLaunch = resolve
+    })
+    const deps = createDeps({ launchSession: vi.fn(() => launchPromise) })
+    const client = new StoaRuntimeClient(createOptions(), deps)
+
+    const connectPromise = client.connect()
+    simulateOpen()
+    await connectPromise
+
+    simulateMessage(JSON.stringify({
+      type: 'runtime:launch',
+      sessionId: 'sess-queue-resize',
+      payload: {},
+      replyTo: 'corr-queue-resize-launch'
+    }))
+    await new Promise((r) => setImmediate(r))
+
+    simulateMessage(JSON.stringify({
+      type: 'runtime:resize',
+      sessionId: 'sess-queue-resize',
+      payload: { cols: 100, rows: 30 },
+      replyTo: 'corr-queue-resize-1'
+    }))
+    simulateMessage(JSON.stringify({
+      type: 'runtime:resize',
+      sessionId: 'sess-queue-resize',
+      payload: { cols: 132, rows: 44 },
+      replyTo: 'corr-queue-resize-2'
+    }))
+    await new Promise((r) => setImmediate(r))
+
+    expect(deps.ptyHost.resize).not.toHaveBeenCalled()
+
+    resolveLaunch(true)
+    await new Promise((r) => setImmediate(r))
+
+    expect(deps.ptyHost.resize).toHaveBeenCalledTimes(1)
+    expect(deps.ptyHost.resize).toHaveBeenCalledWith('sess-queue-resize', 132, 44)
   })
 
   it('handles runtime:resize error when cols/rows are missing', async () => {
@@ -426,6 +959,14 @@ describe('StoaRuntimeClient - command handling', () => {
     await connectPromise
 
     simulateMessage(JSON.stringify({
+      type: 'runtime:launch',
+      sessionId: 'sess-int',
+      payload: {},
+      replyTo: 'corr-int-launch'
+    }))
+    await new Promise((r) => setImmediate(r))
+
+    simulateMessage(JSON.stringify({
       type: 'runtime:interrupt',
       sessionId: 'sess-int',
       payload: {},
@@ -435,6 +976,87 @@ describe('StoaRuntimeClient - command handling', () => {
 
     // ETX = '\x03'
     expect(deps.ptyHost.write).toHaveBeenCalledWith('sess-int', '\x03')
+  })
+
+  it('queues runtime:interrupt while launch is still in progress', async () => {
+    const { StoaRuntimeClient } = await import('./stoa-runtime-client')
+    let resolveLaunch!: (value: boolean) => void
+    const launchPromise = new Promise<boolean>((resolve) => {
+      resolveLaunch = resolve
+    })
+    const markAgentTurnInterrupted = vi.fn(async () => {})
+    const deps = createDeps({
+      launchSession: vi.fn(() => launchPromise),
+      getSessionType: vi.fn((): 'claude-code' => 'claude-code'),
+      markAgentTurnInterrupted
+    })
+    const client = new StoaRuntimeClient(createOptions(), deps)
+
+    const connectPromise = client.connect()
+    simulateOpen()
+    await connectPromise
+
+    simulateMessage(JSON.stringify({
+      type: 'runtime:launch',
+      sessionId: 'sess-int-launching',
+      payload: {},
+      replyTo: 'corr-int-launching-launch'
+    }))
+    await new Promise((r) => setImmediate(r))
+
+    simulateMessage(JSON.stringify({
+      type: 'runtime:interrupt',
+      sessionId: 'sess-int-launching',
+      payload: {},
+      replyTo: 'corr-int-launching'
+    }))
+    await new Promise((r) => setImmediate(r))
+
+    expect(deps.ptyHost.write).not.toHaveBeenCalled()
+    expect(instances[0].sentMessages).toContainEqual({
+      type: 'runtime:response',
+      replyTo: 'corr-int-launching',
+      ok: true
+    })
+
+    resolveLaunch(true)
+    await new Promise((r) => setImmediate(r))
+
+    expect(deps.ptyHost.write).toHaveBeenCalledWith('sess-int-launching', '\x03')
+    expect(markAgentTurnInterrupted).toHaveBeenCalledWith('sess-int-launching', 'claude-code')
+  })
+
+  it('marks agent turns interrupted when Ctrl+C arrives through runtime:input', async () => {
+    const { StoaRuntimeClient } = await import('./stoa-runtime-client')
+    const markAgentTurnInterrupted = vi.fn(async () => {})
+    const deps = createDeps({
+      getSessionType: vi.fn((): 'opencode' => 'opencode'),
+      markAgentTurnInterrupted
+    })
+    const client = new StoaRuntimeClient(createOptions(), deps)
+
+    const connectPromise = client.connect()
+    simulateOpen()
+    await connectPromise
+
+    simulateMessage(JSON.stringify({
+      type: 'runtime:launch',
+      sessionId: 'sess-ctrl-c',
+      payload: {},
+      replyTo: 'corr-ctrl-c-launch'
+    }))
+    await new Promise((r) => setImmediate(r))
+
+    simulateMessage(JSON.stringify({
+      type: 'runtime:input',
+      sessionId: 'sess-ctrl-c',
+      payload: { data: '\x03' },
+      replyTo: 'corr-ctrl-c-input'
+    }))
+    await new Promise((r) => setImmediate(r))
+
+    expect(deps.ptyHost.write).toHaveBeenCalledWith('sess-ctrl-c', '\x03')
+    expect(markAgentTurnInterrupted).toHaveBeenCalledWith('sess-ctrl-c', 'opencode')
   })
 
   it('handles runtime:get-terminal-replay by returning replay data', async () => {
@@ -596,6 +1218,48 @@ describe('StoaRuntimeClient - terminal data forwarding', () => {
       data: 'output data from PTY'
     })
   })
+
+  it('sends runtime:pty-state when a PTY exits', async () => {
+    const { StoaRuntimeClient } = await import('./stoa-runtime-client')
+    const markRuntimeExited = vi.fn().mockResolvedValue(undefined)
+    const client = new StoaRuntimeClient(createOptions(), createDeps({ markRuntimeExited }))
+
+    const connectPromise = client.connect()
+    simulateOpen()
+    await connectPromise
+
+    client.markRuntimeExited('sess-exited', 7, 'provider exited')
+
+    expect(getLastSentMessage()).toEqual({
+      type: 'runtime:pty-state',
+      sessionId: 'sess-exited',
+      state: {
+        alive: false,
+        exitCode: 7,
+        exitReason: 'failed'
+      }
+    })
+    expect(markRuntimeExited).toHaveBeenCalledWith('sess-exited', 7, 'provider exited')
+  })
+
+  it('sends runtime:pty-state alive for provider-owned local launches', async () => {
+    const { StoaRuntimeClient } = await import('./stoa-runtime-client')
+    const client = new StoaRuntimeClient(createOptions(), createDeps())
+
+    const connectPromise = client.connect()
+    simulateOpen()
+    await connectPromise
+
+    client.markRuntimeAlive('sess-local')
+
+    expect(getLastSentMessage()).toMatchObject({
+      type: 'runtime:pty-state',
+      sessionId: 'sess-local',
+      state: {
+        alive: true
+      }
+    })
+  })
 })
 
 describe('StoaRuntimeClient - terminal forwarding when disconnected', () => {
@@ -694,6 +1358,103 @@ describe('StoaRuntimeClient - reconnection with backoff', () => {
 
     // At least 3 WS instances total
     expect(instances.length).toBeGreaterThanOrEqual(3)
+
+    vi.useRealTimers()
+  })
+
+  it('syncs active session ownership after reconnect', async () => {
+    const { StoaRuntimeClient } = await import('./stoa-runtime-client')
+    const deps = createDeps()
+    const client = new StoaRuntimeClient(createOptions(), deps)
+
+    const connectPromise = client.connect()
+    simulateOpen()
+    await connectPromise
+
+    simulateMessage(JSON.stringify({
+      type: 'runtime:launch',
+      sessionId: 'sess-sync',
+      payload: {},
+      replyTo: 'corr-sync'
+    }))
+    await new Promise((r) => setImmediate(r))
+
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    simulateClose(1006, 'lost')
+    await vi.advanceTimersByTimeAsync(2_000)
+
+    expect(instances.length).toBeGreaterThanOrEqual(2)
+    simulateOpen()
+    await new Promise((r) => setImmediate(r))
+
+    const stateSync = instances[instances.length - 1].sentMessages.find((message) => message.type === 'runtime:state-sync')
+    expect(stateSync).toEqual({
+      type: 'runtime:state-sync',
+      sessions: [{
+        sessionId: 'sess-sync',
+        state: {
+          alive: true,
+          startedAt: expect.any(String)
+        }
+      }]
+    })
+
+    vi.useRealTimers()
+  })
+
+  it('syncs provider-owned local sessions that become alive before the WS opens', async () => {
+    const { StoaRuntimeClient } = await import('./stoa-runtime-client')
+    const client = new StoaRuntimeClient(createOptions(), createDeps())
+
+    const connectPromise = client.connect()
+    client.markRuntimeAlive('sess-local-before-open')
+
+    expect(instances[0].sentMessages).toEqual([])
+
+    simulateOpen()
+    await connectPromise
+
+    const stateSync = instances[0].sentMessages.find((message) => message.type === 'runtime:state-sync')
+    expect(stateSync).toEqual({
+      type: 'runtime:state-sync',
+      sessions: [{
+        sessionId: 'sess-local-before-open',
+        state: {
+          alive: true,
+          startedAt: expect.any(String)
+        }
+      }]
+    })
+  })
+
+  it('does not sync a session as active after it exits while disconnected', async () => {
+    const { StoaRuntimeClient } = await import('./stoa-runtime-client')
+    const deps = createDeps()
+    const client = new StoaRuntimeClient(createOptions(), deps)
+
+    const connectPromise = client.connect()
+    simulateOpen()
+    await connectPromise
+
+    simulateMessage(JSON.stringify({
+      type: 'runtime:launch',
+      sessionId: 'sess-disconnect-exit',
+      payload: {},
+      replyTo: 'corr-disconnect-exit'
+    }))
+    await new Promise((r) => setImmediate(r))
+
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    simulateClose(1006, 'lost')
+    client.markRuntimeExited('sess-disconnect-exit', 0, 'exited while disconnected')
+    await vi.advanceTimersByTimeAsync(2_000)
+
+    expect(instances.length).toBeGreaterThanOrEqual(2)
+    simulateOpen()
+    await new Promise((r) => setImmediate(r))
+
+    const stateSync = instances[instances.length - 1].sentMessages.find((message) => message.type === 'runtime:state-sync')
+    expect(stateSync).toBeUndefined()
 
     vi.useRealTimers()
   })

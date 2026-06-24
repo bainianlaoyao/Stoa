@@ -33,7 +33,8 @@ const sidebarStore = useSidebarStore()
 
 // Register global keyboard shortcuts (Ctrl+B toggle, Ctrl+Shift+E/F/G tab jumps)
 useSidebarShortcuts()
-const { matches: isMobileViewport } = useMediaQuery('(max-width: 768px)')
+const MOBILE_VIEWPORT_QUERY = '(max-width: 768px), ((max-width: 932px) and (max-height: 480px))'
+const { matches: isMobileViewport } = useMediaQuery(MOBILE_VIEWPORT_QUERY)
 const {
   status: backendHealthStatus,
   message: backendHealthMessage,

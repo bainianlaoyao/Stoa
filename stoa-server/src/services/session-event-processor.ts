@@ -181,11 +181,14 @@ export class SessionEventProcessor {
    * serialized per-session to guarantee ordering.
    */
   async processEvent(event: CanonicalSessionEvent): Promise<void> {
-    const sessionId = event.session_id
-    const previous = this.queues.get(sessionId) ?? Promise.resolve()
-    const next = previous.catch(() => {}).then(async () => {
+    await this.enqueueSessionMutation(event.session_id, async () => {
       await this.doProcessEvent(event)
     })
+  }
+
+  private async enqueueSessionMutation(sessionId: string, task: () => Promise<void>): Promise<void> {
+    const previous = this.queues.get(sessionId) ?? Promise.resolve()
+    const next = previous.catch(() => {}).then(task)
     this.queues.set(sessionId, next)
     const cleanup = () => {
       if (this.queues.get(sessionId) === next) {
@@ -194,6 +197,12 @@ export class SessionEventProcessor {
     }
     next.then(cleanup, cleanup)
     await next
+  }
+
+  private enqueueBridgeMutation(sessionId: string, label: string, task: () => Promise<void>): void {
+    void this.enqueueSessionMutation(sessionId, task).catch((error) => {
+      console.warn(`[session-event-processor] Failed to ${label}`, error)
+    })
   }
 
   /**
@@ -213,25 +222,63 @@ export class SessionEventProcessor {
         }
       },
       onProviderDisconnected: (payload) => {
-        // Mark orphaned sessions as having their runtime state unknown
         for (const sessionId of payload.orphanedSessionIds) {
-          try {
-            this.wsHub.broadcast('session:state-patch', {
-              sessionId,
-              patch: { runtimeState: 'exited', runtimeExitReason: 'provider_disconnected' }
-            })
-          } catch (error) {
-            console.warn('[session-event-processor] Failed to broadcast orphan state', error)
-          }
+          this.enqueueBridgeMutation(sessionId, 'apply provider disconnect state', async () => {
+            await this.manager.markRuntimeExited(sessionId, null, 'Runtime provider disconnected')
+          })
         }
       },
-      onProviderReady: (_payload) => {
-        // Future: reconcile provider PTY state with in-memory state
+      onProviderReady: (payload) => {
+        for (const entry of payload.ptyStates) {
+          if (entry.state.alive) {
+            this.enqueueBridgeMutation(entry.sessionId, 'apply provider ready alive state', async () => {
+              if (this.isArchivedSession(entry.sessionId)) {
+                return
+              }
+              await this.manager.markRuntimeAlive(entry.sessionId, this.getCurrentExternalSessionId(entry.sessionId))
+            })
+            continue
+          }
+          this.applyPtyExitedState(entry.sessionId, entry.state, 'Runtime provider state sync reported exit')
+        }
       },
-      onPtyState: (_payload) => {
-        // Future: track for observability
+      onPtyState: (payload) => {
+        if (payload.state.alive) {
+          this.enqueueBridgeMutation(payload.sessionId, 'apply PTY alive state', async () => {
+            if (this.isArchivedSession(payload.sessionId)) {
+              return
+            }
+            await this.manager.markRuntimeAlive(payload.sessionId, this.getCurrentExternalSessionId(payload.sessionId))
+          })
+          return
+        }
+        this.applyPtyExitedState(payload.sessionId, payload.state)
       }
     }
+  }
+
+  private isArchivedSession(sessionId: string): boolean {
+    return this.manager.snapshot().sessions.find((candidate) => candidate.id === sessionId)?.archived === true
+  }
+
+  private getCurrentExternalSessionId(sessionId: string): string | null {
+    return this.manager.snapshot().sessions.find((candidate) => candidate.id === sessionId)?.externalSessionId ?? null
+  }
+
+  private applyPtyExitedState(
+    sessionId: string,
+    state: { exitCode?: number | null; exitReason?: 'clean' | 'failed' | null },
+    fallbackSummary?: string
+  ): void {
+    const exitCode = state.exitCode ?? null
+    const summary = fallbackSummary
+      ?? (state.exitReason === 'failed'
+        ? `Runtime exited with code ${exitCode ?? 'unknown'}`
+        : `Runtime exited (${exitCode ?? 0})`)
+
+    this.enqueueBridgeMutation(sessionId, 'apply PTY exit state', async () => {
+      await this.manager.markRuntimeExited(sessionId, exitCode, summary)
+    })
   }
 
   // -------------------------------------------------------------------------

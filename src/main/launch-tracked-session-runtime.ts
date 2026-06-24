@@ -77,7 +77,7 @@ export async function launchTrackedSessionRuntime(options: LaunchTrackedSessionR
     options.sessionEventBridge.registerCodexLaunchIntent?.(session.id, codexLaunchIntent)
   }
 
-  await (options.startRuntime ?? startSessionRuntime)({
+  return await (options.startRuntime ?? startSessionRuntime)({
     session: {
       id: session.id,
       projectId: session.projectId,
@@ -106,6 +106,4 @@ export async function launchTrackedSessionRuntime(options: LaunchTrackedSessionR
     isLaunchTokenCurrent: options.isLaunchTokenCurrent,
     requireExternalSessionIdForResume: options.requireExternalSessionIdForResume
   })
-
-  return true
 }

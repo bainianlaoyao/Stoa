@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.3.6 (2026-06-23)
+
+### Added
+
+- **Mobile UI v1 shell**: phone portrait and phone landscape viewports now use a dedicated mobile shell with workspace drilldown, session search, fixed wide xterm presentation, horizontal scrolling, a terminal key rail, and backend health lockout.
+- **Stoa Server web/runtime path**: the build now includes the web renderer, Stoa Server static serving, token-protected REST/WebSocket access, and Electron runtime-bridge wiring for launch, input, resize, interrupt, replay, child-session, and terminal-data flow.
+- **Web E2E coverage**: browser-side smoke, sidebar, file explorer, settings/search, and terminal round-trip journeys now exercise the Stoa Server/WebSocket path.
+
+### Changed
+
+- **Release and README positioning refreshed**: documentation now reflects the embedded Stoa Server architecture, mobile pickup path, web runtime path, Windows-first release artifacts, and current quality gate.
+- **Mobile terminal strategy simplified**: mobile sessions now use one fixed wide terminal surface instead of per-session display preference modes, preserving coding TUI column width.
+- **Quality gate hardened**: `npm run test:all` now includes `npm run typecheck` before the Vitest and Playwright gates.
+
+### Fixed
+
+- **Runtime recovery and state sync hardened**: startup shadow-state sync, runtime alive/exited reconciliation, provider disconnect handling, launch timeout behavior, pending input/resize flushing, and restore/restart failure states were tightened.
+- **Terminal interaction polish**: Ctrl+C copies active terminal selection before falling back to interrupt behavior, and interrupt input marks agent turns interrupted through structured state.
+- **Provider launch handling**: shell-path and Codex shell wrapping behavior were aligned with the runtime/provider command path.
+
 ## v0.3.3 (2026-06-05)
 
 ### Fixed

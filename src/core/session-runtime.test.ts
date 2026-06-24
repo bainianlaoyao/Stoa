@@ -124,7 +124,7 @@ describe('session runtime', () => {
     )
   })
 
-  test('shell sessions remain direct even when shellPath is configured', async () => {
+  test('shell sessions use the configured shellPath as the direct PTY command', async () => {
     const provider = createProvider({
       async buildStartCommand(session) {
         return {
@@ -166,7 +166,7 @@ describe('session runtime', () => {
     expect(start).toHaveBeenCalledWith(
       'session_shell_1',
       expect.objectContaining({
-        command: 'powershell.exe',
+        command: 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
         args: []
       }),
       expect.any(Function),
@@ -324,7 +324,7 @@ describe('session runtime', () => {
       return { runtimeId }
     })
 
-    await startSessionRuntime({
+    const launched = await startSessionRuntime({
       session: {
         id: 'session_fast_exit',
         projectId: 'project_alpha',
@@ -352,6 +352,49 @@ describe('session runtime', () => {
     expect(markRuntimeStarting).toHaveBeenCalledWith('session_fast_exit', 'Starting opencode', null)
     expect(markRuntimeExited).toHaveBeenCalledWith('session_fast_exit', 0, 'opencode exited (0)')
     expect(markRuntimeAlive).not.toHaveBeenCalled()
+    expect(launched).toBe(false)
+  })
+
+  test('kills the PTY and marks failed when alive persistence fails after start', async () => {
+    const provider = createProvider()
+    const markRuntimeAlive = vi.fn(async () => {
+      throw new Error('db is locked')
+    })
+    const markRuntimeFailedToStart = vi.fn(async () => {})
+    const killAndWait = vi.fn(async () => {})
+    const start = vi.fn(() => ({ runtimeId: 'session_alive_fail' }))
+
+    await expect(startSessionRuntime({
+      session: {
+        id: 'session_alive_fail',
+        projectId: 'project_alpha',
+        path: 'D:/demo',
+        title: 'Alive fail',
+        type: 'opencode',
+        runtimeState: 'created',
+        turnState: 'idle',
+        externalSessionId: null,
+        sessionSecret: 'secret-1',
+        providerPort: 43128
+      },
+      webhookPort: 43127,
+      provider,
+      ptyHost: { start, killAndWait } as never,
+      manager: {
+        markRuntimeStarting: vi.fn(async () => {}),
+        markRuntimeAlive,
+        markRuntimeExited: vi.fn(async () => {}),
+        markRuntimeFailedToStart,
+        appendTerminalData: vi.fn(async () => {})
+      } as never
+    })).rejects.toThrow('db is locked')
+
+    expect(start).toHaveBeenCalledOnce()
+    expect(killAndWait).toHaveBeenCalledWith('session_alive_fail')
+    expect(markRuntimeFailedToStart).toHaveBeenCalledWith(
+      'session_alive_fail',
+      'opencode failed after PTY start: db is locked'
+    )
   })
 
   test('falls back to provider start command and leaves externalSessionId null when no resumable external session is available', async () => {

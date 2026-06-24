@@ -62,7 +62,8 @@ const WATCH_DEBOUNCE_MS = 100
 const RG_MAX_COUNT = 500
 const RG_MAX_FILESIZE = '1M'
 const CHOKIDAR_MODULE_NAME = 'chokidar'
-const GIT_DIR_SEGMENT = /(^|[\\/])\.git([\\/]|$)/
+const HIDDEN_WORKSPACE_DIR_NAMES = new Set(['.git', '.stoa'])
+const INTERNAL_WORKSPACE_DIR_SEGMENT = /(^|[\\/])\.(?:git|stoa)([\\/]|$)/
 
 let mainWindowGetter: MainWindowGetter | null = null
 let chokidarPromise: Promise<ChokidarModule> | null = null
@@ -96,7 +97,7 @@ function buildSearchPattern(options: SearchOptions): string {
 }
 
 function shouldIgnoreWatchPath(filePath: string): boolean {
-  return GIT_DIR_SEGMENT.test(filePath)
+  return INTERNAL_WORKSPACE_DIR_SEGMENT.test(filePath)
 }
 
 function addSearchMatch(accumulator: SearchAccumulator, filePath: string, relativePath: string, match: SearchMatch): void {
@@ -216,7 +217,7 @@ function queueWatcherEvent(projectPath: string, absolutePath: string, kind: FsCh
   }
 
   const relativePath = normalizeRelativePath(absolutePath, projectPath)
-  if (!relativePath || relativePath === '.git' || relativePath.startsWith('.git/')) {
+  if (!relativePath || relativePath === '.git' || relativePath.startsWith('.git/') || relativePath === '.stoa' || relativePath.startsWith('.stoa/')) {
     return
   }
 
@@ -394,7 +395,7 @@ async function listDirectory(projectPath: string, relativePath?: string): Promis
   const entries = await readdir(fullPath, { withFileTypes: true })
 
   const directoryEntries = await Promise.all(entries
-    .filter((entry) => entry.name !== '.git')
+    .filter((entry) => !HIDDEN_WORKSPACE_DIR_NAMES.has(entry.name))
     .map(async (entry) => {
       const entryPath = path.join(fullPath, entry.name)
       const stats = await stat(entryPath)

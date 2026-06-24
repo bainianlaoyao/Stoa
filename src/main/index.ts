@@ -37,6 +37,7 @@ import { syncManagedSidecars } from './managed-sidecar-maintenance'
 import { UpdateService } from './update-service'
 import { getStoaServerWebInfo } from './stoa-server-web-info'
 import { fetchStoaServerSettings } from './sr-settings-client'
+import { syncProjectSessionShadowFromStoaServer } from './sr-shadow-sync'
 import { resolveDefaultStoaRuntimeRoot } from './stoa-runtime-root'
 import { StoaServerSpawner, type StoaServerConfig, type SpawnerDeps } from './stoa-server-spawner'
 import { StoaRuntimeClient } from './stoa-runtime-client'
@@ -1067,6 +1068,24 @@ app.whenReady().then(async () => {
     }
   }
 
+  async function refreshShadowStateFromStoaServer(): Promise<boolean> {
+    if (!srSpawner || !projectSessionManager) {
+      return false
+    }
+
+    try {
+      return await syncProjectSessionShadowFromStoaServer({
+        port: srSpawner.getPort(),
+        authToken: srSpawner.getAuthToken(),
+        manager: projectSessionManager,
+        logger: console
+      })
+    } catch (error) {
+      console.warn('[main] Failed to sync Electron shadow state from Stoa Server:', error)
+      return false
+    }
+  }
+
   async function resolveRuntimePaths(sessionType: CreateSessionRequest['type']): Promise<{
     shellPath: string | null
     providerPath: string | null
@@ -1205,6 +1224,7 @@ app.whenReady().then(async () => {
       })
 
       if (launched) {
+        stoaRuntimeClient?.markRuntimeAlive(sessionId)
         console.log(`[${source}] Session ${sessionId} started successfully`)
       } else {
         console.warn(`[${source}] Session ${sessionId} could not be launched because its state was missing.`)
@@ -1233,11 +1253,17 @@ app.whenReady().then(async () => {
       return false
     }
 
+    await refreshShadowStateFromStoaServer()
+
     const hookBinding = await ensureLocalSessionHookBinding({
       sessionId,
       projectId: options.projectId,
       sessionType: options.type
     })
+    if (options.type === 'codex') {
+      const codexLaunchIntent = options.externalSessionId ? 'resume' : 'startup'
+      sessionEventBridge?.registerCodexLaunchIntent(sessionId, codexLaunchIntent)
+    }
     const dimensions = mergeSessionDimensions(getSessionDimensions(sessionId), options.initialDimensions)
     if (hasCompleteSessionDimensions(dimensions)) {
       rememberSessionDimensions(sessionId, dimensions)
@@ -1250,14 +1276,16 @@ app.whenReady().then(async () => {
       async markRuntimeStarting() {},
       async markRuntimeAlive() {},
       async markRuntimeFailedToStart() {},
-      async markRuntimeExited() {},
+      async markRuntimeExited(sessionId, exitCode, summary) {
+        await stoaRuntimeClient?.markRuntimeExited(sessionId, exitCode, summary)
+      },
       async appendTerminalData(chunk) {
         await runtimeController?.appendTerminalData(chunk)
         stoaRuntimeClient?.forwardTerminalData(chunk.sessionId, chunk.data)
       }
     }
 
-    await startSessionRuntime({
+    return await startSessionRuntime({
       session: {
         id: sessionId,
         projectId: options.projectId,
@@ -1288,8 +1316,6 @@ app.whenReady().then(async () => {
         stoaCtlEnabled: stoaCtlGate.isEnabled()
       })
     })
-
-    return true
   }
 
   async function createWorkSessionWithRuntime(
@@ -1635,6 +1661,12 @@ app.whenReady().then(async () => {
         },
         markRuntimeExited: async (sessionId, exitCode, summary) => {
           await runtimeController?.markRuntimeExited(sessionId, exitCode, summary)
+        },
+        getSessionType: (sessionId) => {
+          return projectSessionManager?.snapshot().sessions.find((session) => session.id === sessionId)?.type ?? null
+        },
+        markAgentTurnInterrupted: async (sessionId, sessionType) => {
+          await runtimeController?.markAgentTurnInterrupted(sessionId, `${sessionType} turn interrupted by user`)
         }
       })
 
@@ -1647,6 +1679,7 @@ app.whenReady().then(async () => {
   console.log(`[main] Stoa Server spawned on port ${srPort}`)
   await srSpawner.waitForHealth()
   await srSpawner.connectRuntime()
+  await refreshShadowStateFromStoaServer()
   console.log('[main] Stoa Server fully initialized')
 
 

@@ -55,15 +55,21 @@ The primary mobile job is remote session pickup: find the right workspace/sessio
 
 ## Activation
 
-`MobileAppShell` is enabled when viewport width is `<= 768px`.
+`MobileAppShell` is enabled for phone-sized portrait and landscape viewports:
 
-The activation signal is viewport width only:
+```text
+max-width: 768px
+or
+max-width: 932px and max-height: 480px
+```
+
+The activation signal is viewport geometry only:
 
 - do not use user agent detection
 - do not use touch capability detection
 - do not infer from platform
 
-Rationale: Electron windows, browser previews, remote clients, DevTools, and split-screen environments make UA/touch unreliable. Width is the correct layout signal.
+Rationale: Electron windows, browser previews, remote clients, DevTools, and split-screen environments make UA/touch unreliable. Geometry is the correct layout signal. The landscape clause keeps common phone landscape viewports such as `844 x 390` in the mobile shell instead of falling back to the desktop shell.
 
 ## Shell Architecture
 
@@ -351,33 +357,19 @@ Only `Connected` health allows xterm input. `Reconnecting` and `Offline` freeze 
 
 No offline queue is allowed in V1.
 
-### Terminal Display Preferences
+### Terminal Display
 
-Default display:
+- stable wide terminal surface
+- horizontal scroll enabled when the phone is narrower than the terminal surface
+- no mobile display mode switch
+- no per-session terminal display preferences
+- no fit-to-width wrap mode
 
-- fit to phone width
-- wrap lines enabled
+Default rationale:
 
-Wide-output support:
-
-- users can switch display mode for tables and wide command output
-- horizontal scroll mode is allowed
-
-Preferences:
-
-- `Wrap lines`
-- `Horizontal scroll`
-- `Text size`
-
-Storage:
-
-- persisted per `sessionId`
-- scoped to mobile terminal display
-- does not affect backend session runtime
-
-Location:
-
-- `Session More -> Display`
+- Coding TUIs such as Codex, Claude Code, and OpenCode depend on terminal column width.
+- A narrow portrait terminal can make upstream TUI layout wrap incorrectly and visually corrupt the session.
+- Mobile therefore uses one fixed wide xterm viewport and horizontal scroll in portrait; landscape naturally exposes more of that surface.
 
 ## Keys Handle And Key Rail
 
@@ -439,9 +431,8 @@ It may expose existing desktop-backed session management actions such as:
 - delete if desktop already exposes it
 - copy session id
 - copy workspace path
-- display preferences
 
-Mobile must not invent new management semantics that do not exist on desktop, except for mobile display preferences and health presentation defined in this spec.
+Mobile must not invent new management semantics that do not exist on desktop, except for health presentation defined in this spec.
 
 ## Archive
 
@@ -563,12 +554,13 @@ Required landscape behavior:
 
 - no broken layout
 - no incoherent overlap
+- phone landscape remains in the mobile shell
 - session header remains usable
 - xterm remains visible
 - `Keys` handle remains reachable
 - banners do not block core controls
 
-V1 does not require a bespoke landscape IA.
+V1 does not require a separate landscape IA, but landscape must be treated as a first-class terminal viewing mode because it gives coding sessions more useful columns than portrait.
 
 ## Accessibility And Touch
 
@@ -621,7 +613,6 @@ mobile-session-view
 mobile-session-header
 mobile-session-more
 mobile-session-actions-sheet
-mobile-terminal-display-sheet
 mobile-keys-handle
 mobile-keys-rail
 mobile-key-esc
@@ -658,9 +649,9 @@ Add mobile behavior assets for:
 - Session List local search combines with status filters
 - New session sheet uses desktop session type icons and creates into Session Xterm View
 - Session Xterm View uses xterm, not custom input
+- Session Xterm View uses one fixed wide terminal display strategy
 - key handle expands/collapses key rail
 - key rail sends terminal keys and handles Copy/Paste semantics
-- display preferences persist by `sessionId`
 - archive restore opens restored session
 - settings mobile layout preserves settings categories
 - memory notification appears as mobile banner
@@ -680,9 +671,9 @@ Add mobile behavior assets for:
 
 ### 2. Shell split
 
-- Add viewport detection for `<=768px`.
+- Add viewport detection for phone portrait and phone landscape geometry.
 - Render existing desktop shell above that threshold.
-- Render `MobileAppShell` at or below that threshold.
+- Render `MobileAppShell` inside that geometry.
 - Keep desktop activity bar and desktop right sidebar out of mobile shell.
 
 ### 3. Mobile state machine
@@ -717,11 +708,11 @@ Implement:
 - Memory Banner
 - Keys Handle / Key Rail
 
-### 5. Terminal display preferences
+### 5. Terminal display
 
-- Persist preferences by `sessionId`.
-- Apply wrap/horizontal-scroll/text-size mode to mobile terminal presentation.
-- Do not mutate backend runtime settings.
+- Apply one fixed wide terminal surface to mobile session presentation.
+- Use horizontal scroll when the viewport is narrower than that terminal surface.
+- Do not expose mobile display modes or mutate backend runtime settings.
 
 ### 6. Test assets
 
@@ -774,7 +765,7 @@ Acceptance criteria:
 - Health polling must avoid noisy state flapping.
 - Mobile topology must not invalidate existing desktop topology assumptions.
 - Session type sheet must reuse desktop behavior exactly enough to avoid creating a second session creation model.
-- Per-session display preferences need clear ownership so they do not collide with global terminal settings.
+- The fixed mobile terminal width must be wide enough for coding TUIs without making portrait navigation controls unreachable.
 
 ## Open Items
 

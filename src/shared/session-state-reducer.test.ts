@@ -564,6 +564,32 @@ describe('session state reducer', () => {
     expect(derive(next)).toBe('ready')
   })
 
+  it('runtime alive clears stale runtime exit markers after provider reconnect', () => {
+    const next = reduceSessionState(
+      session({
+        runtimeState: 'exited',
+        turnState: 'idle',
+        runtimeExitCode: 0,
+        runtimeExitReason: 'clean',
+        failureReason: 'runtime_crash',
+        externalSessionId: 'external_1'
+      }),
+      patch({
+        intent: 'runtime.alive',
+        externalSessionId: 'external_1',
+        summary: 'provider reconnected'
+      }),
+      NOW
+    )
+
+    expect(next.runtimeState).toBe('alive')
+    expect(next.runtimeExitCode).toBeNull()
+    expect(next.runtimeExitReason).toBeNull()
+    expect(next.failureReason).toBeNull()
+    expect(next.externalSessionId).toBe('external_1')
+    expect(derive(next)).toBe('ready')
+  })
+
   it('stale sequence patches are ignored', () => {
     const current = session({ lastStateSequence: 10 })
 

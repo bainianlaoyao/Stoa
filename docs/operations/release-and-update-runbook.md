@@ -13,6 +13,8 @@ This runbook covers the Windows release flow for Stoa.
 
 - `package.json` `version` is the only release version source of truth.
 - Tags must match `v<package.json.version>` exactly (e.g. version `0.1.1` → tag `v0.1.1`).
+- `electron-builder.yml` `electronVersion` is the Electron runtime version used by release packaging.
+- `pnpm run package` rebuilds native modules against the configured Electron runtime before invoking electron-builder.
 
 ## Full Release Procedure
 
@@ -69,10 +71,11 @@ The release is now published on GitHub with tag `vX.Y.Z` but has no artifacts ye
 # Ensure deps are installed
 pnpm install
 
-# Build
+# Build desktop and Stoa Server assets
 pnpm run build
+pnpm run build:stoa-server
 
-# Package (NSIS installer + portable exe)
+# Package (native rebuild + NSIS installer + portable exe)
 $env:GH_OWNER = "bainianlaoyao"
 $env:GH_REPO   = "Stoa"
 pnpm run package
@@ -99,7 +102,7 @@ gh release upload vX.Y.Z `
 
 ### Step 7 — Smoke Test
 
-Optionally verify the packaged build:
+Verify the packaged build before upload or announcement:
 
 ```bash
 pnpm run verify:packaging
@@ -122,10 +125,10 @@ The release is now live at:
 4. git tag vX.Y.Z
 5. git push origin main --tags
 6. gh release create vX.Y.Z --title "Stoa vX.Y.Z" --notes-file notes.md
-7. pnpm install && pnpm run build
+7. pnpm install && pnpm run build && pnpm run build:stoa-server
 8. $env:GH_OWNER="bainianlaoyao"; $env:GH_REPO="Stoa"; pnpm run package
-9. gh release upload vX.Y.Z release/Stoa-Setup-X.Y.Z-win-x64.exe ...
-10. (Optional) pnpm run verify:release-smoke
+9. pnpm run verify:packaging && pnpm run verify:release-smoke
+10. gh release upload vX.Y.Z release/Stoa-Setup-X.Y.Z-win-x64.exe ...
 ```
 
 ## Installed App Update Flow

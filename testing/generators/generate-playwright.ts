@@ -406,7 +406,7 @@ export const meta = defineGeneratedTestMeta({
     'mobile.session-list',
     'mobile.session-view',
     'mobile.keys-rail',
-    'mobile.display-prefs',
+    'mobile.fixed-wide-terminal',
     'mobile.health-connected'
   ],
   interruptionsCovered: [
@@ -474,6 +474,7 @@ test('journey.mobile.ui-v1', async () => {
     await app.page.getByTestId('mobile-session-row').filter({ hasText: session.title }).click()
     await expect(app.page.getByTestId('mobile-session-view')).toBeVisible()
     await expect(app.page.getByTestId('terminal-xterm')).toBeVisible()
+    await expect(app.page.getByTestId('terminal-shell')).toHaveCSS('min-width', '960px')
     await app.page.getByTestId('mobile-back').click()
 
     await app.page.getByTestId('mobile-new-session').click()
@@ -495,11 +496,10 @@ test('journey.mobile.ui-v1', async () => {
 
     await app.page.getByTestId('mobile-session-more').click()
     await expect(app.page.getByTestId('mobile-session-actions-sheet')).toBeVisible()
-    await app.page.getByTestId('mobile-session-actions-sheet').getByText('Display').click()
-    await expect(app.page.getByTestId('mobile-terminal-display-sheet')).toBeVisible()
-    await app.page.getByTestId('mobile-display-scroll').click()
+    await expect(app.page.getByTestId('mobile-session-actions-sheet')).not.toContainText('Display')
 
     await app.page.setViewportSize({ width: 844, height: 390 })
+    await expect(app.page.getByTestId('mobile-shell')).toBeVisible()
     await expect(app.page.getByTestId('mobile-session-view')).toBeVisible()
     await expect(app.page.getByTestId('mobile-keys-handle')).toBeVisible()
 

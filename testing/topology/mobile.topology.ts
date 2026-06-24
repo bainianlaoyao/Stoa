@@ -30,7 +30,6 @@ export const mobileTopology = defineTopology({
     sessionView: 'mobile-session-view',
     sessionMore: 'mobile-session-more',
     sessionActionsSheet: 'mobile-session-actions-sheet',
-    terminalDisplaySheet: 'mobile-terminal-display-sheet',
     keysHandle: 'mobile-keys-handle',
     keysDismiss: 'mobile-keys-dismiss',
     keysRail: 'mobile-keys-rail',

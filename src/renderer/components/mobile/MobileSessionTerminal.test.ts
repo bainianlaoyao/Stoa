@@ -72,6 +72,19 @@ describe('MobileSessionTerminal', () => {
     expect(terminal.attributes('data-input-enabled')).toBe('true')
   })
 
+  it('uses the single fixed wide terminal surface instead of display modes', () => {
+    const wrapper = mount(MobileSessionTerminal, {
+      props: {
+        project,
+        session,
+        healthStatus: 'connected'
+      }
+    })
+
+    expect(wrapper.get('[data-testid="terminal-viewport-stub"]').attributes('data-min-viewport-width')).toBe('960')
+    expect(wrapper.get('[data-testid="terminal-viewport-stub"]').attributes('data-font-size-delta')).toBe('0')
+  })
+
   it('sends keys in the required rail order without resizing the terminal host', async () => {
     const wrapper = mount(MobileSessionTerminal, {
       props: {
@@ -113,37 +126,6 @@ describe('MobileSessionTerminal', () => {
 
     await wrapper.get('[data-testid="mobile-keys-dismiss"]').trigger('click')
     expect(wrapper.find('[data-testid="mobile-keys-rail"]').exists()).toBe(false)
-  })
-
-  it('persists display prefs per session in localStorage', async () => {
-    const wrapper = mount(MobileSessionTerminal, {
-      props: {
-        project,
-        session,
-        healthStatus: 'connected',
-        openDisplaySheet: true
-      }
-    })
-
-    await wrapper.get('[data-testid="mobile-display-large"]').trigger('click')
-
-    expect(window.localStorage.getItem('stoa.mobile.session-display.session-1')).toContain('"textSize":"large"')
-  })
-
-  it('applies horizontal scroll mode as a real wide terminal container mode', async () => {
-    const wrapper = mount(MobileSessionTerminal, {
-      props: {
-        project,
-        session,
-        healthStatus: 'connected',
-        openDisplaySheet: true
-      }
-    })
-
-    await wrapper.get('[data-testid="mobile-display-scroll"]').trigger('click')
-
-    expect(wrapper.classes()).toContain('mobile-session-terminal--hscroll')
-    expect(wrapper.get('[data-testid="terminal-viewport-stub"]').attributes('data-min-viewport-width')).toBe('960')
   })
 
   it('freezes terminal input when backend health is not connected', () => {

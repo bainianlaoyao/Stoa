@@ -399,7 +399,7 @@ describe('StoaServerSpawner - spawn()', () => {
     expect(mockFork.mock.calls[0][2]).not.toHaveProperty('execPath')
   })
 
-  it('sets ELECTRON_RUN_AS_NODE in packaged mode', async () => {
+  it('sets packaged runtime env in packaged mode', async () => {
     const stoaDir = createTempStoaDir()
     const { StoaServerSpawner } = await import('./stoa-server-spawner')
     const spawner = new StoaServerSpawner(
@@ -412,12 +412,17 @@ describe('StoaServerSpawner - spawn()', () => {
     mockFork.mockReturnValueOnce(childProcess)
 
     await spawner.spawn()
-    expect(mockFork.mock.calls[0][2]?.env).toEqual(
+    const env = mockFork.mock.calls[0][2]?.env
+    expect(env).toEqual(
       expect.objectContaining({
         STOA_AUTH_TOKEN: 'tok',
         STOA_DIR: stoaDir,
-        ELECTRON_RUN_AS_NODE: '1'
+        ELECTRON_RUN_AS_NODE: '1',
+        STOA_SERVER_ROOT: join('/usr/resources', 'stoa-server')
       })
+    )
+    expect(env?.NODE_PATH?.split(process.platform === 'win32' ? ';' : ':')[0]).toBe(
+      join('/usr/resources', 'app.asar.unpacked', 'node_modules')
     )
   })
 

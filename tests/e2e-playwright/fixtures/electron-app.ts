@@ -115,6 +115,7 @@ export async function launchElectronApp(options: LaunchOptions = {}): Promise<La
     NODE_ENV: 'test',
     VIBECODING_E2E: '1',
     VIBECODING_STATE_DIR: stateDir,
+    STOA_DIR: join(stateDir, '.stoa-server'),
     ...options.env,
   }
   delete mergedEnv.ELECTRON_RENDERER_URL
@@ -209,6 +210,36 @@ export async function waitForTerminalBufferText(
   await expect.poll(async () => {
     return await readTerminalBuffer(electronApp, sessionId)
   }).toContain(text)
+}
+
+export async function postSessionInputViaStoaServer(
+  electronApp: ElectronApplication,
+  sessionId: string,
+  data: string
+): Promise<{ status: number; body: unknown }> {
+  const page = electronApp.windows()[0]
+  const serverInfo = await page?.evaluate(async () => {
+    return await (window as typeof window & {
+      stoaElectron?: {
+        getServerInfo: () => Promise<{ available: boolean; port: number; token: string }>
+      }
+    }).stoaElectron?.getServerInfo() ?? null
+  }) ?? null
+
+  if (!serverInfo?.available) {
+    throw new Error('Stoa Server is unavailable for direct session input.')
+  }
+
+  const response = await fetch(`http://127.0.0.1:${serverInfo.port}/api/v1/sessions/${sessionId}/input`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${serverInfo.token}`,
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify({ data })
+  })
+  const body = await response.json().catch(() => null)
+  return { status: response.status, body }
 }
 
 export async function getMainE2EDebugState(electronApp: ElectronApplication): Promise<MainE2EDebugState | null> {
